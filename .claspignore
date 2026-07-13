@@ -1,0 +1,8 @@
+README.md
+tests/**
+.github/**
+.git/**
+.gitignore
+.clasp.json.example
+package.json
+
