@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Importar de FUDO</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="importar.html" class="activo">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a>
+      <a href="usuarios.html">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Importar reportes de FUDO</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <h2>1. ¿Qué reporte vas a subir?</h2>
+      <div class="grid grid-3">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="radio" name="tipo" value="movimientos" checked style="width:auto"> Movimientos de Stock
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="radio" name="tipo" value="ventas" style="width:auto"> Ventas (Adiciones)
+        </label>
+      </div>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:10px">
+        Recuerda: <code>movimientos-de-stock.xls</code> solo se usa para conciliar <strong>bebidas</strong> — para
+        comida el sistema compara ventas × receta contra el conteo físico, no contra el stock de FUDO.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>2. Sube el archivo</h2>
+      <div class="dropzone" id="dropzone">
+        <p>Arrastra aquí el .xls / .xlsx, o haz clic para elegirlo</p>
+        <input type="file" id="input-archivo" accept=".xls,.xlsx" style="display:none">
+      </div>
+    </div>
+
+    <div class="card" id="card-preview" style="display:none">
+      <h2>3. Vista previa (<span id="n-filas"></span> filas)</h2>
+      <div style="overflow-x:auto"><table id="tabla-preview"></table></div>
+      <button class="btn dorado" id="btn-confirmar" style="margin-top:16px">Confirmar e importar</button>
+      <span id="msg-import" style="margin-left:12px; color:var(--green); font-weight:600;"></span>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+
+let filasParaImportar = [];
+
+document.getElementById('dropzone').addEventListener('click', () => document.getElementById('input-archivo').click());
+document.getElementById('input-archivo').addEventListener('change', (e) => manejarArchivo(e.target.files[0]));
+document.getElementById('dropzone').addEventListener('dragover', (e) => e.preventDefault());
+document.getElementById('dropzone').addEventListener('drop', (e) => {
+  e.preventDefault();
+  manejarArchivo(e.dataTransfer.files[0]);
+});
+
+function tipoSeleccionado() {
+  return document.querySelector('input[name="tipo"]:checked').value;
+}
+
+async function manejarArchivo(file) {
+  if (!file) return;
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+
+  const tipo = tipoSeleccionado();
+  // movimientos-de-stock.xls trae 3 filas de encabezado (Desde/Hasta) antes de la fila real de columnas
+  const nombreHoja = tipo === 'movimientos' ? wb.SheetNames[0] : 'Adiciones';
+  const hoja = wb.Sheets[nombreHoja] || wb.Sheets[wb.SheetNames[0]];
+  const rango = tipo === 'movimientos' ? { range: 3 } : {};
+  const filas = XLSX.utils.sheet_to_json(hoja, Object.assign({ defval: null }, rango));
+
+  filasParaImportar = filas;
+  mostrarPreview(filas);
+}
+
+function mostrarPreview(filas) {
+  document.getElementById('card-preview').style.display = 'block';
+  document.getElementById('n-filas').textContent = filas.length;
+  if (!filas.length) return;
+
+  const columnas = Object.keys(filas[0]).slice(0, 8);
+  const tabla = document.getElementById('tabla-preview');
+  tabla.innerHTML = '<thead><tr>' + columnas.map(c => `<th>${c}</th>`).join('') + '</tr></thead>' +
+    '<tbody>' + filas.slice(0, 8).map(f => '<tr>' + columnas.map(c => `<td>${f[c] ?? ''}</td>`).join('') + '</tr>').join('') + '</tbody>';
+}
+
+document.getElementById('btn-confirmar').addEventListener('click', async () => {
+  const data = await llamar('importar_fudo', { tipo: tipoSeleccionado(), filas: filasParaImportar });
+  const msg = document.getElementById('msg-import');
+  if (data.ok) {
+    msg.textContent = `Importadas ${data.importados} filas de tipo "${data.tipo}".`;
+  } else {
+    alert(data.error);
+  }
+});
+</script>
+</body>
+</html>

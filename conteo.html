@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Registrar conteo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" class="activo">Registrar conteo</a>
+      <a href="importar.html">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a>
+      <a href="usuarios.html">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Registrar conteo de cierre</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <div class="grid grid-3" style="margin-bottom:18px">
+        <div class="campo">
+          <label>Fecha</label>
+          <input type="date" id="fecha">
+        </div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Punto de conteo</label>
+          <select id="punto">
+            <option>Café</option>
+            <option>Centro Producción (bodega)</option>
+            <option>Aseo</option>
+          </select>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>Producto</th><th>Unidad</th><th>Cantidad</th><th></th></tr></thead>
+        <tbody id="filas"></tbody>
+      </table>
+      <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar producto</button>
+
+      <div style="margin-top:20px">
+        <button class="btn dorado" id="btn-guardar">Guardar conteo</button>
+        <span id="msg-guardado" style="margin-left:12px; color:var(--green); font-weight:600;"></span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+document.getElementById('fecha').valueAsDate = new Date();
+
+function nuevaFila(producto = '', unidad = 'g', cantidad = '') {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" class="in-producto" value="${producto}" placeholder="ej. Costilla Preparada"></td>
+    <td><select class="in-unidad">
+        <option ${unidad==='g'?'selected':''}>g</option>
+        <option ${unidad==='kg'?'selected':''}>kg</option>
+        <option ${unidad==='u'?'selected':''}>u</option>
+        <option ${unidad==='ml'?'selected':''}>ml</option>
+        <option ${unidad==='l'?'selected':''}>l</option>
+      </select></td>
+    <td><input type="number" step="0.01" class="in-cantidad" value="${cantidad}"></td>
+    <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
+  tr.querySelector('.btn-quitar').addEventListener('click', () => tr.remove());
+  document.getElementById('filas').appendChild(tr);
+}
+
+document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
+for (let i = 0; i < 4; i++) nuevaFila();
+
+document.getElementById('btn-guardar').addEventListener('click', async () => {
+  const fecha = document.getElementById('fecha').value;
+  const sede = document.getElementById('sede').value;
+  const punto = document.getElementById('punto').value;
+
+  const items = Array.from(document.getElementById('filas').children)
+    .map(tr => ({
+      fecha, sede, punto_conteo: punto,
+      producto: tr.querySelector('.in-producto').value.trim(),
+      unidad: tr.querySelector('.in-unidad').value,
+      cantidad: parseFloat(tr.querySelector('.in-cantidad').value)
+    }))
+    .filter(it => it.producto && !isNaN(it.cantidad));
+
+  if (!items.length) { alert('Agrega al menos un producto con cantidad.'); return; }
+
+  const data = await llamar('conteo_registrar', { items });
+  const msg = document.getElementById('msg-guardado');
+  if (data.ok) {
+    msg.textContent = `Guardado: ${data.registrados} productos.`;
+    setTimeout(() => msg.textContent = '', 4000);
+  } else {
+    alert(data.error);
+  }
+});
+</script>
+</body>
+</html>

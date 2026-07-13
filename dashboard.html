@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Disponible Hoy</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html" class="activo">Disponible Hoy</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="importar.html">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a>
+      <a href="usuarios.html">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Disponible Hoy</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h2 style="margin:0">¿Para cuántos platos alcanza lo que tengo?</h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="date" id="fecha-corte" style="width:auto">
+          <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Plato</th><th>Preparaciones posibles</th><th>Ingrediente limitante</th><th>Stock del limitante</th></tr>
+        </thead>
+        <tbody id="tabla-platos"><tr><td colspan="4" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Stock de ingredientes (último conteo)</h2>
+      <table>
+        <thead><tr><th>Ingrediente</th><th>Cantidad</th><th>Unidad</th><th>Fecha del conteo</th></tr></thead>
+        <tbody id="tabla-stock"><tr><td colspan="4" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+
+async function cargar() {
+  const fecha = document.getElementById('fecha-corte').value;
+  const data = await llamar('disponible_hoy', { fecha });
+  if (!data.ok) { alert(data.error); return; }
+
+  const platosBody = document.getElementById('tabla-platos');
+  platosBody.innerHTML = '';
+  if (!data.data.platos.length) {
+    platosBody.innerHTML = '<tr><td colspan="4" class="vacio">Aún no hay recetas cargadas en la hoja Recetas.</td></tr>';
+  }
+  data.data.platos.forEach(p => {
+    const badge = p.preparaciones_posibles === null ? ''
+      : p.preparaciones_posibles < 5 ? '<span class="badge alerta">Bajo</span>'
+      : p.preparaciones_posibles < 15 ? '<span class="badge aviso">Vigilar</span>'
+      : '<span class="badge ok">OK</span>';
+    const stockLim = p.stock_limitante ? `${p.stock_limitante.cantidad} ${p.stock_limitante.unidad}` : '—';
+    platosBody.innerHTML += `<tr>
+      <td>${p.producto}</td>
+      <td>${p.preparaciones_posibles ?? '—'} ${badge}</td>
+      <td>${p.ingrediente_limitante ?? '—'}</td>
+      <td>${stockLim}</td>
+    </tr>`;
+  });
+
+  const stockBody = document.getElementById('tabla-stock');
+  stockBody.innerHTML = '';
+  const entradas = Object.entries(data.data.stock_ingredientes);
+  if (!entradas.length) stockBody.innerHTML = '<tr><td colspan="4" class="vacio">Aún no hay conteos registrados.</td></tr>';
+  entradas.forEach(([nombre, s]) => {
+    stockBody.innerHTML += `<tr><td>${nombre}</td><td>${s.cantidad}</td><td>${s.unidad}</td><td>${s.fecha_conteo}</td></tr>`;
+  });
+}
+
+document.getElementById('btn-actualizar').addEventListener('click', cargar);
+cargar();
+</script>
+</body>
+</html>
