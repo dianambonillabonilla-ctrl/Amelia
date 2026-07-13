@@ -1,0 +1,17 @@
+<style>
+  :root { --bg:#0f172a; --card:#111827; --txt:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; }
+  * { box-sizing: border-box; font-family: Arial, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--txt); }
+  .container { max-width: 980px; margin: 0 auto; padding: 16px; }
+  .subtitle { color: var(--muted); margin-top: -8px; }
+  .card { background: var(--card); border: 1px solid #1f2937; border-radius: 12px; padding: 16px; margin-top: 16px; }
+  .hidden { display: none; }
+  .form-grid { display: grid; gap: 8px; grid-template-columns: 1fr; }
+  label { color: var(--muted); font-size: 12px; }
+  input, textarea { width: 100%; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: var(--txt); padding: 10px; }
+  button { border: 0; border-radius: 8px; padding: 10px 12px; cursor: pointer; background: var(--accent); color: #052e16; font-weight: bold; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .block { border-top: 1px dashed #334155; margin-top: 12px; padding-top: 12px; }
+  pre { background: #020617; border: 1px solid #1e293b; color: #93c5fd; border-radius: 8px; padding: 12px; overflow: auto; max-height: 260px; }
+  @media (max-width: 640px) { .container { padding: 10px; } }
+</style>
