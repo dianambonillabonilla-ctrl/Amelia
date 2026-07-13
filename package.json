@@ -1,0 +1,15 @@
+{
+  "name": "dilana-os",
+  "private": true,
+  "scripts": {
+    "clasp:login": "cd apps-script && clasp login",
+    "clasp:pull": "cd apps-script && clasp pull",
+    "clasp:push": "cd apps-script && clasp push",
+    "clasp:open": "cd apps-script && clasp open",
+    "clasp:status": "cd apps-script && clasp status",
+    "clasp:deploy": "cd apps-script && clasp deploy"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.5.0"
+  }
+}
