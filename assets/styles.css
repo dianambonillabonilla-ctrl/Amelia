@@ -59,6 +59,8 @@ a { color: var(--navy); }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
 #barra-usuario { display: flex; align-items: center; gap: 14px; font-size: .85rem; color: var(--grey); }
+#barra-usuario a { text-decoration: none; color: var(--grey); }
+#barra-usuario a:hover { color: var(--navy); text-decoration: underline; }
 #barra-usuario button {
   background: none; border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px;
   cursor: pointer; font-family: 'Montserrat', sans-serif; font-size: .8rem; color: var(--ink);

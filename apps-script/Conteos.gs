@@ -6,6 +6,10 @@
 
 function conteoRegistrar_(items, usuario) {
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+  if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
+    return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
+  }
+
   const ahora = new Date();
   let n = 0;
   items.forEach(function (it) {
@@ -23,6 +27,13 @@ function conteoRegistrar_(items, usuario) {
     });
     n++;
   });
+
+  try {
+    revisarAlertas_(items[0].fecha);
+  } catch (err) {
+    Logger.log('revisarAlertas_ falló tras conteo_registrar: ' + err.message);
+  }
+
   return { ok: true, registrados: n };
 }
 

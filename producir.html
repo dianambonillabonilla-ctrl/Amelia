@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Registrar conteo</title>
+<title>Dilana OS — Registrar producción</title>
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -12,8 +12,8 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
-      <a href="conteo.html" class="activo">Registrar conteo</a>
-      <a href="producir.html">Registrar producción</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html" class="activo">Registrar producción</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html">Usuarios</a>
@@ -22,11 +22,16 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Registrar conteo de cierre</h1>
+      <h1>Registrar producción</h1>
       <div id="barra-usuario"></div>
     </div>
 
     <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Registra cuánto se preparó de un ítem hoy (ej. "8kg de Costilla Preparada"). Esto es distinto
+        del conteo de cierre: el conteo dice cuánto quedó, esto dice cuánto se produjo, para que la
+        conciliación no tenga que inferirlo restando conteos.
+      </p>
       <div class="grid grid-3" style="margin-bottom:18px">
         <div class="campo">
           <label>Fecha</label>
@@ -39,26 +44,26 @@
             <option>Capri</option>
           </select>
         </div>
-        <div class="campo">
-          <label>Punto de conteo</label>
-          <select id="punto">
-            <option>Café</option>
-            <option>Centro Producción (bodega)</option>
-            <option>Aseo</option>
-          </select>
-        </div>
       </div>
 
       <table>
-        <thead><tr><th>Producto</th><th>Unidad</th><th>Cantidad</th><th></th></tr></thead>
+        <thead><tr><th>Ítem producido</th><th>Unidad</th><th>Cantidad</th><th></th></tr></thead>
         <tbody id="filas"></tbody>
       </table>
-      <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar producto</button>
+      <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar ítem</button>
 
       <div style="margin-top:20px">
-        <button class="btn dorado" id="btn-guardar">Guardar conteo</button>
+        <button class="btn dorado" id="btn-guardar">Guardar producción</button>
         <span id="msg-guardado" style="margin-left:12px; color:var(--green); font-weight:600;"></span>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Producción de hoy</h2>
+      <table>
+        <thead><tr><th>Ítem</th><th>Sede</th><th>Cantidad</th><th>Unidad</th><th>Registrado por</th></tr></thead>
+        <tbody id="tabla-historial"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+      </table>
     </div>
   </main>
 </div>
@@ -69,10 +74,10 @@ Sesion.requerir();
 montarBarraUsuario();
 document.getElementById('fecha').valueAsDate = new Date();
 
-function nuevaFila(producto = '', unidad = 'g', cantidad = '') {
+function nuevaFila(item = '', unidad = 'g', cantidad = '') {
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" class="in-producto" value="${producto}" placeholder="ej. Costilla Preparada"></td>
+    <td><input type="text" class="in-item" value="${escapeHtml(item)}" placeholder="ej. Costilla Preparada"></td>
     <td><select class="in-unidad">
         <option ${unidad==='g'?'selected':''}>g</option>
         <option ${unidad==='kg'?'selected':''}>kg</option>
@@ -87,33 +92,46 @@ function nuevaFila(producto = '', unidad = 'g', cantidad = '') {
 }
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
-for (let i = 0; i < 4; i++) nuevaFila();
+for (let i = 0; i < 3; i++) nuevaFila();
 
 document.getElementById('btn-guardar').addEventListener('click', async () => {
   const fecha = document.getElementById('fecha').value;
   const sede = document.getElementById('sede').value;
-  const punto = document.getElementById('punto').value;
 
   const items = Array.from(document.getElementById('filas').children)
     .map(tr => ({
-      fecha, sede, punto_conteo: punto,
-      producto: tr.querySelector('.in-producto').value.trim(),
+      fecha, sede,
+      item: tr.querySelector('.in-item').value.trim(),
       unidad: tr.querySelector('.in-unidad').value,
       cantidad: parseFloat(tr.querySelector('.in-cantidad').value.replace(',', '.'))
     }))
-    .filter(it => it.producto && !isNaN(it.cantidad));
+    .filter(it => it.item && !isNaN(it.cantidad));
 
-  if (!items.length) { alert('Agrega al menos un producto con cantidad.'); return; }
+  if (!items.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
 
-  const data = await llamar('conteo_registrar', { items });
+  const data = await llamar('produccion_registrar', { items });
   const msg = document.getElementById('msg-guardado');
   if (data.ok) {
-    msg.textContent = `Guardado: ${data.registrados} productos.`;
+    msg.textContent = `Guardado: ${data.registrados} ítems.`;
     setTimeout(() => msg.textContent = '', 4000);
+    cargarHistorial();
   } else {
     alert(data.error);
   }
 });
+
+async function cargarHistorial() {
+  const fecha = document.getElementById('fecha').value;
+  const data = await llamar('produccion_listar', { fecha });
+  const body = document.getElementById('tabla-historial');
+  if (!data.ok) { body.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  if (!data.data.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin producción registrada hoy.</td></tr>'; return; }
+  body.innerHTML = data.data.map(p => `
+    <tr><td>${escapeHtml(p.item)}</td><td>${escapeHtml(p.sede)}</td><td>${escapeHtml(p.cantidad)}</td><td>${escapeHtml(p.unidad)}</td><td>${escapeHtml(p.usuario)}</td></tr>
+  `).join('');
+}
+
+cargarHistorial();
 </script>
 </body>
 </html>

@@ -31,7 +31,13 @@ function importarFudo_(tipo, filas, usuario) {
   }
 
   if (tipo === 'ventas') {
+    const sinIdentificar = {};
     filas.forEach(function (f) {
+      const sede = sedeDesdeCreadaPor_(f['Creada por']);
+      if (sede === 'Sin identificar') {
+        const clave = String(f['Creada por'] || '(vacío)');
+        sinIdentificar[clave] = (sinIdentificar[clave] || 0) + 1;
+      }
       appendRowFromObj_(SHEET_NAMES.VENTAS_FUDO, {
         id_venta: f['Id. Venta'],
         creacion: f['Creación'],
@@ -41,11 +47,18 @@ function importarFudo_(tipo, filas, usuario) {
         precio: f['Precio'],
         cancelada: f['Cancelada'],
         creada_por: f['Creada por'],
-        sede: sedeDesdeCreadaPor_(f['Creada por']),
+        sede: sede,
         importado_en: ahora
       });
     });
-    return { ok: true, importados: filas.length, tipo: tipo };
+
+    const valores = Object.keys(sinIdentificar);
+    const sinIdentificarResumen = valores.length ? {
+      total: valores.reduce(function (acc, k) { return acc + sinIdentificar[k]; }, 0),
+      valores: valores
+    } : null;
+
+    return { ok: true, importados: filas.length, tipo: tipo, sin_identificar: sinIdentificarResumen };
   }
 
   return { ok: false, error: 'Tipo de importación no reconocido: ' + tipo };

@@ -72,16 +72,22 @@ function conciliarComidaPorSede_(fecha) {
     });
 
     const cambioFisico = calcularCambioFisico_(fecha, sede);
+    const producido = produccionTotalPorItem_(fecha, sede);
 
-    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)));
+    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)));
     resultado[sede] = Array.from(ingredientes).map(function (ing) {
       const esperado = (consumoEsperado[ing] || 0) / 1000; // gramos -> kg
-      const cambio = cambioFisico[ing] || null;
+      const cambio = cambioFisico[ing] !== undefined ? cambioFisico[ing] : null;
+      const producidoIng = producido[ing] || 0;
+      // implícito = lo que no explican ni las ventas (consumo esperado) ni la producción registrada.
+      // Si nunca se registró producción para este ítem, producidoIng=0 y el cálculo queda igual que antes.
+      const implicito = cambio !== null ? (cambio + esperado - producidoIng) : null;
       return {
         ingrediente: ing,
         consumo_esperado_kg: Number(esperado.toFixed(3)),
         cambio_fisico_kg: cambio !== null ? Number(cambio.toFixed(3)) : null,
-        implicito_kg: cambio !== null ? Number((cambio + esperado).toFixed(3)) : null
+        producido_registrado_kg: producido[ing] !== undefined ? Number(producidoIng.toFixed(3)) : null,
+        implicito_kg: implicito !== null ? Number(implicito.toFixed(3)) : null
       };
     });
   });
