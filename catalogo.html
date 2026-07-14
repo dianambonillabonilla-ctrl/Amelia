@@ -48,9 +48,14 @@
           <input type="text" id="filtro-nombre" placeholder="ej. costilla">
         </div>
       </div>
+      <p style="color:var(--grey); font-size:.85rem">
+        La columna "Stock mínimo" alimenta la alarma de insumos bajos en "Disponible Hoy" — déjala
+        vacía si no quieres vigilar ese producto, o ponle una cantidad (en la misma unidad del
+        producto) para que se avise cuando el conteo más reciente caiga por debajo.
+      </p>
       <table>
-        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th></tr></thead>
-        <tbody id="tabla-catalogo"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th></tr></thead>
+        <tbody id="tabla-catalogo"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
 
@@ -96,6 +101,12 @@
           <input type="text" id="nuevo-notas">
         </div>
       </div>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Stock mínimo (opcional)</label>
+          <input type="number" step="0.01" id="nuevo-stock-minimo" placeholder="para la alarma de insumos bajos">
+        </div>
+      </div>
       <button class="btn dorado" id="btn-guardar">Guardar producto</button>
       <span id="msg-guardado" style="margin-left:12px; font-weight:600; color:var(--green)"></span>
     </div>
@@ -109,20 +120,10 @@ montarBarraUsuario();
 
 let catalogo = [];
 
-// La hoja Catalogo_Maestro guarda categoría y subcategoría juntas en un solo campo "categoria",
-// separadas por "/" (ej. "Bebidas/Cerveza", "Materia Prima/Fruver") — no hay columna aparte.
-// Estas funciones parten y arman ese texto para poder filtrar/agrupar por cada parte.
-function partesCategoria_(categoriaCompleta) {
-  const texto = String(categoriaCompleta || '').trim();
-  const i = texto.indexOf('/');
-  if (i === -1) return { principal: texto, sub: '' };
-  return { principal: texto.slice(0, i).trim(), sub: texto.slice(i + 1).trim() };
-}
-
 async function cargarCatalogo() {
   const data = await llamar('catalogo_listar');
   if (!data.ok) {
-    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="6" class="vacio">${escapeHtml(data.error)}</td></tr>`;
     return;
   }
   catalogo = data.data;
@@ -132,12 +133,12 @@ async function cargarCatalogo() {
 }
 
 function categoriasUnicas_() {
-  return [...new Set(catalogo.map(p => partesCategoria_(p.categoria).principal).filter(Boolean))].sort();
+  return [...new Set(catalogo.map(p => partesCategoria(p.categoria).principal).filter(Boolean))].sort();
 }
 
 function subcategoriasUnicas_(categoria) {
   return [...new Set(catalogo
-    .map(p => partesCategoria_(p.categoria))
+    .map(p => partesCategoria(p.categoria))
     .filter(p => !categoria || p.principal === categoria)
     .map(p => p.sub).filter(Boolean))].sort();
 }
@@ -173,14 +174,14 @@ function pintarTabla_() {
   const nombre = normalizarTexto(document.getElementById('filtro-nombre').value);
 
   const filas = catalogo
-    .map(p => Object.assign({ _partes: partesCategoria_(p.categoria) }, p))
+    .map(p => Object.assign({ _partes: partesCategoria(p.categoria) }, p))
     .filter(p => !categoria || p._partes.principal === categoria)
     .filter(p => !subcategoria || p._partes.sub === subcategoria)
     .filter(p => !nombre || normalizarTexto(p.nombre_estandar).includes(nombre))
     .sort((a, b) => (a.categoria + a.nombre_estandar).localeCompare(b.categoria + b.nombre_estandar));
 
   const body = document.getElementById('tabla-catalogo');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
   body.innerHTML = filas.map(p => `
     <tr>
       <td>${escapeHtml(p.nombre_estandar)}</td>
@@ -188,7 +189,18 @@ function pintarTabla_() {
       <td>${escapeHtml(p._partes.sub || '—')}</td>
       <td>${escapeHtml(p.unidad_base || '—')}</td>
       <td>${escapeHtml(p.nombre_fudo || '—')}</td>
+      <td><input type="number" step="0.01" class="in-stock-minimo" data-id="${escapeHtml(p.id)}" value="${p.stock_minimo !== undefined && p.stock_minimo !== '' ? escapeHtml(p.stock_minimo) : ''}" style="width:90px"></td>
     </tr>`).join('');
+
+  body.querySelectorAll('.in-stock-minimo').forEach(input => {
+    input.addEventListener('change', async () => {
+      const valor = input.value.trim();
+      const data = await llamar('catalogo_guardar', { item: { id: input.dataset.id, stock_minimo: valor === '' ? '' : parseFloat(valor) } });
+      if (!data.ok) { alert(data.error); return; }
+      const item = catalogo.find(p => p.id === input.dataset.id);
+      if (item) item.stock_minimo = valor === '' ? '' : parseFloat(valor);
+    });
+  });
 }
 
 document.getElementById('filtro-categoria').addEventListener('change', () => { poblarSubcategoriasFiltro_(); pintarTabla_(); });
@@ -243,19 +255,21 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   // La hoja guarda categoría y subcategoría juntas en un solo campo, ej. "Bebidas/Cerveza"
   const categoria = subcategoria ? `${categoriaPrincipal}/${subcategoria}` : categoriaPrincipal;
 
+  const stockMinimo = document.getElementById('nuevo-stock-minimo').value.trim();
   const item = {
     nombre_estandar: nombre,
     categoria: categoria,
     unidad_base: document.getElementById('nuevo-unidad').value,
     nombre_fudo: document.getElementById('nuevo-nombre-fudo').value.trim(),
-    notas: document.getElementById('nuevo-notas').value.trim()
+    notas: document.getElementById('nuevo-notas').value.trim(),
+    stock_minimo: stockMinimo === '' ? '' : parseFloat(stockMinimo)
   };
 
   const data = await llamar('catalogo_guardar', { item });
   const msg = document.getElementById('msg-guardado');
   if (data.ok) {
     msg.textContent = 'Producto guardado.';
-    ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas'].forEach(id => document.getElementById(id).value = '');
+    ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas', 'nuevo-stock-minimo'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('nuevo-unidad').value = 'g';
     document.getElementById('aviso-parecido').style.display = 'none';
     cargarCatalogo();
