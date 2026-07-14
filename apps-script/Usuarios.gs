@@ -1,7 +1,18 @@
 /**
  * USUARIOS Y ROLES
- * Roles esperados: Administrador (todo), Encargado (registra conteos e importa FUDO de su sede),
- * Cocina (solo registra conteos), Lectura (solo ve dashboards, ej. para un contador externo).
+ * Roles esperados:
+ *  - Administrador: todo, incluyendo importar de FUDO, gestionar el catálogo y crear usuarios.
+ *  - Encargado: registra conteos y producción, ve Disponible Hoy y Conciliación — NO puede
+ *    importar de FUDO ni gestionar catálogo/usuarios (ver requiereAdmin_ en Code.gs).
+ *  - Cocina: igual que Encargado pero sin necesidad de ver conciliación (solo registra).
+ *  - Lectura: solo ve dashboards (disponible_hoy, conciliación), no puede registrar nada
+ *    (conteo_registrar/produccion_registrar exigen Administrador/Encargado/Cocina).
+ *
+ * La sede del usuario (columna `sede`: "Ambas", o una sede específica) limita para qué sede
+ * puede registrar conteos/producción — ver la validación en Conteos.gs/Produccion.gs. Un usuario
+ * que necesite registrar traslados entre sedes (ej. mover algo de Centro de Producción a una
+ * sede) debe tener sede = "Ambas"; si su sede es una sola, el backend rechaza registrar para
+ * cualquier otra.
  */
 
 function usuariosListar_(usuario) {
