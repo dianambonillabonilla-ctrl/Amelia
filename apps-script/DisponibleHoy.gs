@@ -4,11 +4,19 @@
  *
  * Usa:
  *  - Conteos_Manuales (el último conteo físico registrado de cada ingrediente, sumando todas las sedes)
- *  - Recetas (la matriz Producto -> Ingrediente -> Cantidad, cargada desde tu hoja "Estandarización
- *    Productos" — NO desde la receta de FUDO, porque ya confirmamos que la tuya es la fuente correcta)
+ *  - Recetas (la matriz Producto -> Ingrediente -> Cantidad), que ahora tiene DOS capas encadenadas:
+ *      1) "plato"     — Chanchostilla <- Costilla Preparada: 115.3846154 g por plato vendido
+ *      2) "produccion" — Costilla Preparada <- Costilla Limpia Marinada: 7250 g para producir
+ *         rendimiento_producto=5305.288301 g (o sea 1.366... g de materia prima por cada 1g de
+ *         producto preparado que rinde el lote)
  *
- * La explosión de receta es recursiva porque hay productos que se arman de sub-productos
- * (ej. Combo Libra -> Cebollita de Amelia -> Cebollita de Amelia Preparada).
+ * La disponibilidad de CUALQUIER producto/ingrediente ya no es solo "lo que hay contado en
+ * Conteos_Manuales": es contado + lo que se puede seguir produciendo con la materia prima
+ * disponible, calculado recursivamente hasta llegar a insumos comprados sin receta propia.
+ * Ejemplo real: si hay Costilla Preparada contada para 5 platos y además materia prima
+ * (Costilla San Luis Entera, sal, especias...) para preparar 10 platos más, la disponibilidad
+ * de Costilla Preparada es 15 platos — y esa cifra es la que compite con Panceta Pre-ahumada y
+ * Papas Listas para determinar cuántas Chanchostillas salen hoy.
  *
  * Todas las comparaciones de nombre (Recetas.producto/ingrediente vs Conteos.producto) pasan por
  * claveProducto_/nombreCanonico_ (Catalogo.gs), que resuelve contra el catálogo maestro y
@@ -19,29 +27,33 @@
 function calcularDisponibleHoy_(fecha) {
   const indice = indiceCatalogo_();
   const recetas = leerTabla_(SHEET_NAMES.RECETAS);
-  const stockActual = obtenerUltimoStockPorIngrediente_(fecha, indice);
+  const stockContado = obtenerUltimoStockPorIngrediente_(fecha, indice);
   const recetaMap = construirRecetaMap_(recetas, indice);
+  const memo = {};
 
-  const productosVendibles = Object.keys(recetaMap);
+  // Solo los productos "plato" (vendibles) se muestran como fila en Disponible Hoy — los de tipo
+  // "produccion" (Costilla Preparada, Aioli, Papas pre-fritas...) son pasos internos de la cadena,
+  // no algo que se venda directamente. Su disponibilidad igual se calcula y queda disponible en
+  // detalle_receta si hace falta revisarla.
+  const productosVendibles = Object.keys(recetaMap).filter(function (clave) {
+    return recetaMap[clave].tipo !== 'produccion';
+  });
+
   const resultado = productosVendibles.map(function (claveProducto) {
-    const consumoPorUnidad = explotarReceta_(claveProducto, 1, recetaMap, {}, indice);
-    let maxPreparaciones = Infinity;
-    let claveLimitante = null;
-    Object.keys(consumoPorUnidad).forEach(function (claveIngrediente) {
-      const necesarioPorUnidad = consumoPorUnidad[claveIngrediente].cantidad;
-      const disponible = (stockActual[claveIngrediente] && stockActual[claveIngrediente].cantidad) || 0;
-      const posibles = necesarioPorUnidad > 0 ? Math.floor(disponible / necesarioPorUnidad) : Infinity;
-      if (posibles < maxPreparaciones) {
-        maxPreparaciones = posibles;
-        claveLimitante = claveIngrediente;
-      }
-    });
+    const det = cantidadDisponibleDetallada_(claveProducto, recetaMap, stockContado, indice, memo, {});
+    const limitante = det.limitante;
     return {
       producto: recetaMap[claveProducto].nombre,
-      preparaciones_posibles: isFinite(maxPreparaciones) ? maxPreparaciones : null,
-      ingrediente_limitante: claveLimitante ? consumoPorUnidad[claveLimitante].nombre : null,
-      stock_limitante: claveLimitante ? stockActual[claveLimitante] : null,
-      detalle_receta: consumoPorUnidad
+      preparaciones_posibles: isFinite(det.disponible) ? Math.floor(det.disponible) : null,
+      ingrediente_limitante: limitante ? limitante.nombre : null,
+      cadena_limitante: limitante ? cadenaLimitante_(limitante) : null,
+      stock_limitante: limitante ? {
+        cantidad: Number(limitante.disponible.toFixed(3)),
+        unidad: limitante.unidad || '',
+        contado: Number(limitante.contado.toFixed(3)),
+        producible: Number(limitante.producible.toFixed(3))
+      } : null,
+      detalle_receta: aplanarConsumo_(claveProducto, recetaMap, indice)
     };
   });
 
@@ -53,30 +65,140 @@ function calcularDisponibleHoy_(fecha) {
 
   return {
     fecha: fecha || 'último conteo disponible',
-    stock_ingredientes: stockActual,
+    stock_ingredientes: stockContado,
     platos: resultado
   };
 }
 
 /**
- * Arma el mapa "clave de producto" -> {nombre, lineas:[{ingrediente,cantidad,unidad}]} a partir
- * de la hoja Recetas. Se usa tanto aquí como en Conciliacion.gs, para no duplicar esta lógica en
- * dos archivos con reglas de comparación distintas (que fue justo la causa de este bug).
+ * Arma el mapa "clave de producto" -> {nombre, tipo, lineas:[{ingrediente,cantidad,unidad,
+ * rendimiento}]} a partir de la hoja Recetas. Se usa tanto aquí como en Conciliacion.gs, para no
+ * duplicar esta lógica en dos archivos con reglas de comparación distintas (que fue justo la
+ * causa de este bug la primera vez).
+ *
+ * rendimiento_producto default 1 (así las filas viejas tipo "plato", que no tienen esa columna
+ * llena, se comportan exactamente igual que antes). tipo default 'plato'.
  */
 function construirRecetaMap_(recetas, indice) {
   const recetaMap = {};
   recetas.forEach(function (r) {
     const clave = claveProducto_(r.producto, indice);
-    if (!recetaMap[clave]) recetaMap[clave] = { nombre: nombreCanonico_(r.producto, indice), lineas: [] };
-    recetaMap[clave].lineas.push({ ingrediente: r.ingrediente, cantidad: Number(r.cantidad), unidad: r.unidad });
+    if (!recetaMap[clave]) {
+      recetaMap[clave] = { nombre: nombreCanonico_(r.producto, indice), tipo: (r.tipo || 'plato').toString().trim() || 'plato', lineas: [] };
+    }
+    recetaMap[clave].lineas.push({
+      ingrediente: r.ingrediente,
+      cantidad: Number(r.cantidad),
+      unidad: r.unidad,
+      rendimiento: Number(r.rendimiento_producto) || 1
+    });
   });
   return recetaMap;
 }
 
 /**
- * Explota recursivamente un producto en gramos/unidades de ingredientes base.
- * cantidadBase = cuántas unidades del producto se están pidiendo (usar 1 para "por unidad vendida").
- * acumulado = objeto que se va llenando { claveIngrediente: {nombre, cantidad_total} }
+ * Cuánta cantidad de `clave` hay disponible en total = lo contado en el último conteo físico +
+ * lo que todavía se puede producir encadenando su propia receta (si tiene) hasta materias primas
+ * sin receta. Memoizado por `clave` para todo el cálculo de calcularDisponibleHoy_ (no depende de
+ * qué plato lo esté preguntando) y con guarda de ciclos (`enCurso`) por si algún día una receta
+ * queda mal cargada y se referencia a sí misma — en vez de colgar el cálculo, esa rama simplemente
+ * no aporta disponibilidad extra.
+ */
+function cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, memo, enCurso) {
+  if (memo[clave]) return memo[clave];
+  if (enCurso[clave]) return { disponible: 0, contado: 0, producible: 0, limitante: null, nombre: clave, unidad: '' };
+
+  enCurso[clave] = true;
+  const contadoEntry = stockContado[clave];
+  const contado = contadoEntry ? Number(contadoEntry.cantidad) || 0 : 0;
+  const entrada = recetaMap[clave];
+
+  let producible = 0;
+  let limitante = null;
+  if (entrada && entrada.lineas.length) {
+    let minPosible = Infinity;
+    entrada.lineas.forEach(function (linea) {
+      const ratio = linea.cantidad / linea.rendimiento;
+      if (!(ratio > 0)) return;
+      const claveIng = claveProducto_(linea.ingrediente, indice);
+      const det = cantidadDisponibleDetallada_(claveIng, recetaMap, stockContado, indice, memo, enCurso);
+      const posible = det.disponible / ratio;
+      if (posible < minPosible) {
+        minPosible = posible;
+        limitante = {
+          nombre: nombreCanonico_(linea.ingrediente, indice),
+          unidad: linea.unidad || det.unidad || '',
+          disponible: det.disponible,
+          contado: det.contado,
+          producible: det.producible,
+          sub_limitante: det.limitante
+        };
+      }
+    });
+    producible = isFinite(minPosible) ? minPosible : 0;
+  }
+
+  delete enCurso[clave];
+  const resultado = {
+    disponible: contado + producible,
+    contado: contado,
+    producible: producible,
+    limitante: limitante,
+    nombre: nombreCanonico_(clave, indice),
+    unidad: contadoEntry ? contadoEntry.unidad : ''
+  };
+  memo[clave] = resultado;
+  return resultado;
+}
+
+/** Convierte la cadena de `sub_limitante` en un texto tipo "Costilla Preparada → Costilla Limpia Marinada → Costilla San Luis Entera". */
+function cadenaLimitante_(limitante) {
+  const nombres = [];
+  let actual = limitante;
+  let vueltas = 0;
+  while (actual && vueltas < 10) {
+    nombres.push(actual.nombre);
+    actual = actual.sub_limitante;
+    vueltas++;
+  }
+  return nombres.join(' → ');
+}
+
+/**
+ * Explota recursivamente un producto en gramos/unidades de ingredientes base, SIN mirar stock —
+ * solo "cuánto necesito de cada cosa para 1 unidad". Se usa para mostrar el detalle de receta en
+ * la UI. A diferencia de cantidadDisponibleDetallada_, sí atraviesa capas "produccion" para
+ * mostrar el desglose completo hasta materia prima.
+ */
+function aplanarConsumo_(claveProducto, recetaMap, indice, cantidadBase, acumulado, profundidad) {
+  cantidadBase = cantidadBase || 1;
+  acumulado = acumulado || {};
+  profundidad = profundidad || 0;
+  if (profundidad > 10) return acumulado;
+  const entrada = recetaMap[claveProducto];
+  if (!entrada) return acumulado;
+
+  entrada.lineas.forEach(function (linea) {
+    const ratio = linea.cantidad / linea.rendimiento;
+    const cantidadTotal = cantidadBase * ratio;
+    const claveIngrediente = claveProducto_(linea.ingrediente, indice);
+    if (recetaMap[claveIngrediente]) {
+      aplanarConsumo_(claveIngrediente, recetaMap, indice, cantidadTotal, acumulado, profundidad + 1);
+    } else {
+      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0 };
+      acumulado[claveIngrediente].cantidad += cantidadTotal;
+    }
+  });
+  return acumulado;
+}
+
+/**
+ * Explota recursivamente un producto en gramos/unidades de ingredientes base — usado por
+ * Conciliacion.gs. A propósito NO atraviesa la capa "produccion" (Costilla Preparada, Aioli,
+ * Papas pre-fritas...): se detiene ahí igual que antes de agregar esa capa, porque Conciliación
+ * compara contra lo que se cuenta físicamente a ese nivel (Conteos_Manuales), no contra materia
+ * prima. Si mañana Conciliación necesita bajar hasta materia prima, hay que decidirlo aparte —
+ * no es lo mismo que "Disponible Hoy".
  */
 function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indice, profundidad) {
   profundidad = profundidad || 0;
@@ -87,7 +209,8 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
   entrada.lineas.forEach(function (linea) {
     const cantidadTotal = cantidadBase * linea.cantidad;
     const claveIngrediente = claveProducto_(linea.ingrediente, indice);
-    if (recetaMap[claveIngrediente]) {
+    const subEntrada = recetaMap[claveIngrediente];
+    if (subEntrada && subEntrada.tipo !== 'produccion') {
       explotarReceta_(claveIngrediente, cantidadTotal, recetaMap, acumulado, indice, profundidad + 1);
     } else {
       if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0 };
