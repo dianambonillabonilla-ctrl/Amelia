@@ -106,13 +106,15 @@ async function cargar() {
 
   const stockBody = document.getElementById('tabla-stock');
   stockBody.innerHTML = '';
-  const entradas = Object.entries(data.data.stock_ingredientes);
+  // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
+  // nombre para mostrar/usar siempre es s.producto, no la llave del objeto.
+  const entradas = Object.values(data.data.stock_ingredientes);
   if (!entradas.length) stockBody.innerHTML = '<tr><td colspan="4" class="vacio">Aún no hay conteos registrados.</td></tr>';
-  entradas.forEach(([nombre, s]) => {
-    stockBody.innerHTML += `<tr><td>${escapeHtml(nombre)}</td><td>${escapeHtml(s.cantidad)}</td><td>${escapeHtml(s.unidad)}</td><td>${escapeHtml(s.fecha_conteo)}</td></tr>`;
+  entradas.forEach(s => {
+    stockBody.innerHTML += `<tr><td>${escapeHtml(s.producto)}</td><td>${escapeHtml(s.cantidad)}</td><td>${escapeHtml(s.unidad)}</td><td>${escapeHtml(s.fecha_conteo)}</td></tr>`;
   });
 
-  poblarSelectorIngredientes_(Object.keys(data.data.stock_ingredientes));
+  poblarSelectorIngredientes_(entradas.map(s => s.producto));
 }
 
 // Cruza el catálogo (que trae el mínimo configurado por producto, ej. en catalogo.html) con el
@@ -125,7 +127,9 @@ function pintarAlertaInsumos_(stockIngredientes, catalogo) {
   const bajos = catalogo
     .filter(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined)
     .map(p => {
-      const stock = stockIngredientes[p.nombre_estandar] || stockIngredientes[p.nombre_fudo] || null;
+      // Misma llave que usa el backend (claveProducto_ en Catalogo.gs): para cualquier producto
+      // del catálogo, su propia llave es el nombre_estandar normalizado.
+      const stock = stockIngredientes[normalizarTexto(p.nombre_estandar)] || null;
       const partes = partesCategoria(p.categoria);
       return Object.assign({}, p, {
         _actual: stock ? Number(stock.cantidad) : 0,

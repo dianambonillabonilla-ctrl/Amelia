@@ -9,39 +9,39 @@
  *
  * La explosión de receta es recursiva porque hay productos que se arman de sub-productos
  * (ej. Combo Libra -> Cebollita de Amelia -> Cebollita de Amelia Preparada).
+ *
+ * Todas las comparaciones de nombre (Recetas.producto/ingrediente vs Conteos.producto) pasan por
+ * claveProducto_/nombreCanonico_ (Catalogo.gs), que resuelve contra el catálogo maestro y
+ * normaliza tildes/mayúsculas — así "Costilla Preparada" y "costilla preparada" son el mismo
+ * ingrediente para el sistema aunque se hayan escrito distinto en cada hoja.
  */
 
 function calcularDisponibleHoy_(fecha) {
+  const indice = indiceCatalogo_();
   const recetas = leerTabla_(SHEET_NAMES.RECETAS);
-  const stockActual = obtenerUltimoStockPorIngrediente_(fecha);
-
-  // Mapa producto -> [{ingrediente, cantidad, unidad}], para explosión recursiva
-  const recetaMap = {};
-  recetas.forEach(function (r) {
-    if (!recetaMap[r.producto]) recetaMap[r.producto] = [];
-    recetaMap[r.producto].push({ ingrediente: r.ingrediente, cantidad: Number(r.cantidad), unidad: r.unidad });
-  });
+  const stockActual = obtenerUltimoStockPorIngrediente_(fecha, indice);
+  const recetaMap = construirRecetaMap_(recetas, indice);
 
   const productosVendibles = Object.keys(recetaMap);
-  const resultado = productosVendibles.map(function (producto) {
-    const consumoPorUnidad = explotarReceta_(producto, 1, recetaMap, {});
+  const resultado = productosVendibles.map(function (claveProducto) {
+    const consumoPorUnidad = explotarReceta_(claveProducto, 1, recetaMap, {}, indice);
     // Para cada ingrediente que requiere, cuántas unidades de "producto" alcanzan con el stock actual
     let maxPreparaciones = Infinity;
-    let ingredienteLimitante = null;
-    Object.keys(consumoPorUnidad).forEach(function (ingrediente) {
-      const necesarioPorUnidad = consumoPorUnidad[ingrediente];
-      const disponible = (stockActual[ingrediente] && stockActual[ingrediente].cantidad) || 0;
+    let claveLimitante = null;
+    Object.keys(consumoPorUnidad).forEach(function (claveIngrediente) {
+      const necesarioPorUnidad = consumoPorUnidad[claveIngrediente].cantidad;
+      const disponible = (stockActual[claveIngrediente] && stockActual[claveIngrediente].cantidad) || 0;
       const posibles = necesarioPorUnidad > 0 ? Math.floor(disponible / necesarioPorUnidad) : Infinity;
       if (posibles < maxPreparaciones) {
         maxPreparaciones = posibles;
-        ingredienteLimitante = ingrediente;
+        claveLimitante = claveIngrediente;
       }
     });
     return {
-      producto: producto,
+      producto: recetaMap[claveProducto].nombre,
       preparaciones_posibles: isFinite(maxPreparaciones) ? maxPreparaciones : null,
-      ingrediente_limitante: ingredienteLimitante,
-      stock_limitante: ingredienteLimitante ? stockActual[ingredienteLimitante] : null,
+      ingrediente_limitante: claveLimitante ? consumoPorUnidad[claveLimitante].nombre : null,
+      stock_limitante: claveLimitante ? stockActual[claveLimitante] : null,
       detalle_receta: consumoPorUnidad
     };
   });
@@ -60,23 +60,40 @@ function calcularDisponibleHoy_(fecha) {
 }
 
 /**
+ * Arma el mapa "clave de producto" -> {nombre, lineas:[{ingrediente,cantidad,unidad}]} a partir
+ * de la hoja Recetas. Se usa tanto aquí como en Conciliacion.gs, para no duplicar esta lógica en
+ * dos archivos con reglas de comparación distintas (que fue justo la causa de este bug).
+ */
+function construirRecetaMap_(recetas, indice) {
+  const recetaMap = {};
+  recetas.forEach(function (r) {
+    const clave = claveProducto_(r.producto, indice);
+    if (!recetaMap[clave]) recetaMap[clave] = { nombre: nombreCanonico_(r.producto, indice), lineas: [] };
+    recetaMap[clave].lineas.push({ ingrediente: r.ingrediente, cantidad: Number(r.cantidad), unidad: r.unidad });
+  });
+  return recetaMap;
+}
+
+/**
  * Explota recursivamente un producto en gramos/unidades de ingredientes base.
  * cantidadBase = cuántas unidades del producto se están pidiendo (usar 1 para "por unidad vendida").
- * acumulado = objeto que se va llenando { ingrediente: cantidad_total }
+ * acumulado = objeto que se va llenando { claveIngrediente: {nombre, cantidad_total} }
  */
-function explotarReceta_(producto, cantidadBase, recetaMap, acumulado, profundidad) {
+function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indice, profundidad) {
   profundidad = profundidad || 0;
   if (profundidad > 6) return acumulado; // corta ciclos accidentales en la matriz de recetas
-  const lineas = recetaMap[producto];
-  if (!lineas) return acumulado;
+  const entrada = recetaMap[claveProducto];
+  if (!entrada) return acumulado;
 
-  lineas.forEach(function (linea) {
+  entrada.lineas.forEach(function (linea) {
     const cantidadTotal = cantidadBase * linea.cantidad;
-    if (recetaMap[linea.ingrediente]) {
+    const claveIngrediente = claveProducto_(linea.ingrediente, indice);
+    if (recetaMap[claveIngrediente]) {
       // El "ingrediente" es en realidad un sub-producto con su propia receta (ej. Papas Listas)
-      explotarReceta_(linea.ingrediente, cantidadTotal, recetaMap, acumulado, profundidad + 1);
+      explotarReceta_(claveIngrediente, cantidadTotal, recetaMap, acumulado, indice, profundidad + 1);
     } else {
-      acumulado[linea.ingrediente] = (acumulado[linea.ingrediente] || 0) + cantidadTotal;
+      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0 };
+      acumulado[claveIngrediente].cantidad += cantidadTotal;
     }
   });
   return acumulado;
@@ -85,26 +102,32 @@ function explotarReceta_(producto, cantidadBase, recetaMap, acumulado, profundid
 /**
  * Devuelve, para cada producto contado manualmente, la cantidad más reciente registrada
  * hasta la fecha indicada (o la más reciente en general si no se indica fecha), sumando las sedes.
+ * Agrupa por claveProducto_, así que dos conteos del mismo producto escritos con distinta
+ * ortografía se suman como uno solo en vez de aparecer como dos ingredientes distintos.
  */
-function obtenerUltimoStockPorIngrediente_(fecha) {
+function obtenerUltimoStockPorIngrediente_(fecha, indice) {
+  indice = indice || indiceCatalogo_();
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
   const porProducto = {};
 
   conteos.forEach(function (c) {
     const f = formatearFecha_(c.fecha);
     if (fecha && f > fecha) return; // no mirar conteos posteriores a la fecha de corte
-    if (!porProducto[c.producto]) porProducto[c.producto] = {};
-    if (!porProducto[c.producto][f]) porProducto[c.producto][f] = { cantidad: 0, unidad: c.unidad };
-    porProducto[c.producto][f].cantidad += Number(c.cantidad) || 0;
+    const clave = claveProducto_(c.producto, indice);
+    if (!porProducto[clave]) porProducto[clave] = { nombre: nombreCanonico_(c.producto, indice), fechas: {} };
+    if (!porProducto[clave].fechas[f]) porProducto[clave].fechas[f] = { cantidad: 0, unidad: c.unidad };
+    porProducto[clave].fechas[f].cantidad += Number(c.cantidad) || 0;
   });
 
   const resultado = {};
-  Object.keys(porProducto).forEach(function (producto) {
-    const fechas = Object.keys(porProducto[producto]).sort();
+  Object.keys(porProducto).forEach(function (clave) {
+    const entrada = porProducto[clave];
+    const fechas = Object.keys(entrada.fechas).sort();
     const ultimaFecha = fechas[fechas.length - 1];
-    resultado[producto] = {
-      cantidad: porProducto[producto][ultimaFecha].cantidad,
-      unidad: porProducto[producto][ultimaFecha].unidad,
+    resultado[clave] = {
+      producto: entrada.nombre,
+      cantidad: entrada.fechas[ultimaFecha].cantidad,
+      unidad: entrada.fechas[ultimaFecha].unidad,
       fecha_conteo: ultimaFecha
     };
   });

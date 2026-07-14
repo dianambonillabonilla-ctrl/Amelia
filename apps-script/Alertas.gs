@@ -15,16 +15,18 @@ const UMBRAL_ALERTA_DEFAULT = 5;
 function revisarAlertas_(fecha) {
   fecha = fecha || formatearFecha_(new Date());
   const disponible = calcularDisponibleHoy_(fecha);
+  const indice = indiceCatalogo_();
   const umbrales = {};
   leerTabla_(SHEET_NAMES.RECETAS).forEach(function (r) {
     if (r.umbral_alerta !== '' && r.umbral_alerta !== null && r.umbral_alerta !== undefined) {
-      umbrales[r.producto] = Number(r.umbral_alerta);
+      umbrales[claveProducto_(r.producto, indice)] = Number(r.umbral_alerta);
     }
   });
 
   const bajos = disponible.platos.filter(function (p) {
     if (p.preparaciones_posibles === null) return false;
-    const umbral = umbrales[p.producto] !== undefined ? umbrales[p.producto] : UMBRAL_ALERTA_DEFAULT;
+    const clave = claveProducto_(p.producto, indice);
+    const umbral = umbrales[clave] !== undefined ? umbrales[clave] : UMBRAL_ALERTA_DEFAULT;
     return p.preparaciones_posibles < umbral;
   });
   if (!bajos.length) return { ok: true, enviados: 0 };

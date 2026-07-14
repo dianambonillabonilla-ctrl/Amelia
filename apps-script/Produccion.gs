@@ -35,21 +35,29 @@ function produccionListar_(fecha, sede) {
   return rows;
 }
 
-/** Total producido de un ítem en una fecha, sumando todas las sedes (o solo una si se indica). */
-function produccionTotalPorItem_(fecha, sede) {
+/**
+ * Total producido de un ítem en una fecha, sumando todas las sedes (o solo una si se indica).
+ * Agrupa por claveProducto_ (Catalogo.gs) para que coincida con cómo se agrupan los conteos y
+ * las recetas, sin importar con qué mayúsculas/tildes se haya escrito el ítem cada vez.
+ */
+function produccionTotalPorItem_(fecha, sede, indice) {
+  indice = indice || indiceCatalogo_();
   const rows = produccionListar_(fecha, sede);
   const totales = {};
   rows.forEach(function (r) {
     const unidadEsGramos = String(r.unidad).toLowerCase() === 'g';
     const cantidadKg = unidadEsGramos ? Number(r.cantidad) / 1000 : Number(r.cantidad);
-    totales[r.item] = (totales[r.item] || 0) + cantidadKg;
+    const clave = claveProducto_(r.item, indice);
+    totales[clave] = (totales[clave] || 0) + cantidadKg;
   });
   return totales;
 }
 
 /** Cuánto se produjo de un ítem específico en una fecha, en las unidades originales del conteo (no kg). */
-function producidoTotalIngrediente_(fecha, ingrediente) {
+function producidoTotalIngrediente_(fecha, ingrediente, indice) {
+  indice = indice || indiceCatalogo_();
+  const clave = claveProducto_(ingrediente, indice);
   return leerTabla_(SHEET_NAMES.PRODUCCIONES)
-    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && r.item === ingrediente; })
+    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && claveProducto_(r.item, indice) === clave; })
     .reduce(function (acc, r) { return acc + (Number(r.cantidad) || 0); }, 0);
 }

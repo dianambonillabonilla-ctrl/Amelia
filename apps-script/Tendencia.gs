@@ -8,6 +8,8 @@
 function calcularTendenciaIngrediente_(ingrediente, dias) {
   if (!ingrediente) return { error: 'Falta el ingrediente' };
   dias = Number(dias) || 30;
+  const indice = indiceCatalogo_();
+  const clave = claveProducto_(ingrediente, indice);
 
   const fechas = [];
   const hoy = new Date();
@@ -16,7 +18,7 @@ function calcularTendenciaIngrediente_(ingrediente, dias) {
   }
 
   const stockPorFecha = fechas.map(function (fecha) {
-    const s = obtenerUltimoStockPorIngrediente_(fecha)[ingrediente];
+    const s = obtenerUltimoStockPorIngrediente_(fecha, indice)[clave];
     return s ? s.cantidad : 0;
   });
 
@@ -24,7 +26,7 @@ function calcularTendenciaIngrediente_(ingrediente, dias) {
   // del rango no tiene "ayer" dentro del rango, así que queda sin dato de consumo).
   const consumoPorFecha = fechas.map(function (fecha, idx) {
     if (idx === 0) return null;
-    const producidoHoy = producidoTotalIngrediente_(fecha, ingrediente);
+    const producidoHoy = producidoTotalIngrediente_(fecha, ingrediente, indice);
     return Math.max(0, stockPorFecha[idx - 1] + producidoHoy - stockPorFecha[idx]);
   });
 
