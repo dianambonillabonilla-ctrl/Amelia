@@ -13,6 +13,7 @@
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html" class="activo">Conciliación</a>
       <a href="usuarios.html">Usuarios</a>
@@ -74,10 +75,10 @@ function pintarBebidas(filas) {
     let badge = '';
     if (f.diferencia_vs_suma === null) badge = '<span class="badge aviso">Sin datos FUDO</span>';
     else if (Math.abs(f.diferencia_vs_suma) < 1.5) badge = '<span class="badge ok">Coincide</span>';
-    else badge = `<span class="badge alerta">Off por ${f.diferencia_vs_suma > 0 ? '+' : ''}${f.diferencia_vs_suma}</span>`;
+    else badge = `<span class="badge alerta">Off por ${f.diferencia_vs_suma > 0 ? '+' : ''}${escapeHtml(f.diferencia_vs_suma)}</span>`;
     return `<tr>
-      <td>${f.producto}</td><td>${f.sa ?? '—'}</td><td>${f.capri ?? '—'}</td>
-      <td>${f.suma_manual}</td><td>${f.fudo_cierre ?? '—'}</td><td>${badge}</td>
+      <td>${escapeHtml(f.producto)}</td><td>${f.sa ?? '—'}</td><td>${f.capri ?? '—'}</td>
+      <td>${escapeHtml(f.suma_manual)}</td><td>${f.fudo_cierre ?? '—'}</td><td>${badge}</td>
     </tr>`;
   }).join('');
 }
@@ -87,17 +88,17 @@ function pintarComida(porSede) {
   cont.innerHTML = '';
   Object.keys(porSede).forEach(sede => {
     const filas = porSede[sede];
-    let tabla = `<h3>${sede}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico (kg)</th><th>Consumo esperado (kg)</th><th>Implícito</th></tr></thead><tbody>`;
+    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico (kg)</th><th>Consumo esperado (kg)</th><th>Producción registrada (kg)</th><th>Implícito</th></tr></thead><tbody>`;
     if (!filas.length) {
-      tabla += '<tr><td colspan="4" class="vacio">Sin conteo del día anterior para comparar, o sin ventas ese día.</td></tr>';
+      tabla += '<tr><td colspan="5" class="vacio">Sin conteo del día anterior para comparar, o sin ventas ese día.</td></tr>';
     }
     filas.forEach(f => {
       let nota = '';
       if (f.implicito_kg === null) nota = '';
       else if (f.implicito_kg < -0.2) nota = '<span class="badge alerta">Pérdida sin explicar</span>';
-      else if (f.implicito_kg > 0) nota = '<span class="badge ok">Producción</span>';
+      else if (f.implicito_kg > 0) nota = '<span class="badge aviso">Posible producción sin registrar</span>';
       else nota = '<span class="badge ok">Cuadra</span>';
-      tabla += `<tr><td>${f.ingrediente}</td><td>${f.cambio_fisico_kg ?? '—'}</td><td>${f.consumo_esperado_kg}</td><td>${nota}</td></tr>`;
+      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico_kg ?? '—'}</td><td>${escapeHtml(f.consumo_esperado_kg)}</td><td>${f.producido_registrado_kg ?? '—'}</td><td>${nota}</td></tr>`;
     });
     tabla += '</tbody></table>';
     cont.innerHTML += tabla;

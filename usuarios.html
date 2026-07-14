@@ -13,6 +13,7 @@
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html" class="activo">Usuarios</a>
@@ -46,7 +47,10 @@
           </select>
         </div>
       </div>
-      <div class="campo" style="max-width:280px"><label>Contraseña inicial</label><input type="password" id="nuevo-password" placeholder="cambiar123 si se deja vacío"></div>
+      <div class="grid grid-3">
+        <div class="campo"><label>Contraseña inicial</label><input type="password" id="nuevo-password" placeholder="cambiar123 si se deja vacío"></div>
+        <div class="campo"><label>Correo (para alertas de stock bajo)</label><input type="email" id="nuevo-email" placeholder="opcional, solo Administrador/Encargado reciben alertas"></div>
+      </div>
       <button class="btn dorado" id="btn-crear">Crear usuario</button>
       <span id="msg-crear" style="margin-left:12px; font-weight:600; color:var(--green)"></span>
     </div>
@@ -54,7 +58,7 @@
     <div class="card">
       <h2>Equipo actual</h2>
       <table>
-        <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Sede</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Sede</th><th>Correo</th><th>Estado</th><th></th></tr></thead>
         <tbody id="tabla-usuarios"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
@@ -69,12 +73,13 @@ montarBarraUsuario();
 async function cargar() {
   const data = await llamar('usuarios_listar');
   const body = document.getElementById('tabla-usuarios');
-  if (!data.ok) { body.innerHTML = `<tr><td colspan="6" class="vacio">${data.error}</td></tr>`; return; }
+  if (!data.ok) { body.innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
   body.innerHTML = data.data.map(u => `
     <tr>
-      <td>${u.nombre}</td><td>${u.usuario}</td><td>${u.rol}</td><td>${u.sede}</td>
+      <td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.rol)}</td><td>${escapeHtml(u.sede)}</td>
+      <td>${escapeHtml(u.email || '—')}</td>
       <td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge alerta">Inactivo</span>'}</td>
-      <td><button class="btn fantasma btn-toggle" data-id="${u.id}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button></td>
+      <td><button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button></td>
     </tr>`).join('');
 
   document.querySelectorAll('.btn-toggle').forEach(btn => {
@@ -91,14 +96,15 @@ document.getElementById('btn-crear').addEventListener('click', async () => {
     usuario: document.getElementById('nuevo-usuario').value.trim(),
     rol: document.getElementById('nuevo-rol').value,
     sede: document.getElementById('nuevo-sede').value,
-    password: document.getElementById('nuevo-password').value
+    password: document.getElementById('nuevo-password').value,
+    email: document.getElementById('nuevo-email').value.trim()
   };
   if (!item.nombre || !item.usuario) { alert('Nombre y usuario de acceso son obligatorios.'); return; }
   const data = await llamar('usuarios_guardar', { item });
   const msg = document.getElementById('msg-crear');
   if (data.ok) {
     msg.textContent = 'Usuario creado.';
-    ['nuevo-nombre','nuevo-usuario','nuevo-password'].forEach(id => document.getElementById(id).value = '');
+    ['nuevo-nombre','nuevo-usuario','nuevo-password','nuevo-email'].forEach(id => document.getElementById(id).value = '');
     cargar();
     setTimeout(() => msg.textContent = '', 3000);
   } else {
