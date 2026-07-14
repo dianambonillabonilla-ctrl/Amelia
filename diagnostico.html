@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Diagnóstico</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a>
+      <a href="catalogo.html">Registrar producto</a>
+      <a href="traslados.html">Traslados</a>
+      <a href="importar.html">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a>
+      <a href="usuarios.html">Usuarios</a>
+      <a href="diagnostico.html" class="activo">Diagnóstico</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Diagnóstico del sistema</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Solo lee datos, no cambia ni borra nada. Úsala cuando "Disponible Hoy" se vea raro (ej.
+        todo en 0) o cuando sospeches que algo se guardó dos veces.
+      </p>
+      <button class="btn dorado" id="btn-actualizar">Correr diagnóstico</button>
+      <span id="msg-error" style="margin-left:12px; color:var(--red); font-weight:600;"></span>
+    </div>
+
+    <div class="card">
+      <h2>Recetas con cantidades sospechosas</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Estas son la causa más común de que "Disponible Hoy" muestre 0 preparaciones posibles aunque sí haya stock.
+      </p>
+      <table>
+        <thead><tr><th>Plato</th><th>Ingrediente</th><th>Cantidad</th><th>Unidad</th></tr></thead>
+        <tbody id="tabla-recetas"><tr><td colspan="4" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Conteos posiblemente duplicados</h2>
+      <table>
+        <thead><tr><th>Veces</th><th>Fecha</th><th>Sede</th><th>Punto</th><th>Producto</th><th>Cantidad</th><th>IDs de fila</th></tr></thead>
+        <tbody id="tabla-duplicados"><tr><td colspan="7" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Ventas de FUDO — campos vacíos</h2>
+      <table>
+        <thead><tr><th>Campo</th><th>Filas vacías</th></tr></thead>
+        <tbody id="tabla-ventas"><tr><td colspan="2" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+
+async function correrDiagnostico() {
+  const msg = document.getElementById('msg-error');
+  msg.textContent = '';
+  document.getElementById('tabla-recetas').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-duplicados').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-ventas').innerHTML = '<tr><td colspan="2" class="vacio">Cargando…</td></tr>';
+
+  const [recetas, duplicados, ventas] = await Promise.all([
+    llamar('diagnostico_recetas'),
+    llamar('diagnostico_conteos_duplicados'),
+    llamar('diagnostico_ventas_fudo')
+  ]);
+
+  if (!recetas.ok || !duplicados.ok || !ventas.ok) {
+    msg.textContent = (recetas.error || duplicados.error || ventas.error || 'Error al correr el diagnóstico.');
+    return;
+  }
+
+  pintarRecetas_(recetas.data);
+  pintarDuplicados_(duplicados.data);
+  pintarVentas_(ventas.data);
+}
+
+function pintarRecetas_(data) {
+  const body = document.getElementById('tabla-recetas');
+  if (!data.sospechosas.length) {
+    body.innerHTML = `<tr><td colspan="4" class="vacio">Ninguna sospechosa de ${data.total_filas} filas revisadas (umbral: ${data.umbral}).</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.sospechosas.map(r => `
+    <tr>
+      <td>${escapeHtml(r.producto)}</td>
+      <td>${escapeHtml(r.ingrediente)}</td>
+      <td><span class="badge alerta">${escapeHtml(r.cantidad)}</span></td>
+      <td>${escapeHtml(r.unidad)}</td>
+    </tr>`).join('');
+}
+
+function pintarDuplicados_(data) {
+  const body = document.getElementById('tabla-duplicados');
+  if (!data.grupos_duplicados.length) {
+    body.innerHTML = `<tr><td colspan="7" class="vacio">Sin duplicados en ${data.total_filas} filas revisadas.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.grupos_duplicados.map(grupo => `
+    <tr>
+      <td><span class="badge alerta">${grupo.length}x</span></td>
+      <td>${escapeHtml(grupo[0].fecha)}</td>
+      <td>${escapeHtml(grupo[0].sede)}</td>
+      <td>${escapeHtml(grupo[0].punto_conteo)}</td>
+      <td>${escapeHtml(grupo[0].producto)}</td>
+      <td>${escapeHtml(grupo[0].cantidad)}</td>
+      <td style="font-size:.78rem">${grupo.map(r => escapeHtml(r.id)).join(', ')}</td>
+    </tr>`).join('') +
+    `<tr><td colspan="7" style="font-weight:600">Filas de sobra a borrar (deja solo una de cada grupo): ${data.filas_de_sobra}</td></tr>`;
+}
+
+function pintarVentas_(data) {
+  const body = document.getElementById('tabla-ventas');
+  if (!data.total_filas) {
+    body.innerHTML = '<tr><td colspan="2" class="vacio">Ventas_FUDO está vacía — no se ha importado nada todavía.</td></tr>';
+    return;
+  }
+  const camposVacios = Object.entries(data.vacios).filter(([, n]) => n > 0);
+  if (!camposVacios.length) {
+    body.innerHTML = `<tr><td colspan="2" class="vacio">Todos los campos completos en las ${data.total_filas} filas.</td></tr>`;
+    return;
+  }
+  body.innerHTML = camposVacios.map(([campo, n]) => `
+    <tr><td>${escapeHtml(campo)}</td><td><span class="badge alerta">${n} de ${data.total_filas}</span></td></tr>
+  `).join('');
+}
+
+document.getElementById('btn-actualizar').addEventListener('click', correrDiagnostico);
+correrDiagnostico();
+</script>
+</body>
+</html>
