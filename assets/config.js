@@ -118,4 +118,25 @@ function montarBarraUsuario() {
       `<button id="btn-salir">Salir</button>`;
     document.getElementById('btn-salir').addEventListener('click', () => Sesion.cerrar());
   }
+  ocultarNavSegunRol_(u ? u.rol : null);
+}
+
+// Oculta del menú lateral los links marcados con data-solo-rol si el usuario no tiene ese rol
+// (ej. "Importar de FUDO" es solo Administrador — el backend ya lo rechaza, pero además no debe
+// aparecer como opción para no confundir a Encargado/Cocina/Lectura).
+function ocultarNavSegunRol_(rolActual) {
+  document.querySelectorAll('nav a[data-solo-rol]').forEach(a => {
+    const permitidos = a.dataset.soloRol.split(',').map(r => r.trim());
+    if (!permitidos.includes(rolActual)) a.style.display = 'none';
+  });
+}
+
+// Corta en seco el acceso a una página completa si el rol no está permitido (ej. importar.html) —
+// por si alguien entra directo por URL en vez de por el menú. Redirige al dashboard.
+function requerirRol_(rolesPermitidos) {
+  const u = Sesion.usuario();
+  if (!u || !rolesPermitidos.includes(u.rol)) {
+    alert('No tienes permiso para entrar aquí.');
+    window.location.href = 'dashboard.html';
+  }
 }
