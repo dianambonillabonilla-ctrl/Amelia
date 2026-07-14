@@ -17,7 +17,7 @@
       <a href="producir.html">Registrar producción</a>
       <a href="catalogo.html">Registrar producto</a>
       <a href="traslados.html">Traslados</a>
-      <a href="importar.html" class="activo">Importar de FUDO</a>
+      <a href="importar.html" class="activo" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="diagnostico.html">Diagnóstico</a>
       <a href="usuarios.html">Usuarios</a>
@@ -69,6 +69,7 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
+requerirRol_(['Administrador']);
 montarBarraUsuario();
 
 let filasParaImportar = [];
