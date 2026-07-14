@@ -68,6 +68,25 @@ function partesCategoria(categoriaCompleta) {
   return { principal: texto.slice(0, i).trim(), sub: texto.slice(i + 1).trim() };
 }
 
+// Aviso grande y fijo en la parte de arriba de la pantalla para confirmar que algo se guardó —
+// reemplaza los textitos pequeños junto a los botones, que en la práctica el personal no notaba
+// (el guardado sí funcionaba, pero la confirmación pasaba desapercibida).
+function avisarGuardado(texto) {
+  let el = document.getElementById('toast-confirmacion');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast-confirmacion';
+    el.style.cssText = 'position:fixed; top:18px; left:50%; transform:translateX(-50%); z-index:9999;' +
+      'background:var(--green); color:#fff; padding:14px 26px; border-radius:8px; font-weight:700;' +
+      'font-size:1rem; box-shadow:0 10px 30px rgba(0,0,0,.3); text-align:center; max-width:90vw;';
+    document.body.appendChild(el);
+  }
+  el.textContent = '✓ ' + texto;
+  el.style.display = 'block';
+  clearTimeout(el._ocultarEn);
+  el._ocultarEn = setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
 // Pinta el nombre/rol del usuario y engancha el botón de salir en cualquier página que lo incluya
 function montarBarraUsuario() {
   const u = Sesion.usuario();

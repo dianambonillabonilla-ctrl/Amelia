@@ -108,7 +108,6 @@
         </div>
       </div>
       <button class="btn dorado" id="btn-guardar">Guardar producto</button>
-      <span id="msg-guardado" style="margin-left:12px; font-weight:600; color:var(--green)"></span>
     </div>
   </main>
 </div>
@@ -266,14 +265,12 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   };
 
   const data = await llamar('catalogo_guardar', { item });
-  const msg = document.getElementById('msg-guardado');
   if (data.ok) {
-    msg.textContent = 'Producto guardado.';
+    avisarGuardado('Producto guardado.');
     ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas', 'nuevo-stock-minimo'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('nuevo-unidad').value = 'g';
     document.getElementById('aviso-parecido').style.display = 'none';
     cargarCatalogo();
-    setTimeout(() => msg.textContent = '', 3000);
   } else {
     alert(data.error);
   }

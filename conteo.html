@@ -57,7 +57,6 @@
 
       <div style="margin-top:20px">
         <button class="btn dorado" id="btn-guardar">Guardar conteo</button>
-        <span id="msg-guardado" style="margin-left:12px; color:var(--green); font-weight:600;"></span>
       </div>
     </div>
   </main>
@@ -185,10 +184,8 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   if (!items.length) { alert('Agrega al menos un producto con cantidad.'); return; }
 
   const data = await llamar('conteo_registrar', { items });
-  const msg = document.getElementById('msg-guardado');
   if (data.ok) {
-    msg.textContent = `Guardado: ${data.registrados} productos.`;
-    setTimeout(() => msg.textContent = '', 4000);
+    avisarGuardado(`Guardado: ${data.registrados} productos.`);
   } else {
     alert(data.error);
   }
