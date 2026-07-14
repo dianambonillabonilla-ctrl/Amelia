@@ -107,7 +107,8 @@ function nuevaFila(item = '', unidad = 'g', cantidad = '') {
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
 for (let i = 0; i < 3; i++) nuevaFila();
 
-document.getElementById('btn-guardar').addEventListener('click', async () => {
+const btnGuardarProduccion = document.getElementById('btn-guardar');
+btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProduccion, async () => {
   const fecha = document.getElementById('fecha').value;
   const sede = document.getElementById('sede').value;
 
@@ -129,7 +130,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   } else {
     alert(data.error);
   }
-});
+}));
 
 async function cargarHistorial() {
   const fecha = document.getElementById('fecha').value;

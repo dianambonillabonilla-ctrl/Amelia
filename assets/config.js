@@ -94,6 +94,20 @@ function avisarGuardado(texto) {
   el._ocultarEn = setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
+// Evita registros duplicados por doble clic: desactiva el botón mientras la operación está en
+// curso y lo reactiva al terminar (con éxito o con error).
+function conBotonProtegido(boton, fn) {
+  return async (...args) => {
+    if (boton.disabled) return;
+    boton.disabled = true;
+    try {
+      await fn(...args);
+    } finally {
+      boton.disabled = false;
+    }
+  };
+}
+
 // Pinta el nombre/rol del usuario y engancha el botón de salir en cualquier página que lo incluya
 function montarBarraUsuario() {
   const u = Sesion.usuario();

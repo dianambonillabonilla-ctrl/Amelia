@@ -81,13 +81,29 @@ async function cargar() {
       <td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.rol)}</td><td>${escapeHtml(u.sede)}</td>
       <td>${escapeHtml(u.email || '—')}</td>
       <td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge alerta">Inactivo</span>'}</td>
-      <td><button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button></td>
+      <td>
+        <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>
+        <button class="btn fantasma btn-resetear" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}">Restablecer contraseña</button>
+      </td>
     </tr>`).join('');
 
   document.querySelectorAll('.btn-toggle').forEach(btn => {
     btn.addEventListener('click', async () => {
       await llamar('usuarios_guardar', { item: { id: btn.dataset.id, activo: btn.dataset.activo !== 'true' } });
       cargar();
+    });
+  });
+
+  document.querySelectorAll('.btn-resetear').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const nueva = prompt(`Nueva contraseña para ${btn.dataset.nombre} (mínimo 6 caracteres). No hace falta la contraseña anterior.`);
+      if (!nueva) return;
+      const data = await llamar('usuario_resetear_password', { id: btn.dataset.id, password_nueva: nueva });
+      if (data.ok) {
+        avisarGuardado(`Contraseña de ${btn.dataset.nombre} restablecida.`);
+      } else {
+        alert(data.error);
+      }
     });
   });
 }

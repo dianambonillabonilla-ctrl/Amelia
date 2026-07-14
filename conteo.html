@@ -163,7 +163,8 @@ document.getElementById('punto').addEventListener('change', cargarConteoAnterior
 poblarPuntos_();
 cargarConteoAnterior_();
 
-document.getElementById('btn-guardar').addEventListener('click', async () => {
+const btnGuardarConteo = document.getElementById('btn-guardar');
+btnGuardarConteo.addEventListener('click', conBotonProtegido(btnGuardarConteo, async () => {
   const fecha = document.getElementById('fecha').value;
   const sede = document.getElementById('sede').value;
   const punto = document.getElementById('punto').value;
@@ -185,7 +186,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   } else {
     alert(data.error);
   }
-});
+}));
 </script>
 </body>
 </html>

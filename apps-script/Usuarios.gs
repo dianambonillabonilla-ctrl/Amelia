@@ -81,4 +81,23 @@ function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
   return { ok: true };
 }
 
+/**
+ * Restablecimiento de contraseña por un Administrador — NO requiere conocer la contraseña
+ * anterior. Existe para poder reaccionar rápido si una contraseña quedó expuesta (ej. guardada
+ * en texto plano en la hoja por error): el Administrador le pone una nueva de una vez, sin
+ * depender de que el usuario afectado la recuerde o la comparta por otro medio inseguro.
+ */
+function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
+  requiereAdmin_(usuarioSesion);
+  if (!id) return { ok: false, error: 'Falta el id del usuario' };
+  if (!passwordNueva || String(passwordNueva).length < 6) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres' };
+  }
+  const existe = leerTabla_(SHEET_NAMES.USUARIOS).some(function (r) { return r.id === id; });
+  if (!existe) return { ok: false, error: 'No se encontró el usuario' };
+
+  establecerPassword_(id, passwordNueva);
+  return { ok: true };
+}
+
 const ROLES_DISPONIBLES = ['Administrador', 'Encargado', 'Cocina', 'Lectura'];

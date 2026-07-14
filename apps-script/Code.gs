@@ -184,6 +184,8 @@ function handleRequest_(e, method) {
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
         return jsonOut_(usuarioGuardar_(params.item, sesion.usuario));
+      case 'usuario_resetear_password':
+        return jsonOut_(usuarioResetearPassword_(params.id, params.password_nueva, sesion.usuario));
       case 'traslado_crear':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
