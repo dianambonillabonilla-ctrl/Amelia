@@ -51,7 +51,7 @@ function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'],
     Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo'],
-    Recetas: ['producto', 'ingrediente', 'cantidad', 'unidad', 'fuente', 'umbral_alerta'],
+    Recetas: ['producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento', 'tipo', 'fuente', 'umbral_alerta'],
     Conteos_Manuales: ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'],
     Movimientos_FUDO: ['fecha', 'tipo', 'evento', 'nombre', 'stock_anterior', 'stock_actual', 'diferencia', 'usuario', 'costo', 'importado_por', 'importado_en'],
     Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por', 'sede', 'importado_en'],

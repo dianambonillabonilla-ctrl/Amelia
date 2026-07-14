@@ -97,11 +97,14 @@ async function cargar() {
       : p.preparaciones_posibles < 5 ? '<span class="badge alerta">Bajo</span>'
       : p.preparaciones_posibles < 15 ? '<span class="badge aviso">Vigilar</span>'
       : '<span class="badge ok">OK</span>';
-    const stockLim = p.stock_limitante ? `${escapeHtml(p.stock_limitante.cantidad)} ${escapeHtml(p.stock_limitante.unidad)}` : '—';
+    const stockLim = p.stock_limitante
+      ? `${escapeHtml(p.stock_limitante.cantidad)} ${escapeHtml(p.stock_limitante.unidad)}` +
+        (p.stock_limitante.producible > 0 ? ` <span style="color:var(--grey); font-size:.8rem">(${escapeHtml(p.stock_limitante.contado)} contado + ${escapeHtml(p.stock_limitante.producible)} producible)</span>` : '')
+      : '—';
     platosBody.innerHTML += `<tr>
       <td>${escapeHtml(p.producto)}</td>
       <td>${p.preparaciones_posibles ?? '—'} ${badge}</td>
-      <td>${escapeHtml(p.ingrediente_limitante ?? '—')}</td>
+      <td>${escapeHtml(p.cadena_limitante || p.ingrediente_limitante || '—')}</td>
       <td>${stockLim}</td>
     </tr>`;
   });
