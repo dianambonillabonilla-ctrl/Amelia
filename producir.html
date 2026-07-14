@@ -14,6 +14,7 @@
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html" class="activo">Registrar producción</a>
+      <a href="catalogo.html">Registrar producto</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html">Usuarios</a>
@@ -50,6 +51,7 @@
         <thead><tr><th>Ítem producido</th><th>Unidad</th><th>Cantidad</th><th></th></tr></thead>
         <tbody id="filas"></tbody>
       </table>
+      <datalist id="lista-productos"></datalist>
       <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar ítem</button>
 
       <div style="margin-top:20px">
@@ -74,10 +76,20 @@ Sesion.requerir();
 montarBarraUsuario();
 document.getElementById('fecha').valueAsDate = new Date();
 
+// Sugiere nombres ya existentes en el catálogo maestro (vía <datalist>) para que la producción no
+// dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo.
+async function cargarSugerenciasProductos_() {
+  const data = await llamar('catalogo_listar');
+  if (!data.ok) return;
+  document.getElementById('lista-productos').innerHTML = data.data
+    .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
+}
+cargarSugerenciasProductos_();
+
 function nuevaFila(item = '', unidad = 'g', cantidad = '') {
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" class="in-item" value="${escapeHtml(item)}" placeholder="ej. Costilla Preparada"></td>
+    <td><input type="text" class="in-item" list="lista-productos" value="${escapeHtml(item)}" placeholder="ej. Costilla Preparada"></td>
     <td><select class="in-unidad">
         <option ${unidad==='g'?'selected':''}>g</option>
         <option ${unidad==='kg'?'selected':''}>kg</option>

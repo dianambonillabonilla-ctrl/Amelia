@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Registrar producto</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a>
+      <a href="catalogo.html" class="activo">Registrar producto</a>
+      <a href="importar.html">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a>
+      <a href="usuarios.html">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Catálogo de productos</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <h2>1. Busca si el producto ya existe</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Antes de crear uno nuevo, revisa la lista — así evitamos productos duplicados o casi
+        iguales (ej. "Costilla Preparada" vs "Costilla preparada ") que después no coinciden
+        entre el conteo y las recetas.
+      </p>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Categoría</label>
+          <select id="filtro-categoria"><option value="">Todas</option></select>
+        </div>
+        <div class="campo">
+          <label>Subcategoría</label>
+          <select id="filtro-subcategoria"><option value="">Todas</option></select>
+        </div>
+        <div class="campo">
+          <label>Buscar por nombre</label>
+          <input type="text" id="filtro-nombre" placeholder="ej. costilla">
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th></tr></thead>
+        <tbody id="tabla-catalogo"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>2. ¿No está en la lista? Agrégalo</h2>
+      <div id="aviso-parecido" class="card" style="display:none; margin-top:0; margin-bottom:16px; border-color:var(--amber); background:#FFFBF0">
+        <strong style="color:var(--amber)">⚠ Ya existe algo parecido</strong>
+        <p id="aviso-parecido-texto" style="margin:8px 0 0; font-size:.88rem"></p>
+      </div>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Nombre del producto</label>
+          <input type="text" id="nuevo-nombre" placeholder="ej. Costilla Preparada">
+        </div>
+        <div class="campo">
+          <label>Categoría</label>
+          <input type="text" id="nuevo-categoria" list="lista-categorias" placeholder="ej. Elaborados">
+          <datalist id="lista-categorias"></datalist>
+        </div>
+        <div class="campo">
+          <label>Subcategoría</label>
+          <input type="text" id="nuevo-subcategoria" list="lista-subcategorias" placeholder="ej. Preparaciones de Cocina">
+          <datalist id="lista-subcategorias"></datalist>
+        </div>
+      </div>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Unidad base</label>
+          <select id="nuevo-unidad">
+            <option value="g">g</option>
+            <option value="kg">kg</option>
+            <option value="u">u</option>
+            <option value="ml">ml</option>
+            <option value="l">l</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Nombre en FUDO (opcional)</label>
+          <input type="text" id="nuevo-nombre-fudo" placeholder="si es distinto al nombre estándar">
+        </div>
+        <div class="campo">
+          <label>Notas (opcional)</label>
+          <input type="text" id="nuevo-notas">
+        </div>
+      </div>
+      <button class="btn dorado" id="btn-guardar">Guardar producto</button>
+      <span id="msg-guardado" style="margin-left:12px; font-weight:600; color:var(--green)"></span>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+
+let catalogo = [];
+
+async function cargarCatalogo() {
+  const data = await llamar('catalogo_listar');
+  if (!data.ok) {
+    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+    return;
+  }
+  catalogo = data.data;
+  poblarFiltros_();
+  poblarListasNuevoProducto_();
+  pintarTabla_();
+}
+
+function categoriasUnicas_() {
+  return [...new Set(catalogo.map(p => p.categoria).filter(Boolean))].sort();
+}
+
+function subcategoriasUnicas_(categoria) {
+  return [...new Set(catalogo
+    .filter(p => !categoria || p.categoria === categoria)
+    .map(p => p.subcategoria).filter(Boolean))].sort();
+}
+
+function poblarFiltros_() {
+  const selCat = document.getElementById('filtro-categoria');
+  const catActual = selCat.value;
+  selCat.innerHTML = '<option value="">Todas</option>' +
+    categoriasUnicas_().map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  selCat.value = catActual;
+  poblarSubcategoriasFiltro_();
+}
+
+function poblarSubcategoriasFiltro_() {
+  const categoria = document.getElementById('filtro-categoria').value;
+  const selSub = document.getElementById('filtro-subcategoria');
+  const subActual = selSub.value;
+  selSub.innerHTML = '<option value="">Todas</option>' +
+    subcategoriasUnicas_(categoria).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  selSub.value = subActual;
+}
+
+function poblarListasNuevoProducto_() {
+  document.getElementById('lista-categorias').innerHTML =
+    categoriasUnicas_().map(c => `<option value="${escapeHtml(c)}">`).join('');
+  document.getElementById('lista-subcategorias').innerHTML =
+    subcategoriasUnicas_('').map(s => `<option value="${escapeHtml(s)}">`).join('');
+}
+
+function pintarTabla_() {
+  const categoria = document.getElementById('filtro-categoria').value;
+  const subcategoria = document.getElementById('filtro-subcategoria').value;
+  const nombre = normalizarTexto(document.getElementById('filtro-nombre').value);
+
+  const filas = catalogo
+    .filter(p => !categoria || p.categoria === categoria)
+    .filter(p => !subcategoria || p.subcategoria === subcategoria)
+    .filter(p => !nombre || normalizarTexto(p.nombre_estandar).includes(nombre))
+    .sort((a, b) => (a.categoria + a.subcategoria + a.nombre_estandar).localeCompare(b.categoria + b.subcategoria + b.nombre_estandar));
+
+  const body = document.getElementById('tabla-catalogo');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
+  body.innerHTML = filas.map(p => `
+    <tr>
+      <td>${escapeHtml(p.nombre_estandar)}</td>
+      <td>${escapeHtml(p.categoria || '—')}</td>
+      <td>${escapeHtml(p.subcategoria || '—')}</td>
+      <td>${escapeHtml(p.unidad_base || '—')}</td>
+      <td>${escapeHtml(p.nombre_fudo || '—')}</td>
+    </tr>`).join('');
+}
+
+document.getElementById('filtro-categoria').addEventListener('change', () => { poblarSubcategoriasFiltro_(); pintarTabla_(); });
+document.getElementById('filtro-subcategoria').addEventListener('change', pintarTabla_);
+document.getElementById('filtro-nombre').addEventListener('input', pintarTabla_);
+
+// Busca coincidencias exactas o muy parecidas (mismo nombre normalizado, o uno contiene al otro)
+// para avisar antes de crear un producto que probablemente ya existe con otro nombre/escritura.
+function buscarParecidos_(nombre) {
+  const norm = normalizarTexto(nombre);
+  if (!norm) return [];
+  return catalogo.filter(p => {
+    const pn = normalizarTexto(p.nombre_estandar);
+    return pn === norm || pn.includes(norm) || norm.includes(pn);
+  });
+}
+
+document.getElementById('nuevo-nombre').addEventListener('input', (e) => {
+  const parecidos = buscarParecidos_(e.target.value);
+  const aviso = document.getElementById('aviso-parecido');
+  if (parecidos.length) {
+    document.getElementById('aviso-parecido-texto').textContent =
+      'Ya existe: ' + parecidos.map(p => `"${p.nombre_estandar}" (${p.categoria || 'sin categoría'})`).join(', ') + '. Verifica que no sea el mismo producto antes de guardar.';
+    aviso.style.display = 'block';
+  } else {
+    aviso.style.display = 'none';
+  }
+});
+
+document.getElementById('nuevo-categoria').addEventListener('change', poblarSubcategoriasNuevo_);
+function poblarSubcategoriasNuevo_() {
+  const categoria = document.getElementById('nuevo-categoria').value;
+  document.getElementById('lista-subcategorias').innerHTML =
+    subcategoriasUnicas_(categoria).map(s => `<option value="${escapeHtml(s)}">`).join('');
+}
+
+document.getElementById('btn-guardar').addEventListener('click', async () => {
+  const nombre = document.getElementById('nuevo-nombre').value.trim();
+  if (!nombre) { alert('El nombre del producto es obligatorio.'); return; }
+
+  const parecidos = buscarParecidos_(nombre);
+  if (parecidos.length) {
+    const continuar = confirm(
+      'Ya existe algo parecido: ' + parecidos.map(p => p.nombre_estandar).join(', ') +
+      '.\n\n¿Seguro que quieres crear "' + nombre + '" como producto nuevo y distinto?'
+    );
+    if (!continuar) return;
+  }
+
+  const item = {
+    nombre_estandar: nombre,
+    categoria: document.getElementById('nuevo-categoria').value.trim(),
+    subcategoria: document.getElementById('nuevo-subcategoria').value.trim(),
+    unidad_base: document.getElementById('nuevo-unidad').value,
+    nombre_fudo: document.getElementById('nuevo-nombre-fudo').value.trim(),
+    notas: document.getElementById('nuevo-notas').value.trim()
+  };
+
+  const data = await llamar('catalogo_guardar', { item });
+  const msg = document.getElementById('msg-guardado');
+  if (data.ok) {
+    msg.textContent = 'Producto guardado.';
+    ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('nuevo-unidad').value = 'g';
+    document.getElementById('aviso-parecido').style.display = 'none';
+    cargarCatalogo();
+    setTimeout(() => msg.textContent = '', 3000);
+  } else {
+    alert(data.error);
+  }
+});
+
+cargarCatalogo();
+</script>
+</body>
+</html>

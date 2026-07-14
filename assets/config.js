@@ -48,6 +48,16 @@ function escapeHtml(valor) {
   });
 }
 
+// Espejo de normalizar_() en Catalogo.gs — para comparar nombres de producto en el navegador
+// (sin tildes, minúsculas, espacios colapsados) antes de mandar nada al backend.
+function normalizarTexto(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
 // Pinta el nombre/rol del usuario y engancha el botón de salir en cualquier página que lo incluya
 function montarBarraUsuario() {
   const u = Sesion.usuario();
