@@ -3,7 +3,7 @@
 // Reemplaza API_URL por tu URL de despliegue de Apps Script (termina en /exec)
 // La obtienes en Apps Script: Implementar > Nueva implementación > Aplicación web
 // ============================================================================
-const API_URL = 'https://script.google.com/macros/s/AKfycbwwuq9adLQy7IbZG5ld_rMjow9YH_oJD_zI8sd368SWuML_r69LKlcyn4oNVxwvfZxgVg/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
 const Sesion = {
   guardar(token, usuario) {
