@@ -24,7 +24,8 @@ const SHEET_NAMES = {
   VENTAS_FUDO: 'Ventas_FUDO',
   SESIONES: 'Sesiones',
   PRODUCCIONES: 'Producciones',
-  ALERTAS_ENVIADAS: 'AlertasEnviadas'
+  ALERTAS_ENVIADAS: 'AlertasEnviadas',
+  TRASLADOS: 'Traslados'
 };
 
 function ss_() {
@@ -56,7 +57,10 @@ function configurarHojas() {
     Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por', 'sede', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp'],
-    AlertasEnviadas: ['fecha', 'plato']
+    AlertasEnviadas: ['fecha', 'plato'],
+    Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
+      'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
+      'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -180,6 +184,19 @@ function handleRequest_(e, method) {
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
         return jsonOut_(usuarioGuardar_(params.item, sesion.usuario));
+      case 'traslado_crear':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
+      case 'traslados_listar':
+        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro) });
+      case 'traslado_confirmar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(trasladoConfirmar_(params.id, params.cantidad_recibida, sesion.usuario));
+      case 'traslado_observar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(trasladoObservar_(params.id, params.observacion, sesion.usuario));
+      case 'traslado_resolver':
+        return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
       default:
         return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
     }

@@ -15,6 +15,7 @@
       <a href="conteo.html" class="activo">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
       <a href="catalogo.html">Registrar producto</a>
+      <a href="traslados.html">Traslados</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html">Usuarios</a>
@@ -68,13 +69,8 @@ Sesion.requerir();
 montarBarraUsuario();
 document.getElementById('fecha').valueAsDate = new Date();
 
-const PUNTOS_POR_SEDE = {
-  'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],
-  'Capri': ['Cocina terraza', 'Nevera terraza', 'Neveras Primer piso', 'Cocina primer piso', 'Bodega segundo piso', 'Bodega Cocina'],
-  'Centro de Producción': ['General']
-};
-
 // Los puntos de conteo dependen de la sede elegida (cada sede tiene sus propias áreas).
+// PUNTOS_POR_SEDE vive en assets/config.js (compartido con traslados.html).
 function poblarPuntos_() {
   const sede = document.getElementById('sede').value;
   const select = document.getElementById('punto');

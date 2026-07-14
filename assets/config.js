@@ -58,6 +58,13 @@ function normalizarTexto(s) {
     .replace(/\s+/g, ' ');
 }
 
+// Puntos de conteo disponibles por sede — compartido entre conteo.html y traslados.html.
+const PUNTOS_POR_SEDE = {
+  'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],
+  'Capri': ['Cocina terraza', 'Nevera terraza', 'Neveras Primer piso', 'Cocina primer piso', 'Bodega segundo piso', 'Bodega Cocina'],
+  'Centro de Producción': ['General']
+};
+
 // La hoja Catalogo_Maestro guarda categoría y subcategoría juntas en un solo campo "categoria",
 // separadas por "/" (ej. "Bebidas/Cerveza", "Materia Prima/Fruver") — no hay columna aparte.
 // Parte ese texto para poder filtrar/agrupar por cada parte.
