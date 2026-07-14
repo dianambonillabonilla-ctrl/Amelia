@@ -38,15 +38,12 @@
           <select id="sede">
             <option>San Antonio</option>
             <option>Capri</option>
+            <option>Centro de Producción</option>
           </select>
         </div>
         <div class="campo">
           <label>Punto de conteo</label>
-          <select id="punto">
-            <option>Café</option>
-            <option>Centro Producción (bodega)</option>
-            <option>Aseo</option>
-          </select>
+          <select id="punto"></select>
         </div>
       </div>
 
@@ -71,6 +68,22 @@
 Sesion.requerir();
 montarBarraUsuario();
 document.getElementById('fecha').valueAsDate = new Date();
+
+const PUNTOS_POR_SEDE = {
+  'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],
+  'Capri': ['Cocina terraza', 'Nevera terraza', 'Neveras Primer piso', 'Cocina primer piso', 'Bodega segundo piso', 'Bodega Cocina'],
+  'Centro de Producción': ['General']
+};
+
+// Los puntos de conteo dependen de la sede elegida (cada sede tiene sus propias áreas).
+function poblarPuntos_() {
+  const sede = document.getElementById('sede').value;
+  const select = document.getElementById('punto');
+  const anterior = select.value;
+  const opciones = PUNTOS_POR_SEDE[sede] || [];
+  select.innerHTML = opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
+  if (opciones.includes(anterior)) select.value = anterior;
+}
 
 // Sugiere nombres ya existentes en el catálogo maestro (vía <datalist>) para que el conteo no
 // dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo.
@@ -150,8 +163,9 @@ async function cargarConteoAnterior_() {
 }
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
-document.getElementById('sede').addEventListener('change', cargarConteoAnterior_);
+document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); });
 document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
+poblarPuntos_();
 cargarConteoAnterior_();
 
 document.getElementById('btn-guardar').addEventListener('click', async () => {
