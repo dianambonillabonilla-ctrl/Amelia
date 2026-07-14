@@ -25,7 +25,6 @@ function calcularDisponibleHoy_(fecha) {
   const productosVendibles = Object.keys(recetaMap);
   const resultado = productosVendibles.map(function (claveProducto) {
     const consumoPorUnidad = explotarReceta_(claveProducto, 1, recetaMap, {}, indice);
-    // Para cada ingrediente que requiere, cuántas unidades de "producto" alcanzan con el stock actual
     let maxPreparaciones = Infinity;
     let claveLimitante = null;
     Object.keys(consumoPorUnidad).forEach(function (claveIngrediente) {
@@ -81,7 +80,7 @@ function construirRecetaMap_(recetas, indice) {
  */
 function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indice, profundidad) {
   profundidad = profundidad || 0;
-  if (profundidad > 6) return acumulado; // corta ciclos accidentales en la matriz de recetas
+  if (profundidad > 6) return acumulado;
   const entrada = recetaMap[claveProducto];
   if (!entrada) return acumulado;
 
@@ -89,7 +88,6 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
     const cantidadTotal = cantidadBase * linea.cantidad;
     const claveIngrediente = claveProducto_(linea.ingrediente, indice);
     if (recetaMap[claveIngrediente]) {
-      // El "ingrediente" es en realidad un sub-producto con su propia receta (ej. Papas Listas)
       explotarReceta_(claveIngrediente, cantidadTotal, recetaMap, acumulado, indice, profundidad + 1);
     } else {
       if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0 };
@@ -112,7 +110,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice) {
 
   conteos.forEach(function (c) {
     const f = formatearFecha_(c.fecha);
-    if (fecha && f > fecha) return; // no mirar conteos posteriores a la fecha de corte
+    if (fecha && f > fecha) return;
     const clave = claveProducto_(c.producto, indice);
     if (!porProducto[clave]) porProducto[clave] = { nombre: nombreCanonico_(c.producto, indice), fechas: {} };
     if (!porProducto[clave].fechas[f]) porProducto[clave].fechas[f] = { cantidad: 0, unidad: c.unidad };

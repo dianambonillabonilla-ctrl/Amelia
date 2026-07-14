@@ -22,8 +22,6 @@ function calcularTendenciaIngrediente_(ingrediente, dias) {
     return s ? s.cantidad : 0;
   });
 
-  // Consumo del día = stock de ayer + producido hoy - stock de hoy (nunca negativo; el día 0
-  // del rango no tiene "ayer" dentro del rango, así que queda sin dato de consumo).
   const consumoPorFecha = fechas.map(function (fecha, idx) {
     if (idx === 0) return null;
     const producidoHoy = producidoTotalIngrediente_(fecha, ingrediente, indice);
