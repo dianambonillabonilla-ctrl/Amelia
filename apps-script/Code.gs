@@ -199,6 +199,15 @@ function handleRequest_(e, method) {
         return jsonOut_(trasladoObservar_(params.id, params.observacion, sesion.usuario));
       case 'traslado_resolver':
         return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
+      case 'diagnostico_recetas':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarRecetas_(params.umbral) });
+      case 'diagnostico_conteos_duplicados':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarConteosDuplicados_() });
+      case 'diagnostico_ventas_fudo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarVentasFudo_() });
       default:
         return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
     }

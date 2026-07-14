@@ -1,11 +1,9 @@
 /**
- * HERRAMIENTAS DE DIAGNÓSTICO — correr manualmente desde el editor de Apps Script cuando algo
- * en el sistema se ve raro (ej. "Disponible Hoy" muestra 0 en todo, o el conteo no cuadra).
- *
- * Cómo usarlas: en el editor de Apps Script, selecciona la función en el menú desplegable de
- * arriba (junto al botón "Ejecutar") y dale clic a "Ejecutar". Después ve a Ver > Registros de
- * ejecución (o el ícono de reloj) para ver el resultado — cada función deja un reporte ahí,
- * no modifican ni borran nada por sí solas.
+ * HERRAMIENTAS DE DIAGNÓSTICO — se pueden correr manualmente desde el editor de Apps Script
+ * (Ver > Registros de ejecución para el reporte en texto), o desde la página "Diagnóstico" de
+ * la app web (que llama a estas mismas funciones vía las acciones diagnostico_* en Code.gs) —
+ * útil cuando el editor de Apps Script no deja ejecutar funciones directamente. Ninguna de estas
+ * funciones modifica ni borra nada, solo leen y reportan.
  */
 
 /**
@@ -14,7 +12,7 @@
  * calcule 0 preparaciones posibles aunque sí haya stock real.
  */
 function diagnosticarRecetas_(umbralSospechoso) {
-  umbralSospechoso = umbralSospechoso || 20000; // más de 20kg/20000 unidades por receta es raro
+  umbralSospechoso = Number(umbralSospechoso) || 20000; // más de 20kg/20000 unidades por receta es raro
   const filas = leerTabla_(SHEET_NAMES.RECETAS);
   const sospechosas = filas.filter(function (r) {
     const cantidad = Number(r.cantidad);
@@ -23,13 +21,14 @@ function diagnosticarRecetas_(umbralSospechoso) {
 
   if (!sospechosas.length) {
     Logger.log('Recetas: no se encontraron cantidades sospechosas (umbral: ' + umbralSospechoso + ').');
-    return;
+  } else {
+    Logger.log('Recetas con cantidades sospechosas (' + sospechosas.length + ' de ' + filas.length + '):');
+    sospechosas.forEach(function (r) {
+      Logger.log('  - ' + r.producto + ' <- ' + r.ingrediente + ': ' + r.cantidad + ' ' + r.unidad);
+    });
   }
 
-  Logger.log('Recetas con cantidades sospechosas (' + sospechosas.length + ' de ' + filas.length + '):');
-  sospechosas.forEach(function (r) {
-    Logger.log('  - ' + r.producto + ' <- ' + r.ingrediente + ': ' + r.cantidad + ' ' + r.unidad);
-  });
+  return { total_filas: filas.length, umbral: umbralSospechoso, sospechosas: sospechosas };
 }
 
 /**
@@ -46,21 +45,24 @@ function diagnosticarConteosDuplicados_() {
     grupos[clave].push(r);
   });
 
-  const duplicados = Object.keys(grupos).filter(function (k) { return grupos[k].length > 1; });
-  if (!duplicados.length) {
-    Logger.log('Conteos_Manuales: no se encontraron filas duplicadas.');
-    return;
-  }
+  const duplicados = Object.keys(grupos)
+    .filter(function (k) { return grupos[k].length > 1; })
+    .map(function (k) { return grupos[k]; });
 
   let totalFilasDeSobra = 0;
-  Logger.log('Conteos_Manuales con posibles duplicados (' + duplicados.length + ' grupo(s)):');
-  duplicados.forEach(function (k) {
-    const grupo = grupos[k];
-    totalFilasDeSobra += grupo.length - 1;
-    Logger.log('  - ' + grupo.length + 'x  ' + grupo[0].fecha + ' | ' + grupo[0].sede + ' | ' + grupo[0].punto_conteo +
-      ' | ' + grupo[0].producto + ' | ' + grupo[0].cantidad + ' | ids: ' + grupo.map(function (r) { return r.id; }).join(', '));
-  });
-  Logger.log('Si son duplicados reales, hay que borrar ' + totalFilasDeSobra + ' fila(s) de sobra en la hoja (deja solo una de cada grupo).');
+  if (!duplicados.length) {
+    Logger.log('Conteos_Manuales: no se encontraron filas duplicadas.');
+  } else {
+    Logger.log('Conteos_Manuales con posibles duplicados (' + duplicados.length + ' grupo(s)):');
+    duplicados.forEach(function (grupo) {
+      totalFilasDeSobra += grupo.length - 1;
+      Logger.log('  - ' + grupo.length + 'x  ' + grupo[0].fecha + ' | ' + grupo[0].sede + ' | ' + grupo[0].punto_conteo +
+        ' | ' + grupo[0].producto + ' | ' + grupo[0].cantidad + ' | ids: ' + grupo.map(function (r) { return r.id; }).join(', '));
+    });
+    Logger.log('Si son duplicados reales, hay que borrar ' + totalFilasDeSobra + ' fila(s) de sobra en la hoja (deja solo una de cada grupo).');
+  }
+
+  return { total_filas: filas.length, grupos_duplicados: duplicados, filas_de_sobra: totalFilasDeSobra };
 }
 
 /** Revisa qué tan completos están los datos importados de Ventas_FUDO. */
@@ -68,7 +70,7 @@ function diagnosticarVentasFudo_() {
   const filas = leerTabla_(SHEET_NAMES.VENTAS_FUDO);
   if (!filas.length) {
     Logger.log('Ventas_FUDO: la hoja está vacía, no se ha importado nada todavía.');
-    return;
+    return { total_filas: 0, vacios: {} };
   }
 
   const campos = ['id_venta', 'creacion', 'producto', 'cantidad', 'precio', 'sede', 'creada_por'];
@@ -93,9 +95,11 @@ function diagnosticarVentasFudo_() {
     Logger.log('Producto, Categoría, Cantidad, Precio, Cancelada, Creada por) — revisa el encabezado real del');
     Logger.log('archivo .xls que exporta FUDO y compáralo con esos nombres.');
   }
+
+  return { total_filas: filas.length, vacios: vacios };
 }
 
-/** Corre las tres revisiones de una sola vez. */
+/** Corre las tres revisiones de una sola vez (para el uso manual desde el editor). */
 function diagnosticoCompleto_() {
   Logger.log('========== DIAGNÓSTICO DE RECETAS ==========');
   diagnosticarRecetas_();
