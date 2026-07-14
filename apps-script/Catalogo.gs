@@ -56,11 +56,11 @@ function normalizar_(s) {
 }
 
 /**
- * Siembra inicial del cat\u00e1logo maestro, tomada de los inventarios reales de San Antonio
- * (hojas Diario/Mi\u00e9rcoles/Viernes/Inicio del Mes/Inventario Centro Producci\u00f3n). Corre esta
- * funci\u00f3n UNA vez desde el editor de Apps Script para precargar categor\u00eda/subcategor\u00eda \u2014
+ * Siembra inicial del catálogo maestro, tomada de los inventarios reales de San Antonio
+ * (hojas Diario/Miércoles/Viernes/Inicio del Mes/Inventario Centro Producción). Corre esta
+ * función UNA vez desde el editor de Apps Script para precargar categoría/subcategoría —
  * es segura de repetir: cada producto se busca primero con catalogoBuscar_ (nombre normalizado)
- * y solo se agrega si todav\u00eda no existe, as\u00ed que nunca duplica lo que ya haya en la hoja.
+ * y solo se agrega si todavía no existe, así que nunca duplica lo que ya haya en la hoja.
  */
 function importarCatalogoInicial_() {
   const productos = [
@@ -74,9 +74,9 @@ function importarCatalogoInicial_() {
     ['Pepino', 'Materia Prima', 'Fruver', 'g'],
     ['Hinojo', 'Materia Prima', 'Fruver', 'g'],
     ['Naranjas', 'Materia Prima', 'Fruver', 'g'],
-    // Materia Prima / C\u00e1rnicos
-    ['Costilla San Luis Entera', 'Materia Prima', 'C\u00e1rnicos', 'g'],
-    ['Panceta Entera', 'Materia Prima', 'C\u00e1rnicos', 'g'],
+    // Materia Prima / Cárnicos
+    ['Costilla San Luis Entera', 'Materia Prima', 'Cárnicos', 'g'],
+    ['Panceta Entera', 'Materia Prima', 'Cárnicos', 'g'],
     // Materia Prima / No Perecederos
     ['Azucar Morena', 'Materia Prima', 'No Perecederos', 'g'],
     ['Azucar Blanca', 'Materia Prima', 'No Perecederos', 'g'],
@@ -97,7 +97,7 @@ function importarCatalogoInicial_() {
     ['Especias Salsa Costilla', 'Materia Prima', 'No Perecederos', 'g'],
     ['Especias Falafel', 'Materia Prima', 'No Perecederos', 'g'],
     ['Especias de Marinar Costilla', 'Materia Prima', 'No Perecederos', 'g'],
-    ['Panela Org\u00e1nica', 'Materia Prima', 'No Perecederos', 'g'],
+    ['Panela Orgánica', 'Materia Prima', 'No Perecederos', 'g'],
     ['Helado', 'Materia Prima', 'No Perecederos', 'g'],
     ['Yoghurt Griego', 'Materia Prima', 'No Perecederos', 'g'],
     // Elaborados / Preparaciones de Cocina
@@ -106,14 +106,14 @@ function importarCatalogoInicial_() {
     ['Costilla Preparada Picada', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Panceta Limpia Marinada', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Panceta Pre-Ahumada', 'Elaborados', 'Preparaciones de Cocina', 'g'],
-    ['Reducci\u00f3n Bals\u00e1mica', 'Elaborados', 'Preparaciones de Cocina', 'g'],
+    ['Reducción Balsámica', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Ajo Preparado', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Cebolla en Pluma (sin limon)', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Falafel', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Aioli', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Tzatziki', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Salsita Picante de Amelia', 'Elaborados', 'Preparaciones de Cocina', 'g'],
-    ['Zumo Lim\u00f3n', 'Elaborados', 'Preparaciones de Cocina', 'g'],
+    ['Zumo Limón', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Sirope Neutro', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Sirope Naranja', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Sirope Panela', 'Elaborados', 'Preparaciones de Cocina', 'g'],
@@ -128,12 +128,12 @@ function importarCatalogoInicial_() {
     ['Azucar Pulverizada', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Gordos Panceta', 'Elaborados', 'Preparaciones de Cocina', 'g'],
     ['Gordos Costilla', 'Elaborados', 'Preparaciones de Cocina', 'g'],
-    // Elaborados / Postres y Panader\u00eda
-    ['Porciones Pie Manzana', 'Elaborados', 'Postres y Panader\u00eda', 'u'],
-    ['Beignet Limon', 'Elaborados', 'Postres y Panader\u00eda', 'u'],
-    ['Beignet Maple', 'Elaborados', 'Postres y Panader\u00eda', 'u'],
-    ['Cono Beignet', 'Elaborados', 'Postres y Panader\u00eda', 'u'],
-    ['Beignets Cortados', 'Elaborados', 'Postres y Panader\u00eda', 'u'],
+    // Elaborados / Postres y Panadería
+    ['Porciones Pie Manzana', 'Elaborados', 'Postres y Panadería', 'u'],
+    ['Beignet Limon', 'Elaborados', 'Postres y Panadería', 'u'],
+    ['Beignet Maple', 'Elaborados', 'Postres y Panadería', 'u'],
+    ['Cono Beignet', 'Elaborados', 'Postres y Panadería', 'u'],
+    ['Beignets Cortados', 'Elaborados', 'Postres y Panadería', 'u'],
     // Bebidas / Cervezas
     ['AB Rubia Lager', 'Bebidas', 'Cervezas', 'u'],
     ['Aguila Light 330 ml', 'Bebidas', 'Cervezas', 'u'],
@@ -166,37 +166,37 @@ function importarCatalogoInicial_() {
     ['Detergente', 'Aseo e Insumos', 'Limpieza', 'g'],
     ['Limpido', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Desengrasante Industrial', 'Aseo e Insumos', 'Limpieza', 'g'],
-    ['Jab\u00f3n Manos', 'Aseo e Insumos', 'Limpieza', 'g'],
+    ['Jabón Manos', 'Aseo e Insumos', 'Limpieza', 'g'],
     ['Esponja Lavaplatos', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Esponja Metalica', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Esponja de Brillo', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Cepillo Parrilla', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Bolsas de Basura Verdes', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Bolsas de Basura Negras Grandes', 'Aseo e Insumos', 'Limpieza', 'u'],
-    ['Bolsas de Basura Negras Peque\u00f1as', 'Aseo e Insumos', 'Limpieza', 'u'],
-    ['Toalla de Manos para Ba\u00f1o', 'Aseo e Insumos', 'Limpieza', 'u'],
+    ['Bolsas de Basura Negras Pequeñas', 'Aseo e Insumos', 'Limpieza', 'u'],
+    ['Toalla de Manos para Baño', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Papel Industrial Cocina', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Trapos Servicio', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Papel Higienico', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Gel Antibacterial', 'Aseo e Insumos', 'Limpieza', 'u'],
-    ['Carb\u00f3n', 'Aseo e Insumos', 'Limpieza', 'u'],
+    ['Carbón', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Pastillas Rojas Horno', 'Aseo e Insumos', 'Limpieza', 'u'],
     ['Pastillas Azules Horno', 'Aseo e Insumos', 'Limpieza', 'u'],
-    // Papeler\u00eda y Empaques
-    ['Bolsas Domicilio Grandes', 'Papeler\u00eda y Empaques', 'Domicilios', 'u'],
-    ['Bolsas Domicilio Peque\u00f1as', 'Papeler\u00eda y Empaques', 'Domicilios', 'u'],
-    ['Cajas Domicilio', 'Papeler\u00eda y Empaques', 'Domicilios', 'u'],
-    ['Recibos de Caja', 'Papeler\u00eda y Empaques', 'Caja', 'u'],
-    ['Papel Conos', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
-    ['Pegante de Conos', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
-    ['Rollo Impresora Caja', 'Papeler\u00eda y Empaques', 'Caja', 'u'],
-    ['Rollo Impresora Datafono', 'Papeler\u00eda y Empaques', 'Caja', 'u'],
-    ['Palitos', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
-    ['Servilletas', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
-    ['Salseros 2 oz', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
-    ['Tapas Salsero', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
-    ['Papel Aluminio', 'Papeler\u00eda y Empaques', 'Cocina', 'g'],
-    ['Valeas', 'Papeler\u00eda y Empaques', 'Servicio', 'u'],
+    // Papelería y Empaques
+    ['Bolsas Domicilio Grandes', 'Papelería y Empaques', 'Domicilios', 'u'],
+    ['Bolsas Domicilio Pequeñas', 'Papelería y Empaques', 'Domicilios', 'u'],
+    ['Cajas Domicilio', 'Papelería y Empaques', 'Domicilios', 'u'],
+    ['Recibos de Caja', 'Papelería y Empaques', 'Caja', 'u'],
+    ['Papel Conos', 'Papelería y Empaques', 'Servicio', 'u'],
+    ['Pegante de Conos', 'Papelería y Empaques', 'Servicio', 'u'],
+    ['Rollo Impresora Caja', 'Papelería y Empaques', 'Caja', 'u'],
+    ['Rollo Impresora Datafono', 'Papelería y Empaques', 'Caja', 'u'],
+    ['Palitos', 'Papelería y Empaques', 'Servicio', 'u'],
+    ['Servilletas', 'Papelería y Empaques', 'Servicio', 'u'],
+    ['Salseros 2 oz', 'Papelería y Empaques', 'Servicio', 'u'],
+    ['Tapas Salsero', 'Papelería y Empaques', 'Servicio', 'u'],
+    ['Papel Aluminio', 'Papelería y Empaques', 'Cocina', 'g'],
+    ['Valeas', 'Papelería y Empaques', 'Servicio', 'u'],
     // Menaje y Utensilios
     ['Tenedores', 'Menaje y Utensilios', 'Comedor', 'u'],
     ['Vasos', 'Menaje y Utensilios', 'Comedor', 'u'],
@@ -223,5 +223,5 @@ function importarCatalogoInicial_() {
     catalogoGuardar_({ nombre_estandar: nombre, categoria: p[1], subcategoria: p[2], unidad_base: p[3] });
     creados++;
   });
-  Logger.log('Cat\u00e1logo inicial: ' + creados + ' productos creados, ' + existentes + ' ya exist\u00edan y se dejaron intactos.');
+  Logger.log('Catálogo inicial: ' + creados + ' productos creados, ' + existentes + ' ya existían y se dejaron intactos.');
 }
