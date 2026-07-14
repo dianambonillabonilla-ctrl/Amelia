@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Traslados</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a>
+      <a href="catalogo.html">Registrar producto</a>
+      <a href="traslados.html" class="activo">Traslados</a>
+      <a href="importar.html">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a>
+      <a href="usuarios.html">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Traslados entre sedes</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <h2>1. Enviar un traslado</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Como el personal rota, cualquiera puede enviar o recibir un traslado sin importar la sede
+        que tenga asignada — no hace falta ser el "encargado fijo" de un lugar.
+      </p>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Producto</label>
+          <input type="text" id="env-producto" list="lista-productos" placeholder="ej. Costilla Preparada">
+          <datalist id="lista-productos"></datalist>
+        </div>
+        <div class="campo">
+          <label>Cantidad</label>
+          <input type="number" step="0.01" id="env-cantidad">
+        </div>
+        <div class="campo">
+          <label>Unidad</label>
+          <select id="env-unidad">
+            <option value="g">g</option>
+            <option value="kg">kg</option>
+            <option value="u">u</option>
+            <option value="ml">ml</option>
+            <option value="l">l</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-4">
+        <div class="campo">
+          <label>Sede origen</label>
+          <select id="env-sede-origen">
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Punto origen</label>
+          <select id="env-punto-origen"></select>
+        </div>
+        <div class="campo">
+          <label>Sede destino</label>
+          <select id="env-sede-destino">
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Punto destino</label>
+          <select id="env-punto-destino"></select>
+        </div>
+      </div>
+      <div class="campo" style="max-width:200px">
+        <label>Fecha</label>
+        <input type="date" id="env-fecha">
+      </div>
+      <button class="btn dorado" id="btn-enviar">Enviar traslado</button>
+    </div>
+
+    <div class="card">
+      <h2>2. Pendientes de confirmar</h2>
+      <table>
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>De</th><th>A</th><th>Enviado por</th><th>Fecha</th><th></th></tr></thead>
+        <tbody id="tabla-pendientes"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>3. Con observación — pendientes de resolver</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Se avisó por correo a Administrador y Encargados cuando se reportó cada uno de estos.
+      </p>
+      <table>
+        <thead><tr><th>Producto</th><th>De</th><th>A</th><th>Observación</th><th>Reportado por</th><th></th></tr></thead>
+        <tbody id="tabla-observados"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Historial reciente</h2>
+      <table>
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>De</th><th>A</th><th>Estado</th><th>Fecha</th></tr></thead>
+        <tbody id="tabla-historial"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+document.getElementById('env-fecha').valueAsDate = new Date();
+
+function poblarPuntosEnvio_(sedeSelectId, puntoSelectId) {
+  const sede = document.getElementById(sedeSelectId).value;
+  const select = document.getElementById(puntoSelectId);
+  const anterior = select.value;
+  const opciones = PUNTOS_POR_SEDE[sede] || [];
+  select.innerHTML = opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
+  if (opciones.includes(anterior)) select.value = anterior;
+}
+document.getElementById('env-sede-origen').addEventListener('change', () => poblarPuntosEnvio_('env-sede-origen', 'env-punto-origen'));
+document.getElementById('env-sede-destino').addEventListener('change', () => poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino'));
+poblarPuntosEnvio_('env-sede-origen', 'env-punto-origen');
+poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino');
+document.getElementById('env-sede-destino').value = 'Capri';
+poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino');
+
+async function cargarSugerenciasProductos_() {
+  const data = await llamar('catalogo_listar');
+  if (!data.ok) return;
+  document.getElementById('lista-productos').innerHTML = data.data
+    .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
+}
+cargarSugerenciasProductos_();
+
+document.getElementById('btn-enviar').addEventListener('click', async () => {
+  const item = {
+    fecha: document.getElementById('env-fecha').value,
+    producto: document.getElementById('env-producto').value.trim(),
+    cantidad: parseFloat(document.getElementById('env-cantidad').value.replace(',', '.')),
+    unidad: document.getElementById('env-unidad').value,
+    sede_origen: document.getElementById('env-sede-origen').value,
+    punto_origen: document.getElementById('env-punto-origen').value,
+    sede_destino: document.getElementById('env-sede-destino').value,
+    punto_destino: document.getElementById('env-punto-destino').value
+  };
+  if (!item.producto || isNaN(item.cantidad) || item.cantidad <= 0) {
+    alert('Completa el producto y una cantidad mayor que cero.');
+    return;
+  }
+  const data = await llamar('traslado_crear', { item });
+  if (data.ok) {
+    avisarGuardado('Traslado enviado.');
+    document.getElementById('env-producto').value = '';
+    document.getElementById('env-cantidad').value = '';
+    cargarTodo();
+  } else {
+    alert(data.error);
+  }
+});
+
+function lugar_(sede, punto) {
+  return sede + (punto ? ' / ' + punto : '');
+}
+
+async function cargarTodo() {
+  const data = await llamar('traslados_listar', { filtro: {} });
+  if (!data.ok) return;
+  pintarPendientes_(data.data.filter(t => t.estado === 'Enviado'));
+  pintarObservados_(data.data.filter(t => t.estado === 'Con observación'));
+  pintarHistorial_(data.data.filter(t => t.estado === 'Confirmado' || t.estado === 'Resuelto').slice(0, 30));
+}
+
+function pintarPendientes_(filas) {
+  const body = document.getElementById('tabla-pendientes');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">No hay traslados pendientes de confirmar.</td></tr>'; return; }
+  body.innerHTML = filas.map(t => `
+    <tr>
+      <td>${escapeHtml(t.producto)}</td>
+      <td>${escapeHtml(t.cantidad_enviada)} ${escapeHtml(t.unidad)}</td>
+      <td>${escapeHtml(lugar_(t.sede_origen, t.punto_origen))}</td>
+      <td>${escapeHtml(lugar_(t.sede_destino, t.punto_destino))}</td>
+      <td>${escapeHtml(t.usuario_envia)}</td>
+      <td>${escapeHtml(t.fecha)}</td>
+      <td>
+        <button class="btn dorado btn-confirmar" data-id="${escapeHtml(t.id)}" data-cantidad="${escapeHtml(t.cantidad_enviada)}">Confirmar</button>
+        <button class="btn fantasma btn-observar" data-id="${escapeHtml(t.id)}">Reportar problema</button>
+      </td>
+    </tr>`).join('');
+
+  body.querySelectorAll('.btn-confirmar').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const data = await llamar('traslado_confirmar', { id: btn.dataset.id, cantidad_recibida: btn.dataset.cantidad });
+      if (data.ok) { avisarGuardado('Traslado confirmado.'); cargarTodo(); } else { alert(data.error); }
+    });
+  });
+  body.querySelectorAll('.btn-observar').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const observacion = prompt('¿Qué pasó con este traslado? (ej. "Solo llegaron 3kg de 5kg", "llegó dañado")');
+      if (!observacion) return;
+      const data = await llamar('traslado_observar', { id: btn.dataset.id, observacion });
+      if (data.ok) {
+        avisarGuardado('Observación registrada — se avisó a Administrador y Encargados.');
+        cargarTodo();
+      } else {
+        alert(data.error);
+      }
+    });
+  });
+}
+
+function pintarObservados_(filas) {
+  const body = document.getElementById('tabla-observados');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">No hay observaciones pendientes de resolver.</td></tr>'; return; }
+  body.innerHTML = filas.map(t => `
+    <tr>
+      <td>${escapeHtml(t.producto)}</td>
+      <td>${escapeHtml(lugar_(t.sede_origen, t.punto_origen))}</td>
+      <td>${escapeHtml(lugar_(t.sede_destino, t.punto_destino))}</td>
+      <td><span class="badge alerta">Sin resolver</span> ${escapeHtml(t.observacion)}</td>
+      <td>${escapeHtml(t.usuario_recibe)}</td>
+      <td><button class="btn fantasma btn-resolver" data-id="${escapeHtml(t.id)}">Marcar resuelto</button></td>
+    </tr>`).join('');
+
+  body.querySelectorAll('.btn-resolver').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const nota = prompt('¿Cómo se resolvió? (opcional)') || '';
+      const data = await llamar('traslado_resolver', { id: btn.dataset.id, nota_resolucion: nota });
+      if (data.ok) { avisarGuardado('Traslado marcado como resuelto.'); cargarTodo(); } else { alert(data.error); }
+    });
+  });
+}
+
+function pintarHistorial_(filas) {
+  const body = document.getElementById('tabla-historial');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">Sin traslados cerrados todavía.</td></tr>'; return; }
+  body.innerHTML = filas.map(t => `
+    <tr>
+      <td>${escapeHtml(t.producto)}</td>
+      <td>${escapeHtml(t.cantidad_recibida || t.cantidad_enviada)} ${escapeHtml(t.unidad)}</td>
+      <td>${escapeHtml(lugar_(t.sede_origen, t.punto_origen))}</td>
+      <td>${escapeHtml(lugar_(t.sede_destino, t.punto_destino))}</td>
+      <td>${t.estado === 'Resuelto' ? '<span class="badge aviso">Resuelto</span>' : '<span class="badge ok">Confirmado</span>'}</td>
+      <td>${escapeHtml(t.fecha)}</td>
+    </tr>`).join('');
+}
+
+cargarTodo();
+</script>
+</body>
+</html>

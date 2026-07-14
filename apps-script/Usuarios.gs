@@ -1,7 +1,18 @@
 /**
  * USUARIOS Y ROLES
- * Roles esperados: Administrador (todo), Encargado (registra conteos e importa FUDO de su sede),
- * Cocina (solo registra conteos), Lectura (solo ve dashboards, ej. para un contador externo).
+ * Roles esperados:
+ *  - Administrador: todo, incluyendo importar de FUDO, gestionar el catálogo y crear usuarios.
+ *  - Encargado: registra conteos y producción, ve Disponible Hoy y Conciliación — NO puede
+ *    importar de FUDO ni gestionar catálogo/usuarios (ver requiereAdmin_ en Code.gs).
+ *  - Cocina: igual que Encargado pero sin necesidad de ver conciliación (solo registra).
+ *  - Lectura: solo ve dashboards (disponible_hoy, conciliación), no puede registrar nada
+ *    (conteo_registrar/produccion_registrar exigen Administrador/Encargado/Cocina).
+ *
+ * La sede del usuario (columna `sede`: "Ambas", o una sede específica) limita para qué sede
+ * puede registrar conteos/producción — ver la validación en Conteos.gs/Produccion.gs. Un usuario
+ * que necesite registrar traslados entre sedes (ej. mover algo de Centro de Producción a una
+ * sede) debe tener sede = "Ambas"; si su sede es una sola, el backend rechaza registrar para
+ * cualquier otra.
  */
 
 function usuariosListar_(usuario) {
@@ -67,6 +78,25 @@ function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
   if (!resultado.valido) return { ok: false, error: 'La contraseña actual no es correcta' };
 
   establecerPassword_(fila.id, passwordNueva);
+  return { ok: true };
+}
+
+/**
+ * Restablecimiento de contraseña por un Administrador — NO requiere conocer la contraseña
+ * anterior. Existe para poder reaccionar rápido si una contraseña quedó expuesta (ej. guardada
+ * en texto plano en la hoja por error): el Administrador le pone una nueva de una vez, sin
+ * depender de que el usuario afectado la recuerde o la comparta por otro medio inseguro.
+ */
+function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
+  requiereAdmin_(usuarioSesion);
+  if (!id) return { ok: false, error: 'Falta el id del usuario' };
+  if (!passwordNueva || String(passwordNueva).length < 6) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres' };
+  }
+  const existe = leerTabla_(SHEET_NAMES.USUARIOS).some(function (r) { return r.id === id; });
+  if (!existe) return { ok: false, error: 'No se encontró el usuario' };
+
+  establecerPassword_(id, passwordNueva);
   return { ok: true };
 }
 

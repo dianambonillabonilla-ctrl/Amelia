@@ -16,6 +16,7 @@
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
       <a href="catalogo.html">Registrar producto</a>
+      <a href="traslados.html">Traslados</a>
       <a href="importar.html" class="activo">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html">Usuarios</a>
@@ -56,7 +57,6 @@
       <h2>3. Vista previa (<span id="n-filas"></span> filas)</h2>
       <div style="overflow-x:auto"><table id="tabla-preview"></table></div>
       <button class="btn dorado" id="btn-confirmar" style="margin-top:16px">Confirmar e importar</button>
-      <span id="msg-import" style="margin-left:12px; color:var(--green); font-weight:600;"></span>
       <div id="aviso-sin-identificar" class="card" style="display:none; margin-top:14px; border-color:var(--amber); background:#FFFBF0">
         <strong style="color:var(--amber)">⚠ Ventas sin sede identificada</strong>
         <p id="aviso-sin-identificar-texto" style="margin:8px 0 0; font-size:.88rem"></p>
@@ -113,11 +113,10 @@ function mostrarPreview(filas) {
 
 document.getElementById('btn-confirmar').addEventListener('click', async () => {
   const data = await llamar('importar_fudo', { tipo: tipoSeleccionado(), filas: filasParaImportar });
-  const msg = document.getElementById('msg-import');
   const aviso = document.getElementById('aviso-sin-identificar');
   aviso.style.display = 'none';
   if (data.ok) {
-    msg.textContent = `Importadas ${data.importados} filas de tipo "${data.tipo}".`;
+    avisarGuardado(`Importadas ${data.importados} filas de tipo "${data.tipo}".`);
     if (data.sin_identificar) {
       document.getElementById('aviso-sin-identificar-texto').textContent =
         `${data.sin_identificar.total} venta(s) no se pudieron asignar a una sede porque el nombre de caja/terminal no se reconoce: ${data.sin_identificar.valores.join(', ')}. Ajusta sedeDesdeCreadaPor_() en Fudo.gs o revisa el nombre de la caja en FUDO — mientras tanto, esas ventas quedan fuera de la conciliación de comida.`;

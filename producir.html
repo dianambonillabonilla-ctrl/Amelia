@@ -15,6 +15,7 @@
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html" class="activo">Registrar producción</a>
       <a href="catalogo.html">Registrar producto</a>
+      <a href="traslados.html">Traslados</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html">Usuarios</a>
@@ -57,7 +58,6 @@
 
       <div style="margin-top:20px">
         <button class="btn dorado" id="btn-guardar">Guardar producción</button>
-        <span id="msg-guardado" style="margin-left:12px; color:var(--green); font-weight:600;"></span>
       </div>
     </div>
 
@@ -107,7 +107,8 @@ function nuevaFila(item = '', unidad = 'g', cantidad = '') {
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
 for (let i = 0; i < 3; i++) nuevaFila();
 
-document.getElementById('btn-guardar').addEventListener('click', async () => {
+const btnGuardarProduccion = document.getElementById('btn-guardar');
+btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProduccion, async () => {
   const fecha = document.getElementById('fecha').value;
   const sede = document.getElementById('sede').value;
 
@@ -123,15 +124,13 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   if (!items.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
 
   const data = await llamar('produccion_registrar', { items });
-  const msg = document.getElementById('msg-guardado');
   if (data.ok) {
-    msg.textContent = `Guardado: ${data.registrados} ítems.`;
-    setTimeout(() => msg.textContent = '', 4000);
+    avisarGuardado(`Guardado: ${data.registrados} ítems.`);
     cargarHistorial();
   } else {
     alert(data.error);
   }
-});
+}));
 
 async function cargarHistorial() {
   const fecha = document.getElementById('fecha').value;

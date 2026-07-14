@@ -15,6 +15,7 @@
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
       <a href="catalogo.html">Registrar producto</a>
+      <a href="traslados.html">Traslados</a>
       <a href="importar.html">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
       <a href="usuarios.html" class="activo">Usuarios</a>
@@ -54,7 +55,6 @@
         <div class="campo"><label>Correo (para alertas de stock bajo)</label><input type="email" id="nuevo-email" placeholder="opcional, solo Administrador/Encargado reciben alertas"></div>
       </div>
       <button class="btn dorado" id="btn-crear">Crear usuario</button>
-      <span id="msg-crear" style="margin-left:12px; font-weight:600; color:var(--green)"></span>
     </div>
 
     <div class="card">
@@ -81,13 +81,29 @@ async function cargar() {
       <td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.rol)}</td><td>${escapeHtml(u.sede)}</td>
       <td>${escapeHtml(u.email || '—')}</td>
       <td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge alerta">Inactivo</span>'}</td>
-      <td><button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button></td>
+      <td>
+        <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>
+        <button class="btn fantasma btn-resetear" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}">Restablecer contraseña</button>
+      </td>
     </tr>`).join('');
 
   document.querySelectorAll('.btn-toggle').forEach(btn => {
     btn.addEventListener('click', async () => {
       await llamar('usuarios_guardar', { item: { id: btn.dataset.id, activo: btn.dataset.activo !== 'true' } });
       cargar();
+    });
+  });
+
+  document.querySelectorAll('.btn-resetear').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const nueva = prompt(`Nueva contraseña para ${btn.dataset.nombre} (mínimo 6 caracteres). No hace falta la contraseña anterior.`);
+      if (!nueva) return;
+      const data = await llamar('usuario_resetear_password', { id: btn.dataset.id, password_nueva: nueva });
+      if (data.ok) {
+        avisarGuardado(`Contraseña de ${btn.dataset.nombre} restablecida.`);
+      } else {
+        alert(data.error);
+      }
     });
   });
 }
@@ -103,12 +119,10 @@ document.getElementById('btn-crear').addEventListener('click', async () => {
   };
   if (!item.nombre || !item.usuario) { alert('Nombre y usuario de acceso son obligatorios.'); return; }
   const data = await llamar('usuarios_guardar', { item });
-  const msg = document.getElementById('msg-crear');
   if (data.ok) {
-    msg.textContent = 'Usuario creado.';
+    avisarGuardado('Usuario creado.');
     ['nuevo-nombre','nuevo-usuario','nuevo-password','nuevo-email'].forEach(id => document.getElementById(id).value = '');
     cargar();
-    setTimeout(() => msg.textContent = '', 3000);
   } else {
     alert(data.error);
   }
