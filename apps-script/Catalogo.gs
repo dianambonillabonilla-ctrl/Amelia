@@ -56,10 +56,10 @@ function normalizar_(s) {
 }
 
 /**
- * \u00cdndice nombre_normalizado -> nombre_estandar, construido una sola vez a partir del cat\u00e1logo
+ * Índice nombre_normalizado -> nombre_estandar, construido una sola vez a partir del catálogo
  * maestro (incluye tanto nombre_estandar como nombre_fudo apuntando al mismo nombre_estandar).
- * P\u00e1salo a claveProducto_/nombreCanonico_ para no releer la hoja Catalogo_Maestro en cada
- * comparaci\u00f3n \u2014 construirlo una vez por funci\u00f3n y reutilizarlo.
+ * Pásalo a claveProducto_/nombreCanonico_ para no releer la hoja Catalogo_Maestro en cada
+ * comparación — construirlo una vez por función y reutilizarlo.
  */
 function indiceCatalogo_() {
   const indice = {};
@@ -72,8 +72,8 @@ function indiceCatalogo_() {
 
 /**
  * Llave estable para comparar/agrupar cualquier texto de producto o ingrediente (de Conteos,
- * Recetas, Producciones, Ventas_FUDO, etc.) sin importar tildes, may\u00fasculas o con qu\u00e9 nombre
- * (est\u00e1ndar o FUDO) se haya escrito \u2014 este es el mecanismo central que evita que "Costilla
+ * Recetas, Producciones, Ventas_FUDO, etc.) sin importar tildes, mayúsculas o con qué nombre
+ * (estándar o FUDO) se haya escrito — este es el mecanismo central que evita que "Costilla
  * Preparada" y "costilla preparada" (o su nombre en FUDO) se traten como productos distintos
  * en distintas partes del sistema.
  */
@@ -83,7 +83,7 @@ function claveProducto_(texto, indice) {
   return canonico ? normalizar_(canonico) : norm;
 }
 
-/** Nombre "bonito" para mostrar: el nombre_estandar del cat\u00e1logo si hay coincidencia, si no el texto tal cual. */
+/** Nombre "bonito" para mostrar: el nombre_estandar del catálogo si hay coincidencia, si no el texto tal cual. */
 function nombreCanonico_(texto, indice) {
   const norm = normalizar_(texto);
   const canonico = indice && indice[norm];
