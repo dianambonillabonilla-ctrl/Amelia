@@ -58,6 +58,16 @@ function normalizarTexto(s) {
     .replace(/\s+/g, ' ');
 }
 
+// La hoja Catalogo_Maestro guarda categoría y subcategoría juntas en un solo campo "categoria",
+// separadas por "/" (ej. "Bebidas/Cerveza", "Materia Prima/Fruver") — no hay columna aparte.
+// Parte ese texto para poder filtrar/agrupar por cada parte.
+function partesCategoria(categoriaCompleta) {
+  const texto = String(categoriaCompleta || '').trim();
+  const i = texto.indexOf('/');
+  if (i === -1) return { principal: texto, sub: '' };
+  return { principal: texto.slice(0, i).trim(), sub: texto.slice(i + 1).trim() };
+}
+
 // Pinta el nombre/rol del usuario y engancha el botón de salir en cualquier página que lo incluya
 function montarBarraUsuario() {
   const u = Sesion.usuario();

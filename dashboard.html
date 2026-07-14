@@ -28,6 +28,11 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div class="card" id="card-alerta-insumos" style="display:none; border-color:var(--red); background:#FEF4F3">
+      <h2 style="margin:0 0 10px; color:var(--red)">⚠ Insumos bajo su mínimo</h2>
+      <div id="alerta-insumos"></div>
+    </div>
+
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <h2 style="margin:0">¿Para cuántos platos alcanza lo que tengo?</h2>
@@ -72,8 +77,13 @@ let grafico = null;
 
 async function cargar() {
   const fecha = document.getElementById('fecha-corte').value;
-  const data = await llamar('disponible_hoy', { fecha });
+  const [data, catalogoData] = await Promise.all([
+    llamar('disponible_hoy', { fecha }),
+    llamar('catalogo_listar')
+  ]);
   if (!data.ok) { alert(data.error); return; }
+
+  pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoData.ok ? catalogoData.data : []);
 
   const platosBody = document.getElementById('tabla-platos');
   platosBody.innerHTML = '';
@@ -103,6 +113,47 @@ async function cargar() {
   });
 
   poblarSelectorIngredientes_(Object.keys(data.data.stock_ingredientes));
+}
+
+// Cruza el catálogo (que trae el mínimo configurado por producto, ej. en catalogo.html) con el
+// último stock contado, y arma el panel de alerta agrupado por categoría (Bebidas, Materia
+// Prima, Elaborados, etc.) — así cubre insumos sueltos, no solo platos armados con receta.
+function pintarAlertaInsumos_(stockIngredientes, catalogo) {
+  const card = document.getElementById('card-alerta-insumos');
+  const cont = document.getElementById('alerta-insumos');
+
+  const bajos = catalogo
+    .filter(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined)
+    .map(p => {
+      const stock = stockIngredientes[p.nombre_estandar] || stockIngredientes[p.nombre_fudo] || null;
+      const partes = partesCategoria(p.categoria);
+      return Object.assign({}, p, {
+        _actual: stock ? Number(stock.cantidad) : 0,
+        _unidad: stock ? stock.unidad : p.unidad_base,
+        _categoria: partes.principal || 'Sin categoría'
+      });
+    })
+    .filter(p => p._actual < Number(p.stock_minimo));
+
+  if (!bajos.length) { card.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  const porCategoria = {};
+  bajos.forEach(p => {
+    if (!porCategoria[p._categoria]) porCategoria[p._categoria] = [];
+    porCategoria[p._categoria].push(p);
+  });
+
+  cont.innerHTML = Object.keys(porCategoria).sort().map(cat => `
+    <div style="margin-bottom:10px">
+      <strong>${escapeHtml(cat)}</strong>
+      <ul style="margin:6px 0 0; padding-left:20px">
+        ${porCategoria[cat]
+          .sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar))
+          .map(p => `<li>${escapeHtml(p.nombre_estandar)}: ${escapeHtml(p._actual)} ${escapeHtml(p._unidad || '')} (mínimo ${escapeHtml(p.stock_minimo)})</li>`)
+          .join('')}
+      </ul>
+    </div>`).join('');
+  card.style.display = 'block';
 }
 
 function poblarSelectorIngredientes_(ingredientes) {
