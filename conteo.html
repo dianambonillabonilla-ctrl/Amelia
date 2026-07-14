@@ -50,8 +50,9 @@
         </div>
       </div>
 
+      <p id="info-anterior" style="color:var(--grey); font-size:.85rem; margin:0 0 12px"></p>
       <table>
-        <thead><tr><th>Producto</th><th>Unidad</th><th>Cantidad</th><th></th></tr></thead>
+        <thead><tr><th>Producto</th><th>Unidad</th><th>Conteo anterior</th><th>Cantidad de hoy</th><th></th></tr></thead>
         <tbody id="filas"></tbody>
       </table>
       <datalist id="lista-productos"></datalist>
@@ -81,10 +82,10 @@ async function cargarSugerenciasProductos_() {
 }
 cargarSugerenciasProductos_();
 
-function nuevaFila(producto = '', unidad = 'g', cantidad = '') {
+function nuevaFila(producto = '', unidad = 'g', anterior = null) {
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" class="in-producto" list="lista-productos" value="${producto}" placeholder="ej. Costilla Preparada"></td>
+    <td><input type="text" class="in-producto" list="lista-productos" value="${escapeHtml(producto)}" placeholder="ej. Costilla Preparada"></td>
     <td><select class="in-unidad">
         <option ${unidad==='g'?'selected':''}>g</option>
         <option ${unidad==='kg'?'selected':''}>kg</option>
@@ -92,14 +93,66 @@ function nuevaFila(producto = '', unidad = 'g', cantidad = '') {
         <option ${unidad==='ml'?'selected':''}>ml</option>
         <option ${unidad==='l'?'selected':''}>l</option>
       </select></td>
-    <td><input type="number" step="0.01" class="in-cantidad" value="${cantidad}"></td>
+    <td style="color:var(--grey)">${anterior === null ? '—' : escapeHtml(anterior)}</td>
+    <td><input type="number" step="0.01" class="in-cantidad" placeholder="${anterior === null ? '' : 'ej. ' + escapeHtml(anterior)}"></td>
     <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
   tr.querySelector('.btn-quitar').addEventListener('click', () => tr.remove());
   document.getElementById('filas').appendChild(tr);
 }
 
+// Convierte lo que venga en r.fecha (string "yyyy-MM-dd" o fecha/hora ISO completa, según cómo
+// Sheets haya guardado la celda) a solo la parte de fecha, para poder comparar y agrupar por día.
+function fechaSolo_(valor) {
+  if (!valor) return '';
+  const texto = String(valor);
+  if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
+  const d = new Date(valor);
+  return isNaN(d) ? texto : d.toISOString().slice(0, 10);
+}
+
+// Precarga la tabla con los productos del ÚLTIMO conteo guardado para esta sede + punto de
+// conteo, mostrando esa cantidad anterior como referencia y dejando la casilla de hoy vacía —
+// así el personal no tiene que volver a escribir/buscar cada producto desde cero cada vez.
+async function cargarConteoAnterior_() {
+  const sede = document.getElementById('sede').value;
+  const punto = document.getElementById('punto').value;
+  const info = document.getElementById('info-anterior');
+  document.getElementById('filas').innerHTML = '';
+  info.textContent = 'Cargando conteo anterior…';
+
+  const data = await llamar('conteo_listar', { sede });
+  if (!data.ok) {
+    info.textContent = '';
+    for (let i = 0; i < 4; i++) nuevaFila();
+    return;
+  }
+
+  const delPunto = data.data.filter(r => r.punto_conteo === punto);
+  if (!delPunto.length) {
+    info.textContent = 'Sin conteos previos para este punto todavía — agrega los productos manualmente.';
+    for (let i = 0; i < 4; i++) nuevaFila();
+    return;
+  }
+
+  const fechaMax = delPunto.reduce((max, r) => {
+    const f = fechaSolo_(r.fecha);
+    return f > max ? f : max;
+  }, '');
+
+  const porProducto = {};
+  delPunto
+    .filter(r => fechaSolo_(r.fecha) === fechaMax)
+    .forEach(r => { porProducto[r.producto] = r; });
+
+  const productos = Object.values(porProducto).sort((a, b) => a.producto.localeCompare(b.producto));
+  info.textContent = `Productos del último conteo de este punto (${fechaMax}) — actualiza la cantidad de hoy, quita lo que no aplique o agrega productos nuevos.`;
+  productos.forEach(r => nuevaFila(r.producto, r.unidad, r.cantidad));
+}
+
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
-for (let i = 0; i < 4; i++) nuevaFila();
+document.getElementById('sede').addEventListener('change', cargarConteoAnterior_);
+document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
+cargarConteoAnterior_();
 
 document.getElementById('btn-guardar').addEventListener('click', async () => {
   const fecha = document.getElementById('fecha').value;

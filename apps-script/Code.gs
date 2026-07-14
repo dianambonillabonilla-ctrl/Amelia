@@ -49,7 +49,7 @@ function sheet_(name) {
 function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'],
-    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'subcategoria', 'unidad_base', 'tipo', 'notas'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas'],
     Recetas: ['producto', 'ingrediente', 'cantidad', 'unidad', 'fuente', 'umbral_alerta'],
     Conteos_Manuales: ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'],
     Movimientos_FUDO: ['fecha', 'tipo', 'evento', 'nombre', 'stock_anterior', 'stock_actual', 'diferencia', 'usuario', 'costo', 'importado_por', 'importado_en'],
