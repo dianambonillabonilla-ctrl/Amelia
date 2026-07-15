@@ -1,8 +1,10 @@
 /**
- * MIGRACIÓN DE Recetas: corrige los valores con el punto decimal perdido, arregla el nombre mal
- * codificado de "Falafel (adición)", separa el choque de nombres entre la porción servida y el
- * insumo a granel ("Cebollita de Amelia" / "Reducción Balsámica"), y agrega toda la capa de
- * producción (materia prima -> insumo preparado) que hoy falta en la hoja.
+ * MIGRACIÓN DE Recetas: corrige celdas de `cantidad`/`rendimiento_producto` que quedaron guardadas
+ * como TEXTO en vez de número (típico cuando alguien teclea "1.366561" con punto en un Sheets con
+ * configuración regional de Colombia: la hoja no lo reconoce como número y lo deja como texto sin
+ * avisar), arregla el nombre mal codificado de "Falafel (adición)", separa el choque de nombres
+ * entre la porción servida y el insumo a granel ("Cebollita de Amelia" / "Reducción Balsámica"), y
+ * agrega toda la capa de producción (materia prima -> insumo preparado) que hoy falta en la hoja.
  *
  * Los multiplicadores de NIVEL 1 (materia prima -> preparado) y NIVEL 1.5 (preparado -> porción
  * lista) vienen de "recetas_actualizadas_costilla_panceta_falafel_papas.csv" (fuente: fórmulas de
@@ -52,7 +54,7 @@ function migrarRecetasProduccion_() {
   headers.forEach(function (h, i) { colIdx[h] = i; });
   let data = sh.getDataRange().getValues();
 
-  const resumen = { correcciones: [], renombrados: [], filas_eliminadas: [], tipos_corregidos: [], filas_nuevas: [], filas_que_ya_existian: [] };
+  const resumen = { celdas_texto_corregidas: [], correcciones: [], renombrados: [], filas_eliminadas: [], tipos_corregidos: [], filas_nuevas: [], filas_que_ya_existian: [] };
 
   function norm_(s) {
     return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
@@ -66,6 +68,45 @@ function migrarRecetasProduccion_() {
     }
     return -1;
   }
+
+  /**
+   * Convierte un valor de celda a número real, sin importar si quedó guardado como texto con
+   * punto decimal (ej. escrito a mano copiando de Excel) o con coma decimal + puntos de miles
+   * (formato Colombia). Si ya es un número nativo de Sheets, lo devuelve tal cual. Devuelve null
+   * si no se puede interpretar como número (para no dañar texto que no era un valor numérico).
+   */
+  function aNumero_(valor) {
+    if (typeof valor === 'number') return valor;
+    if (valor === '' || valor === null || valor === undefined) return null;
+    let s = String(valor).trim();
+    if (s.indexOf(',') !== -1 && s.indexOf('.') !== -1) {
+      s = s.replace(/\./g, '').replace(',', '.'); // "1.234,56" -> "1234.56"
+    } else if (s.indexOf(',') !== -1) {
+      s = s.replace(',', '.'); // "1,366561" -> "1.366561"
+    }
+    const n = parseFloat(s);
+    return isFinite(n) && String(n) !== 'NaN' ? n : null;
+  }
+
+  // 0) Sheets, en configuración regional de Colombia, no reconoce como número una celda tecleada
+  // a mano con punto decimal (ej. alguien copiando "1.366561" desde Excel) — la guarda como texto
+  // plano, alineado a la izquierda, y cualquier fórmula nativa de Sheets que la referencie falla o
+  // la trata como 0. Este paso recorre TODAS las celdas de `cantidad` y `rendimiento_producto` de
+  // la hoja, detecta las que quedaron como texto (con punto o con coma) y las reescribe como
+  // número nativo — así Sheets las reconoce y las vuelve a mostrar en su formato de coma
+  // automáticamente, sin que haga falta cambiar el valor real que representan.
+  ['cantidad', 'rendimiento_producto'].forEach(function (col) {
+    if (colIdx[col] === undefined) return;
+    for (let r = 1; r < data.length; r++) {
+      const crudo = data[r][colIdx[col]];
+      if (typeof crudo !== 'string' || crudo.trim() === '') continue;
+      const numero = aNumero_(crudo);
+      if (numero === null) continue;
+      sh.getRange(r + 1, colIdx[col] + 1).setValue(numero);
+      data[r][colIdx[col]] = numero;
+      resumen.celdas_texto_corregidas.push({ producto: data[r][colIdx.producto], ingrediente: data[r][colIdx.ingrediente], columna: col, texto_original: crudo, numero: numero });
+    }
+  });
 
   // 1) Corrige las cantidades que perdieron el punto decimal al capturarse. Solo queda esta: las
   // demás correcciones de este mismo tipo (consumo directo de Costilla Preparada y de Panceta
