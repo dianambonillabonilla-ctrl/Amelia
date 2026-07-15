@@ -36,7 +36,7 @@ function produccionListar_(fecha, sede) {
 }
 
 /**
- * Total producido de un ítem en una fecha, sumando todas las sedes (o solo una si se indica).
+ * Total producido de un ítem en una fecha, en unidad base (g/ml/u).
  * Agrupa por claveProducto_ (Catalogo.gs) para que coincida con cómo se agrupan los conteos y
  * las recetas, sin importar con qué mayúsculas/tildes se haya escrito el ítem cada vez.
  */
@@ -45,10 +45,10 @@ function produccionTotalPorItem_(fecha, sede, indice) {
   const rows = produccionListar_(fecha, sede);
   const totales = {};
   rows.forEach(function (r) {
-    const unidadEsGramos = String(r.unidad).toLowerCase() === 'g';
-    const cantidadKg = unidadEsGramos ? Number(r.cantidad) / 1000 : Number(r.cantidad);
+    const base = aUnidadBase_(r.cantidad, r.unidad);
     const clave = claveProducto_(r.item, indice);
-    totales[clave] = (totales[clave] || 0) + cantidadKg;
+    if (!totales[clave]) totales[clave] = { cantidad: 0, unidad: base.unidad };
+    if (totales[clave].unidad === base.unidad) totales[clave].cantidad += base.cantidad;
   });
   return totales;
 }

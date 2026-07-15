@@ -14,6 +14,7 @@
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
+      <a href="recetas.html">Recetas</a>
       <a href="catalogo.html">Registrar producto</a>
       <a href="traslados.html">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
@@ -52,7 +53,7 @@
         </div>
       </div>
       <div class="grid grid-3">
-        <div class="campo"><label>Contraseña inicial</label><input type="password" id="nuevo-password" placeholder="cambiar123 si se deja vacío"></div>
+        <div class="campo"><label>Contraseña inicial</label><input type="password" id="nuevo-password" minlength="8" placeholder="mínimo 8 caracteres"></div>
         <div class="campo"><label>Correo (para alertas de stock bajo)</label><input type="email" id="nuevo-email" placeholder="opcional, solo Administrador/Encargado reciben alertas"></div>
       </div>
       <button class="btn dorado" id="btn-crear">Crear usuario</button>
@@ -118,7 +119,7 @@ document.getElementById('btn-crear').addEventListener('click', async () => {
     password: document.getElementById('nuevo-password').value,
     email: document.getElementById('nuevo-email').value.trim()
   };
-  if (!item.nombre || !item.usuario) { alert('Nombre y usuario de acceso son obligatorios.'); return; }
+  if (!item.nombre || !item.usuario || item.password.length < 8) { alert('Nombre, usuario y una contraseña de mínimo 8 caracteres son obligatorios.'); return; }
   const data = await llamar('usuarios_guardar', { item });
   if (data.ok) {
     avisarGuardado('Usuario creado.');

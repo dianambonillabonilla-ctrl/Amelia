@@ -15,6 +15,7 @@
       <a href="dashboard.html" class="activo">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
+      <a href="recetas.html">Recetas</a>
       <a href="catalogo.html">Registrar producto</a>
       <a href="traslados.html">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
@@ -39,6 +40,9 @@
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <h2 style="margin:0">¿Para cuántos platos alcanza lo que tengo?</h2>
         <div style="display:flex; gap:10px; align-items:center;">
+          <select id="sede-corte" style="width:auto">
+            <option>San Antonio</option><option>Capri</option><option>Ambas</option>
+          </select>
           <input type="date" id="fecha-corte" style="width:auto">
           <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
         </div>
@@ -79,8 +83,9 @@ let grafico = null;
 
 async function cargar() {
   const fecha = document.getElementById('fecha-corte').value;
+  const sede = document.getElementById('sede-corte').value;
   const [data, catalogoData] = await Promise.all([
-    llamar('disponible_hoy', { fecha }),
+    llamar('disponible_hoy', { fecha, sede }),
     llamar('catalogo_listar')
   ]);
   if (!data.ok) { alert(data.error); return; }
@@ -209,6 +214,7 @@ async function cargarTendencia() {
 
 document.getElementById('tendencia-ingrediente').addEventListener('change', cargarTendencia);
 document.getElementById('btn-actualizar').addEventListener('click', cargar);
+document.getElementById('sede-corte').addEventListener('change', cargar);
 cargar();
 </script>
 </body>
