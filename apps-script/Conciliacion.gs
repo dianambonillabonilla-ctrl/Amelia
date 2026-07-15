@@ -14,9 +14,24 @@
 function calcularConciliacion_(fecha) {
   return {
     fecha: fecha,
+    ventas: resumirVentasFudo_(fecha),
     bebidas: conciliarBebidas_(fecha),
     comida: conciliarComidaPorSede_(fecha)
   };
+}
+
+function resumirVentasFudo_(fecha) {
+  const grupos = {};
+  leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+    return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true;
+  }).forEach(function (v) {
+    const clave = [v.sede || 'Sin identificar', v.categoria || 'Sin categoría', v.producto].join('|');
+    if (!grupos[clave]) grupos[clave] = { sede: v.sede || 'Sin identificar', categoria: v.categoria || 'Sin categoría', producto: v.producto, cantidad: 0 };
+    grupos[clave].cantidad += Number(v.cantidad) || 0;
+  });
+  return Object.keys(grupos).map(function (k) { return grupos[k]; }).sort(function (a, b) {
+    return String(a.sede).localeCompare(String(b.sede)) || String(a.categoria).localeCompare(String(b.categoria)) || String(a.producto).localeCompare(String(b.producto));
+  });
 }
 
 // --- BEBIDAS: contra FUDO ----------------------------------------------------
@@ -37,6 +52,10 @@ function conciliarBebidas_(fecha) {
     const consumoVenta = movsItem
       .filter(function (m) { return eventosVenta.indexOf(m.evento) !== -1; })
       .reduce(function (acc, m) { return acc - Number(m.diferencia || 0); }, 0);
+    function consumoSede_(sede) {
+      return movsItem.filter(function (m) { return m.sede === sede && eventosVenta.indexOf(m.evento) !== -1; })
+        .reduce(function (acc, m) { return acc - Number(m.diferencia || 0); }, 0);
+    }
 
     const claveItem = claveProducto_(item.nombre_estandar, indice);
     const sa = conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'San Antonio'; });
@@ -50,6 +69,9 @@ function conciliarBebidas_(fecha) {
       suma_manual: suma,
       fudo_cierre: cierre,
       diferencia_vs_suma: (cierre !== null) ? (cierre - suma) : null,
+      consumo_fudo_total: consumoVenta,
+      consumo_fudo_sa: consumoSede_('San Antonio'),
+      consumo_fudo_capri: consumoSede_('Capri'),
       n_movimientos_fudo: movsItem.length
     };
   });
@@ -61,38 +83,45 @@ function conciliarComidaPorSede_(fecha) {
   const ventas = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
     .filter(function (v) { return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true; });
 
-  const recetaMap = construirRecetaMap_(leerTabla_(SHEET_NAMES.RECETAS), indice);
-
   const sedes = ['San Antonio', 'Capri'];
   const resultado = {};
 
   sedes.forEach(function (sede) {
+    const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
     const ventasSede = ventas.filter(function (v) { return v.sede === sede; });
     const consumoEsperado = {};
     ventasSede.forEach(function (v) {
-      const claveProd = claveProducto_(v.producto, indice);
+      const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
       explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
     });
 
     const cambioFisico = calcularCambioFisico_(fecha, sede, indice);
     const producido = produccionTotalPorItem_(fecha, sede, indice);
+    const traslados = trasladosNetosPorItem_(fecha, sede, indice);
 
-    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)));
+    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)).concat(Object.keys(traslados)));
     resultado[sede] = Array.from(ingredientes).map(function (claveIng) {
       const nombreIng = (consumoEsperado[claveIng] && consumoEsperado[claveIng].nombre) ||
         (cambioFisico[claveIng] && cambioFisico[claveIng].nombre) || claveIng;
-      const esperado = (consumoEsperado[claveIng] ? consumoEsperado[claveIng].cantidad : 0) / 1000; // gramos -> kg
+      const esperado = consumoEsperado[claveIng] ? consumoEsperado[claveIng].cantidad : 0;
       const cambio = cambioFisico[claveIng] !== undefined ? cambioFisico[claveIng].cantidad : null;
-      const producidoIng = producido[claveIng] || 0;
+      const producidoIng = producido[claveIng] ? producido[claveIng].cantidad : 0;
+      const trasladoNeto = traslados[claveIng] ? traslados[claveIng].cantidad : 0;
+      const unidad = (consumoEsperado[claveIng] && consumoEsperado[claveIng].unidad) ||
+        (cambioFisico[claveIng] && cambioFisico[claveIng].unidad) ||
+        (producido[claveIng] && producido[claveIng].unidad) ||
+        (traslados[claveIng] && traslados[claveIng].unidad) || '';
       // implícito = lo que no explican ni las ventas (consumo esperado) ni la producción registrada.
       // Si nunca se registró producción para este ítem, producidoIng=0 y el cálculo queda igual que antes.
-      const implicito = cambio !== null ? (cambio + esperado - producidoIng) : null;
+      const implicito = cambio !== null ? (cambio + esperado - producidoIng - trasladoNeto) : null;
       return {
         ingrediente: nombreIng,
-        consumo_esperado_kg: Number(esperado.toFixed(3)),
-        cambio_fisico_kg: cambio !== null ? Number(cambio.toFixed(3)) : null,
-        producido_registrado_kg: producido[claveIng] !== undefined ? Number(producidoIng.toFixed(3)) : null,
-        implicito_kg: implicito !== null ? Number(implicito.toFixed(3)) : null
+        unidad: unidad,
+        consumo_esperado: Number(esperado.toFixed(3)),
+        cambio_fisico: cambio !== null ? Number(cambio.toFixed(3)) : null,
+        producido_registrado: producido[claveIng] !== undefined ? Number(producidoIng.toFixed(3)) : null,
+        traslado_neto: traslados[claveIng] !== undefined ? Number(trasladoNeto.toFixed(3)) : null,
+        implicito: implicito !== null ? Number(implicito.toFixed(3)) : null
       };
     });
   });
@@ -101,7 +130,7 @@ function conciliarComidaPorSede_(fecha) {
 }
 
 /**
- * cambio físico = conteo de HOY - conteo del día hábil anterior, para una sede, en kg.
+ * cambio físico = conteo de HOY - conteo del día anterior disponible, en unidad base (g/ml/u).
  * Requiere que Conteos_Manuales tenga al menos dos fechas consecutivas cargadas.
  */
 function calcularCambioFisico_(fecha, sede, indice) {
@@ -116,18 +145,38 @@ function calcularCambioFisico_(fecha, sede, indice) {
   const ayer = {};
   conteos.forEach(function (c) {
     const f = formatearFecha_(c.fecha);
-    const unidadEsGramos = String(c.unidad).toLowerCase() === 'g';
-    const cantidadKg = unidadEsGramos ? Number(c.cantidad) / 1000 : Number(c.cantidad);
+    const base = aUnidadBase_(c.cantidad, c.unidad);
     const clave = claveProducto_(c.producto, indice);
     if (f === fecha) {
-      hoy[clave] = { nombre: nombreCanonico_(c.producto, indice), cantidad: (hoy[clave] ? hoy[clave].cantidad : 0) + cantidadKg };
+      hoy[clave] = { nombre: nombreCanonico_(c.producto, indice), unidad: base.unidad,
+        cantidad: (hoy[clave] ? hoy[clave].cantidad : 0) + base.cantidad };
     }
-    if (f === fechaAnterior) ayer[clave] = (ayer[clave] || 0) + cantidadKg;
+    if (f === fechaAnterior) {
+      if (!ayer[clave]) ayer[clave] = { cantidad: 0, unidad: base.unidad };
+      ayer[clave].cantidad += base.cantidad;
+    }
   });
 
   const cambio = {};
-  Object.keys(hoy).forEach(function (clave) {
-    cambio[clave] = { nombre: hoy[clave].nombre, cantidad: hoy[clave].cantidad - (ayer[clave] || 0) };
+  const claves = new Set(Object.keys(hoy).concat(Object.keys(ayer)));
+  Array.from(claves).forEach(function (clave) {
+    const h = hoy[clave] || { nombre: clave, cantidad: 0, unidad: ayer[clave].unidad };
+    cambio[clave] = { nombre: h.nombre, unidad: h.unidad, cantidad: h.cantidad - (ayer[clave] ? ayer[clave].cantidad : 0) };
   });
   return cambio;
+}
+
+function trasladosNetosPorItem_(fecha, sede, indice) {
+  const totales = {};
+  leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
+    return formatearFecha_(t.fecha) === fecha && ['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1;
+  }).forEach(function (t) {
+    const base = aUnidadBase_(t.cantidad_recibida || t.cantidad_enviada, t.unidad);
+    const clave = claveProducto_(t.producto, indice);
+    const signo = t.sede_destino === sede ? 1 : (t.sede_origen === sede ? -1 : 0);
+    if (!signo) return;
+    if (!totales[clave]) totales[clave] = { cantidad: 0, unidad: base.unidad };
+    totales[clave].cantidad += signo * base.cantidad;
+  });
+  return totales;
 }

@@ -24,10 +24,10 @@
  * ingrediente para el sistema aunque se hayan escrito distinto en cada hoja.
  */
 
-function calcularDisponibleHoy_(fecha) {
+function calcularDisponibleHoy_(fecha, sede) {
   const indice = indiceCatalogo_();
-  const recetas = leerTabla_(SHEET_NAMES.RECETAS);
-  const stockContado = obtenerUltimoStockPorIngrediente_(fecha, indice);
+  const recetas = recetasVigentes_(fecha, sede);
+  const stockContado = obtenerUltimoStockPorIngrediente_(fecha, indice, sede);
   const recetaMap = construirRecetaMap_(recetas, indice);
   const memo = {};
 
@@ -65,6 +65,7 @@ function calcularDisponibleHoy_(fecha) {
 
   return {
     fecha: fecha || 'último conteo disponible',
+    sede: sede || 'Ambas',
     stock_ingredientes: stockContado,
     platos: resultado
   };
@@ -86,11 +87,19 @@ function construirRecetaMap_(recetas, indice) {
     if (!recetaMap[clave]) {
       recetaMap[clave] = { nombre: nombreCanonico_(r.producto, indice), tipo: (r.tipo || 'plato').toString().trim() || 'plato', lineas: [] };
     }
+    const entradaBase = aUnidadBase_(r.cantidad, r.unidad);
+    const salidaBase = r.rendimiento_producto !== '' && r.rendimiento_producto !== null && r.rendimiento_producto !== undefined
+      ? aUnidadBase_(r.rendimiento_producto, r.unidad_rendimiento || r.unidad)
+      : { cantidad: 1, unidad: 'u' };
     recetaMap[clave].lineas.push({
       ingrediente: r.ingrediente,
-      cantidad: Number(r.cantidad),
-      unidad: r.unidad,
-      rendimiento: Number(r.rendimiento_producto) || 1
+      cantidad: entradaBase.cantidad,
+      unidad: entradaBase.unidad,
+      rendimiento: salidaBase.cantidad || 1,
+      unidad_rendimiento: salidaBase.unidad,
+      controla_disponibilidad: !(r.controla_disponibilidad === false || normalizar_(r.controla_disponibilidad) === 'no' || normalizar_(r.controla_disponibilidad) === 'false'),
+      version: r.version || '',
+      fuente: r.fuente || ''
     });
   });
   return recetaMap;
@@ -120,6 +129,7 @@ function cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, me
     entrada.lineas.forEach(function (linea) {
       const ratio = linea.cantidad / linea.rendimiento;
       if (!(ratio > 0)) return;
+      if (!linea.controla_disponibilidad) return;
       const claveIng = claveProducto_(linea.ingrediente, indice);
       const det = cantidadDisponibleDetallada_(claveIng, recetaMap, stockContado, indice, memo, enCurso);
       const posible = det.disponible / ratio;
@@ -207,13 +217,15 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
   if (!entrada) return acumulado;
 
   entrada.lineas.forEach(function (linea) {
-    const cantidadTotal = cantidadBase * linea.cantidad;
+    const cantidadTotal = cantidadBase * (linea.cantidad / linea.rendimiento);
     const claveIngrediente = claveProducto_(linea.ingrediente, indice);
     const subEntrada = recetaMap[claveIngrediente];
     if (subEntrada && subEntrada.tipo !== 'produccion') {
       explotarReceta_(claveIngrediente, cantidadTotal, recetaMap, acumulado, indice, profundidad + 1);
     } else {
-      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0 };
+      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = {
+        nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0, unidad: linea.unidad
+      };
       acumulado[claveIngrediente].cantidad += cantidadTotal;
     }
   });
@@ -226,7 +238,7 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  * Agrupa por claveProducto_, así que dos conteos del mismo producto escritos con distinta
  * ortografía se suman como uno solo en vez de aparecer como dos ingredientes distintos.
  */
-function obtenerUltimoStockPorIngrediente_(fecha, indice) {
+function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   indice = indice || indiceCatalogo_();
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
   const porProducto = {};
@@ -234,10 +246,13 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice) {
   conteos.forEach(function (c) {
     const f = formatearFecha_(c.fecha);
     if (fecha && f > fecha) return;
+    if (sede && sede !== 'Ambas' && c.sede !== sede) return;
     const clave = claveProducto_(c.producto, indice);
     if (!porProducto[clave]) porProducto[clave] = { nombre: nombreCanonico_(c.producto, indice), fechas: {} };
-    if (!porProducto[clave].fechas[f]) porProducto[clave].fechas[f] = { cantidad: 0, unidad: c.unidad };
-    porProducto[clave].fechas[f].cantidad += Number(c.cantidad) || 0;
+    const base = aUnidadBase_(c.cantidad, c.unidad);
+    if (!porProducto[clave].fechas[f]) porProducto[clave].fechas[f] = { cantidad: 0, unidad: base.unidad };
+    if (porProducto[clave].fechas[f].unidad !== base.unidad) return;
+    porProducto[clave].fechas[f].cantidad += base.cantidad;
   });
 
   const resultado = {};

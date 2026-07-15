@@ -1,175 +1,202 @@
 /**
- * MIGRACIÓN DE Recetas: corrige los valores con el punto decimal perdido, arregla el nombre mal
- * codificado de "Falafel (adición)", separa el choque de nombres entre la porción servida y el
- * insumo a granel ("Cebollita de Amelia" / "Reducción Balsámica"), y agrega toda la capa de
- * producción (materia prima -> insumo preparado) que hoy falta en la hoja.
+ * MIGRACIÓN SEGURA DEL MODELO DE RECETAS.
  *
- * Se corre UNA vez desde la página Diagnóstico (acción `migrar_recetas_produccion`, solo
- * Administrador) o directo desde el editor de Apps Script. Es segura de repetir: busca cada fila
- * por producto+ingrediente antes de tocarla o agregarla, así que si ya se corrió antes no duplica
- * nada ni vuelve a pisar una corrección ya aplicada a mano.
+ * - crea un respaldo de la hoja antes del primer cambio;
+ * - corrige los decimales perdidos de la base entregada;
+ * - carga el estándar Amelia que fue verificado con los archivos históricos;
+ * - carga Wafflería y las recetas nuevas todavía no confirmadas como BORRADOR;
+ * - desactiva las líneas duplicadas de "Costilla Lista" que una migración anterior pudo agregar.
+ *
+ * Es idempotente: producto + ingrediente + versión identifican una línea.
  */
 function migrarRecetasProduccion_() {
+  configurarHojas();
+  respaldarHojaRecetas_();
+
   const sh = sheet_(SHEET_NAMES.RECETAS);
-  let headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-
-  ['rendimiento_producto', 'unidad_rendimiento', 'tipo'].forEach(function (col) {
-    if (headers.indexOf(col) === -1) {
-      sh.getRange(1, sh.getLastColumn() + 1).setValue(col);
-      headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-    }
-  });
-
-  const colIdx = {};
-  headers.forEach(function (h, i) { colIdx[h] = i; });
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   let data = sh.getDataRange().getValues();
+  const col = {};
+  headers.forEach(function (h, i) { col[h] = i; });
+  const resumen = { corregidas: 0, creadas: 0, actualizadas: 0, desactivadas: 0, borradores: 0, respaldo: true };
 
-  const resumen = { correcciones: [], renombrados: [], filas_nuevas: [], filas_que_ya_existian: [] };
-
-  function norm_(s) {
-    return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
-  }
-
-  function buscarFila_(producto, ingrediente) {
+  function clave_(s) { return normalizar_(s).replace(/ã³/g, 'o'); }
+  function buscar_(producto, ingrediente, version) {
     for (let r = 1; r < data.length; r++) {
-      if (norm_(data[r][colIdx.producto]) === norm_(producto) && norm_(data[r][colIdx.ingrediente]) === norm_(ingrediente)) {
-        return r;
-      }
+      if (clave_(data[r][col.producto]) !== clave_(producto)) continue;
+      if (clave_(data[r][col.ingrediente]) !== clave_(ingrediente)) continue;
+      const v = data[r][col.version];
+      if (!version || !v || String(v) === String(version)) return r;
     }
     return -1;
   }
 
-  // 1) Corrige las cantidades que perdieron el punto decimal al capturarse.
-  const correcciones = [
-    ['Chanchostilla', 'Costilla Preparada', 115.3846154],
-    ['Chanchostilla', 'Panceta Pre-ahumada', 123.2876712],
-    ['Chanchalafel', 'Panceta Pre-ahumada', 123.2876712],
-    ['Costilla', 'Costilla Preparada', 230.7692308],
-    ['Panceta', 'Panceta Pre-ahumada', 232.8767123],
-    ['Costilafel', 'Costilla Preparada', 115.3846154],
-    ['Supremo', 'Costilla Preparada', 89.74358974],
-    ['Supremo', 'Panceta Pre-ahumada', 82.19178082],
-    ['Panceta (adicion)', 'Panceta Pre-ahumada', 136.9863014],
-    ['Papas Listas', 'Papas Pre-fritas', 1.754386]
-  ];
-  correcciones.forEach(function (c) {
-    const r = buscarFila_(c[0], c[1]);
-    if (r === -1) { resumen.correcciones.push({ producto: c[0], ingrediente: c[1], estado: 'no encontrada, revisar a mano' }); return; }
-    const anterior = data[r][colIdx.cantidad];
-    if (Number(anterior) === c[2]) { resumen.correcciones.push({ producto: c[0], ingrediente: c[1], estado: 'ya estaba correcta' }); return; }
-    sh.getRange(r + 1, colIdx.cantidad + 1).setValue(c[2]);
-    data[r][colIdx.cantidad] = c[2];
-    resumen.correcciones.push({ producto: c[0], ingrediente: c[1], antes: anterior, despues: c[2] });
-  });
+  function escribirFila_(r, obj) {
+    headers.forEach(function (h, c) {
+      if (obj[h] !== undefined) {
+        sh.getRange(r + 1, c + 1).setValue(obj[h]);
+        data[r][c] = obj[h];
+      }
+    });
+  }
 
-  // 2) Nombre mal codificado (mojibake típico de copiar/pegar con codificación equivocada).
+  function upsert_(obj) {
+    obj = Object.assign({
+      id: Utilities.getUuid(), rendimiento_producto: '', unidad_rendimiento: '', tipo: 'plato',
+      fuente: 'Estandarización Amelia histórica', version: 'amelia_historica_validada', sede: 'Ambas',
+      vigente_desde: '', vigente_hasta: '', estado: 'activo', controla_disponibilidad: true, notas: ''
+    }, obj);
+    const r = buscar_(obj.producto, obj.ingrediente, obj.version);
+    if (r !== -1) {
+      if (!data[r][col.id]) obj.id = Utilities.getUuid(); else obj.id = data[r][col.id];
+      escribirFila_(r, obj);
+      resumen.actualizadas++;
+      if (obj.estado === 'borrador') resumen.borradores++;
+      return;
+    }
+    const fila = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+    sh.appendRow(fila);
+    data.push(fila);
+    resumen.creadas++;
+    if (obj.estado === 'borrador') resumen.borradores++;
+  }
+
+  // Si existe el texto dañado, se corrige antes de buscar/upsertar.
   for (let r = 1; r < data.length; r++) {
-    const p = String(data[r][colIdx.producto]);
-    if (p.indexOf('adici') !== -1 && p.indexOf('Ã') !== -1) {
-      sh.getRange(r + 1, colIdx.producto + 1).setValue('Falafel (adición)');
-      resumen.renombrados.push({ antes: p, despues: 'Falafel (adición)' });
-      data[r][colIdx.producto] = 'Falafel (adición)';
+    if (String(data[r][col.producto] || '').indexOf('Falafel (adiciÃ') === 0) {
+      escribirFila_(r, { producto: 'Falafel (adición)' });
+      resumen.corregidas++;
+    }
+    const p = clave_(data[r][col.producto]);
+    const i = clave_(data[r][col.ingrediente]);
+    if (i === 'falafel crudo') {
+      escribirFila_(r, { ingrediente: 'Falafel' });
+      resumen.corregidas++;
+    }
+    if (p === 'falafel' && (i === 'falafel crudo' || i === 'falafel')) {
+      escribirFila_(r, { producto: 'Falafel (plato)', ingrediente: 'Falafel' });
+      resumen.corregidas++;
+    }
+    if (p === 'cebollita de amelia' && i === 'cebollita de amelia') {
+      escribirFila_(r, { producto: 'Cebollita de Amelia (porción)' });
+      resumen.corregidas++;
+    }
+    if (p === 'reduccion balsamica' && i === 'reduccion balsamica') {
+      escribirFila_(r, { producto: 'Reducción Balsámica (porción)', ingrediente: 'Reducción Balsámica' });
+      resumen.corregidas++;
+    }
+    if (p === 'papas listas' && (i === 'sal' || i === 'sal marina')) {
+      escribirFila_(r, { ingrediente: 'Sal Marina Molida' });
+      resumen.corregidas++;
+    }
+    if (p === 'papas listas' && i === 'perejil') {
+      escribirFila_(r, { ingrediente: 'Perejil Picado' });
+      resumen.corregidas++;
+    }
+    if (p === 'costilla lista') {
+      escribirFila_(r, { tipo: 'produccion' });
+      resumen.corregidas++;
     }
   }
 
-  // 3) Choque de nombres: la porción servida y el insumo a granel se llamaban igual. Se renombra
-  // solo la fila de la porción servida (la que ya existía en Recetas); el insumo a granel se deja
-  // con su nombre original porque es el que ya se cuenta físicamente en Conteos_Manuales.
-  [
-    ['Cebollita de Amelia', 'Cebollita de Amelia', 'Cebollita de Amelia (porción)'],
-    ['Reducción Balsámica', 'Reduccion Balsámica', 'Reducción Balsámica (porción)']
-  ].forEach(function (rc) {
-    const r = buscarFila_(rc[0], rc[1]);
-    if (r === -1) return;
-    if (String(data[r][colIdx.producto]).trim() === rc[2]) { resumen.renombrados.push({ producto: rc[2], estado: 'ya estaba renombrado' }); return; }
-    sh.getRange(r + 1, colIdx.producto + 1).setValue(rc[2]);
-    resumen.renombrados.push({ antes: rc[0], despues: rc[2] });
-    data[r][colIdx.producto] = rc[2];
-  });
-
-  // 4) Filas nuevas: capa de producción (materia prima -> preparado) sacada de "Guia Produccion",
-  // más las líneas de "Costilla Lista" y los productos de combo que faltaban de "Estandarización
-  // Productos". No duplica si el producto+ingrediente ya existe en la hoja.
-  //
-  // OJO: se asume que "Falafel crudo" (usado como ingrediente en Chanchalafel/Costilafel/Falafel)
-  // y "Falafel" (el que tiene receta de producción en Guia Produccion) son el mismo insumo — por
-  // eso la fila de producción se agrega con el nombre "Falafel crudo" para que conecten. Si en
-  // realidad son dos cosas distintas, dímelo y lo separo.
-  const filasNuevas = [
-    ['Chanchostilla', 'Costilla Lista', 90, 'g', '', '', 'plato'],
-    ['Costilafel', 'Costilla Lista', 90, 'g', '', '', 'plato'],
-    ['Costilla', 'Costilla Lista', 180, 'g', '', '', 'plato'],
-    ['Supremo', 'Costilla Lista', 70, 'g', '', '', 'plato'],
-    ['Costilla Lista', 'Costilla preparada', 1.282051282, 'g', '', '', 'plato'],
-    ['Costilla Lista', 'Reduccion Balsámica', 0.53, 'g', '', '', 'plato'],
-    ['Combo Libra', 'Aioli', 60, 'g', '', '', 'plato'],
-    ['Combo Libra', 'Cebollita de Amelia', 60, 'g', '', '', 'plato'],
-    ['Combo Libra', 'Papas Listas', 200, 'g', '', '', 'plato'],
-    ['Combo Libra', 'Reduccion Balsámica', 70, 'g', '', '', 'plato'],
-    ['Combo Media Libra', 'Aioli', 30, 'g', '', '', 'plato'],
-    ['Combo Media Libra', 'Cebollita de Amelia', 30, 'g', '', '', 'plato'],
-    ['Combo Media Libra', 'Papas Listas', 100, 'g', '', '', 'plato'],
-    ['Combo Media Libra', 'Reduccion Balsámica', 35, 'g', '', '', 'plato'],
-    ['Costilla de Combo', 'Costilla Lista', 1, 'g', '', '', 'plato'],
-    ['Costilla (adición)', 'Costilla Lista', 110, 'g', '', '', 'plato'],
-    ['Falafel de Combo', 'Falafel crudo', 1.136363636, 'g', '', '', 'plato'],
-    ['Michelada', 'Zumo Limón', 2, 'CONFIRMAR-UNIDAD', '', '', 'plato'],
-    ['Michelada', 'Sal marina molida', 1, 'CONFIRMAR-UNIDAD', '', '', 'plato'],
-    ['Zumo Limon', 'Limon Tahiti', 3457.814661, 'g', 1000, 'g', 'produccion'],
-    ['Ajo preparado', 'Aceite Vegetal', 1000, 'g', 1577, 'g', 'produccion'],
-    ['Ajo preparado', 'Ajo en Cabezas', 1000, 'g', 1577, 'g', 'produccion'],
-    ['Cebolla en Pluma (sin limon)', 'Cebolla Roja', 1480, 'g', 1000, 'g', 'produccion'],
-    ['Salsa Costilla Nueva', 'Azucar Morena', 4533.333333, 'g', 18157.33333, 'g', 'produccion'],
-    ['Salsa Costilla Nueva', 'Miel Maple', 3640, 'g', 18157.33333, 'g', 'produccion'],
-    ['Salsa Costilla Nueva', 'Salsa Soya', 4453.333333, 'g', 18157.33333, 'g', 'produccion'],
-    ['Salsa Costilla Nueva', 'Vinagre Balsamico', 4320, 'g', 18157.33333, 'g', 'produccion'],
-    ['Salsa Costilla Nueva', 'Ajo Preparado', 650.6666667, 'g', 18157.33333, 'g', 'produccion'],
-    ['Salsa Costilla Nueva', 'Especias Salsa Costilla', 560, 'g', 18157.33333, 'g', 'produccion'],
-    ['Reduccion Balsámica', 'Salsa Costilla Nueva', 6809, 'g', 9065, 'g', 'produccion'],
-    ['Falafel crudo', 'Cilantro', 849, 'g', 5660, 'g', 'produccion'],
-    ['Falafel crudo', 'Perejil', 849, 'g', 5660, 'g', 'produccion'],
-    ['Falafel crudo', 'Cebolla Corazones', 979.3799567, 'g', 5660, 'g', 'produccion'],
-    ['Falafel crudo', 'Ajo Preparado', 163.2299928, 'g', 5660, 'g', 'produccion'],
-    ['Falafel crudo', 'Garbanzo', 2000, 'g', 5660, 'g', 'produccion'],
-    ['Falafel crudo', 'Zumo Limon', 32.64599856, 'g', 5660, 'g', 'produccion'],
-    ['Falafel crudo', 'Especias Falafel', 273.4102379, 'g', 5660, 'g', 'produccion'],
-    ['Panceta de Combo', 'Panceta pre-ahumada', 1.369863014, 'g', '', '', 'plato'],
-    ['Costilla Limpia Marinada (con polvo)', 'Costilla San Luis Entera', 23000, 'g', 23615.80361, 'g', 'produccion'],
-    ['Costilla Limpia Marinada (con polvo)', 'Sal Marina Gruesa', 268.2009973, 'g', 23615.80361, 'g', 'produccion'],
-    ['Costilla Limpia Marinada (con polvo)', 'Especias de Marinar Costilla', 347.6026084, 'g', 23615.80361, 'g', 'produccion'],
-    ['Costilla Preparada', 'Costilla Limpia Marinada (con polvo)', 7250, 'g', 5305.288301, 'g', 'produccion'],
-    ['Panceta Pre-ahumada', 'Panceta Entera', 31800, 'g', 22676.42857, 'g', 'produccion'],
-    ['Panceta Pre-ahumada', 'Sal Marina Gruesa', 445.2, 'g', 22676.42857, 'g', 'produccion'],
-    ['Aioli', 'Aceite de Oliva', 1000, 'g', 1303, 'g', 'produccion'],
-    ['Aioli', 'Huevos A', 4, 'unidad', 1303, 'g', 'produccion'],
-    ['Aioli', 'Sal Marina Molida', 10, 'g', 1303, 'g', 'produccion'],
-    ['Aioli', 'Ajo preparado', 115, 'g', 1303, 'g', 'produccion'],
-    ['Aioli', 'Zumo Limon', 37, 'g', 1303, 'g', 'produccion'],
-    ['Cebollita de Amelia', 'Cebolla en Pluma (sin limon)', 801.8252934, 'g', 1000, 'g', 'produccion'],
-    ['Cebollita de Amelia', 'Zumo Limon', 198.8265971, 'g', 1000, 'g', 'produccion'],
-    ['Cebollita de Amelia', 'Sal Marina Molida', 5, 'g', 1000, 'g', 'produccion'],
-    ['Papas pre-fritas', 'Papa Capira', 1519.920319, 'g', 1000, 'g', 'produccion'],
-    ['Papas pre-fritas', 'Vinagre Blanco', 12.11155378, 'g', 1000, 'g', 'produccion'],
-    ['Papas pre-fritas', 'Agua', 834.8605578, 'g', 1000, 'g', 'produccion']
+  const platos = [
+    ['Chanchostilla', 'Costilla Preparada', 115.3846154, 'g'],
+    ['Chanchostilla', 'Panceta Pre-Ahumada', 123.2876712, 'g'],
+    ['Chanchostilla', 'Papas Listas', 100, 'g'],
+    ['Supremo', 'Costilla Preparada', 89.74358974, 'g'],
+    ['Supremo', 'Panceta Pre-Ahumada', 82.19178082, 'g'],
+    ['Supremo', 'Falafel', 68, 'g'],
+    ['Supremo', 'Papas Listas', 100, 'g'],
+    ['Costilla', 'Costilla Preparada', 230.7692308, 'g'],
+    ['Costilla', 'Papas Listas', 100, 'g'],
+    ['Panceta', 'Panceta Pre-Ahumada', 232.8767123, 'g'],
+    ['Panceta', 'Papas Listas', 100, 'g'],
+    ['Costilafel', 'Costilla Preparada', 115.3846154, 'g'],
+    ['Costilafel', 'Falafel', 85, 'g'],
+    ['Costilafel', 'Papas Listas', 100, 'g'],
+    ['Chanchalafel', 'Panceta Pre-Ahumada', 123.2876712, 'g'],
+    ['Chanchalafel', 'Falafel', 102, 'g'],
+    ['Chanchalafel', 'Papas Listas', 100, 'g'],
+    ['Falafel (plato)', 'Falafel', 187, 'g'],
+    ['Falafel (plato)', 'Papas Listas', 100, 'g'],
+    ['Panceta (adición)', 'Panceta Pre-Ahumada', 136.9863014, 'g'],
+    ['Falafel (adición)', 'Falafel', 119, 'g'],
+    ['Aioli (adición)', 'Aioli', 35, 'g'],
+    ['Cebollita de Amelia (porción)', 'Cebollita de Amelia', 30, 'g'],
+    ['Reducción Balsámica (porción)', 'Reducción Balsámica', 35, 'g'],
+    ['Papas (adición)', 'Papas Listas', 100, 'g'],
+    ['Combo Libra', 'Aioli', 60, 'g'],
+    ['Combo Libra', 'Cebollita de Amelia', 60, 'g'],
+    ['Combo Libra', 'Papas Listas', 200, 'g'],
+    ['Combo Libra', 'Reducción Balsámica', 70, 'g'],
+    ['Combo Media Libra', 'Aioli', 30, 'g'],
+    ['Combo Media Libra', 'Cebollita de Amelia', 30, 'g'],
+    ['Combo Media Libra', 'Papas Listas', 100, 'g'],
+    ['Combo Media Libra', 'Reducción Balsámica', 35, 'g']
   ];
-
-  filasNuevas.forEach(function (f) {
-    if (buscarFila_(f[0], f[1]) !== -1) { resumen.filas_que_ya_existian.push(f[0] + ' <- ' + f[1]); return; }
-    const fila = headers.map(function (h) {
-      if (h === 'producto') return f[0];
-      if (h === 'ingrediente') return f[1];
-      if (h === 'cantidad') return f[2];
-      if (h === 'unidad') return f[3];
-      if (h === 'rendimiento_producto') return f[4];
-      if (h === 'unidad_rendimiento') return f[5];
-      if (h === 'tipo') return f[6];
-      return '';
-    });
-    sh.appendRow(fila);
-    resumen.filas_nuevas.push(f[0] + ' <- ' + f[1]);
-    data.push(fila); // así una fila nueva no se vuelve a agregar si aparece dos veces en la lista
+  platos.forEach(function (r) {
+    upsert_({ producto: r[0], ingrediente: r[1], cantidad: r[2], unidad: r[3] });
   });
+
+  // Preparación validada: para obtener 1 g de Papas Listas se consumen estos gramos.
+  [
+    ['Papas Pre-Fritas', 1.754386, true],
+    ['Ajo Preparado', 0.02, false],
+    ['Sal Marina Molida', 0.01, false],
+    ['Perejil Picado', 0.02, false]
+  ].forEach(function (r) {
+    upsert_({ producto: 'Papas Listas', ingrediente: r[0], cantidad: r[1], unidad: 'g',
+      rendimiento_producto: 1, unidad_rendimiento: 'g', tipo: 'produccion', controla_disponibilidad: r[2],
+      notas: r[2] ? 'Insumo principal que limita el rendimiento.' : 'Se descuenta en el consumo teórico, pero no bloquea disponibilidad si no se cuenta a diario.' });
+  });
+
+  // La Wafflería: 15 g por bolita, 8 bolitas por Wafflebonitos y 35 g por porción de salsa.
+  upsert_({ producto: 'Bolita de pandebono', ingrediente: 'Mezcla de pandebono', cantidad: 15, unidad: 'g',
+    rendimiento_producto: 1, unidad_rendimiento: 'unidad', tipo: 'produccion',
+    fuente: 'Recetario de la Wafflería', version: 'waffleria_validada',
+    notas: 'Lote observado: 3.800 g = 253 bolitas y sobran 5 g.' });
+  upsert_({ producto: 'Wafflebonitos', ingrediente: 'Bolita de pandebono', cantidad: 8, unidad: 'unidad',
+    fuente: 'Recetario de la Wafflería', version: 'waffleria_validada',
+    notas: '253 bolitas = 31 platos y sobran 5 bolitas.' });
+  upsert_({ producto: 'Porción salsa pie de limón', ingrediente: 'Salsa de pie de limón', cantidad: 35, unidad: 'g',
+    fuente: 'Recetario de la Wafflería', version: 'waffleria_validada',
+    notas: 'Lote observado: 2.195 g = 62 porciones y sobran 25 g.' });
+
+  // Datos nuevos que todavía requieren confirmar si el peso es antes o después de cocción.
+  const borradores = [
+    ['Cono Costilla', 'Costilla Preparada', 130], ['Cono Costilla', 'Papas Listas', 120],
+    ['Cono Costilla', 'Cebollita de Amelia', 50],
+    ['Cono Chanchostilla', 'Costilla Preparada', 80], ['Cono Chanchostilla', 'Panceta Pre-Ahumada', 90],
+    ['Cono Chanchostilla', 'Papas Listas', 80], ['Cono Chanchostilla', 'Cebollita de Amelia', 50],
+    ['Cono Panceta', 'Panceta Pre-Ahumada', 130], ['Cono Panceta', 'Papas Listas', 80],
+    ['Cono Panceta', 'Cebollita de Amelia', 50]
+  ];
+  borradores.forEach(function (r) {
+    upsert_({ producto: r[0], ingrediente: r[1], cantidad: r[2], unidad: 'g', estado: 'borrador',
+      version: 'amelia_conos_por_confirmar', fuente: 'Actualización de estandarización',
+      notas: 'Confirmar si el peso corresponde al insumo contado o al producto ya servido.' });
+  });
+
+  // Una migración anterior agregó estas líneas además de las cantidades ya ajustadas por merma.
+  // Dejarlas activas contaría la costilla dos veces; se conservan para auditoría, pero inactivas.
+  [['Chanchostilla', 'Costilla Lista'], ['Costilafel', 'Costilla Lista'], ['Costilla', 'Costilla Lista'], ['Supremo', 'Costilla Lista']]
+    .forEach(function (x) {
+      const r = buscar_(x[0], x[1], null);
+      if (r !== -1 && normalizar_(data[r][col.estado] || 'activo') !== 'inactivo') {
+        escribirFila_(r, { estado: 'inactivo', notas: 'Desactivada: duplicaba el consumo de Costilla Preparada ya ajustado por rendimiento.' });
+        resumen.desactivadas++;
+      }
+    });
 
   SpreadsheetApp.flush();
   return { ok: true, resumen: resumen };
+}
+
+function respaldarHojaRecetas_() {
+  const ss = ss_();
+  const marca = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+  const prefijo = 'Respaldo_Recetas_';
+  const yaExiste = ss.getSheets().some(function (s) { return s.getName().indexOf(prefijo) === 0; });
+  if (yaExiste) return;
+  sheet_(SHEET_NAMES.RECETAS).copyTo(ss).setName(prefijo + marca);
 }

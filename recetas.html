@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Recetas</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a><a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a><a href="recetas.html" class="activo">Recetas</a>
+      <a href="catalogo.html">Registrar producto</a><a href="traslados.html">Traslados</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="conciliacion.html">Conciliación</a><a href="diagnostico.html">Diagnóstico</a>
+      <a href="usuarios.html">Usuarios</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="topbar"><h1>Recetas y rendimientos</h1><div id="barra-usuario"></div></div>
+
+    <div class="card" data-solo-rol="Administrador">
+      <h2>Nueva línea de receta</h2>
+      <p style="color:var(--grey);font-size:.85rem">Para un plato, escribe lo que consume una venta. Para producción, escribe la entrada del lote y cuánto producto terminado rinde.</p>
+      <div class="grid grid-3">
+        <label>Producto<input id="producto" placeholder="Chanchostilla"></label>
+        <label>Ingrediente<input id="ingrediente" placeholder="Costilla Preparada"></label>
+        <label>Cantidad de ingrediente<input id="cantidad" type="number" min="0" step="any"></label>
+        <label>Unidad<select id="unidad"><option>g</option><option>kg</option><option>ml</option><option>l</option><option>unidad</option></select></label>
+        <label>Tipo<select id="tipo"><option value="plato">Plato vendido</option><option value="produccion">Preparación intermedia</option></select></label>
+        <label>Estado<select id="estado"><option value="activo">Activo</option><option value="borrador">Borrador</option><option value="inactivo">Inactivo</option></select></label>
+        <label style="display:flex;align-items:center;gap:8px"><input id="controla" type="checkbox" checked style="width:auto"> Limita disponibilidad</label>
+        <label>Rendimiento del producto<input id="rendimiento" type="number" min="0" step="any" placeholder="Solo producción"></label>
+        <label>Unidad del rendimiento<select id="unidad-rendimiento"><option value="">—</option><option>g</option><option>kg</option><option>ml</option><option>l</option><option>unidad</option></select></label>
+        <label>Versión<input id="version" value="manual"></label>
+        <label>Sede<select id="sede"><option>Ambas</option><option>San Antonio</option><option>Capri</option></select></label>
+        <label>Fuente<input id="fuente" placeholder="Recetario / prueba de cocina"></label>
+        <label>Notas<input id="notas" placeholder="Peso antes/después de cocción"></label>
+      </div>
+      <button class="btn dorado" id="guardar">Guardar línea</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">Matriz de recetas</h2>
+        <div style="display:flex;gap:8px"><input id="buscar" placeholder="Buscar producto o ingrediente"><select id="filtro-estado"><option value="">Todos los estados</option><option>activo</option><option>borrador</option><option>inactivo</option></select></div>
+      </div>
+      <div style="overflow-x:auto;margin-top:14px"><table>
+        <thead><tr><th>Producto</th><th>Ingrediente</th><th>Cantidad</th><th>Rendimiento</th><th>Tipo</th><th>Versión</th><th>Estado</th><th>Fuente</th></tr></thead>
+        <tbody id="tabla"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
+      </table></div>
+    </div>
+  </main>
+</div>
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir(); montarBarraUsuario();
+let recetas = [];
+async function cargar() {
+  const r = await llamar('recetas_listar');
+  if (!r.ok) { alert(r.error); return; }
+  recetas = r.data; pintar();
+}
+function pintar() {
+  const q = normalizarTexto(document.getElementById('buscar').value);
+  const estado = document.getElementById('filtro-estado').value;
+  const filas = recetas.filter(r => (!estado || (r.estado || 'activo') === estado) &&
+    (!q || normalizarTexto(r.producto).includes(q) || normalizarTexto(r.ingrediente).includes(q)));
+  document.getElementById('tabla').innerHTML = filas.length ? filas.map(r => `<tr>
+    <td>${escapeHtml(r.producto)}</td><td>${escapeHtml(r.ingrediente)}</td>
+    <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
+    <td>${r.rendimiento_producto ? `${escapeHtml(r.rendimiento_producto)} ${escapeHtml(r.unidad_rendimiento)}` : '1 plato/porción'}</td>
+    <td>${escapeHtml(r.tipo || 'plato')}</td><td>${escapeHtml(r.version || 'sin versión')}</td>
+    <td><span class="badge ${(r.estado || 'activo') === 'activo' ? 'ok' : (r.estado === 'borrador' ? 'aviso' : 'alerta')}">${escapeHtml(r.estado || 'activo')}</span></td>
+    <td>${escapeHtml(r.fuente || '')}</td></tr>`).join('') : '<tr><td colspan="8" class="vacio">No hay líneas con ese filtro.</td></tr>';
+}
+document.getElementById('buscar').addEventListener('input', pintar);
+document.getElementById('filtro-estado').addEventListener('change', pintar);
+document.getElementById('guardar').addEventListener('click', conBotonProtegido(document.getElementById('guardar'), async () => {
+  const item = {
+    producto: document.getElementById('producto').value, ingrediente: document.getElementById('ingrediente').value,
+    cantidad: Number(document.getElementById('cantidad').value), unidad: document.getElementById('unidad').value,
+    tipo: document.getElementById('tipo').value, estado: document.getElementById('estado').value,
+    controla_disponibilidad: document.getElementById('controla').checked,
+    rendimiento_producto: document.getElementById('rendimiento').value ? Number(document.getElementById('rendimiento').value) : '',
+    unidad_rendimiento: document.getElementById('unidad-rendimiento').value,
+    version: document.getElementById('version').value, sede: document.getElementById('sede').value,
+    fuente: document.getElementById('fuente').value, notas: document.getElementById('notas').value
+  };
+  const r = await llamar('receta_guardar', { item });
+  if (!r.ok) { alert(r.error); return; }
+  avisarGuardado('Línea de receta guardada.'); cargar();
+}));
+cargar();
+</script>
+</body>
+</html>

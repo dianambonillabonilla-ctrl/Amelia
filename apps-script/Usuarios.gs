@@ -50,13 +50,16 @@ function usuarioGuardar_(item, usuarioSesion) {
 
   const yaExiste = data.slice(1).some(function (row) { return row[usuarioCol] === item.usuario; });
   if (yaExiste) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
+  if (!item.password || String(item.password).length < 8) {
+    return { ok: false, error: 'La contraseña inicial debe tener al menos 8 caracteres' };
+  }
 
   const salt = generarSalt_();
   appendRowFromObj_(SHEET_NAMES.USUARIOS, {
     id: Utilities.getUuid(),
     nombre: item.nombre,
     usuario: item.usuario,
-    password_hash: hashPasswordSalted_(item.password || 'cambiar123', salt),
+    password_hash: hashPasswordSalted_(item.password, salt),
     salt: salt,
     rol: item.rol,
     sede: item.sede || 'Ambas',

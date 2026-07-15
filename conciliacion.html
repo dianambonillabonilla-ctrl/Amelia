@@ -14,6 +14,7 @@
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
+      <a href="recetas.html">Recetas</a>
       <a href="catalogo.html">Registrar producto</a>
       <a href="traslados.html">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
@@ -30,6 +31,13 @@
     </div>
 
     <div class="card">
+      <h2>Ventas reportadas por FUDO</h2>
+      <p style="color:var(--grey);font-size:.85rem">Incluye comida, bebidas y adiciones. “Ambas” o “Sin identificar” significa que el archivo resumido no permitió separar las sedes.</p>
+      <table><thead><tr><th>Sede</th><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr></thead>
+        <tbody id="tabla-ventas-dia"><tr><td colspan="4" class="vacio">Elige una fecha.</td></tr></tbody></table>
+    </div>
+
+    <div class="card">
       <div style="display:flex; gap:10px; align-items:center;">
         <label style="margin:0">Fecha a revisar</label>
         <input type="date" id="fecha" style="width:auto">
@@ -38,11 +46,11 @@
     </div>
 
     <div class="card">
-      <h2>Bebidas — conteo manual vs. FUDO</h2>
+      <h2>Bebidas y unidades — conteo manual vs. FUDO</h2>
       <p style="color:var(--grey); font-size:.85rem">FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.</p>
       <table>
-        <thead><tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Diferencia</th></tr></thead>
-        <tbody id="tabla-bebidas"><tr><td colspan="6" class="vacio">Elige una fecha y presiona "Ver conciliación".</td></tr></tbody>
+        <thead><tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO SA / Capri</th><th>Diferencia</th></tr></thead>
+        <tbody id="tabla-bebidas"><tr><td colspan="7" class="vacio">Elige una fecha y presiona "Ver conciliación".</td></tr></tbody>
       </table>
     </div>
 
@@ -67,13 +75,20 @@ async function cargar() {
   const data = await llamar('conciliacion', { fecha });
   if (!data.ok) { alert(data.error); return; }
 
+  pintarVentasDia(data.data.ventas);
   pintarBebidas(data.data.bebidas);
   pintarComida(data.data.comida);
 }
 
+function pintarVentasDia(filas) {
+  const body = document.getElementById('tabla-ventas-dia');
+  body.innerHTML = filas.length ? filas.map(f => `<tr><td>${escapeHtml(f.sede)}</td><td>${escapeHtml(f.categoria)}</td><td>${escapeHtml(f.producto)}</td><td>${escapeHtml(f.cantidad)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="vacio">No hay ventas importadas para esta fecha.</td></tr>';
+}
+
 function pintarBebidas(filas) {
   const body = document.getElementById('tabla-bebidas');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">No hay datos de catálogo de bebidas o de FUDO para esta fecha.</td></tr>'; return; }
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">No hay datos de catálogo de bebidas o de FUDO para esta fecha.</td></tr>'; return; }
   body.innerHTML = filas.map(f => {
     let badge = '';
     if (f.diferencia_vs_suma === null) badge = '<span class="badge aviso">Sin datos FUDO</span>';
@@ -81,7 +96,7 @@ function pintarBebidas(filas) {
     else badge = `<span class="badge alerta">Off por ${f.diferencia_vs_suma > 0 ? '+' : ''}${escapeHtml(f.diferencia_vs_suma)}</span>`;
     return `<tr>
       <td>${escapeHtml(f.producto)}</td><td>${f.sa ?? '—'}</td><td>${f.capri ?? '—'}</td>
-      <td>${escapeHtml(f.suma_manual)}</td><td>${f.fudo_cierre ?? '—'}</td><td>${badge}</td>
+      <td>${escapeHtml(f.suma_manual)}</td><td>${f.fudo_cierre ?? '—'}</td><td>${escapeHtml(f.consumo_fudo_sa)} / ${escapeHtml(f.consumo_fudo_capri)}</td><td>${badge}</td>
     </tr>`;
   }).join('');
 }
@@ -91,17 +106,17 @@ function pintarComida(porSede) {
   cont.innerHTML = '';
   Object.keys(porSede).forEach(sede => {
     const filas = porSede[sede];
-    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico (kg)</th><th>Consumo esperado (kg)</th><th>Producción registrada (kg)</th><th>Implícito</th></tr></thead><tbody>`;
+    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico</th><th>Consumo esperado</th><th>Producción</th><th>Traslado neto</th><th>Diferencia sin explicar</th></tr></thead><tbody>`;
     if (!filas.length) {
-      tabla += '<tr><td colspan="5" class="vacio">Sin conteo del día anterior para comparar, o sin ventas ese día.</td></tr>';
+      tabla += '<tr><td colspan="6" class="vacio">Sin conteo del día anterior para comparar, o sin ventas ese día.</td></tr>';
     }
     filas.forEach(f => {
       let nota = '';
-      if (f.implicito_kg === null) nota = '';
-      else if (f.implicito_kg < -0.2) nota = '<span class="badge alerta">Pérdida sin explicar</span>';
-      else if (f.implicito_kg > 0) nota = '<span class="badge aviso">Posible producción sin registrar</span>';
+      if (f.implicito === null) nota = '';
+      else if (f.implicito < -200 && f.unidad === 'g') nota = `<span class="badge alerta">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
+      else if (f.implicito > 0) nota = `<span class="badge aviso">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else nota = '<span class="badge ok">Cuadra</span>';
-      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico_kg ?? '—'}</td><td>${escapeHtml(f.consumo_esperado_kg)}</td><td>${f.producido_registrado_kg ?? '—'}</td><td>${nota}</td></tr>`;
+      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico ?? '—'} ${escapeHtml(f.unidad)}</td><td>${escapeHtml(f.consumo_esperado)} ${escapeHtml(f.unidad)}</td><td>${f.producido_registrado ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.traslado_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${nota}</td></tr>`;
     });
     tabla += '</tbody></table>';
     cont.innerHTML += tabla;

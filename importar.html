@@ -15,6 +15,7 @@
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html">Registrar conteo</a>
       <a href="producir.html">Registrar producción</a>
+      <a href="recetas.html">Recetas</a>
       <a href="catalogo.html">Registrar producto</a>
       <a href="traslados.html">Traslados</a>
       <a href="importar.html" class="activo" data-solo-rol="Administrador">Importar de FUDO</a>
@@ -39,10 +40,20 @@
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="radio" name="tipo" value="ventas" style="width:auto"> Ventas (Adiciones)
         </label>
+        <label>Sede del archivo
+          <select id="sede-importacion">
+            <option value="Automática">Automática por caja/terminal</option>
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Ambas</option>
+          </select>
+        </label>
       </div>
       <p style="color:var(--grey); font-size:.85rem; margin-top:10px">
         Recuerda: <code>movimientos-de-stock.xls</code> solo se usa para conciliar <strong>bebidas</strong> — para
         comida el sistema compara ventas × receta contra el conteo físico, no contra el stock de FUDO.
+        Si “Reporte de Productos” no trae caja/terminal, selecciona la sede correcta antes de importarlo;
+        no es posible separarlo después de forma confiable.
       </p>
     </div>
 
@@ -73,6 +84,7 @@ requerirRol_(['Administrador']);
 montarBarraUsuario();
 
 let filasParaImportar = [];
+let archivoParaImportar = '';
 
 document.getElementById('dropzone').addEventListener('click', () => document.getElementById('input-archivo').click());
 document.getElementById('input-archivo').addEventListener('change', (e) => manejarArchivo(e.target.files[0]));
@@ -88,6 +100,7 @@ function tipoSeleccionado() {
 
 async function manejarArchivo(file) {
   if (!file) return;
+  archivoParaImportar = file.name;
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
 
@@ -114,11 +127,16 @@ function mostrarPreview(filas) {
 }
 
 document.getElementById('btn-confirmar').addEventListener('click', async () => {
-  const data = await llamar('importar_fudo', { tipo: tipoSeleccionado(), filas: filasParaImportar });
+  const data = await llamar('importar_fudo', {
+    tipo: tipoSeleccionado(),
+    filas: filasParaImportar,
+    opciones: { sede: document.getElementById('sede-importacion').value, archivo: archivoParaImportar }
+  });
   const aviso = document.getElementById('aviso-sin-identificar');
   aviso.style.display = 'none';
   if (data.ok) {
-    avisarGuardado(`Importadas ${data.importados} filas de tipo "${data.tipo}".`);
+    avisarGuardado(`Importadas ${data.importados} filas de tipo "${data.tipo}". ${data.omitidos_duplicados || 0} duplicadas fueron omitidas.`);
+    if (data.advertencia) alert(data.advertencia);
     if (data.sin_identificar) {
       document.getElementById('aviso-sin-identificar-texto').textContent =
         `${data.sin_identificar.total} venta(s) no se pudieron asignar a una sede porque el nombre de caja/terminal no se reconoce: ${data.sin_identificar.valores.join(', ')}. Ajusta sedeDesdeCreadaPor_() en Fudo.gs o revisa el nombre de la caja en FUDO — mientras tanto, esas ventas quedan fuera de la conciliación de comida.`;

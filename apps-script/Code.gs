@@ -51,10 +51,14 @@ function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'],
     Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo'],
-    Recetas: ['producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento', 'tipo', 'fuente', 'umbral_alerta'],
+    Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
+      'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
+      'controla_disponibilidad', 'notas'],
     Conteos_Manuales: ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'],
-    Movimientos_FUDO: ['fecha', 'tipo', 'evento', 'nombre', 'stock_anterior', 'stock_actual', 'diferencia', 'usuario', 'costo', 'importado_por', 'importado_en'],
-    Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por', 'sede', 'importado_en'],
+    Movimientos_FUDO: ['fecha', 'tipo', 'evento', 'nombre', 'stock_anterior', 'stock_actual', 'diferencia', 'usuario',
+      'sede', 'objeto_tipo', 'costo', 'archivo_origen', 'importado_por', 'importado_en'],
+    Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por',
+      'sede', 'formato_origen', 'archivo_origen', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp'],
     AlertasEnviadas: ['fecha', 'plato'],
@@ -75,14 +79,28 @@ function configurarHojas() {
     }
   });
 
-  // Usuario administrador por defecto (cambia la contraseña luego de crearla)
+  // Nunca se crea una credencial predeterminada. En una instalación nueva, el propietario debe
+  // ejecutar crearAdministradorInicial_() desde el editor con una contraseña propia.
   const usuarios = sheet_(SHEET_NAMES.USUARIOS);
-  if (usuarios.getLastRow() === 1) {
-    const saltInicial = generarSalt_();
-    usuarios.appendRow([Utilities.getUuid(), 'Diana Bonilla', 'diana', hashPasswordSalted_('cambiar123', saltInicial), saltInicial, 'Administrador', 'Ambas', true, '']);
-  }
   SpreadsheetApp.flush();
-  Logger.log('Hojas configuradas. Usuario inicial: diana / cambiar123 (cámbialo). Corre configurarTriggers() si no lo has hecho.');
+  Logger.log(usuarios.getLastRow() === 1
+    ? 'Hojas configuradas. No hay usuarios: ejecuta crearAdministradorInicial_(nombre, usuario, password, email).'
+    : 'Hojas configuradas. Corre configurarTriggers() si no lo has hecho.');
+}
+
+function crearAdministradorInicial_(nombre, usuario, password, email) {
+  const sh = sheet_(SHEET_NAMES.USUARIOS);
+  if (sh.getLastRow() > 1) throw new Error('Ya existen usuarios; administra las cuentas desde DILANA OS.');
+  if (!nombre || !usuario || !password || String(password).length < 10) {
+    throw new Error('Nombre, usuario y una contraseña propia de al menos 10 caracteres son obligatorios.');
+  }
+  const salt = generarSalt_();
+  appendRowFromObj_(SHEET_NAMES.USUARIOS, {
+    id: Utilities.getUuid(), nombre: nombre, usuario: usuario,
+    password_hash: hashPasswordSalted_(password, salt), salt: salt,
+    rol: 'Administrador', sede: 'Ambas', activo: true, email: email || ''
+  });
+  return 'Administrador inicial creado. La contraseña no se guardó en texto plano.';
 }
 
 function asegurarColumnas_(sh, columnas) {
@@ -160,7 +178,10 @@ function handleRequest_(e, method) {
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoGuardar_(params.item, sesion.usuario));
       case 'recetas_listar':
-        return jsonOut_({ ok: true, data: leerTabla_(SHEET_NAMES.RECETAS) });
+        return jsonOut_({ ok: true, data: recetasListar_(params.filtros) });
+      case 'receta_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(recetaGuardar_(params.item, sesion.usuario));
       case 'conteo_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(conteoRegistrar_(params.items, sesion.usuario));
@@ -168,9 +189,9 @@ function handleRequest_(e, method) {
         return jsonOut_({ ok: true, data: conteoListar_(params.fecha, params.sede) });
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
-        return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario));
+        return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
       case 'disponible_hoy':
-        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha) });
+        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, params.sede) });
       case 'tendencia_ingrediente':
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
       case 'conciliacion':
