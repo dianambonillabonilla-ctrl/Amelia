@@ -2,6 +2,7 @@
 // CONFIGURACIÓN — Dilana OS
 // Reemplaza API_URL por tu URL de despliegue de Apps Script (termina en /exec)
 // La obtienes en Apps Script: Implementar > Nueva implementación > Aplicación web
+// No pegues tokens, contraseñas ni secretos aquí; el frontend es público para quien lo abra.
 // ============================================================================
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
