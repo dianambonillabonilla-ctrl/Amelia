@@ -177,10 +177,15 @@ document.getElementById('btn-migrar').addEventListener('click', conBotonProtegid
   const r = data.resumen;
   const corregidas = r.correcciones.filter(c => c.despues !== undefined);
   const noEncontradas = r.correcciones.filter(c => c.estado === 'no encontrada, revisar a mano');
+  const borradas = (r.filas_eliminadas || []).filter(f => f.estado === 'borrada');
+  const tiposCorregidos = r.tipos_corregidos || [];
   resultadoEl.innerHTML = `
     <p><strong>${corregidas.length}</strong> cantidad(es) corregida(s), <strong>${r.renombrados.length}</strong> nombre(s) ajustado(s),
+    <strong>${borradas.length}</strong> fila(s) borrada(s) (recetas pendientes o duplicadas), <strong>${tiposCorregidos.length}</strong> tipo(s) corregido(s),
     <strong>${r.filas_nuevas.length}</strong> fila(s) nueva(s) agregada(s), <strong>${r.filas_que_ya_existian.length}</strong> ya existían.</p>
     ${noEncontradas.length ? `<p style="color:var(--red)">No se encontraron estas filas para corregir (revisar el nombre a mano): ${noEncontradas.map(c => escapeHtml(c.producto + ' ← ' + c.ingrediente)).join(', ')}</p>` : ''}
+    ${borradas.length ? `<details><summary>Ver filas borradas (consumo pendiente de confirmar o duplicado)</summary>${borradas.map(f => escapeHtml(f.producto + ' ← ' + f.ingrediente)).join('<br>')}</details>` : ''}
+    ${tiposCorregidos.length ? `<details><summary>Ver tipos corregidos a 'produccion'</summary>${tiposCorregidos.map(t => escapeHtml(t.producto + ' ← ' + t.ingrediente + ': ' + t.antes + ' → ' + t.despues)).join('<br>')}</details>` : ''}
     ${r.filas_nuevas.length ? `<details><summary>Ver filas agregadas</summary>${r.filas_nuevas.map(escapeHtml).join('<br>')}</details>` : ''}
   `;
   correrDiagnostico();
