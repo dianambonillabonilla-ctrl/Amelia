@@ -154,6 +154,15 @@ function handleRequest_(e, method) {
   const params = Object.assign({}, e.parameter || {}, body || {});
   const action = params.action;
 
+  if (method === 'GET') {
+    if (!action || action === 'health') return jsonOut_({ ok: true, status: 'ready' });
+    return jsonOut_({
+      ok: false,
+      error: 'Método no permitido. Usa POST para acciones autenticadas o que envían credenciales.',
+      codigo: 'METODO_NO_PERMITIDO'
+    });
+  }
+
   try {
     // Login y logout no requieren sesión previa válida (logout debe funcionar incluso con token vencido)
     if (action === 'login') {
