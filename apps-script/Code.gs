@@ -208,6 +208,9 @@ function handleRequest_(e, method) {
       case 'diagnostico_ventas_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarVentasFudo_() });
+      case 'migrar_recetas_produccion':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migrarRecetasProduccion_());
       default:
         return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
     }
