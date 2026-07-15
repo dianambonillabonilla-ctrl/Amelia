@@ -122,6 +122,13 @@ montarBarraUsuario();
 
 let catalogo = [];
 
+// catalogo_guardar (crear producto y editar stock mínimo) exige Administrador en el backend —
+// esto solo evita que otros roles vean un control que siempre les va a fallar.
+function esAdmin_() {
+  const u = Sesion.usuario();
+  return !!u && u.rol === 'Administrador';
+}
+
 async function cargarCatalogo() {
   const data = await llamar('catalogo_listar');
   if (!data.ok) {
@@ -191,7 +198,7 @@ function pintarTabla_() {
       <td>${escapeHtml(p._partes.sub || '—')}</td>
       <td>${escapeHtml(p.unidad_base || '—')}</td>
       <td>${escapeHtml(p.nombre_fudo || '—')}</td>
-      <td><input type="number" step="0.01" class="in-stock-minimo" data-id="${escapeHtml(p.id)}" value="${p.stock_minimo !== undefined && p.stock_minimo !== '' ? escapeHtml(p.stock_minimo) : ''}" style="width:90px"></td>
+      <td><input type="number" step="0.01" class="in-stock-minimo" data-id="${escapeHtml(p.id)}" value="${p.stock_minimo !== undefined && p.stock_minimo !== '' ? escapeHtml(p.stock_minimo) : ''}" style="width:90px" ${esAdmin_() ? '' : 'disabled title="Solo un Administrador puede cambiar el stock mínimo"'}></td>
     </tr>`).join('');
 
   body.querySelectorAll('.in-stock-minimo').forEach(input => {
