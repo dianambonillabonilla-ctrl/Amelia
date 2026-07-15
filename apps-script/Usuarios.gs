@@ -38,6 +38,12 @@ function usuarioGuardar_(item, usuarioSesion) {
   if (item.id) {
     for (let r = 1; r < data.length; r++) {
       if (data[r][idCol] === item.id) {
+        if (item.usuario !== undefined && item.usuario !== data[r][usuarioCol]) {
+          const enUsoPorOtro = data.slice(1).some(function (row, i) {
+            return (i + 1) !== r && row[usuarioCol] === item.usuario;
+          });
+          if (enUsoPorOtro) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
+        }
         headers.forEach(function (h, c) {
           if (h === 'password_hash' || h === 'salt') return; // la contraseña se cambia con cambiarPassword_
           if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(item[h]);
@@ -50,8 +56,8 @@ function usuarioGuardar_(item, usuarioSesion) {
 
   const yaExiste = data.slice(1).some(function (row) { return row[usuarioCol] === item.usuario; });
   if (yaExiste) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
-  if (!item.password || String(item.password).length < 8) {
-    return { ok: false, error: 'La contraseña inicial debe tener al menos 8 caracteres' };
+  if (!item.password || String(item.password).length < PASSWORD_LARGO_MINIMO) {
+    return { ok: false, error: 'La contraseña inicial debe tener al menos ' + PASSWORD_LARGO_MINIMO + ' caracteres' };
   }
 
   const salt = generarSalt_();
@@ -72,7 +78,9 @@ function usuarioGuardar_(item, usuarioSesion) {
 /** Cambio de contraseña propio: requiere conocer la actual. Usado por la pantalla "Cambiar contraseña". */
 function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
   if (!passwordActual || !passwordNueva) return { ok: false, error: 'Falta la contraseña actual o la nueva' };
-  if (String(passwordNueva).length < 6) return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres' };
+  if (String(passwordNueva).length < PASSWORD_LARGO_MINIMO) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos ' + PASSWORD_LARGO_MINIMO + ' caracteres' };
+  }
 
   const fila = leerTabla_(SHEET_NAMES.USUARIOS).find(function (r) { return r.id === usuarioSesion.id; });
   if (!fila) return { ok: false, error: 'Usuario no encontrado' };
@@ -93,8 +101,8 @@ function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
 function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
   requiereAdmin_(usuarioSesion);
   if (!id) return { ok: false, error: 'Falta el id del usuario' };
-  if (!passwordNueva || String(passwordNueva).length < 6) {
-    return { ok: false, error: 'La nueva contraseña debe tener al menos 6 caracteres' };
+  if (!passwordNueva || String(passwordNueva).length < PASSWORD_LARGO_MINIMO) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos ' + PASSWORD_LARGO_MINIMO + ' caracteres' };
   }
   const existe = leerTabla_(SHEET_NAMES.USUARIOS).some(function (r) { return r.id === id; });
   if (!existe) return { ok: false, error: 'No se encontró el usuario' };

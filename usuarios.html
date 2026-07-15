@@ -19,8 +19,8 @@
       <a href="traslados.html">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
-      <a href="diagnostico.html">Diagnóstico</a>
-      <a href="usuarios.html" class="activo">Usuarios</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" class="activo" data-solo-rol="Administrador">Usuarios</a>
     </nav>
   </aside>
 
@@ -72,6 +72,7 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
+requerirRol_(['Administrador']);
 montarBarraUsuario();
 
 async function cargar() {
@@ -98,7 +99,7 @@ async function cargar() {
 
   document.querySelectorAll('.btn-resetear').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const nueva = prompt(`Nueva contraseña para ${btn.dataset.nombre} (mínimo 6 caracteres). No hace falta la contraseña anterior.`);
+      const nueva = prompt(`Nueva contraseña para ${btn.dataset.nombre} (mínimo 8 caracteres). No hace falta la contraseña anterior.`);
       if (!nueva) return;
       const data = await llamar('usuario_resetear_password', { id: btn.dataset.id, password_nueva: nueva });
       if (data.ok) {
