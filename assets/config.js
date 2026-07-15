@@ -121,11 +121,13 @@ function montarBarraUsuario() {
   ocultarNavSegunRol_(u ? u.rol : null);
 }
 
-// Oculta del menú lateral los links marcados con data-solo-rol si el usuario no tiene ese rol
-// (ej. "Importar de FUDO" es solo Administrador — el backend ya lo rechaza, pero además no debe
-// aparecer como opción para no confundir a Encargado/Cocina/Lectura).
+// Oculta cualquier elemento marcado con data-solo-rol (links del menú, tarjetas de formulario, etc.)
+// si el usuario no tiene ese rol (ej. "Importar de FUDO" o "Usuarios" son solo Administrador — el
+// backend ya lo rechaza, pero además no debe aparecer como opción para no confundir a
+// Encargado/Cocina/Lectura). Antes solo se buscaba dentro de <nav>, así que tarjetas fuera del
+// menú (ej. "Nueva línea de receta" en recetas.html) quedaban con el atributo pero visibles.
 function ocultarNavSegunRol_(rolActual) {
-  document.querySelectorAll('nav a[data-solo-rol]').forEach(a => {
+  document.querySelectorAll('[data-solo-rol]').forEach(a => {
     const permitidos = a.dataset.soloRol.split(',').map(r => r.trim());
     if (!permitidos.includes(rolActual)) a.style.display = 'none';
   });

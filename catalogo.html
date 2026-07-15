@@ -19,8 +19,8 @@
       <a href="traslados.html">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html">Conciliación</a>
-      <a href="diagnostico.html">Diagnóstico</a>
-      <a href="usuarios.html">Usuarios</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
   </aside>
 
@@ -62,7 +62,7 @@
       </table>
     </div>
 
-    <div class="card">
+    <div class="card" data-solo-rol="Administrador">
       <h2>2. ¿No está en la lista? Agrégalo</h2>
       <div id="aviso-parecido" class="card" style="display:none; margin-top:0; margin-bottom:16px; border-color:var(--amber); background:#FFFBF0">
         <strong style="color:var(--amber)">⚠ Ya existe algo parecido</strong>

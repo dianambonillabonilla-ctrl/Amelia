@@ -253,6 +253,38 @@ function jsonOut_(obj) {
 // de Utilities dentro de Apps Script (demasiadas iteraciones vuelven el login perceptiblemente lento).
 const HASH_ITERACIONES = 1000;
 
+// Mínimo único para cualquier contraseña nueva (alta de usuario, cambio propio o restablecimiento
+// por un Administrador). El admin inicial (crearAdministradorInicial_) exige 10 por separado, por
+// ser la única credencial que además protege la creación de todas las demás.
+const PASSWORD_LARGO_MINIMO = 8;
+
+// Protección contra fuerza bruta en login_: tras LOGIN_INTENTOS_MAXIMOS fallos consecutivos
+// para un mismo nombre de usuario, se bloquean intentos nuevos durante LOGIN_BLOQUEO_SEGUNDOS,
+// sin importar si la contraseña es correcta. Usa CacheService en vez de una hoja porque es un
+// contador efímero de alta frecuencia que no necesita persistir ni ser auditado.
+const LOGIN_INTENTOS_MAXIMOS = 8;
+const LOGIN_BLOQUEO_SEGUNDOS = 15 * 60;
+
+function loginIntentosClave_(usuario) {
+  return 'login_intentos_' + normalizar_(usuario);
+}
+
+function loginBloqueado_(usuario) {
+  const intentos = Number(CacheService.getScriptCache().get(loginIntentosClave_(usuario))) || 0;
+  return intentos >= LOGIN_INTENTOS_MAXIMOS;
+}
+
+function loginRegistrarIntentoFallido_(usuario) {
+  const cache = CacheService.getScriptCache();
+  const clave = loginIntentosClave_(usuario);
+  const intentos = (Number(cache.get(clave)) || 0) + 1;
+  cache.put(clave, String(intentos), LOGIN_BLOQUEO_SEGUNDOS);
+}
+
+function loginLimpiarIntentos_(usuario) {
+  CacheService.getScriptCache().remove(loginIntentosClave_(usuario));
+}
+
 function generarSalt_() {
   return Utilities.base64Encode(Utilities.getUuid() + Utilities.getUuid());
 }
@@ -304,12 +336,23 @@ function establecerPassword_(usuarioId, passwordPlano) {
 
 function login_(usuario, password) {
   if (!usuario || !password) return { ok: false, error: 'Usuario y contraseña son obligatorios' };
+  if (loginBloqueado_(usuario)) {
+    return { ok: false, error: 'Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.' };
+  }
+
   const rows = leerTabla_(SHEET_NAMES.USUARIOS);
   const match = rows.find(function (r) { return r.usuario === usuario && r.activo === true; });
-  if (!match) return { ok: false, error: 'Usuario o contraseña incorrectos' };
+  if (!match) {
+    loginRegistrarIntentoFallido_(usuario);
+    return { ok: false, error: 'Usuario o contraseña incorrectos' };
+  }
 
   const resultado = verificarPassword_(password, match);
-  if (!resultado.valido) return { ok: false, error: 'Usuario o contraseña incorrectos' };
+  if (!resultado.valido) {
+    loginRegistrarIntentoFallido_(usuario);
+    return { ok: false, error: 'Usuario o contraseña incorrectos' };
+  }
+  loginLimpiarIntentos_(usuario);
   if (resultado.necesitaMigracion) establecerPassword_(match.id, password);
 
   const token = Utilities.getUuid();
