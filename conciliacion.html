@@ -17,6 +17,7 @@
       <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
@@ -55,8 +56,8 @@
     </div>
 
     <div class="card">
-      <h2>Comida — ventas × receta vs. cambio físico, por sede</h2>
-      <p style="color:var(--grey); font-size:.85rem">No se compara contra el stock de FUDO (ya sabemos que no cuadra). Se compara el cambio de peso entre el conteo de hoy y el del día anterior, contra lo que las ventas de esa sede deberían haber consumido según tu receta (hoja Recetas).</p>
+      <h2>Inventario por sede — ventas vs. cambio físico (comida, bebidas y demás)</h2>
+      <p style="color:var(--grey); font-size:.85rem">No se compara contra el stock de FUDO (ya sabemos que no cuadra). Se compara el cambio de peso/unidades entre el conteo de hoy y el del día anterior, contra lo que las ventas de esa sede deberían haber consumido: si el producto tiene receta (hoja Recetas) se explota la receta; si se vende directo sin receta (ej. una bebida) se descuenta 1 a 1. Incluye compras (con proveedor/factura en Compras), traslados, producción y mermas de esa sede.</p>
       <div id="bloques-comida"></div>
     </div>
   </main>
