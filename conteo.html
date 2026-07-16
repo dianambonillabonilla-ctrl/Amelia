@@ -12,13 +12,14 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
-      <a href="conteo.html" class="activo">Registrar conteo</a>
-      <a href="producir.html">Registrar producción</a>
-      <a href="recetas.html">Recetas</a>
-      <a href="catalogo.html">Registrar producto</a>
-      <a href="traslados.html">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador">Compras</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
-      <a href="conciliacion.html">Conciliación</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
@@ -62,12 +63,34 @@
         <button class="btn dorado" id="btn-guardar">Guardar conteo</button>
       </div>
     </div>
+
+    <div class="card">
+      <h2>Mermas y ajustes operativos</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Úsalo para explicar diferencias antes del conteo: merma/desperdicio por limpieza o daño,
+        y ajustes operativos documentados. Las compras con factura se registran en la pantalla Compras.
+      </p>
+      <div class="grid grid-4">
+        <div class="campo"><label>Tipo</label><select id="aj-tipo"><option>Merma / desperdicio</option><option>Ajuste operativo</option></select></div>
+        <div class="campo"><label>Producto</label><input type="text" id="aj-producto" list="lista-productos" placeholder="ej. Costilla cruda"></div>
+        <div class="campo"><label>Cantidad</label><input type="number" step="0.01" id="aj-cantidad"></div>
+        <div class="campo"><label>Unidad</label><select id="aj-unidad"><option>g</option><option>kg</option><option>u</option><option>ml</option><option>l</option></select></div>
+      </div>
+      <div class="campo"><label>Motivo / nota</label><input type="text" id="aj-motivo" placeholder="ej. factura proveedor, merma por limpieza, producto dañado"></div>
+      <button class="btn dorado" id="btn-guardar-ajuste">Guardar movimiento</button>
+      <h3>Movimientos de la fecha y sede seleccionadas</h3>
+      <table>
+        <thead><tr><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Usuario</th></tr></thead>
+        <tbody id="tabla-ajustes"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
   </main>
 </div>
 
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
 document.getElementById('fecha').valueAsDate = new Date();
 
@@ -160,7 +183,8 @@ async function cargarConteoAnterior_() {
 }
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
-document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); });
+document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); });
+document.getElementById('fecha').addEventListener('change', cargarAjustes_);
 document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
 poblarPuntos_();
 cargarConteoAnterior_();
@@ -185,10 +209,48 @@ btnGuardarConteo.addEventListener('click', conBotonProtegido(btnGuardarConteo, a
   const data = await llamar('conteo_registrar', { items });
   if (data.ok) {
     avisarGuardado(`Guardado: ${data.registrados} productos.`);
+    cargarAjustes_();
   } else {
     alert(data.error);
   }
 }));
+
+
+async function cargarAjustes_() {
+  const fecha = document.getElementById('fecha').value;
+  const sede = document.getElementById('sede').value;
+  const data = await llamar('ajustes_inventario_listar', { fecha, sede });
+  const body = document.getElementById('tabla-ajustes');
+  if (!data.ok) { body.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  if (!data.data.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin mermas ni ajustes registrados.</td></tr>'; return; }
+  body.innerHTML = data.data.map(a => `<tr><td>${escapeHtml(a.tipo)}</td><td>${escapeHtml(a.producto)}</td><td>${escapeHtml(a.cantidad)} ${escapeHtml(a.unidad)}</td><td>${escapeHtml(a.motivo || '')}</td><td>${escapeHtml(a.usuario)}</td></tr>`).join('');
+}
+
+const btnGuardarAjuste = document.getElementById('btn-guardar-ajuste');
+btnGuardarAjuste.addEventListener('click', conBotonProtegido(btnGuardarAjuste, async () => {
+  const item = {
+    fecha: document.getElementById('fecha').value,
+    sede: document.getElementById('sede').value,
+    punto: document.getElementById('punto').value,
+    tipo: document.getElementById('aj-tipo').value,
+    producto: document.getElementById('aj-producto').value.trim(),
+    unidad: document.getElementById('aj-unidad').value,
+    cantidad: parseFloat(document.getElementById('aj-cantidad').value.replace(',', '.')),
+    motivo: document.getElementById('aj-motivo').value.trim()
+  };
+  if (!item.producto || isNaN(item.cantidad) || item.cantidad <= 0) { alert('Completa producto y una cantidad mayor que cero.'); return; }
+  const data = await llamar('ajuste_inventario_registrar', { item });
+  if (data.ok) {
+    avisarGuardado('Movimiento de inventario guardado.');
+    document.getElementById('aj-producto').value = '';
+    document.getElementById('aj-cantidad').value = '';
+    document.getElementById('aj-motivo').value = '';
+    cargarAjustes_();
+  } else {
+    alert(data.error);
+  }
+}));
+cargarAjustes_();
 </script>
 </body>
 </html>
