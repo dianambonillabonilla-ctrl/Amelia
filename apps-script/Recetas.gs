@@ -41,7 +41,12 @@ function recetasVigentes_(fecha, sede, filas) {
   fecha = fecha || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   return (filas || leerTabla_(SHEET_NAMES.RECETAS)).filter(function (r) {
     const estado = normalizar_(r.estado || 'activo');
-    if (estado === 'borrador' || estado === 'inactivo' || estado === 'archivado') return false;
+    // 'pendiente' = dato sin confirmar (no automatizar). 'referencia' = dato confirmado pero el
+    // motor no puede automatizarlo hoy (ej. requiere saber qué opción eligió el cliente y FUDO no
+    // registra ese detalle) — se guarda para consulta/costeo pero tampoco participa en el cálculo.
+    // 'revisar' SÍ participa (a diferencia de estas), solo lleva advertencia visible en la interfaz.
+    if (estado === 'borrador' || estado === 'inactivo' || estado === 'archivado' ||
+      estado === 'pendiente' || estado === 'referencia') return false;
     const sedeReceta = normalizar_(r.sede || 'Ambas');
     if (sede && sede !== 'Ambas' && sedeReceta && sedeReceta !== 'ambas' && sedeReceta !== normalizar_(sede)) return false;
     const desde = r.vigente_desde ? formatearFecha_(r.vigente_desde) : '';

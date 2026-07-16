@@ -255,6 +255,9 @@ function handleRequest_(e, method) {
       case 'migrar_recetas_produccion':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migrarRecetasProduccion_());
+      case 'migrar_recetas_julio_2026':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migrarRecetasJulio2026_());
       default:
         return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
     }
