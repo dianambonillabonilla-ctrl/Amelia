@@ -88,14 +88,25 @@ function conciliarComidaPorSede_(fecha) {
 
   sedes.forEach(function (sede) {
     const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+    const cambioFisico = calcularCambioFisico_(fecha, sede, indice);
     const ventasSede = ventas.filter(function (v) { return v.sede === sede; });
     const consumoEsperado = {};
     ventasSede.forEach(function (v) {
       const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
-      explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
+      if (recetaMap[claveProd]) {
+        explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
+      } else {
+        // Sin receta (ej. una bebida: se vende 1 unidad, se consume 1 unidad) — se autoconsume
+        // 1:1 en vez de no contar nada, para que también cuadre en esta misma fórmula. La unidad
+        // debe coincidir con la del conteo físico (no siempre es "u": puede venir en g/ml si así
+        // se cuenta esa sede), si no, cambio/esperado quedarían en unidades distintas y la resta
+        // de más abajo mezclaría cosas que no son comparables.
+        const unidadConteo = (cambioFisico[claveProd] && cambioFisico[claveProd].unidad) || 'u';
+        if (!consumoEsperado[claveProd]) consumoEsperado[claveProd] = { nombre: nombreCanonico_(v.producto, indice), cantidad: 0, unidad: unidadConteo };
+        consumoEsperado[claveProd].cantidad += Number(v.cantidad) || 0;
+      }
     });
 
-    const cambioFisico = calcularCambioFisico_(fecha, sede, indice);
     const producido = produccionTotalPorItem_(fecha, sede, indice);
     const consumoProduccion = consumoEsperadoPorProduccion_(fecha, sede, indice);
     const traslados = trasladosNetosPorItem_(fecha, sede, indice);
