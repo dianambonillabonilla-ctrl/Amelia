@@ -107,9 +107,9 @@ function pintarComida(porSede) {
   cont.innerHTML = '';
   Object.keys(porSede).forEach(sede => {
     const filas = porSede[sede];
-    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico</th><th>Consumo esperado</th><th>Producción</th><th>Traslado neto</th><th>Diferencia sin explicar</th></tr></thead><tbody>`;
+    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico</th><th>Consumo esperado</th><th>Producción salida</th><th>Consumo producción</th><th>Compras / merma neta</th><th>Traslado neto</th><th>Diferencia sin explicar</th></tr></thead><tbody>`;
     if (!filas.length) {
-      tabla += '<tr><td colspan="6" class="vacio">Sin conteo del día anterior para comparar, o sin ventas ese día.</td></tr>';
+      tabla += '<tr><td colspan="8" class="vacio">Sin conteo del día anterior para comparar, o sin ventas/producción/movimientos ese día.</td></tr>';
     }
     filas.forEach(f => {
       let nota = '';
@@ -117,7 +117,7 @@ function pintarComida(porSede) {
       else if (f.implicito < -200 && f.unidad === 'g') nota = `<span class="badge alerta">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else if (f.implicito > 0) nota = `<span class="badge aviso">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else nota = '<span class="badge ok">Cuadra</span>';
-      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico ?? '—'} ${escapeHtml(f.unidad)}</td><td>${escapeHtml(f.consumo_esperado)} ${escapeHtml(f.unidad)}</td><td>${f.producido_registrado ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.traslado_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${nota}</td></tr>`;
+      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico ?? '—'} ${escapeHtml(f.unidad)}</td><td>${escapeHtml(f.consumo_esperado)} ${escapeHtml(f.unidad)}</td><td>${f.producido_registrado ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.consumo_produccion ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.ajuste_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.traslado_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${nota}</td></tr>`;
     });
     tabla += '</tbody></table>';
     cont.innerHTML += tabla;
