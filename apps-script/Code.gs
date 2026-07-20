@@ -191,32 +191,32 @@ function handleRequest_(e, method) {
         return jsonOut_(conteoRegistrar_(params.items, sesion.usuario));
       case 'conteo_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, sedeLecturaPermitida_(sesion.usuario, params.sede)) });
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
       case 'ajustes_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeLecturaPermitida_(sesion.usuario, params.sede)) });
       case 'compra_registrar_factura':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario));
       case 'compras_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, params.sede) });
+        return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, sedeLecturaPermitida_(sesion.usuario, params.sede)) });
       case 'compras_resumen_gasto':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
-        return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, params.sede) });
+        return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, sedeLecturaPermitida_(sesion.usuario, params.sede)) });
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
       case 'disponible_hoy':
-        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeLecturaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
       case 'reabastecimiento':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_(calcularReabastecimientoPorSede_(params.sede, params.fecha, params.dias_ventana));
+        return jsonOut_(calcularReabastecimientoPorSede_(sedeLecturaPermitida_(sesion.usuario, params.sede), params.fecha, params.dias_ventana));
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha) });
@@ -225,7 +225,7 @@ function handleRequest_(e, method) {
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario));
       case 'produccion_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeLecturaPermitida_(sesion.usuario, params.sede)) });
       case 'usuarios_listar':
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
@@ -237,6 +237,10 @@ function handleRequest_(e, method) {
         return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
       case 'traslados_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        // A propósito SIN sedeLecturaPermitida_: un traslado siempre involucra dos sedes (origen y
+        // destino), y el personal rota de sede — alguien cubriendo temporalmente otro punto necesita
+        // ver y confirmar traslados de ese punto aunque su sede asignada en Usuarios sea otra. Ver la
+        // misma razón documentada en Traslados.gs (trasladoCrear_/trasladoConfirmar_).
         return jsonOut_({ ok: true, data: trasladosListar_(params.filtro) });
       case 'traslado_confirmar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
@@ -450,6 +454,23 @@ function requiereRol_(usuario, rolesPermitidos) {
 
 function requiereAdmin_(usuario) {
   requiereRol_(usuario, ['Administrador']);
+}
+
+/**
+ * Limita qué sede puede CONSULTAR (no solo registrar) alguien sin acceso a "Ambas". El
+ * Administrador siempre ve todo. Alguien con sede='Ambas' en Usuarios (para el personal que rota
+ * o trabaja en más de un punto) tampoco se restringe — ver Usuarios.gs. El resto solo puede
+ * consultar su propia sede: si no pide ninguna en particular, se le muestra la suya por defecto;
+ * si pide una distinta, se rechaza (mismo criterio que ya existe hoy para REGISTRAR, ver
+ * conteoRegistrar_/produccionRegistrar_/ajusteInventarioRegistrar_/compraRegistrarFactura_).
+ */
+function sedeLecturaPermitida_(usuario, sedeSolicitada) {
+  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return sedeSolicitada;
+  if (!sedeSolicitada || sedeSolicitada === 'Ambas') return usuario.sede;
+  if (sedeSolicitada !== usuario.sede) {
+    throw new Error('No puedes consultar datos de una sede distinta a la tuya (' + usuario.sede + ')');
+  }
+  return sedeSolicitada;
 }
 
 // ---------------------------------------------------------------------------

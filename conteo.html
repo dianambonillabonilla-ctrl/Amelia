@@ -186,6 +186,7 @@ document.getElementById('btn-agregar-fila').addEventListener('click', () => nuev
 document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); });
 document.getElementById('fecha').addEventListener('change', cargarAjustes_);
 document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
+restringirSelectorSede_(document.getElementById('sede'));
 poblarPuntos_();
 cargarConteoAnterior_();
 

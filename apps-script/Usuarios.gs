@@ -23,10 +23,14 @@ function usuariosListar_(usuario) {
 
 function usuarioGuardar_(item, usuarioSesion) {
   requiereAdmin_(usuarioSesion);
-  if (!item || !item.nombre || !item.usuario || !item.rol) {
+  if (!item) return { ok: false, error: 'Faltan datos del usuario' };
+  // nombre/usuario/rol solo son obligatorios al CREAR (sin item.id). Actualizar un usuario
+  // existente es parcial por diseño (ej. el botón Activar/Desactivar solo manda {id, activo},
+  // y editar rol/sede solo manda {id, rol, sede}) — exigirlos siempre bloqueaba esas dos acciones.
+  if (!item.id && (!item.nombre || !item.usuario || !item.rol)) {
     return { ok: false, error: 'Faltan campos obligatorios (nombre, usuario, rol)' };
   }
-  if (ROLES_DISPONIBLES.indexOf(item.rol) === -1) {
+  if (item.rol !== undefined && ROLES_DISPONIBLES.indexOf(item.rol) === -1) {
     return { ok: false, error: 'Rol no válido: ' + item.rol };
   }
   const sh = sheet_(SHEET_NAMES.USUARIOS);

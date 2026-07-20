@@ -95,6 +95,8 @@ Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
 document.getElementById('fecha').valueAsDate = new Date();
+restringirSelectorSede_(document.getElementById('sede'));
+restringirSelectorSede_(document.getElementById('filtro-sede'));
 
 const hoy = new Date();
 const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000);

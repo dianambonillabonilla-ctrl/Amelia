@@ -134,6 +134,20 @@ function ocultarNavSegunRol_(rolActual) {
   });
 }
 
+// Si el usuario no tiene sede='Ambas' (personal que rota o trabaja en más de un punto) ni es
+// Administrador, limita cualquier selector de sede de la página a la suya — así nunca intenta
+// pedir datos de otra sede y chocar con la restricción de lectura por sede del backend
+// (sedeLecturaPermitida_ en Code.gs). Administrador y quienes tengan sede='Ambas' ven todas.
+function restringirSelectorSede_(select) {
+  const u = Sesion.usuario();
+  if (!select || !u || u.rol === 'Administrador' || u.sede === 'Ambas') return;
+  Array.from(select.options).forEach(opt => {
+    if (opt.value !== u.sede && opt.textContent.trim() !== u.sede) opt.remove();
+  });
+  if (select.options.length) select.value = u.sede;
+  select.disabled = select.options.length <= 1;
+}
+
 // Corta en seco el acceso a una página completa si el rol no está permitido (ej. importar.html) —
 // por si alguien entra directo por URL en vez de por el menú. Redirige al dashboard.
 function requerirRol_(rolesPermitidos) {

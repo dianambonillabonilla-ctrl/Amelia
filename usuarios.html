@@ -76,21 +76,60 @@ Sesion.requerir();
 requerirRol_(['Administrador']);
 montarBarraUsuario();
 
+const ROLES = ['Administrador', 'Encargado', 'Cocina', 'Lectura'];
+const SEDES = ['Ambas', 'San Antonio', 'Capri', 'Centro de Producción'];
+let editandoId = null;
+let usuariosActuales = [];
+
 async function cargar() {
   const data = await llamar('usuarios_listar');
   const body = document.getElementById('tabla-usuarios');
   if (!data.ok) { body.innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
-  body.innerHTML = data.data.map(u => `
-    <tr>
-      <td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.rol)}</td><td>${escapeHtml(u.sede)}</td>
+  usuariosActuales = data.data;
+  pintarUsuarios_();
+}
+
+function pintarUsuarios_() {
+  const body = document.getElementById('tabla-usuarios');
+  body.innerHTML = usuariosActuales.map(u => {
+    const enEdicion = u.id === editandoId;
+    const celdaRol = enEdicion
+      ? `<select class="ed-rol">${ROLES.map(r => `<option ${r === u.rol ? 'selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select>`
+      : escapeHtml(u.rol);
+    const celdaSede = enEdicion
+      ? `<select class="ed-sede">${SEDES.map(s => `<option ${s === u.sede ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}</select>`
+      : escapeHtml(u.sede);
+    const acciones = enEdicion
+      ? `<button class="btn dorado btn-guardar-edicion" data-id="${escapeHtml(u.id)}">Guardar</button>
+         <button class="btn fantasma btn-cancelar-edicion">Cancelar</button>`
+      : `<button class="btn fantasma btn-editar" data-id="${escapeHtml(u.id)}">Editar rol/sede</button>
+         <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>
+         <button class="btn fantasma btn-resetear" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}">Restablecer contraseña</button>`;
+    return `<tr>
+      <td>${escapeHtml(u.nombre)}</td><td>${escapeHtml(u.usuario)}</td><td>${celdaRol}</td><td>${celdaSede}</td>
       <td>${escapeHtml(u.email || '—')}</td>
       <td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge alerta">Inactivo</span>'}</td>
-      <td>
-        <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>
-        <button class="btn fantasma btn-resetear" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}">Restablecer contraseña</button>
-      </td>
-    </tr>`).join('');
+      <td>${acciones}</td>
+    </tr>`;
+  }).join('');
 
+  document.querySelectorAll('.btn-editar').forEach(btn => {
+    btn.addEventListener('click', () => { editandoId = btn.dataset.id; pintarUsuarios_(); });
+  });
+  document.querySelectorAll('.btn-cancelar-edicion').forEach(btn => {
+    btn.addEventListener('click', () => { editandoId = null; pintarUsuarios_(); });
+  });
+  document.querySelectorAll('.btn-guardar-edicion').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fila = btn.closest('tr');
+      const item = { id: btn.dataset.id, rol: fila.querySelector('.ed-rol').value, sede: fila.querySelector('.ed-sede').value };
+      const data = await llamar('usuarios_guardar', { item });
+      if (!data.ok) { alert(data.error); return; }
+      avisarGuardado('Rol/sede actualizados.');
+      editandoId = null;
+      cargar();
+    });
+  });
   document.querySelectorAll('.btn-toggle').forEach(btn => {
     btn.addEventListener('click', async () => {
       await llamar('usuarios_guardar', { item: { id: btn.dataset.id, activo: btn.dataset.activo !== 'true' } });
