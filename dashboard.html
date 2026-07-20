@@ -66,6 +66,17 @@
 
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h2 style="margin:0">¿Alcanza para pedir a tiempo?</h2>
+        <span style="color:var(--grey); font-size:.85rem" id="reab-info"></span>
+      </div>
+      <table>
+        <thead><tr><th>Producto</th><th>Stock actual</th><th>Consumo diario promedio</th><th>Días restantes</th><th></th></tr></thead>
+        <tbody id="tabla-reabastecimiento"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <h2 style="margin:0">Tendencia de días restantes</h2>
         <select id="tendencia-ingrediente" style="width:auto; min-width:220px"></select>
       </div>
@@ -126,6 +137,42 @@ async function cargar() {
   });
 
   poblarSelectorIngredientes_(entradas.map(s => s.producto));
+  cargarReabastecimiento_(fecha, sede);
+}
+
+// Compara el ritmo de venta reciente (FUDO, explotado por receta) contra el stock físico de la
+// sede elegida, para avisar con anticipación si algo se agota antes de que llegue el próximo
+// pedido/traslado. "Ambas" no aplica: el punto es ver cada sede por separado.
+async function cargarReabastecimiento_(fecha, sede) {
+  const body = document.getElementById('tabla-reabastecimiento');
+  const info = document.getElementById('reab-info');
+  if (sede === 'Ambas') {
+    body.innerHTML = '<tr><td colspan="5" class="vacio">Elige San Antonio o Capri arriba (no "Ambas") para ver esto por sede.</td></tr>';
+    info.textContent = '';
+    return;
+  }
+  body.innerHTML = '<tr><td colspan="5" class="vacio">Cargando…</td></tr>';
+  const data = await llamar('reabastecimiento', { sede, fecha });
+  if (!data.ok) { body.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+
+  info.textContent = `Promedio de los últimos ${data.dias_ventana} días · margen de ${data.dias_espera_reabastecimiento} día(s) para que llegue un pedido nuevo`;
+  if (!data.filas.length) {
+    body.innerHTML = '<tr><td colspan="5" class="vacio">Sin ventas recientes en esta sede para calcular un ritmo de consumo.</td></tr>';
+    return;
+  }
+  body.innerHTML = data.filas.map(f => {
+    const badge = f.dias_restantes === null ? ''
+      : f.alerta ? '<span class="badge alerta">Pedir ya</span>'
+      : f.dias_restantes < data.dias_espera_reabastecimiento * 2 ? '<span class="badge aviso">Vigilar</span>'
+      : '<span class="badge ok">OK</span>';
+    return `<tr>
+      <td>${escapeHtml(f.producto)}</td>
+      <td>${escapeHtml(f.stock_actual)} ${escapeHtml(f.unidad)}</td>
+      <td>${escapeHtml(f.consumo_diario_promedio)} ${escapeHtml(f.unidad)}/día</td>
+      <td>${f.dias_restantes ?? '—'}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
 }
 
 // Cruza el catálogo (que trae el mínimo configurado por producto, ej. en catalogo.html) con el

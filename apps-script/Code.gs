@@ -214,6 +214,9 @@ function handleRequest_(e, method) {
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, params.sede) });
       case 'tendencia_ingrediente':
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
+      case 'reabastecimiento':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(calcularReabastecimientoPorSede_(params.sede, params.fecha, params.dias_ventana));
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha) });
