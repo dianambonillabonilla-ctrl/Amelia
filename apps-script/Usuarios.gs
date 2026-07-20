@@ -46,7 +46,7 @@ function usuarioGuardar_(item, usuarioSesion) {
         }
         headers.forEach(function (h, c) {
           if (h === 'password_hash' || h === 'salt') return; // la contraseña se cambia con cambiarPassword_
-          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(item[h]);
+          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(sanitizarCelda_(item[h]));
         });
         return { ok: true, actualizado: true };
       }

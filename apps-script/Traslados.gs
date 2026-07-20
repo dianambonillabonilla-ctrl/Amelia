@@ -74,7 +74,7 @@ function trasladoActualizar_(id, cambios) {
   const encontrado = trasladoBuscarFila_(id);
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado ' + id };
   encontrado.headers.forEach(function (h, c) {
-    if (cambios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambios[h]);
+    if (cambios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(sanitizarCelda_(cambios[h]));
   });
   const idCol = encontrado.headers.indexOf('estado');
   return { ok: true, estado: cambios.estado || encontrado.valores[idCol] };

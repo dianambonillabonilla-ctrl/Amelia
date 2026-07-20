@@ -81,7 +81,7 @@ function recetaGuardar_(item) {
     for (let r = 1; r < data.length; r++) {
       if (String(data[r][idCol]) === String(item.id)) {
         headers.forEach(function (h, c) {
-          if (valores[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(valores[h]);
+          if (valores[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(sanitizarCelda_(valores[h]));
         });
         return { ok: true, actualizado: true, id: id };
       }

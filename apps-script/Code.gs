@@ -466,9 +466,24 @@ function leerTabla_(nombreHoja) {
     });
 }
 
+/**
+ * Evita inyección de fórmulas: Sheets interpreta como fórmula cualquier valor de texto que
+ * empiece con =, +, -, @ — incluso escrito vía Range#setValue()/appendRow() desde Apps Script,
+ * no solo tecleado a mano. Casi todos los campos libres del sistema (producto, motivo, proveedor,
+ * notas, nombre de usuario...) pasan por acá, así que cualquier rol que pueda registrar algo
+ * (Cocina/Encargado/Administrador) podría dejar una fórmula viva sin darse cuenta. Anteponer un
+ * apóstrofe fuerza texto plano, igual que si alguien lo tecleara a mano en la hoja — Sheets lo
+ * consume al interpretar el valor, no queda visible en la celda.
+ */
+function sanitizarCelda_(valor) {
+  if (typeof valor !== 'string') return valor;
+  if (/^[=+\-@]/.test(valor)) return "'" + valor;
+  return valor;
+}
+
 function appendRowFromObj_(nombreHoja, obj) {
   const sh = sheet_(nombreHoja);
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const row = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+  const row = headers.map(function (h) { return sanitizarCelda_(obj[h] !== undefined ? obj[h] : ''); });
   sh.appendRow(row);
 }

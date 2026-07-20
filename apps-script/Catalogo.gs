@@ -15,7 +15,7 @@ function catalogoGuardar_(item, usuario) {
     for (let r = 1; r < data.length; r++) {
       if (data[r][idCol] === item.id) {
         headers.forEach(function (h, c) {
-          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(item[h]);
+          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(sanitizarCelda_(item[h]));
         });
         return { ok: true, actualizado: true };
       }

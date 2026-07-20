@@ -67,7 +67,7 @@ function migrarRecetasJulio2026_() {
   }
   function escribirFila_(r, obj) {
     headers.forEach(function (h, c) {
-      if (obj[h] !== undefined) { sh.getRange(r + 1, c + 1).setValue(obj[h]); data[r][c] = obj[h]; }
+      if (obj[h] !== undefined) { sh.getRange(r + 1, c + 1).setValue(sanitizarCelda_(obj[h])); data[r][c] = obj[h]; }
     });
   }
   function archivar_(producto, motivo) {
