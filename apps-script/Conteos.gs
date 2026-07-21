@@ -6,6 +6,15 @@
 
 function conteoRegistrar_(items, usuario) {
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    if (!it.fecha || !it.sede || !it.producto || !it.unidad) {
+      return { ok: false, error: 'Cada conteo debe tener fecha, sede, producto y unidad' };
+    }
+    if (isNaN(Number(it.cantidad)) || Number(it.cantidad) < 0) {
+      return { ok: false, error: 'La cantidad contada debe ser un número igual o mayor que cero' };
+    }
+  }
   if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
     return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
   }

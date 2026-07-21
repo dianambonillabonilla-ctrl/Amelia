@@ -240,7 +240,7 @@ function handleRequest_(e, method) {
         return jsonOut_(trasladoConfirmar_(params.id, params.cantidad_recibida, sesion.usuario));
       case 'traslado_observar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(trasladoObservar_(params.id, params.observacion, sesion.usuario));
+        return jsonOut_(trasladoObservar_(params.id, params.cantidad_recibida, params.observacion, sesion.usuario));
       case 'traslado_resolver':
         return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
       case 'diagnostico_recetas':

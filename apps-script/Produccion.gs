@@ -8,6 +8,15 @@
 
 function produccionRegistrar_(items, usuario) {
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    if (!it.fecha || !it.sede || !it.item || !it.unidad) {
+      return { ok: false, error: 'Cada producción debe tener fecha, sede, producto y unidad' };
+    }
+    if (isNaN(Number(it.cantidad)) || Number(it.cantidad) <= 0) {
+      return { ok: false, error: 'La cantidad producida debe ser un número mayor que cero' };
+    }
+  }
   if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
     return { ok: false, error: 'No puedes registrar producción para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
@@ -19,7 +28,7 @@ function produccionRegistrar_(items, usuario) {
       fecha: it.fecha,
       sede: it.sede,
       item: it.item,
-      cantidad: it.cantidad,
+      cantidad: Number(it.cantidad),
       unidad: it.unidad,
       usuario: usuario.nombre,
       timestamp: ahora
