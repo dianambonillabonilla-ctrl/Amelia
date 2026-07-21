@@ -51,7 +51,7 @@ function sheet_(name) {
 function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'],
-    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo'],
     Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
       'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
       'controla_disponibilidad', 'notas'],
@@ -181,7 +181,7 @@ function handleRequest_(e, method) {
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoGuardar_(params.item, sesion.usuario));
       case 'recetas_listar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: recetasListar_(params.filtros) });
       case 'receta_guardar':
         requiereAdmin_(sesion.usuario);

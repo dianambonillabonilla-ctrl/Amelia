@@ -28,6 +28,25 @@ function catalogoGuardar_(item, usuario) {
   return { ok: true, creado: true, id: item.id };
 }
 
+/**
+ * Si `nombre` no existe todavía en el catálogo (ni como nombre_estandar ni como nombre_fudo), lo
+ * crea sin categoría — así queda una entrada "oficial" contra la que comparar la próxima vez que
+ * alguien escriba ese mismo producto, en vez de que cada conteo/compra lo escriba distinto. El
+ * Administrador completa categoría/stock mínimo/nombre FUDO después desde Registrar producto.
+ * No lanza error si falla: crear el producto es un efecto secundario, no debe tumbar el
+ * conteo/compra que lo disparó.
+ */
+function catalogoAsegurar_(nombre, unidad) {
+  const limpio = String(nombre || '').trim();
+  if (!limpio) return;
+  try {
+    if (catalogoBuscar_(limpio)) return;
+    catalogoGuardar_({ nombre_estandar: limpio, unidad_base: normalizarUnidad_(unidad) || '', categoria: '' });
+  } catch (err) {
+    Logger.log('catalogoAsegurar_ falló para "' + limpio + '": ' + err.message);
+  }
+}
+
 function catalogoBuscar_(nombre) {
   const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
   const directo = catalogo.find(function (c) {
@@ -82,6 +101,159 @@ function nombreCanonico_(texto, indice) {
   const norm = normalizar_(texto);
   const canonico = indice && indice[norm];
   return canonico || String(texto || '').trim();
+}
+
+/**
+ * Etiqueta en el catálogo qué productos se cuentan TODOS LOS DÍAS ('Diario') y cuáles solo un día
+ * específico de la semana ('Miércoles' o 'Viernes') — tomado tal cual de las hojas
+ * Diario/Miercoles/Viernes del Excel histórico de San Antonio. Esto alimenta la lista fija que
+ * conteo.html precarga en Registrar conteo (ver cargarListaFija_ allí), para que el personal no
+ * tenga que buscar cada producto desde cero en cada cierre.
+ *
+ * Si el producto ya existe en el catálogo (por nombre, sin importar tildes/mayúsculas/espacios),
+ * solo se le pone la frecuencia — no se toca categoría, unidad ni nada más que ya tenga. Si no
+ * existe, se crea sin categoría (el Administrador la completa después en Registrar producto).
+ *
+ * "Papel higienico" aparece en Diario Y en Miércoles en el Excel original; aquí gana Miércoles
+ * (se procesa después) — revísalo en Registrar producto si en realidad debía quedar Diario.
+ *
+ * Es la lista de San Antonio únicamente: si Capri o Centro de Producción necesitan una lista
+ * distinta, frecuencia_conteo tendría que volverse un dato por sede — hoy no lo es.
+ *
+ * Corre esta función UNA vez desde el editor de Apps Script (requiere haber corrido
+ * configurarHojas() después de que se agregó la columna frecuencia_conteo). Es segura de repetir.
+ */
+function importarFrecuenciasConteoInicial_() {
+  const listas = {
+    Diario: [
+      ['Limon Tahiti', 'g'],
+      ['Perejil Picado', ''],
+      ['Perejil', 'g'],
+      ['Papa Capira', 'g'],
+      ['Pepino', ''],
+      ['Hinojo', ''],
+      ['Relleno de Limon', 'g'],
+      ['Masa Beignets', 'g'],
+      ['Porciones Pie Manzana', 'u'],
+      ['Helado', 'g'],
+      ['Yoghurt Griego', ''],
+      ['Costilla Preparada', 'g'],
+      ['Costilla Preparada Picada', 'g'],
+      ['Panceta  Pre-Ahumada', 'g'],
+      ['Reducción Balsamica', 'g'],
+      ['Ajo Preparado', 'g'],
+      ['Cebolla en Pluma (sin limon)', 'g'],
+      ['Cebollita de Amelia', ''],
+      ['Falafel', 'g'],
+      ['Papas Pre-Fritas', 'g'],
+      ['Aioli', 'g'],
+      ['Tzatziki', 'g'],
+      ['Salsita Picante de Amelia', 'g'],
+      ['Zumo Limón', 'g'],
+      ['Sirope Neutro', 'g'],
+      ['Sirope Naranja', 'g'],
+      ['Sirope Panela', 'g'],
+      ['Ginger Beer', 'g'],
+      ['Papel higienico', 'u'],
+      ['AB Rubia Lager', 'u'],
+      ['Aguila Light 330 ml', 'u'],
+      ['CC Dorada 330 ml', 'u'],
+      ['Poker', 'u'],
+      ['Stella Artois 330 ml', 'u'],
+      ['Torre Anturio (Porter Ale)', 'u'],
+      ['Torre Camelia (Amber Ale)', 'u'],
+      ['Torre Magnolia (Blonde Ale)', 'u'],
+      ['Torre Silvana (IPA)', 'u'],
+      ['Agua Manantial 500ml', 'u'],
+      ['Coca-Cola Original 10 Oz (Domicilio)', 'u'],
+      ['Coca-Cola Original  350 ml', 'u'],
+      ['Coca-Cola Sin Azucar 10 Oz (Domicilio)', 'u'],
+      ['Coca-Cola Sin Azucar 350 ml', 'u'],
+      ['Ginger Ale 240 ml', 'u'],
+      ['Soda 350 ml', 'u'],
+      ['Kefir 240 ml', 'u'],
+      ['Hielo', 'u']
+    ],
+    Miércoles: [
+      ['Lavaloza', 'g'],
+      ['Detergente', 'g'],
+      ['Aceite Freidora', 'g'],
+      ['Limpido', 'u'],
+      ['Desengrasante Industrial', 'g'],
+      ['Jabón Manos', 'g'],
+      ['Bolsas Domiclio Grandes', 'u'],
+      ['Bolsas Domicilio Pequeñas', 'u'],
+      ['Cajas Domicilio', 'u'],
+      ['Recibos de Caja', 'u'],
+      ['Gel Antibacterial', 'g'],
+      ['Papel Conos', 'paq'],
+      ['Pegante de Conos', 'u'],
+      ['Rollo Impresora Caja', 'u'],
+      ['Rollo Impresora DATAFONO', 'u'],
+      ['mezclador de bebidas', 'u'],
+      ['Servilletas', 'paq'],
+      ['Salseros 2 oz', 'u'],
+      ['Tapas Salsero', 'u'],
+      ['Papel Aluminio', 'g'],
+      ['Papel higienico', 'u'],
+      ['Esponja Lavaplatos', 'u'],
+      ['Esponja Metalica', 'u'],
+      ['Esponja de Brillo', 'u'],
+      ['Cepillo Parrilla', 'u'],
+      ['Bolas de basura verdes', 'u'],
+      ['Bolsas de basura Negras grandes', 'u'],
+      ['Bolsas de basura Negras pequeñas', 'u'],
+      ['Toalla de manos para baño', 'u'],
+      ['Papel indusrial cocina', 'u'],
+      ['Trapos Servicio', 'u'],
+      ['Tapas Salsero otro tamaño', 'u'],
+      ['Lapiceros', 'u'],
+      ['Tijeras', 'u'],
+      ['Alcohol', 'u'],
+      ['Tapabocas', 'paq'],
+      ['Pines', 'u'],
+      ['varsol', 'g'],
+      ['limpia piso', ''],
+      ['bananas', '']
+    ],
+    Viernes: [
+      ['Panela Orgánica', 'u'],
+      ['Azucar Blanca', ''],
+      ['Sal Marina Media', 'g'],
+      ['Sal Marina Fina', 'g'],
+      ['Vinagre Blanco', 'g'],
+      ['Aceite de Oliva', 'g'],
+      ['Aceite Girasol', 'g'],
+      ['Huevos A', 'u'],
+      ['Botellas Vino', 'u'],
+      ['Botellas Tequila', 'u'],
+      ['Botellas Triple Sec', 'u'],
+      ['Botellas Viche', 'u'],
+      ['Naranjas', 'g'],
+      ['Ginger 1.5 L', 'u'],
+      ['azucar  morena', ''],
+      ['sal', 'g'],
+      ['Azucar pulverizada', 'g']
+    ]
+  };
+
+  let etiquetados = 0;
+  let creados = 0;
+  Object.keys(listas).forEach(function (frecuencia) {
+    listas[frecuencia].forEach(function (p) {
+      const nombre = p[0];
+      const unidad = p[1] || 'u';
+      const existente = catalogoBuscar_(nombre);
+      if (existente) {
+        catalogoGuardar_({ id: existente.id, nombre_estandar: existente.nombre_estandar, frecuencia_conteo: frecuencia });
+      } else {
+        catalogoGuardar_({ nombre_estandar: nombre, unidad_base: normalizarUnidad_(unidad) || 'u', categoria: '', frecuencia_conteo: frecuencia });
+        creados++;
+      }
+      etiquetados++;
+    });
+  });
+  Logger.log('Frecuencias de conteo: ' + etiquetados + ' productos etiquetados (' + creados + ' creados de nuevo).');
 }
 
 /**

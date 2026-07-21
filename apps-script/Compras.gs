@@ -33,6 +33,7 @@ function compraRegistrarFactura_(factura, usuario) {
   const facturaId = Utilities.getUuid();
   let total = 0;
   lineas.forEach(function (l) {
+    catalogoAsegurar_(l.producto, l.unidad);
     const costo = l.costo !== undefined && l.costo !== '' ? Number(l.costo) : 0;
     total += costo;
     ajusteInventarioRegistrar_({

@@ -14,7 +14,7 @@
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
-      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
@@ -58,8 +58,8 @@
         producto) para que se avise cuando el conteo más reciente caiga por debajo.
       </p>
       <table>
-        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th></tr></thead>
-        <tbody id="tabla-catalogo"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th><th>Frecuencia de conteo</th></tr></thead>
+        <tbody id="tabla-catalogo"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
 
@@ -110,6 +110,15 @@
           <label>Stock mínimo (opcional)</label>
           <input type="number" step="0.01" id="nuevo-stock-minimo" placeholder="para la alarma de insumos bajos">
         </div>
+        <div class="campo">
+          <label>Frecuencia de conteo (opcional)</label>
+          <select id="nuevo-frecuencia">
+            <option value="">Sin lista fija (se agrega a mano cada vez)</option>
+            <option value="Diario">Diario</option>
+            <option value="Miércoles">Miércoles</option>
+            <option value="Viernes">Viernes</option>
+          </select>
+        </div>
       </div>
       <button class="btn dorado" id="btn-guardar">Guardar producto</button>
     </div>
@@ -127,7 +136,7 @@ let catalogo = [];
 async function cargarCatalogo() {
   const data = await llamar('catalogo_listar');
   if (!data.ok) {
-    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="6" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(data.error)}</td></tr>`;
     return;
   }
   catalogo = data.data;
@@ -185,7 +194,8 @@ function pintarTabla_() {
     .sort((a, b) => (a.categoria + a.nombre_estandar).localeCompare(b.categoria + b.nombre_estandar));
 
   const body = document.getElementById('tabla-catalogo');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
+  const frecuencias = ['', 'Diario', 'Miércoles', 'Viernes'];
   body.innerHTML = filas.map(p => `
     <tr>
       <td>${escapeHtml(p.nombre_estandar)}</td>
@@ -194,15 +204,27 @@ function pintarTabla_() {
       <td>${escapeHtml(p.unidad_base || '—')}</td>
       <td>${escapeHtml(p.nombre_fudo || '—')}</td>
       <td><input type="number" step="0.01" class="in-stock-minimo" data-id="${escapeHtml(p.id)}" value="${p.stock_minimo !== undefined && p.stock_minimo !== '' ? escapeHtml(p.stock_minimo) : ''}" style="width:90px"></td>
+      <td><select class="in-frecuencia" data-id="${escapeHtml(p.id)}" style="width:auto">
+        ${frecuencias.map(f => `<option value="${escapeHtml(f)}" ${p.frecuencia_conteo === f ? 'selected' : ''}>${f || 'Sin lista fija'}</option>`).join('')}
+      </select></td>
     </tr>`).join('');
 
   body.querySelectorAll('.in-stock-minimo').forEach(input => {
     input.addEventListener('change', async () => {
       const valor = input.value.trim();
-      const data = await llamar('catalogo_guardar', { item: { id: input.dataset.id, stock_minimo: valor === '' ? '' : parseFloat(valor) } });
-      if (!data.ok) { alert(data.error); return; }
       const item = catalogo.find(p => p.id === input.dataset.id);
+      const data = await llamar('catalogo_guardar', { item: { id: input.dataset.id, nombre_estandar: item ? item.nombre_estandar : '', stock_minimo: valor === '' ? '' : parseFloat(valor) } });
+      if (!data.ok) { alert(data.error); return; }
       if (item) item.stock_minimo = valor === '' ? '' : parseFloat(valor);
+    });
+  });
+
+  body.querySelectorAll('.in-frecuencia').forEach(select => {
+    select.addEventListener('change', async () => {
+      const item = catalogo.find(p => p.id === select.dataset.id);
+      const data = await llamar('catalogo_guardar', { item: { id: select.dataset.id, nombre_estandar: item ? item.nombre_estandar : '', frecuencia_conteo: select.value } });
+      if (!data.ok) { alert(data.error); return; }
+      if (item) item.frecuencia_conteo = select.value;
     });
   });
 }
@@ -266,13 +288,14 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     unidad_base: document.getElementById('nuevo-unidad').value,
     nombre_fudo: document.getElementById('nuevo-nombre-fudo').value.trim(),
     notas: document.getElementById('nuevo-notas').value.trim(),
-    stock_minimo: stockMinimo === '' ? '' : parseFloat(stockMinimo)
+    stock_minimo: stockMinimo === '' ? '' : parseFloat(stockMinimo),
+    frecuencia_conteo: document.getElementById('nuevo-frecuencia').value
   };
 
   const data = await llamar('catalogo_guardar', { item });
   if (data.ok) {
     avisarGuardado('Producto guardado.');
-    ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas', 'nuevo-stock-minimo'].forEach(id => document.getElementById(id).value = '');
+    ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas', 'nuevo-stock-minimo', 'nuevo-frecuencia'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('nuevo-unidad').value = 'g';
     document.getElementById('aviso-parecido').style.display = 'none';
     cargarCatalogo();

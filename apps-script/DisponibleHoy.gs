@@ -234,9 +234,17 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
 
 /**
  * Devuelve, para cada producto contado manualmente, la cantidad más reciente registrada
- * hasta la fecha indicada (o la más reciente en general si no se indica fecha), sumando las sedes.
+ * hasta la fecha indicada (o la más reciente en general si no se indica fecha), sumando las sedes
+ * (o filtrando a una sola si se pasa `sede`).
  * Agrupa por claveProducto_, así que dos conteos del mismo producto escritos con distinta
  * ortografía se suman como uno solo en vez de aparecer como dos ingredientes distintos.
+ *
+ * A partir del último conteo físico de CADA sede, se suman las compras ('Compra cruda') y
+ * ajustes operativos, y se restan las mermas/desperdicio (Ajustes_Inventario, ver
+ * AjustesInventario.gs) registrados en esa misma sede después de ese conteo y hasta la fecha de
+ * corte — así una compra en Capri aumenta de inmediato el disponible de Capri sin esperar al
+ * próximo conteo físico, y una compra en San Antonio no afecta el número de Capri. El conteo
+ * físico sigue siendo la referencia real; esto solo cubre el tiempo entre conteos.
  */
 function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   indice = indice || indiceCatalogo_();
@@ -248,24 +256,49 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
     if (fecha && f > fecha) return;
     if (sede && sede !== 'Ambas' && c.sede !== sede) return;
     const clave = claveProducto_(c.producto, indice);
-    if (!porProducto[clave]) porProducto[clave] = { nombre: nombreCanonico_(c.producto, indice), fechas: {} };
+    const sedeConteo = c.sede || 'Sin sede';
+    if (!porProducto[clave]) porProducto[clave] = { nombre: nombreCanonico_(c.producto, indice), porSede: {} };
+    if (!porProducto[clave].porSede[sedeConteo]) porProducto[clave].porSede[sedeConteo] = { fechas: {} };
+    const fechas = porProducto[clave].porSede[sedeConteo].fechas;
     const base = aUnidadBase_(c.cantidad, c.unidad);
-    if (!porProducto[clave].fechas[f]) porProducto[clave].fechas[f] = { cantidad: 0, unidad: base.unidad };
-    if (porProducto[clave].fechas[f].unidad !== base.unidad) return;
-    porProducto[clave].fechas[f].cantidad += base.cantidad;
+    if (!fechas[f]) fechas[f] = { cantidad: 0, unidad: base.unidad };
+    if (fechas[f].unidad !== base.unidad) return;
+    fechas[f].cantidad += base.cantidad;
   });
 
+  const ajustes = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
     const entrada = porProducto[clave];
-    const fechas = Object.keys(entrada.fechas).sort();
-    const ultimaFecha = fechas[fechas.length - 1];
-    resultado[clave] = {
-      producto: entrada.nombre,
-      cantidad: entrada.fechas[ultimaFecha].cantidad,
-      unidad: entrada.fechas[ultimaFecha].unidad,
-      fecha_conteo: ultimaFecha
-    };
+    let total = 0;
+    let unidadFinal = '';
+    let fechaMasReciente = '';
+    Object.keys(entrada.porSede).forEach(function (sedeConteo) {
+      const fechasSede = Object.keys(entrada.porSede[sedeConteo].fechas).sort();
+      const ultimaFecha = fechasSede[fechasSede.length - 1];
+      const base = entrada.porSede[sedeConteo].fechas[ultimaFecha];
+      unidadFinal = unidadFinal || base.unidad;
+      total += base.cantidad + netoAjustesDesdeConteo_(ajustes, clave, sedeConteo, ultimaFecha, fecha, indice, base.unidad);
+      if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
+    });
+    resultado[clave] = { producto: entrada.nombre, cantidad: total, unidad: unidadFinal, fecha_conteo: fechaMasReciente };
   });
   return resultado;
+}
+
+/** Suma compras/ajustes operativos y resta mermas de `sede` para `clave`, estrictamente después
+ * de `fechaConteoExclusive` y hasta `fechaCorteInclusive` (o sin tope si no se pasa fecha de corte). */
+function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+  let neto = 0;
+  ajustes.forEach(function (a) {
+    if ((a.sede || 'Sin sede') !== sede) return;
+    if (claveProducto_(a.producto, indice) !== clave) return;
+    const f = formatearFecha_(a.fecha);
+    if (f <= fechaConteoExclusive) return;
+    if (fechaCorteInclusive && f > fechaCorteInclusive) return;
+    const base = aUnidadBase_(a.cantidad, a.unidad);
+    if (base.unidad !== unidadEsperada) return;
+    neto += a.tipo === 'Merma / desperdicio' ? -base.cantidad : base.cantidad;
+  });
+  return neto;
 }

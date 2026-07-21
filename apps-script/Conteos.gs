@@ -35,6 +35,7 @@ function conteoRegistrar_(items, usuario) {
       usuario: usuario.nombre,
       timestamp: ahora
     };
+    catalogoAsegurar_(it.producto, it.unidad);
     const existente = conteoBuscarFila_(it);
     if (existente) {
       existente.headers.forEach(function (h, c) {
