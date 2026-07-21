@@ -201,7 +201,7 @@ function pintarPendientes_(filas) {
       <td>${escapeHtml(t.fecha)}</td>
       <td>
         <button class="btn dorado btn-confirmar" data-id="${escapeHtml(t.id)}" data-cantidad="${escapeHtml(t.cantidad_enviada)}">Confirmar</button>
-        <button class="btn fantasma btn-observar" data-id="${escapeHtml(t.id)}">Reportar problema</button>
+        <button class="btn fantasma btn-observar" data-id="${escapeHtml(t.id)}" data-unidad="${escapeHtml(t.unidad)}">Reportar problema</button>
       </td>
     </tr>`).join('');
 
@@ -213,9 +213,11 @@ function pintarPendientes_(filas) {
   });
   body.querySelectorAll('.btn-observar').forEach(btn => {
     btn.addEventListener('click', async () => {
+      const cantidad = prompt(`¿Cuánto se recibió realmente? (en ${btn.dataset.unidad})`);
+      if (cantidad === null) return;
       const observacion = prompt('¿Qué pasó con este traslado? (ej. "Solo llegaron 3kg de 5kg", "llegó dañado")');
       if (!observacion) return;
-      const data = await llamar('traslado_observar', { id: btn.dataset.id, observacion });
+      const data = await llamar('traslado_observar', { id: btn.dataset.id, cantidad_recibida: cantidad.replace(',', '.'), observacion });
       if (data.ok) {
         avisarGuardado('Observación registrada — se avisó a Administrador y Encargados.');
         cargarTodo();

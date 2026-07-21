@@ -18,8 +18,8 @@
  */
 
 function trasladoCrear_(item, usuario) {
-  if (!item || !item.producto || !item.cantidad || !item.sede_origen || !item.sede_destino) {
-    return { ok: false, error: 'Faltan datos del traslado (producto, cantidad, sede origen y sede destino son obligatorios)' };
+  if (!item || !item.producto || !item.unidad || !item.cantidad || !item.sede_origen || !item.sede_destino) {
+    return { ok: false, error: 'Faltan datos del traslado (producto, unidad, cantidad, sede origen y sede destino son obligatorios)' };
   }
   if (isNaN(Number(item.cantidad)) || Number(item.cantidad) <= 0) {
     return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
@@ -86,25 +86,37 @@ function trasladoConfirmar_(id, cantidadRecibida, usuario) {
   const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
   if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
 
+  const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+  const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
+  if (isNaN(recibida) || recibida <= 0 || recibida > enviada) {
+    return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
+  }
+
   return trasladoActualizar_(id, {
     estado: 'Confirmado',
     usuario_recibe: usuario.nombre,
     timestamp_recibe: new Date(),
-    cantidad_recibida: cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]
+    cantidad_recibida: recibida
   });
 }
 
-function trasladoObservar_(id, observacion, usuario) {
+function trasladoObservar_(id, cantidadRecibida, observacion, usuario) {
   if (!observacion || !String(observacion).trim()) return { ok: false, error: 'Escribe qué pasó con el traslado' };
   const encontrado = trasladoBuscarFila_(id);
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
   const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
   if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+  const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+  const recibida = Number(cantidadRecibida);
+  if (isNaN(recibida) || recibida < 0 || recibida >= enviada) {
+    return { ok: false, error: 'En una observación, la cantidad recibida debe estar entre cero y ser menor que la enviada' };
+  }
 
   const resultado = trasladoActualizar_(id, {
     estado: 'Con observación',
     usuario_recibe: usuario.nombre,
     timestamp_recibe: new Date(),
+    cantidad_recibida: recibida,
     observacion: String(observacion).trim()
   });
 

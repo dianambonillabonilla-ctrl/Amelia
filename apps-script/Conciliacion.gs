@@ -194,7 +194,11 @@ function trasladosNetosPorItem_(fecha, sede, indice) {
   leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
     return formatearFecha_(t.fecha) === fecha && ['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1;
   }).forEach(function (t) {
-    const base = aUnidadBase_(t.cantidad_recibida || t.cantidad_enviada, t.unidad);
+    // Un traslado resuelto con faltante conserva la cantidad realmente recibida. No usar
+    // `||` aquí: cero es un valor válido cuando no llegó nada.
+    const cantidad = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
+      ? t.cantidad_recibida : t.cantidad_enviada;
+    const base = aUnidadBase_(cantidad, t.unidad);
     const clave = claveProducto_(t.producto, indice);
     const signo = t.sede_destino === sede ? 1 : (t.sede_origen === sede ? -1 : 0);
     if (!signo) return;
