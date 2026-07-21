@@ -12,12 +12,12 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
-      <a href="compras.html" data-solo-rol="Administrador">Compras</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
       <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
@@ -65,10 +65,10 @@
     </div>
 
     <div class="card">
-      <h2>Mermas y ajustes operativos</h2>
+      <h2>Mermas y ajustes</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Úsalo para explicar diferencias antes del conteo: merma/desperdicio por limpieza o daño,
-        y ajustes operativos documentados. Las compras con factura se registran en la pantalla Compras.
+        Úsalo para explicar el flujo antes del conteo: merma/desperdicio por limpieza o daño, y ajustes operativos documentados.
+        Para registrar una compra (con proveedor, número de factura y costo), ve a <a href="compras.html">Compras</a>.
       </p>
       <div class="grid grid-4">
         <div class="campo"><label>Tipo</label><select id="aj-tipo"><option>Merma / desperdicio</option><option>Ajuste operativo</option></select></div>
@@ -222,7 +222,7 @@ async function cargarAjustes_() {
   const data = await llamar('ajustes_inventario_listar', { fecha, sede });
   const body = document.getElementById('tabla-ajustes');
   if (!data.ok) { body.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
-  if (!data.data.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin mermas ni ajustes registrados.</td></tr>'; return; }
+  if (!data.data.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin mermas ni ajustes registrados (las compras se ven en Compras).</td></tr>'; return; }
   body.innerHTML = data.data.map(a => `<tr><td>${escapeHtml(a.tipo)}</td><td>${escapeHtml(a.producto)}</td><td>${escapeHtml(a.cantidad)} ${escapeHtml(a.unidad)}</td><td>${escapeHtml(a.motivo || '')}</td><td>${escapeHtml(a.usuario)}</td></tr>`).join('');
 }
 

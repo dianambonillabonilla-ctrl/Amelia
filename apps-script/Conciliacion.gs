@@ -88,21 +88,31 @@ function conciliarComidaPorSede_(fecha) {
 
   sedes.forEach(function (sede) {
     const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+    const cambioFisico = calcularCambioFisico_(fecha, sede, indice);
     const ventasSede = ventas.filter(function (v) { return v.sede === sede; });
     const consumoEsperado = {};
     ventasSede.forEach(function (v) {
       const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
-      explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
+      if (recetaMap[claveProd]) {
+        explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
+      } else {
+        // Sin receta (ej. una bebida: se vende 1 unidad, se consume 1 unidad) — se autoconsume
+        // 1:1 en vez de no contar nada, para que también cuadre en esta misma fórmula. La unidad
+        // debe coincidir con la del conteo físico (no siempre es "u": puede venir en g/ml si así
+        // se cuenta esa sede), si no, cambio/esperado quedarían en unidades distintas y la resta
+        // de más abajo mezclaría cosas que no son comparables.
+        const unidadConteo = (cambioFisico[claveProd] && cambioFisico[claveProd].unidad) || 'u';
+        if (!consumoEsperado[claveProd]) consumoEsperado[claveProd] = { nombre: nombreCanonico_(v.producto, indice), cantidad: 0, unidad: unidadConteo };
+        consumoEsperado[claveProd].cantidad += Number(v.cantidad) || 0;
+      }
     });
 
-    const cambioFisico = calcularCambioFisico_(fecha, sede, indice);
     const producido = produccionTotalPorItem_(fecha, sede, indice);
     const consumoProduccion = consumoEsperadoPorProduccion_(fecha, sede, indice);
     const traslados = trasladosNetosPorItem_(fecha, sede, indice);
     const ajustes = ajustesNetosPorItem_(fecha, sede, indice);
-    const compras = comprasNetasPorItem_(fecha, sede, indice);
 
-    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)).concat(Object.keys(consumoProduccion)).concat(Object.keys(traslados)).concat(Object.keys(ajustes)).concat(Object.keys(compras)));
+    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)).concat(Object.keys(consumoProduccion)).concat(Object.keys(traslados)).concat(Object.keys(ajustes)));
     resultado[sede] = Array.from(ingredientes).map(function (claveIng) {
       const nombreIng = (consumoEsperado[claveIng] && consumoEsperado[claveIng].nombre) ||
         (cambioFisico[claveIng] && cambioFisico[claveIng].nombre) || claveIng;
@@ -111,15 +121,13 @@ function conciliarComidaPorSede_(fecha) {
       const producidoIng = producido[claveIng] ? producido[claveIng].cantidad : 0;
       const consumoProd = consumoProduccion[claveIng] ? consumoProduccion[claveIng].cantidad : 0;
       const trasladoNeto = traslados[claveIng] ? traslados[claveIng].cantidad : 0;
-      const compraFactura = compras[claveIng] ? compras[claveIng].cantidad : 0;
-      const ajusteNeto = (ajustes[claveIng] ? ajustes[claveIng].cantidad : 0) + compraFactura;
+      const ajusteNeto = ajustes[claveIng] ? ajustes[claveIng].cantidad : 0;
       const unidad = (consumoEsperado[claveIng] && consumoEsperado[claveIng].unidad) ||
         (cambioFisico[claveIng] && cambioFisico[claveIng].unidad) ||
         (producido[claveIng] && producido[claveIng].unidad) ||
         (consumoProduccion[claveIng] && consumoProduccion[claveIng].unidad) ||
         (traslados[claveIng] && traslados[claveIng].unidad) ||
-        (ajustes[claveIng] && ajustes[claveIng].unidad) ||
-        (compras[claveIng] && compras[claveIng].unidad) || '';
+        (ajustes[claveIng] && ajustes[claveIng].unidad) || '';
       // Fórmula de flujo:
       // cambio físico = compras/ajustes netos + traslados netos + producción salida
       //                 - ventas esperadas - consumo de producción - mermas/desperdicio.
@@ -132,9 +140,8 @@ function conciliarComidaPorSede_(fecha) {
         cambio_fisico: cambio !== null ? Number(cambio.toFixed(3)) : null,
         producido_registrado: producido[claveIng] !== undefined ? Number(producidoIng.toFixed(3)) : null,
         consumo_produccion: consumoProduccion[claveIng] !== undefined ? Number(consumoProd.toFixed(3)) : null,
-        ajuste_neto: (ajustes[claveIng] !== undefined || compras[claveIng] !== undefined) ? Number(ajusteNeto.toFixed(3)) : null,
-        compras: (ajustes[claveIng] !== undefined || compras[claveIng] !== undefined) ? Number(((ajustes[claveIng] ? ajustes[claveIng].compras : 0) + compraFactura).toFixed(3)) : null,
-        costo_compras: compras[claveIng] !== undefined ? Number(compras[claveIng].costo.toFixed(2)) : null,
+        ajuste_neto: ajustes[claveIng] !== undefined ? Number(ajusteNeto.toFixed(3)) : null,
+        compras: ajustes[claveIng] !== undefined ? Number(ajustes[claveIng].compras.toFixed(3)) : null,
         mermas: ajustes[claveIng] !== undefined ? Number(ajustes[claveIng].mermas.toFixed(3)) : null,
         traslado_neto: traslados[claveIng] !== undefined ? Number(trasladoNeto.toFixed(3)) : null,
         implicito: implicito !== null ? Number(implicito.toFixed(3)) : null

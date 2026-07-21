@@ -12,12 +12,12 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
-      <a href="compras.html" data-solo-rol="Administrador">Compras</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
       <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
@@ -51,6 +51,22 @@
       <button class="btn dorado" id="btn-migrar">Corregir y completar Recetas</button>
       <span id="msg-migrar" style="margin-left:12px; font-weight:600;"></span>
       <div id="resultado-migrar" style="margin-top:14px; font-size:.85rem"></div>
+    </div>
+
+    <div class="card" style="border-color:var(--dorado)">
+      <h2>Cargar RECETAS_FINAL_DILANA_OS v3 (16 jul 2026)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Archiva las recetas viejas que este archivo reemplaza (Chanchostilla/Supremo/Costilla/Costilafel
+        con números antiguos, los borradores "Cono Costilla/Chanchostilla/Panceta" nunca confirmados) y
+        carga los Conos, Costilla, Panceta, Falafel, Costilafel, Combo Libra/Media Libra, La Wafflería
+        y las subrecetas del letrero de cocina + WhatsApp de Rafa/Carolina. Las opciones de salsa/topping
+        y el reparto de proteína quedan guardadas como "solo referencia" (no se descuentan solas: FUDO no
+        registra qué eligió cada cliente). La Reducción Balsámica queda "pendiente" hasta pesar el lote
+        después de reducir. Crea un respaldo de Recetas antes de escribir. Segura de correr más de una vez.
+      </p>
+      <button class="btn dorado" id="btn-migrar-julio">Cargar RECETAS_FINAL_DILANA_OS v3</button>
+      <span id="msg-migrar-julio" style="margin-left:12px; font-weight:600;"></span>
+      <div id="resultado-migrar-julio" style="margin-top:14px; font-size:.85rem"></div>
     </div>
 
     <div class="card">
@@ -180,6 +196,28 @@ document.getElementById('btn-migrar').addEventListener('click', conBotonProtegid
     <p><strong>${r.creadas}</strong> línea(s) creada(s), <strong>${r.actualizadas}</strong> actualizada(s),
     <strong>${r.desactivadas}</strong> duplicada(s) desactivada(s) y <strong>${r.borradores}</strong> línea(s) conservada(s) como borrador.</p>
     <p>Se conservó un respaldo de la hoja Recetas antes de la migración.</p>
+  `;
+  correrDiagnostico();
+}));
+
+document.getElementById('btn-migrar-julio').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-julio'), async () => {
+  if (!confirm('Esto va a archivar recetas viejas y cargar RECETAS_FINAL_DILANA_OS v3 en la hoja Recetas real. ¿Continuar?')) return;
+  const msg = document.getElementById('msg-migrar-julio');
+  const resultadoEl = document.getElementById('resultado-migrar-julio');
+  msg.textContent = 'Corriendo…';
+  resultadoEl.innerHTML = '';
+  const data = await llamar('migrar_recetas_julio_2026');
+  if (!data.ok) { msg.textContent = ''; alert(data.error); return; }
+  msg.textContent = '';
+  avisarGuardado('RECETAS_FINAL_DILANA_OS v3 cargado.');
+
+  const r = data.resumen;
+  resultadoEl.innerHTML = `
+    <p><strong>${r.archivadas}</strong> línea(s) vieja(s) archivada(s), <strong>${r.creadas}</strong> creada(s),
+    <strong>${r.actualizadas}</strong> actualizada(s) y <strong>${r.alias_catalogo}</strong> producto(s) nuevo(s)
+    agregado(s) al catálogo para que coincidan con los nombres de las recetas nuevas.</p>
+    <p>Se conservó un respaldo de la hoja Recetas antes de escribir. Revisa <a href="recetas.html">Recetas</a>
+    filtrando por estado "revisar", "pendiente" y "referencia" para ver qué quedó marcado y por qué.</p>
   `;
   correrDiagnostico();
 }));
