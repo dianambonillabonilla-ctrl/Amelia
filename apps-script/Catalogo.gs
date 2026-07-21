@@ -5,11 +5,24 @@
  */
 
 function catalogoGuardar_(item, usuario) {
-  if (!item || !item.nombre_estandar) return { ok: false, error: 'Falta nombre_estandar' };
+  if (!item || (!item.id && !item.nombre_estandar)) return { ok: false, error: 'Falta nombre_estandar' };
+  if (item.unidad_base !== undefined && !normalizarUnidad_(item.unidad_base)) return { ok: false, error: 'La unidad base no es válida' };
   const sh = sheet_(SHEET_NAMES.CATALOGO);
   const data = sh.getDataRange().getValues();
   const headers = data[0];
   const idCol = headers.indexOf('id');
+  const nombreNormalizado = normalizar_(item.nombre_estandar);
+  const fudoNormalizado = normalizar_(item.nombre_fudo);
+
+  const duplicado = item.nombre_estandar && data.slice(1).some(function (fila) {
+    if (item.id && String(fila[idCol]) === String(item.id)) return false;
+    const nombreExistente = normalizar_(fila[headers.indexOf('nombre_estandar')]);
+    const fudoExistente = normalizar_(fila[headers.indexOf('nombre_fudo')]);
+    return nombreExistente === nombreNormalizado ||
+      (fudoNormalizado && (fudoExistente === fudoNormalizado || nombreExistente === fudoNormalizado)) ||
+      (fudoExistente && fudoExistente === nombreNormalizado);
+  });
+  if (duplicado) return { ok: false, error: 'Ya existe un producto con ese nombre o nombre de FUDO' };
 
   if (item.id) {
     for (let r = 1; r < data.length; r++) {
@@ -26,6 +39,21 @@ function catalogoGuardar_(item, usuario) {
   item.id = Utilities.getUuid();
   appendRowFromObj_(SHEET_NAMES.CATALOGO, item);
   return { ok: true, creado: true, id: item.id };
+}
+
+/** Valida y canoniza un movimiento contra el catálogo para no mezclar productos o unidades incompatibles. */
+function validarItemInventario_(item, campoProducto) {
+  const campo = campoProducto || 'producto';
+  const catalogo = catalogoBuscar_(item && item[campo]);
+  if (!catalogo) return { ok: false, error: 'El producto "' + (item && item[campo] || '') + '" no existe en el catálogo maestro' };
+  const unidad = normalizarUnidad_(item.unidad);
+  const unidadBase = normalizarUnidad_(catalogo.unidad_base);
+  const dimension = aUnidadBase_(1, unidad).unidad;
+  const dimensionBase = aUnidadBase_(1, unidadBase).unidad;
+  if (!unidad || dimension !== dimensionBase) {
+    return { ok: false, error: 'La unidad de ' + catalogo.nombre_estandar + ' debe ser compatible con su unidad base (' + catalogo.unidad_base + ')' };
+  }
+  return { ok: true, producto: catalogo.nombre_estandar, unidad: unidad };
 }
 
 function catalogoBuscar_(nombre) {

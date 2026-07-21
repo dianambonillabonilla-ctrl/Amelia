@@ -65,6 +65,6 @@ function enviarCorreoAlerta_(fecha, platos) {
 
 function destinatariosAlerta_() {
   return leerTabla_(SHEET_NAMES.USUARIOS)
-    .filter(function (u) { return u.activo === true && (u.rol === 'Administrador' || u.rol === 'Encargado') && u.email; })
+    .filter(function (u) { return usuarioActivo_(u.activo) && (u.rol === 'Administrador' || u.rol === 'Encargado') && u.email; })
     .map(function (u) { return u.email; });
 }

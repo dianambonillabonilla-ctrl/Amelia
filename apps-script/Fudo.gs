@@ -1,5 +1,15 @@
 /** Importa los dos formatos reales entregados por FUDO: movimientos y reporte resumido/detallado de ventas. */
 function importarFudo_(tipo, filas, usuario, opciones) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return importarFudoInterno_(tipo, filas, usuario, opciones);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function importarFudoInterno_(tipo, filas, usuario, opciones) {
   if (!tipo || !filas || !filas.length) return { ok: false, error: 'Falta tipo o filas' };
   opciones = opciones || {};
   const ahora = new Date();

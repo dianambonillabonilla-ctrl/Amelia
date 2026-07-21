@@ -13,13 +13,14 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html" class="activo">Disponible Hoy</a>
-      <a href="conteo.html">Registrar conteo</a>
-      <a href="producir.html">Registrar producción</a>
-      <a href="recetas.html">Recetas</a>
-      <a href="catalogo.html">Registrar producto</a>
-      <a href="traslados.html">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador">Compras</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
-      <a href="conciliacion.html">Conciliación</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
@@ -41,7 +42,7 @@
         <h2 style="margin:0">¿Para cuántos platos alcanza lo que tengo?</h2>
         <div style="display:flex; gap:10px; align-items:center;">
           <select id="sede-corte" style="width:auto">
-            <option>San Antonio</option><option>Capri</option><option>Ambas</option>
+            <option>Centro de Producción</option><option>San Antonio</option><option>Capri</option><option>Ambas</option>
           </select>
           <input type="date" id="fecha-corte" style="width:auto">
           <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
@@ -78,6 +79,12 @@
 <script>
 Sesion.requerir();
 montarBarraUsuario();
+const usuarioDashboard = Sesion.usuario();
+if (usuarioDashboard && usuarioDashboard.rol !== 'Administrador' && usuarioDashboard.sede !== 'Ambas') {
+  const sedeCorte = document.getElementById('sede-corte');
+  sedeCorte.innerHTML = `<option>${escapeHtml(usuarioDashboard.sede)}</option>`;
+  sedeCorte.disabled = true;
+}
 
 let grafico = null;
 
@@ -181,7 +188,7 @@ function poblarSelectorIngredientes_(ingredientes) {
 async function cargarTendencia() {
   const ingrediente = document.getElementById('tendencia-ingrediente').value;
   if (!ingrediente) return;
-  const data = await llamar('tendencia_ingrediente', { ingrediente, dias: 30 });
+  const data = await llamar('tendencia_ingrediente', { ingrediente, dias: 30, sede: document.getElementById('sede-corte').value });
   if (!data.ok) { document.getElementById('tendencia-vacio').style.display = 'block'; document.getElementById('tendencia-vacio').textContent = data.error; return; }
 
   const serie = data.data.serie;

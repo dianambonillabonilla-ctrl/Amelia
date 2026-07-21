@@ -8,6 +8,19 @@
 
 function produccionRegistrar_(items, usuario) {
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    if (!it.fecha || !it.sede || !it.item || !it.unidad) {
+      return { ok: false, error: 'Cada producción debe tener fecha, sede, producto y unidad' };
+    }
+    if (isNaN(Number(it.cantidad)) || Number(it.cantidad) <= 0) {
+      return { ok: false, error: 'La cantidad producida debe ser un número mayor que cero' };
+    }
+    const validado = validarItemInventario_(it, 'item');
+    if (!validado.ok) return validado;
+    it.item = validado.producto;
+    it.unidad = validado.unidad;
+  }
   if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
     return { ok: false, error: 'No puedes registrar producción para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
@@ -19,7 +32,7 @@ function produccionRegistrar_(items, usuario) {
       fecha: it.fecha,
       sede: it.sede,
       item: it.item,
-      cantidad: it.cantidad,
+      cantidad: Number(it.cantidad),
       unidad: it.unidad,
       usuario: usuario.nombre,
       timestamp: ahora
@@ -54,10 +67,10 @@ function produccionTotalPorItem_(fecha, sede, indice) {
 }
 
 /** Cuánto se produjo de un ítem específico en una fecha, en las unidades originales del conteo (no kg). */
-function producidoTotalIngrediente_(fecha, ingrediente, indice) {
+function producidoTotalIngrediente_(fecha, ingrediente, indice, sede) {
   indice = indice || indiceCatalogo_();
   const clave = claveProducto_(ingrediente, indice);
   return leerTabla_(SHEET_NAMES.PRODUCCIONES)
-    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && claveProducto_(r.item, indice) === clave; })
+    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && (!sede || r.sede === sede) && claveProducto_(r.item, indice) === clave; })
     .reduce(function (acc, r) { return acc + (Number(r.cantidad) || 0); }, 0);
 }

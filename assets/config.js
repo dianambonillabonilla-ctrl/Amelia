@@ -143,3 +143,12 @@ function requerirRol_(rolesPermitidos) {
     window.location.href = 'dashboard.html';
   }
 }
+
+/** Deja disponible únicamente la sede asignada para formularios operativos de usuarios sin alcance global. */
+function restringirSelectSedeUsuario_(selectId) {
+  const u = Sesion.usuario();
+  const select = document.getElementById(selectId);
+  if (!u || !select || u.rol === 'Administrador' || u.sede === 'Ambas') return;
+  select.innerHTML = `<option>${escapeHtml(u.sede)}</option>`;
+  select.disabled = true;
+}
