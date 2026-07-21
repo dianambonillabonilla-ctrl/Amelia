@@ -12,7 +12,7 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a><a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
-      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a><a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Recetas</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a><a href="recetas.html" data-solo-rol="Administrador" class="activo">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a><a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
@@ -65,7 +65,7 @@
 </div>
 <script src="assets/config.js"></script>
 <script>
-Sesion.requerir(); requerirRol_(['Administrador', 'Encargado', 'Cocina']); montarBarraUsuario();
+Sesion.requerir(); requerirRol_(['Administrador']); montarBarraUsuario();
 let recetas = [];
 async function cargar() {
   const r = await llamar('recetas_listar');

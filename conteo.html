@@ -14,7 +14,7 @@
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
-      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
@@ -105,15 +105,34 @@ function poblarPuntos_() {
   if (opciones.includes(anterior)) select.value = anterior;
 }
 
+let catalogoCache_ = [];
+async function cargarCatalogoCache_() {
+  const data = await llamar('catalogo_listar');
+  if (data.ok) catalogoCache_ = data.data;
+  return catalogoCache_;
+}
+
 // Sugiere nombres ya existentes en el catálogo maestro (vía <datalist>) para que el conteo no
 // dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo.
 async function cargarSugerenciasProductos_() {
-  const data = await llamar('catalogo_listar');
-  if (!data.ok) return;
-  document.getElementById('lista-productos').innerHTML = data.data
+  const catalogo = await cargarCatalogoCache_();
+  document.getElementById('lista-productos').innerHTML = catalogo
     .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
 }
 cargarSugerenciasProductos_();
+
+// Diario se cuenta todos los días; Miércoles/Viernes solo si la fecha elegida cae en ese día de
+// la semana (ver Registrar producto → Frecuencia de conteo). Se arma la fecha con año/mes/día
+// locales, no parseando el string ISO directo, para que la zona horaria no corra el día.
+function frecuenciasDelDia_(fechaStr) {
+  if (!fechaStr) return ['Diario'];
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  const dia = new Date(y, m - 1, d).getDay(); // 0=domingo … 3=miércoles … 5=viernes
+  const frecuencias = ['Diario'];
+  if (dia === 3) frecuencias.push('Miércoles');
+  if (dia === 5) frecuencias.push('Viernes');
+  return frecuencias;
+}
 
 function nuevaFila(producto = '', unidad = 'g', anterior = null) {
   const tr = document.createElement('tr');
@@ -143,48 +162,60 @@ function fechaSolo_(valor) {
   return isNaN(d) ? texto : d.toISOString().slice(0, 10);
 }
 
-// Precarga la tabla con los productos del ÚLTIMO conteo guardado para esta sede + punto de
-// conteo, mostrando esa cantidad anterior como referencia y dejando la casilla de hoy vacía —
-// así el personal no tiene que volver a escribir/buscar cada producto desde cero cada vez.
+// Precarga la tabla con: (1) la lista fija de productos que tocan hoy según su frecuencia de
+// conteo (Diario siempre, Miércoles/Viernes solo esos días — igual para toda la sede, sin
+// importar el punto elegido) y (2) encima, lo que se contó la última vez en ESTE punto exacto
+// (como cantidad de referencia, y agregando cualquier producto suelto que no esté en la lista
+// fija). Así el personal no tiene que buscar cada producto desde cero cada vez, pero sigue
+// pudiendo agregar o quitar lo que haga falta con "+ Agregar producto".
 async function cargarConteoAnterior_() {
   const sede = document.getElementById('sede').value;
   const punto = document.getElementById('punto').value;
+  const fecha = document.getElementById('fecha').value;
   const info = document.getElementById('info-anterior');
   document.getElementById('filas').innerHTML = '';
-  info.textContent = 'Cargando conteo anterior…';
+  info.textContent = 'Cargando…';
 
-  const data = await llamar('conteo_listar', { sede });
-  if (!data.ok) {
-    info.textContent = '';
+  const [data, catalogo] = await Promise.all([llamar('conteo_listar', { sede }), cargarCatalogoCache_()]);
+
+  const frecuencias = frecuenciasDelDia_(fecha);
+  const filas = {};
+  catalogo
+    .filter(p => p.frecuencia_conteo && frecuencias.includes(p.frecuencia_conteo))
+    .forEach(p => {
+      filas[normalizarTexto(p.nombre_estandar)] = { producto: p.nombre_estandar, unidad: p.unidad_base || 'g', anterior: null };
+    });
+
+  let fechaReferencia = '';
+  if (data.ok) {
+    const delPunto = data.data.filter(r => r.punto_conteo === punto);
+    if (delPunto.length) {
+      fechaReferencia = delPunto.reduce((max, r) => {
+        const f = fechaSolo_(r.fecha);
+        return f > max ? f : max;
+      }, '');
+      delPunto
+        .filter(r => fechaSolo_(r.fecha) === fechaReferencia)
+        .forEach(r => { filas[normalizarTexto(r.producto)] = { producto: r.producto, unidad: r.unidad, anterior: r.cantidad }; });
+    }
+  }
+
+  const productos = Object.values(filas).sort((a, b) => a.producto.localeCompare(b.producto));
+  if (!productos.length) {
+    info.textContent = 'Sin lista fija para hoy y sin conteos previos en este punto — agrega los productos manualmente.';
     for (let i = 0; i < 4; i++) nuevaFila();
     return;
   }
 
-  const delPunto = data.data.filter(r => r.punto_conteo === punto);
-  if (!delPunto.length) {
-    info.textContent = 'Sin conteos previos para este punto todavía — agrega los productos manualmente.';
-    for (let i = 0; i < 4; i++) nuevaFila();
-    return;
-  }
-
-  const fechaMax = delPunto.reduce((max, r) => {
-    const f = fechaSolo_(r.fecha);
-    return f > max ? f : max;
-  }, '');
-
-  const porProducto = {};
-  delPunto
-    .filter(r => fechaSolo_(r.fecha) === fechaMax)
-    .forEach(r => { porProducto[r.producto] = r; });
-
-  const productos = Object.values(porProducto).sort((a, b) => a.producto.localeCompare(b.producto));
-  info.textContent = `Productos del último conteo de este punto (${fechaMax}) — actualiza la cantidad de hoy, quita lo que no aplique o agrega productos nuevos.`;
-  productos.forEach(r => nuevaFila(r.producto, r.unidad, r.cantidad));
+  info.textContent = fechaReferencia
+    ? `Lista de hoy (${frecuencias.join(' + ')}) + lo último contado en este punto (${fechaReferencia}) — actualiza la cantidad, quita lo que no aplique o agrega productos nuevos.`
+    : `Lista de hoy (${frecuencias.join(' + ')}) — todavía sin conteos previos en este punto.`;
+  productos.forEach(r => nuevaFila(r.producto, r.unidad, r.anterior));
 }
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
 document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); });
-document.getElementById('fecha').addEventListener('change', cargarAjustes_);
+document.getElementById('fecha').addEventListener('change', () => { cargarConteoAnterior_(); cargarAjustes_(); });
 document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
 poblarPuntos_();
 cargarConteoAnterior_();

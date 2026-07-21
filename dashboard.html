@@ -15,7 +15,7 @@
       <a href="dashboard.html" class="activo">Disponible Hoy</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
-      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
@@ -115,17 +115,45 @@ async function cargar() {
     </tr>`;
   });
 
-  const stockBody = document.getElementById('tabla-stock');
-  stockBody.innerHTML = '';
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
-  // nombre para mostrar/usar siempre es s.producto, no la llave del objeto.
+  // nombre para mostrar/usar siempre es s.producto, no la llave del objeto. Incluye TODO lo
+  // último contado (comida, bebidas, aseo, papelería, menaje...), no solo platos con receta.
   const entradas = Object.values(data.data.stock_ingredientes);
-  if (!entradas.length) stockBody.innerHTML = '<tr><td colspan="4" class="vacio">Aún no hay conteos registrados.</td></tr>';
-  entradas.forEach(s => {
-    stockBody.innerHTML += `<tr><td>${escapeHtml(s.producto)}</td><td>${escapeHtml(s.cantidad)}</td><td>${escapeHtml(s.unidad)}</td><td>${escapeHtml(s.fecha_conteo)}</td></tr>`;
-  });
+  pintarTablaStock_(entradas, catalogoData.ok ? catalogoData.data : []);
 
   poblarSelectorIngredientes_(entradas.map(s => s.producto));
+}
+
+// Agrupa el stock por categoría del catálogo (Bebidas, Materia Prima, Elaborados, Aseo e
+// Insumos...) para que la tabla sea navegable con 100+ productos en vez de una lista plana.
+// Lo que no tiene coincidencia en el catálogo (nombre distinto o nunca registrado allí) queda
+// en "Sin categoría", visible igual — nada se oculta por no estar en Catalogo_Maestro.
+function pintarTablaStock_(entradas, catalogo) {
+  const categoriaPorNombre = {};
+  catalogo.forEach(p => {
+    categoriaPorNombre[normalizarTexto(p.nombre_estandar)] = partesCategoria(p.categoria).principal || 'Sin categoría';
+  });
+
+  const stockBody = document.getElementById('tabla-stock');
+  if (!entradas.length) {
+    stockBody.innerHTML = '<tr><td colspan="4" class="vacio">Aún no hay conteos registrados.</td></tr>';
+    return;
+  }
+
+  const porCategoria = {};
+  entradas.forEach(s => {
+    const categoria = categoriaPorNombre[normalizarTexto(s.producto)] || 'Sin categoría';
+    if (!porCategoria[categoria]) porCategoria[categoria] = [];
+    porCategoria[categoria].push(s);
+  });
+
+  stockBody.innerHTML = Object.keys(porCategoria).sort().map(categoria => {
+    const filas = porCategoria[categoria]
+      .sort((a, b) => a.producto.localeCompare(b.producto))
+      .map(s => `<tr><td>${escapeHtml(s.producto)}</td><td>${escapeHtml(s.cantidad)}</td><td>${escapeHtml(s.unidad)}</td><td>${escapeHtml(s.fecha_conteo)}</td></tr>`)
+      .join('');
+    return `<tr><td colspan="4" style="background:var(--cream); font-weight:700; color:var(--navy)">${escapeHtml(categoria)}</td></tr>${filas}`;
+  }).join('');
 }
 
 // Cruza el catálogo (que trae el mínimo configurado por producto, ej. en catalogo.html) con el
