@@ -62,7 +62,7 @@ function configurarHojas() {
       'sede', 'formato_origen', 'archivo_origen', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp'],
-    AlertasEnviadas: ['fecha', 'plato'],
+    AlertasEnviadas: ['fecha', 'plato', 'sede'],
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
