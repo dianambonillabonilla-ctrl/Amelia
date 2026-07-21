@@ -23,6 +23,10 @@ function trasladoCrear_(item, usuario) {
   if (isNaN(Number(item.cantidad)) || Number(item.cantidad) <= 0) {
     return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
   }
+  const validado = validarItemInventario_(item, 'producto');
+  if (!validado.ok) return validado;
+  item.producto = validado.producto;
+  item.unidad = validado.unidad;
   if (item.sede_origen === item.sede_destino && (item.punto_origen || '') === (item.punto_destino || '')) {
     return { ok: false, error: 'El origen y el destino no pueden ser el mismo lugar' };
   }

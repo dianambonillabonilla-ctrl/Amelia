@@ -42,7 +42,7 @@
         <h2 style="margin:0">¿Para cuántos platos alcanza lo que tengo?</h2>
         <div style="display:flex; gap:10px; align-items:center;">
           <select id="sede-corte" style="width:auto">
-            <option>San Antonio</option><option>Capri</option><option>Ambas</option>
+            <option>Centro de Producción</option><option>San Antonio</option><option>Capri</option><option>Ambas</option>
           </select>
           <input type="date" id="fecha-corte" style="width:auto">
           <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
@@ -79,6 +79,12 @@
 <script>
 Sesion.requerir();
 montarBarraUsuario();
+const usuarioDashboard = Sesion.usuario();
+if (usuarioDashboard && usuarioDashboard.rol !== 'Administrador' && usuarioDashboard.sede !== 'Ambas') {
+  const sedeCorte = document.getElementById('sede-corte');
+  sedeCorte.innerHTML = `<option>${escapeHtml(usuarioDashboard.sede)}</option>`;
+  sedeCorte.disabled = true;
+}
 
 let grafico = null;
 
@@ -182,7 +188,7 @@ function poblarSelectorIngredientes_(ingredientes) {
 async function cargarTendencia() {
   const ingrediente = document.getElementById('tendencia-ingrediente').value;
   if (!ingrediente) return;
-  const data = await llamar('tendencia_ingrediente', { ingrediente, dias: 30 });
+  const data = await llamar('tendencia_ingrediente', { ingrediente, dias: 30, sede: document.getElementById('sede-corte').value });
   if (!data.ok) { document.getElementById('tendencia-vacio').style.display = 'block'; document.getElementById('tendencia-vacio').textContent = data.error; return; }
 
   const serie = data.data.serie;

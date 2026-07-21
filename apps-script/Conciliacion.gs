@@ -11,19 +11,20 @@
  * Producciones o Ventas_FUDO se trata como un solo producto en toda la conciliación.
  */
 
-function calcularConciliacion_(fecha) {
+function calcularConciliacion_(fecha, sedesPermitidas) {
+  sedesPermitidas = sedesPermitidas || ['Centro de Producción', 'San Antonio', 'Capri'];
   return {
     fecha: fecha,
-    ventas: resumirVentasFudo_(fecha),
-    bebidas: conciliarBebidas_(fecha),
-    comida: conciliarComidaPorSede_(fecha)
+    ventas: resumirVentasFudo_(fecha, sedesPermitidas),
+    bebidas: conciliarBebidas_(fecha, sedesPermitidas),
+    comida: conciliarComidaPorSede_(fecha, sedesPermitidas)
   };
 }
 
-function resumirVentasFudo_(fecha) {
+function resumirVentasFudo_(fecha, sedesPermitidas) {
   const grupos = {};
   leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-    return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true;
+    return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true && sedesPermitidas.indexOf(v.sede) !== -1;
   }).forEach(function (v) {
     const clave = [v.sede || 'Sin identificar', v.categoria || 'Sin categoría', v.producto].join('|');
     if (!grupos[clave]) grupos[clave] = { sede: v.sede || 'Sin identificar', categoria: v.categoria || 'Sin categoría', producto: v.producto, cantidad: 0 };
@@ -35,7 +36,7 @@ function resumirVentasFudo_(fecha) {
 }
 
 // --- BEBIDAS: contra FUDO ----------------------------------------------------
-function conciliarBebidas_(fecha) {
+function conciliarBebidas_(fecha, sedesPermitidas) {
   const indice = indiceCatalogo_();
   const movimientos = leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO)
     .filter(function (m) { return formatearFecha_(m.fecha) === fecha; });
@@ -44,7 +45,7 @@ function conciliarBebidas_(fecha) {
   const conteos = conteoListar_(fecha, null);
 
   return catalogo.map(function (item) {
-    const movsItem = movimientos.filter(function (m) { return m.nombre === item.nombre_fudo; });
+    const movsItem = movimientos.filter(function (m) { return m.nombre === item.nombre_fudo && sedesPermitidas.indexOf(m.sede) !== -1; });
     movsItem.sort(function (a, b) { return new Date(a.fecha) - new Date(b.fecha); });
     const cierre = movsItem.length ? movsItem[movsItem.length - 1].stock_actual : null;
 
@@ -58,17 +59,18 @@ function conciliarBebidas_(fecha) {
     }
 
     const claveItem = claveProducto_(item.nombre_estandar, indice);
-    const sa = conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'San Antonio'; });
-    const capri = conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'Capri'; });
+    const sa = sedesPermitidas.indexOf('San Antonio') !== -1 ? conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'San Antonio'; }) : null;
+    const capri = sedesPermitidas.indexOf('Capri') !== -1 ? conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'Capri'; }) : null;
     const suma = (sa ? Number(sa.cantidad) : 0) + (capri ? Number(capri.cantidad) : 0);
 
+    const fudoCierre = (sedesPermitidas.indexOf('San Antonio') !== -1 && sedesPermitidas.indexOf('Capri') !== -1) ? cierre : null;
     return {
       producto: item.nombre_estandar,
       sa: sa ? Number(sa.cantidad) : null,
       capri: capri ? Number(capri.cantidad) : null,
       suma_manual: suma,
-      fudo_cierre: cierre,
-      diferencia_vs_suma: (cierre !== null) ? (cierre - suma) : null,
+      fudo_cierre: fudoCierre,
+      diferencia_vs_suma: (fudoCierre !== null) ? (fudoCierre - suma) : null,
       consumo_fudo_total: consumoVenta,
       consumo_fudo_sa: consumoSede_('San Antonio'),
       consumo_fudo_capri: consumoSede_('Capri'),
@@ -78,7 +80,7 @@ function conciliarBebidas_(fecha) {
 }
 
 // --- COMIDA: por sede, ventas x receta vs. cambio físico --------------------
-function conciliarComidaPorSede_(fecha) {
+function conciliarComidaPorSede_(fecha, sedesPermitidas) {
   const indice = indiceCatalogo_();
   const ventas = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
     .filter(function (v) { return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true; });

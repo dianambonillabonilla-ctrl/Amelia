@@ -92,6 +92,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
+restringirSelectSedeUsuario_('sede');
 document.getElementById('fecha').valueAsDate = new Date();
 
 // Los puntos de conteo dependen de la sede elegida (cada sede tiene sus propias áreas).

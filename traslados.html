@@ -34,8 +34,8 @@
     <div class="card">
       <h2>1. Enviar un traslado</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Como el personal rota, cualquiera puede enviar o recibir un traslado sin importar la sede
-        que tenga asignada — no hace falta ser el "encargado fijo" de un lugar.
+        Envía desde tu sede asignada y confirma únicamente en tu sede de destino. Administrador y
+        usuarios con alcance “Ambas” pueden operar traslados entre todas las sedes.
       </p>
       <div class="grid grid-3">
         <div class="campo">
@@ -125,6 +125,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
+restringirSelectSedeUsuario_('env-sede-origen');
 document.getElementById('env-fecha').valueAsDate = new Date();
 
 function poblarPuntosEnvio_(sedeSelectId, puntoSelectId) {

@@ -63,10 +63,10 @@ function produccionTotalPorItem_(fecha, sede, indice) {
 }
 
 /** Cuánto se produjo de un ítem específico en una fecha, en las unidades originales del conteo (no kg). */
-function producidoTotalIngrediente_(fecha, ingrediente, indice) {
+function producidoTotalIngrediente_(fecha, ingrediente, indice, sede) {
   indice = indice || indiceCatalogo_();
   const clave = claveProducto_(ingrediente, indice);
   return leerTabla_(SHEET_NAMES.PRODUCCIONES)
-    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && claveProducto_(r.item, indice) === clave; })
+    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && (!sede || r.sede === sede) && claveProducto_(r.item, indice) === clave; })
     .reduce(function (acc, r) { return acc + (Number(r.cantidad) || 0); }, 0);
 }

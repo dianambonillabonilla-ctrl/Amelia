@@ -211,9 +211,11 @@ function handleRequest_(e, method) {
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
       case 'disponible_hoy':
-        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, params.sede) });
+        requiereRol_(sesion.usuario, ROLES_DISPONIBLES);
+        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
-        return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
+        requiereRol_(sesion.usuario, ROLES_DISPONIBLES);
+        return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha) });
@@ -367,7 +369,7 @@ function login_(usuario, password) {
   }
 
   const rows = leerTabla_(SHEET_NAMES.USUARIOS);
-  const match = rows.find(function (r) { return r.usuario === usuario && r.activo === true; });
+  const match = rows.find(function (r) { return r.usuario === usuario && usuarioActivo_(r.activo); });
   if (!match) {
     loginRegistrarIntentoFallido_(usuario);
     return { ok: false, error: 'Usuario o contraseña incorrectos' };
@@ -434,7 +436,7 @@ function validarToken_(token) {
 
   const usuarios = leerTabla_(SHEET_NAMES.USUARIOS);
   const u = usuarios.find(function (r) { return r.id === s.usuario_id; });
-  if (!u || !u.activo) return { ok: false, error: 'Usuario inactivo', codigo: 'SESION_INVALIDA' };
+  if (!u || !usuarioActivo_(u.activo)) return { ok: false, error: 'Usuario inactivo', codigo: 'SESION_INVALIDA' };
 
   return { ok: true, usuario: { id: u.id, nombre: u.nombre, rol: u.rol, sede: u.sede } };
 }
