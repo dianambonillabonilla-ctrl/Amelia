@@ -104,11 +104,12 @@ function nombreCanonico_(texto, indice) {
 }
 
 /**
- * Etiqueta en el catálogo qué productos se cuentan TODOS LOS DÍAS ('Diario') y cuáles solo un día
- * específico de la semana ('Miércoles' o 'Viernes') — tomado tal cual de las hojas
- * Diario/Miercoles/Viernes del Excel histórico de San Antonio. Esto alimenta la lista fija que
- * conteo.html precarga en Registrar conteo (ver cargarListaFija_ allí), para que el personal no
- * tenga que buscar cada producto desde cero en cada cierre.
+ * Etiqueta en el catálogo qué productos se cuentan TODOS LOS DÍAS ('Diario'), cuáles solo un día
+ * específico de la semana ('Miércoles' o 'Viernes'), y cuáles solo una vez al mes ('Mensual') —
+ * tomado tal cual de las hojas Diario/Miercoles/Viernes/Inicio del Mes del Excel histórico de San
+ * Antonio. Esto alimenta la lista fija OBLIGATORIA que conteo.html exige en Registrar conteo
+ * (Diario siempre; Miércoles/Viernes solo esos días; Mensual del 1 al 5 de cada mes) — no se
+ * puede guardar el conteo del cierre sin completar esos productos.
  *
  * Si el producto ya existe en el catálogo (por nombre, sin importar tildes/mayúsculas/espacios),
  * solo se le pone la frecuencia — no se toca categoría, unidad ni nada más que ya tenga. Si no
@@ -234,6 +235,66 @@ function importarFrecuenciasConteoInicial_() {
       ['azucar  morena', ''],
       ['sal', 'g'],
       ['Azucar pulverizada', 'g']
+    ],
+    // "Inicio del Mes" del Excel — menaje, utensilios y equipos que no se cuentan a diario sino
+    // una vez al mes (conteo.html los exige del día 1 al 5 de cada mes). Blanco = 'u': son todos
+    // artículos que se cuentan por unidad, no se pesan.
+    Mensual: [
+      ['Tenedores', 'u'],
+      ['Vasos', 'u'],
+      ['Copas', 'u'],
+      ['Tupper Grande', 'u'],
+      ['Tupper Mediano', 'u'],
+      ['Tupper Redondo', 'u'],
+      ['Piedras/Platos', 'u'],
+      ['Sillas', 'u'],
+      ['Mesas', 'u'],
+      ['Escoba', 'u'],
+      ['Trapero', 'u'],
+      ['Trapos', 'u'],
+      ['Recogedor', 'u'],
+      ['Bidones Aceite Usado', 'u'],
+      ['servilleteros', 'u'],
+      ['cucharas', 'u'],
+      ['Freidor pequeño', 'u'],
+      ['Tarro Keffir', 'u'],
+      ['Bandejas Servicio', 'u'],
+      ['Procesadora', 'u'],
+      ['Chaira', 'u'],
+      ['cucharas porcionadoras', 'u'],
+      ['escurrodor papa', 'u'],
+      ['colador papa', 'u'],
+      ['rejilla panceta', 'u'],
+      ['Baño maria costilla', 'u'],
+      ['embudo', 'u'],
+      ['Gramera pequeña', 'u'],
+      ['Gramera Grande', 'u'],
+      ['cuchillo cocina', 'u'],
+      ['hacha cocina', 'u'],
+      ['pinzas', 'u'],
+      ['Bowl papas', 'u'],
+      ['rejilla', 'u'],
+      ['olla grande papa', 'u'],
+      ['olla reduccion', 'u'],
+      ['platos parrilla', 'u'],
+      ['Recipiente panela', 'u'],
+      ['rodillo', 'u'],
+      ['cuchillo bebidas', 'u'],
+      ['rejillas beignets', 'u'],
+      ['batidor manual', 'u'],
+      ['Tablas de corte', 'u'],
+      ['descorchador', 'u'],
+      ['destapador', 'u'],
+      ['embudos', 'u'],
+      ['colador azucar', 'u'],
+      ['jarra medidora', 'u'],
+      ['pala', 'u'],
+      ['espatula', 'u'],
+      ['canasta botellas keffir', 'u'],
+      ['recipiente vidrio hermetico para bebidas', 'u'],
+      ['destapador lavaplatos', 'u'],
+      ['tarro de basura grande', 'u'],
+      ['maquina para hielos', 'u']
     ]
   };
 

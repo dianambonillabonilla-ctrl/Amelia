@@ -108,4 +108,31 @@ assert.equal(catalogoGuardado[0].nombre_estandar, 'Producto Nuevo');
 catalogoMod.catalogoAsegurar_('producto nuevo', 'kg');
 assert.equal(catalogoGuardado.length, 1, 'no debe duplicar si ya existe (comparación sin tildes/mayúsculas)');
 
+// --- Extremo a extremo: compra sube el stock Y "para cuántos platos alcanza" (ejemplo del banano) ---
+const conteoBanano = [
+  { fecha: '2026-07-01', sede: 'San Antonio', producto: 'Banano', unidad: 'u', cantidad: 2 }
+];
+const ajusteBanano = [
+  { fecha: '2026-07-05', sede: 'San Antonio', producto: 'Banano', unidad: 'u', cantidad: 4, tipo: 'Compra cruda' }
+];
+const disponibleHoyBanano = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteoBanano : (hoja === 'ajustes' ? ajusteBanano : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+
+const stockBanano = disponibleHoyBanano.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'San Antonio');
+assert.equal(stockBanano.banano.cantidad, 6, '2 contados + 4 comprados = 6 bananos disponibles');
+
+const recetaMapBanano = disponibleHoyBanano.construirRecetaMap_(
+  [{ producto: 'Wafle de Banano', ingrediente: 'Banano', cantidad: 1, unidad: 'u', tipo: 'plato', controla_disponibilidad: true }],
+  {}
+);
+const disponibilidadWafle = disponibleHoyBanano.cantidadDisponibleDetallada_('wafle de banano', recetaMapBanano, stockBanano, {}, {}, {});
+assert.equal(Math.floor(disponibilidadWafle.disponible), 6, 'con 6 bananos y receta 1 banano/wafle, alcanza para 6 wafles de banano');
+
 console.log('inventory-controls: OK');
