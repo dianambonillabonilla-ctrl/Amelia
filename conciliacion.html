@@ -12,12 +12,12 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
-      <a href="compras.html" data-solo-rol="Administrador">Compras</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
       <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
@@ -56,8 +56,8 @@
     </div>
 
     <div class="card">
-      <h2>Inventario por sede — flujo físico completo</h2>
-      <p style="color:var(--grey); font-size:.85rem">Revisa Centro de Producción, San Antonio y Capri: conteo físico vs. compras facturadas, mermas/ajustes, producción, traslados y consumo esperado por ventas/recetas.</p>
+      <h2>Inventario por sede — ventas vs. cambio físico (comida, bebidas y demás)</h2>
+      <p style="color:var(--grey); font-size:.85rem">No se compara contra el stock de FUDO (ya sabemos que no cuadra). Se compara el cambio de peso/unidades entre el conteo de hoy y el del día anterior, contra lo que las ventas de esa sede deberían haber consumido: si el producto tiene receta (hoja Recetas) se explota la receta; si se vende directo sin receta (ej. una bebida) se descuenta 1 a 1. Incluye compras (con proveedor/factura en Compras), traslados, producción y mermas de esa sede.</p>
       <div id="bloques-comida"></div>
     </div>
   </main>
@@ -108,9 +108,9 @@ function pintarComida(porSede) {
   cont.innerHTML = '';
   Object.keys(porSede).forEach(sede => {
     const filas = porSede[sede];
-    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico</th><th>Consumo esperado</th><th>Producción salida</th><th>Consumo producción</th><th>Compras facturadas</th><th>Costo compras</th><th>Mermas / ajustes neto</th><th>Traslado neto</th><th>Diferencia sin explicar</th></tr></thead><tbody>`;
+    let tabla = `<h3>${escapeHtml(sede)}</h3><table><thead><tr><th>Ingrediente</th><th>Cambio físico</th><th>Consumo esperado</th><th>Producción salida</th><th>Consumo producción</th><th>Compras / merma neta</th><th>Traslado neto</th><th>Diferencia sin explicar</th></tr></thead><tbody>`;
     if (!filas.length) {
-      tabla += '<tr><td colspan="10" class="vacio">Sin conteo del día anterior para comparar, o sin ventas/producción/movimientos ese día.</td></tr>';
+      tabla += '<tr><td colspan="8" class="vacio">Sin conteo del día anterior para comparar, o sin ventas/producción/movimientos ese día.</td></tr>';
     }
     filas.forEach(f => {
       let nota = '';
@@ -118,7 +118,7 @@ function pintarComida(porSede) {
       else if (f.implicito < -200 && f.unidad === 'g') nota = `<span class="badge alerta">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else if (f.implicito > 0) nota = `<span class="badge aviso">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else nota = '<span class="badge ok">Cuadra</span>';
-      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico ?? '—'} ${escapeHtml(f.unidad)}</td><td>${escapeHtml(f.consumo_esperado)} ${escapeHtml(f.unidad)}</td><td>${f.producido_registrado ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.consumo_produccion ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.compras ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.costo_compras ?? '—'}</td><td>${f.ajuste_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.traslado_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${nota}</td></tr>`;
+      tabla += `<tr><td>${escapeHtml(f.ingrediente)}</td><td>${f.cambio_fisico ?? '—'} ${escapeHtml(f.unidad)}</td><td>${escapeHtml(f.consumo_esperado)} ${escapeHtml(f.unidad)}</td><td>${f.producido_registrado ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.consumo_produccion ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.ajuste_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${f.traslado_neto ?? '—'} ${escapeHtml(f.unidad)}</td><td>${nota}</td></tr>`;
     });
     tabla += '</tbody></table>';
     cont.innerHTML += tabla;

@@ -37,7 +37,11 @@ function ajusteInventarioRegistrar_(item, usuario) {
     cantidad: Number(item.cantidad),
     motivo: item.motivo || '',
     usuario: usuario.nombre,
-    timestamp: new Date()
+    timestamp: new Date(),
+    proveedor: item.proveedor || '',
+    numero_factura: item.numero_factura || '',
+    costo: item.costo !== undefined && item.costo !== '' && !isNaN(Number(item.costo)) ? Number(item.costo) : '',
+    factura_id: item.factura_id || ''
   });
   return { ok: true };
 }
