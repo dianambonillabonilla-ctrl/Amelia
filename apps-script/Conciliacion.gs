@@ -192,7 +192,8 @@ function calcularCambioFisico_(fecha, sede, indice) {
 function trasladosNetosPorItem_(fecha, sede, indice) {
   const totales = {};
   leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
-    return formatearFecha_(t.fecha) === fecha && ['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1;
+    const fechaRecepcion = t.timestamp_recibe ? formatearFecha_(t.timestamp_recibe) : formatearFecha_(t.fecha);
+    return fechaRecepcion === fecha && ['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1;
   }).forEach(function (t) {
     // Un traslado resuelto con faltante conserva la cantidad realmente recibida. No usar
     // `||` aquí: cero es un valor válido cuando no llegó nada.
@@ -200,10 +201,13 @@ function trasladosNetosPorItem_(fecha, sede, indice) {
       ? t.cantidad_recibida : t.cantidad_enviada;
     const base = aUnidadBase_(cantidad, t.unidad);
     const clave = claveProducto_(t.producto, indice);
-    const signo = t.sede_destino === sede ? 1 : (t.sede_origen === sede ? -1 : 0);
-    if (!signo) return;
+    const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
+      ? t.cantidad_recibida : t.cantidad_enviada;
+    const cantidad = t.sede_origen === sede ? t.cantidad_enviada : (t.sede_destino === sede ? recibida : null);
+    if (cantidad === null) return;
+    const base = aUnidadBase_(cantidad, t.unidad);
     if (!totales[clave]) totales[clave] = { cantidad: 0, unidad: base.unidad };
-    totales[clave].cantidad += signo * base.cantidad;
+    totales[clave].cantidad += t.sede_destino === sede ? base.cantidad : -base.cantidad;
   });
   return totales;
 }

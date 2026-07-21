@@ -449,6 +449,15 @@ function requiereAdmin_(usuario) {
   requiereRol_(usuario, ['Administrador']);
 }
 
+/** Limita las consultas operativas a la sede asignada, salvo Administrador o usuarios "Ambas". */
+function sedeConsultaPermitida_(usuario, sedeSolicitada) {
+  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return sedeSolicitada || null;
+  if (sedeSolicitada && sedeSolicitada !== usuario.sede) {
+    throw new Error('No puedes consultar datos de una sede distinta a la tuya (' + usuario.sede + ')');
+  }
+  return usuario.sede;
+}
+
 // ---------------------------------------------------------------------------
 // HELPERS DE LECTURA/ESCRITURA GENÉRICOS
 // ---------------------------------------------------------------------------

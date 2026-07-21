@@ -1,9 +1,8 @@
 /**
  * TRASLADOS ENTRE SEDES
- * El personal rota de sede, así que no hay un "encargado fijo" por sede — cualquier
- * Administrador/Encargado/Cocina puede enviar o recibir un traslado sin importar la sede que
- * tenga asignada en Usuarios (a diferencia de conteo_registrar/produccion_registrar, que sí
- * exigen que la sede del ítem coincida con la del usuario).
+ * El personal puede rotar, pero la sede asignada en Usuarios sigue protegiendo el movimiento:
+ * Administrador y usuarios con sede "Ambas" pueden operar cualquier traslado; los demás solo
+ * pueden enviar desde su sede, recibir en su sede y ver traslados relacionados con ella.
  *
  * Flujo:
  *  1. Quien envía crea el traslado (producto, cantidad, origen -> destino). Queda "Enviado".
@@ -27,6 +26,7 @@ function trasladoCrear_(item, usuario) {
   if (item.sede_origen === item.sede_destino && (item.punto_origen || '') === (item.punto_destino || '')) {
     return { ok: false, error: 'El origen y el destino no pueden ser el mismo lugar' };
   }
+  requiereSedeTraslado_(usuario, item.sede_origen, 'enviar');
 
   appendRowFromObj_(SHEET_NAMES.TRASLADOS, {
     id: Utilities.getUuid(),
@@ -52,10 +52,13 @@ function trasladoCrear_(item, usuario) {
   return { ok: true };
 }
 
-function trasladosListar_(filtro) {
+function trasladosListar_(filtro, usuario) {
   filtro = filtro || {};
   let rows = leerTabla_(SHEET_NAMES.TRASLADOS);
   if (filtro.estado) rows = rows.filter(function (r) { return r.estado === filtro.estado; });
+  if (usuario.rol !== 'Administrador' && usuario.sede !== 'Ambas') {
+    rows = rows.filter(function (r) { return r.sede_origen === usuario.sede || r.sede_destino === usuario.sede; });
+  }
   return rows.sort(function (a, b) { return new Date(b.timestamp_envio) - new Date(a.timestamp_envio); });
 }
 
@@ -85,6 +88,13 @@ function trasladoConfirmar_(id, cantidadRecibida, usuario) {
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
   const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
   if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+  requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'recibir');
+
+  const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+  const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
+  if (isNaN(recibida) || recibida <= 0 || recibida > enviada) {
+    return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
+  }
 
   const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
   const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
@@ -139,6 +149,11 @@ function trasladoResolver_(id, notaResolucion, usuario) {
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
   const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
   if (estadoActual !== 'Con observación') return { ok: false, error: 'Solo se pueden resolver traslados con una observación pendiente' };
+  const origen = encontrado.valores[encontrado.headers.indexOf('sede_origen')];
+  const destino = encontrado.valores[encontrado.headers.indexOf('sede_destino')];
+  if (usuario.rol !== 'Administrador' && usuario.sede !== 'Ambas' && usuario.sede !== origen && usuario.sede !== destino) {
+    throw new Error('Solo puedes resolver traslados relacionados con tu sede');
+  }
 
   return trasladoActualizar_(id, {
     estado: 'Resuelto',
@@ -146,6 +161,11 @@ function trasladoResolver_(id, notaResolucion, usuario) {
     timestamp_resuelto: new Date(),
     nota_resolucion: notaResolucion || ''
   });
+}
+
+function requiereSedeTraslado_(usuario, sede, accion) {
+  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return;
+  if (usuario.sede !== sede) throw new Error('No puedes ' + accion + ' un traslado de una sede distinta a la tuya (' + usuario.sede + ')');
 }
 
 function enviarCorreoObservacionTraslado_(traslado) {
