@@ -25,7 +25,10 @@ const SHEET_NAMES = {
   SESIONES: 'Sesiones',
   PRODUCCIONES: 'Producciones',
   ALERTAS_ENVIADAS: 'AlertasEnviadas',
-  TRASLADOS: 'Traslados'
+  TRASLADOS: 'Traslados',
+  AJUSTES_INVENTARIO: 'Ajustes_Inventario',
+  COMPRAS_FACTURAS: 'Compras_Facturas',
+  COMPRAS_LINEAS: 'Compras_Lineas'
 };
 
 function ss_() {
@@ -64,7 +67,10 @@ function configurarHojas() {
     AlertasEnviadas: ['fecha', 'plato'],
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
-      'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion']
+      'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
+    Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp'],
+    Compras_Facturas: ['id', 'fecha', 'proveedor', 'numero_factura', 'sede_ingreso', 'punto_ingreso', 'subtotal', 'impuestos', 'total', 'metodo_pago', 'notas', 'usuario', 'timestamp'],
+    Compras_Lineas: ['id', 'factura_id', 'fecha', 'proveedor', 'numero_factura', 'sede_ingreso', 'punto_ingreso', 'producto', 'categoria', 'unidad', 'cantidad', 'costo_unitario', 'costo_total', 'usuario', 'timestamp']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -178,6 +184,7 @@ function handleRequest_(e, method) {
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoGuardar_(params.item, sesion.usuario));
       case 'recetas_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: recetasListar_(params.filtros) });
       case 'receta_guardar':
         requiereAdmin_(sesion.usuario);
@@ -186,7 +193,20 @@ function handleRequest_(e, method) {
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(conteoRegistrar_(params.items, sesion.usuario));
       case 'conteo_listar':
-        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, params.sede) });
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'ajuste_inventario_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
+      case 'ajustes_inventario_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'compra_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(compraGuardar_(params.factura, params.lineas, sesion.usuario));
+      case 'compras_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: comprasListar_(params.fecha, params.sede) });
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
@@ -195,12 +215,14 @@ function handleRequest_(e, method) {
       case 'tendencia_ingrediente':
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
       case 'conciliacion':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario));
       case 'produccion_listar':
-        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, params.sede) });
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'usuarios_listar':
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
@@ -211,13 +233,14 @@ function handleRequest_(e, method) {
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
       case 'traslados_listar':
-        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro) });
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro, sesion.usuario) });
       case 'traslado_confirmar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(trasladoConfirmar_(params.id, params.cantidad_recibida, sesion.usuario));
       case 'traslado_observar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(trasladoObservar_(params.id, params.observacion, sesion.usuario));
+        return jsonOut_(trasladoObservar_(params.id, params.cantidad_recibida, params.observacion, sesion.usuario));
       case 'traslado_resolver':
         return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
       case 'diagnostico_recetas':
@@ -421,6 +444,15 @@ function requiereRol_(usuario, rolesPermitidos) {
 
 function requiereAdmin_(usuario) {
   requiereRol_(usuario, ['Administrador']);
+}
+
+/** Limita las consultas operativas a la sede asignada, salvo Administrador o usuarios "Ambas". */
+function sedeConsultaPermitida_(usuario, sedeSolicitada) {
+  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return sedeSolicitada || null;
+  if (sedeSolicitada && sedeSolicitada !== usuario.sede) {
+    throw new Error('No puedes consultar datos de una sede distinta a la tuya (' + usuario.sede + ')');
+  }
+  return usuario.sede;
 }
 
 // ---------------------------------------------------------------------------

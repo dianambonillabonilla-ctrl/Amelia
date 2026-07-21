@@ -12,13 +12,14 @@
     <div class="marca">Dilana <span>OS</span></div>
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
-      <a href="conteo.html">Registrar conteo</a>
-      <a href="producir.html">Registrar producción</a>
-      <a href="recetas.html">Recetas</a>
-      <a href="catalogo.html">Registrar producto</a>
-      <a href="traslados.html" class="activo">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador">Compras</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Traslados</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
-      <a href="conciliacion.html">Conciliación</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
@@ -122,6 +123,7 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
 document.getElementById('env-fecha').valueAsDate = new Date();
 
@@ -199,7 +201,7 @@ function pintarPendientes_(filas) {
       <td>${escapeHtml(t.fecha)}</td>
       <td>
         <button class="btn dorado btn-confirmar" data-id="${escapeHtml(t.id)}" data-cantidad="${escapeHtml(t.cantidad_enviada)}">Confirmar</button>
-        <button class="btn fantasma btn-observar" data-id="${escapeHtml(t.id)}">Reportar problema</button>
+        <button class="btn fantasma btn-observar" data-id="${escapeHtml(t.id)}" data-unidad="${escapeHtml(t.unidad)}">Reportar problema</button>
       </td>
     </tr>`).join('');
 
@@ -211,9 +213,11 @@ function pintarPendientes_(filas) {
   });
   body.querySelectorAll('.btn-observar').forEach(btn => {
     btn.addEventListener('click', async () => {
+      const cantidad = prompt(`¿Cuánto se recibió realmente? (en ${btn.dataset.unidad})`);
+      if (cantidad === null) return;
       const observacion = prompt('¿Qué pasó con este traslado? (ej. "Solo llegaron 3kg de 5kg", "llegó dañado")');
       if (!observacion) return;
-      const data = await llamar('traslado_observar', { id: btn.dataset.id, observacion });
+      const data = await llamar('traslado_observar', { id: btn.dataset.id, cantidad_recibida: cantidad.replace(',', '.'), observacion });
       if (data.ok) {
         avisarGuardado('Observación registrada — se avisó a Administrador y Encargados.');
         cargarTodo();

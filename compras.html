@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Compras</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="compras.html" class="activo" data-solo-rol="Administrador">Compras</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador,Encargado,Cocina">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar"><h1>Compras y facturas</h1><div id="barra-usuario"></div></div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.9rem; margin-top:0">
+        Registra la factura completa: proveedor, número, total y cada producto comprado. Estas líneas entran al inventario de la sede/punto elegido y aparecen en conciliación como compras.
+      </p>
+      <div class="grid grid-4">
+        <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
+        <div class="campo"><label>Proveedor</label><input type="text" id="proveedor" placeholder="ej. Mercamio"></div>
+        <div class="campo"><label>Número factura</label><input type="text" id="numero"></div>
+        <div class="campo"><label>Método de pago</label><input type="text" id="metodo" placeholder="efectivo, tarjeta, transferencia"></div>
+      </div>
+      <div class="grid grid-4">
+        <div class="campo"><label>Sede ingreso</label><select id="sede"><option>Centro de Producción</option><option>San Antonio</option><option>Capri</option></select></div>
+        <div class="campo"><label>Punto ingreso</label><select id="punto"></select></div>
+        <div class="campo"><label>Impuestos</label><input type="number" step="0.01" id="impuestos" value="0"></div>
+        <div class="campo"><label>Total factura</label><input type="number" step="0.01" id="total" placeholder="opcional"></div>
+      </div>
+      <div class="campo"><label>Notas</label><input type="text" id="notas" placeholder="observaciones de factura o proveedor"></div>
+
+      <table>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Costo unitario</th><th>Costo total</th><th></th></tr></thead>
+        <tbody id="lineas"></tbody>
+      </table>
+      <datalist id="lista-productos"></datalist>
+      <button class="btn fantasma" id="btn-agregar" style="margin-top:10px">+ Agregar línea</button>
+      <div style="margin-top:20px"><button class="btn dorado" id="btn-guardar">Guardar factura</button></div>
+    </div>
+
+    <div class="card">
+      <h2>Facturas del día</h2>
+      <table>
+        <thead><tr><th>Proveedor</th><th>Factura</th><th>Sede</th><th>Total</th><th>Usuario</th></tr></thead>
+        <tbody id="tabla-facturas"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+      <h2>Líneas compradas</h2>
+      <table>
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo total</th><th>Proveedor</th><th>Sede</th></tr></thead>
+        <tbody id="tabla-lineas"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador']);
+montarBarraUsuario();
+document.getElementById('fecha').valueAsDate = new Date();
+
+function poblarPuntos_() {
+  const sede = document.getElementById('sede').value;
+  const opciones = PUNTOS_POR_SEDE[sede] || [];
+  document.getElementById('punto').innerHTML = opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
+}
+document.getElementById('sede').addEventListener('change', poblarPuntos_);
+poblarPuntos_();
+
+async function cargarSugerenciasProductos_() {
+  const data = await llamar('catalogo_listar');
+  if (!data.ok) return;
+  document.getElementById('lista-productos').innerHTML = data.data.map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
+}
+cargarSugerenciasProductos_();
+
+function nuevaLinea() {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><input class="in-producto" list="lista-productos"></td>
+    <td><input class="in-categoria" placeholder="Materia prima, Bebidas..."></td>
+    <td><select class="in-unidad"><option>g</option><option>kg</option><option>u</option><option>ml</option><option>l</option></select></td>
+    <td><input type="number" step="0.01" class="in-cantidad"></td>
+    <td><input type="number" step="0.01" class="in-costo-unitario"></td>
+    <td><input type="number" step="0.01" class="in-costo-total"></td>
+    <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
+  tr.querySelector('.btn-quitar').addEventListener('click', () => tr.remove());
+  document.getElementById('lineas').appendChild(tr);
+}
+document.getElementById('btn-agregar').addEventListener('click', nuevaLinea);
+for (let i = 0; i < 4; i++) nuevaLinea();
+
+const btnGuardar = document.getElementById('btn-guardar');
+btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
+  const factura = {
+    fecha: document.getElementById('fecha').value,
+    proveedor: document.getElementById('proveedor').value.trim(),
+    numero_factura: document.getElementById('numero').value.trim(),
+    sede_ingreso: document.getElementById('sede').value,
+    punto_ingreso: document.getElementById('punto').value,
+    impuestos: document.getElementById('impuestos').value,
+    total: document.getElementById('total').value,
+    metodo_pago: document.getElementById('metodo').value.trim(),
+    notas: document.getElementById('notas').value.trim()
+  };
+  const lineas = Array.from(document.getElementById('lineas').children).map(tr => ({
+    producto: tr.querySelector('.in-producto').value.trim(),
+    categoria: tr.querySelector('.in-categoria').value.trim(),
+    unidad: tr.querySelector('.in-unidad').value,
+    cantidad: parseFloat(tr.querySelector('.in-cantidad').value.replace(',', '.')),
+    costo_unitario: parseFloat((tr.querySelector('.in-costo-unitario').value || '0').replace(',', '.')),
+    costo_total: tr.querySelector('.in-costo-total').value
+  })).filter(l => l.producto && !isNaN(l.cantidad));
+  const data = await llamar('compra_guardar', { factura, lineas });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado(`Factura guardada: ${data.lineas} líneas, total ${data.total}.`);
+  document.getElementById('proveedor').value = '';
+  document.getElementById('numero').value = '';
+  document.getElementById('notas').value = '';
+  document.getElementById('lineas').innerHTML = '';
+  for (let i = 0; i < 4; i++) nuevaLinea();
+  cargarCompras_();
+}));
+
+async function cargarCompras_() {
+  const data = await llamar('compras_listar', { fecha: document.getElementById('fecha').value });
+  const facturasBody = document.getElementById('tabla-facturas');
+  const lineasBody = document.getElementById('tabla-lineas');
+  if (!data.ok) { facturasBody.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  const facturas = data.data.facturas;
+  const lineas = data.data.lineas;
+  facturasBody.innerHTML = facturas.length ? facturas.map(f => `<tr><td>${escapeHtml(f.proveedor)}</td><td>${escapeHtml(f.numero_factura || '—')}</td><td>${escapeHtml(f.sede_ingreso)}</td><td>${escapeHtml(f.total)}</td><td>${escapeHtml(f.usuario)}</td></tr>`).join('') : '<tr><td colspan="5" class="vacio">Sin facturas registradas.</td></tr>';
+  lineasBody.innerHTML = lineas.length ? lineas.map(l => `<tr><td>${escapeHtml(l.producto)}</td><td>${escapeHtml(l.cantidad)} ${escapeHtml(l.unidad)}</td><td>${escapeHtml(l.costo_total)}</td><td>${escapeHtml(l.proveedor)}</td><td>${escapeHtml(l.sede_ingreso)}</td></tr>`).join('') : '<tr><td colspan="5" class="vacio">Sin líneas registradas.</td></tr>';
+}
+document.getElementById('fecha').addEventListener('change', cargarCompras_);
+cargarCompras_();
+</script>
+</body>
+</html>

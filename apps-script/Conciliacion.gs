@@ -83,7 +83,7 @@ function conciliarComidaPorSede_(fecha) {
   const ventas = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
     .filter(function (v) { return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true; });
 
-  const sedes = ['San Antonio', 'Capri'];
+  const sedes = ['Centro de Producción', 'San Antonio', 'Capri'];
   const resultado = {};
 
   sedes.forEach(function (sede) {
@@ -97,29 +97,45 @@ function conciliarComidaPorSede_(fecha) {
 
     const cambioFisico = calcularCambioFisico_(fecha, sede, indice);
     const producido = produccionTotalPorItem_(fecha, sede, indice);
+    const consumoProduccion = consumoEsperadoPorProduccion_(fecha, sede, indice);
     const traslados = trasladosNetosPorItem_(fecha, sede, indice);
+    const ajustes = ajustesNetosPorItem_(fecha, sede, indice);
+    const compras = comprasNetasPorItem_(fecha, sede, indice);
 
-    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)).concat(Object.keys(traslados)));
+    const ingredientes = new Set(Object.keys(consumoEsperado).concat(Object.keys(cambioFisico)).concat(Object.keys(producido)).concat(Object.keys(consumoProduccion)).concat(Object.keys(traslados)).concat(Object.keys(ajustes)).concat(Object.keys(compras)));
     resultado[sede] = Array.from(ingredientes).map(function (claveIng) {
       const nombreIng = (consumoEsperado[claveIng] && consumoEsperado[claveIng].nombre) ||
         (cambioFisico[claveIng] && cambioFisico[claveIng].nombre) || claveIng;
       const esperado = consumoEsperado[claveIng] ? consumoEsperado[claveIng].cantidad : 0;
       const cambio = cambioFisico[claveIng] !== undefined ? cambioFisico[claveIng].cantidad : null;
       const producidoIng = producido[claveIng] ? producido[claveIng].cantidad : 0;
+      const consumoProd = consumoProduccion[claveIng] ? consumoProduccion[claveIng].cantidad : 0;
       const trasladoNeto = traslados[claveIng] ? traslados[claveIng].cantidad : 0;
+      const compraFactura = compras[claveIng] ? compras[claveIng].cantidad : 0;
+      const ajusteNeto = (ajustes[claveIng] ? ajustes[claveIng].cantidad : 0) + compraFactura;
       const unidad = (consumoEsperado[claveIng] && consumoEsperado[claveIng].unidad) ||
         (cambioFisico[claveIng] && cambioFisico[claveIng].unidad) ||
         (producido[claveIng] && producido[claveIng].unidad) ||
-        (traslados[claveIng] && traslados[claveIng].unidad) || '';
-      // implícito = lo que no explican ni las ventas (consumo esperado) ni la producción registrada.
-      // Si nunca se registró producción para este ítem, producidoIng=0 y el cálculo queda igual que antes.
-      const implicito = cambio !== null ? (cambio + esperado - producidoIng - trasladoNeto) : null;
+        (consumoProduccion[claveIng] && consumoProduccion[claveIng].unidad) ||
+        (traslados[claveIng] && traslados[claveIng].unidad) ||
+        (ajustes[claveIng] && ajustes[claveIng].unidad) ||
+        (compras[claveIng] && compras[claveIng].unidad) || '';
+      // Fórmula de flujo:
+      // cambio físico = compras/ajustes netos + traslados netos + producción salida
+      //                 - ventas esperadas - consumo de producción - mermas/desperdicio.
+      // implicito es la diferencia que todavía no explica ningún registro operativo.
+      const implicito = cambio !== null ? (cambio - ajusteNeto - trasladoNeto - producidoIng + esperado + consumoProd) : null;
       return {
         ingrediente: nombreIng,
         unidad: unidad,
         consumo_esperado: Number(esperado.toFixed(3)),
         cambio_fisico: cambio !== null ? Number(cambio.toFixed(3)) : null,
         producido_registrado: producido[claveIng] !== undefined ? Number(producidoIng.toFixed(3)) : null,
+        consumo_produccion: consumoProduccion[claveIng] !== undefined ? Number(consumoProd.toFixed(3)) : null,
+        ajuste_neto: (ajustes[claveIng] !== undefined || compras[claveIng] !== undefined) ? Number(ajusteNeto.toFixed(3)) : null,
+        compras: (ajustes[claveIng] !== undefined || compras[claveIng] !== undefined) ? Number(((ajustes[claveIng] ? ajustes[claveIng].compras : 0) + compraFactura).toFixed(3)) : null,
+        costo_compras: compras[claveIng] !== undefined ? Number(compras[claveIng].costo.toFixed(2)) : null,
+        mermas: ajustes[claveIng] !== undefined ? Number(ajustes[claveIng].mermas.toFixed(3)) : null,
         traslado_neto: traslados[claveIng] !== undefined ? Number(trasladoNeto.toFixed(3)) : null,
         implicito: implicito !== null ? Number(implicito.toFixed(3)) : null
       };
@@ -169,14 +185,29 @@ function calcularCambioFisico_(fecha, sede, indice) {
 function trasladosNetosPorItem_(fecha, sede, indice) {
   const totales = {};
   leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
-    return formatearFecha_(t.fecha) === fecha && ['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1;
+    const fechaRecepcion = t.timestamp_recibe ? formatearFecha_(t.timestamp_recibe) : formatearFecha_(t.fecha);
+    return fechaRecepcion === fecha && ['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1;
   }).forEach(function (t) {
-    const base = aUnidadBase_(t.cantidad_recibida || t.cantidad_enviada, t.unidad);
     const clave = claveProducto_(t.producto, indice);
-    const signo = t.sede_destino === sede ? 1 : (t.sede_origen === sede ? -1 : 0);
-    if (!signo) return;
+    const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
+      ? t.cantidad_recibida : t.cantidad_enviada;
+    const cantidad = t.sede_origen === sede ? t.cantidad_enviada : (t.sede_destino === sede ? recibida : null);
+    if (cantidad === null) return;
+    const base = aUnidadBase_(cantidad, t.unidad);
     if (!totales[clave]) totales[clave] = { cantidad: 0, unidad: base.unidad };
-    totales[clave].cantidad += signo * base.cantidad;
+    totales[clave].cantidad += t.sede_destino === sede ? base.cantidad : -base.cantidad;
   });
   return totales;
+}
+
+function consumoEsperadoPorProduccion_(fecha, sede, indice) {
+  indice = indice || indiceCatalogo_();
+  const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+  const consumo = {};
+  produccionListar_(fecha, sede).forEach(function (p) {
+    const claveProd = claveProducto_(p.item, indice);
+    const base = aUnidadBase_(p.cantidad, p.unidad);
+    explotarReceta_(claveProd, base.cantidad, recetaMap, consumo, indice);
+  });
+  return consumo;
 }

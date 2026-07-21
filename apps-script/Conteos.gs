@@ -6,14 +6,24 @@
 
 function conteoRegistrar_(items, usuario) {
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    if (!it.fecha || !it.sede || !it.producto || !it.unidad) {
+      return { ok: false, error: 'Cada conteo debe tener fecha, sede, producto y unidad' };
+    }
+    if (isNaN(Number(it.cantidad)) || Number(it.cantidad) < 0) {
+      return { ok: false, error: 'La cantidad contada debe ser un número igual o mayor que cero' };
+    }
+  }
   if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
     return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
 
   const ahora = new Date();
   let n = 0;
+  let actualizados = 0;
   items.forEach(function (it) {
-    appendRowFromObj_(SHEET_NAMES.CONTEOS, {
+    const datos = {
       id: Utilities.getUuid(),
       fecha: it.fecha,
       sede: it.sede,
@@ -24,7 +34,17 @@ function conteoRegistrar_(items, usuario) {
       cantidad: it.cantidad,
       usuario: usuario.nombre,
       timestamp: ahora
-    });
+    };
+    const existente = conteoBuscarFila_(it);
+    if (existente) {
+      existente.headers.forEach(function (h, c) {
+        if (h === 'id') return;
+        if (datos[h] !== undefined) existente.sh.getRange(existente.fila, c + 1).setValue(datos[h]);
+      });
+      actualizados++;
+    } else {
+      appendRowFromObj_(SHEET_NAMES.CONTEOS, datos);
+    }
     n++;
   });
 
@@ -34,7 +54,27 @@ function conteoRegistrar_(items, usuario) {
     Logger.log('revisarAlertas_ falló tras conteo_registrar: ' + err.message);
   }
 
-  return { ok: true, registrados: n };
+  return { ok: true, registrados: n, actualizados: actualizados };
+}
+
+/** Un nuevo conteo del mismo cierre corrige el anterior, no se suma a él. */
+function conteoBuscarFila_(item) {
+  const sh = sheet_(SHEET_NAMES.CONTEOS);
+  const data = sh.getDataRange().getValues();
+  if (data.length < 2) return null;
+  const headers = data[0];
+  const col = function (nombre) { return headers.indexOf(nombre); };
+  for (let r = data.length - 1; r >= 1; r--) {
+    const fila = data[r];
+    if (formatearFecha_(fila[col('fecha')]) === item.fecha &&
+      fila[col('sede')] === item.sede &&
+      fila[col('punto_conteo')] === (item.punto_conteo || 'Café') &&
+      fila[col('turno')] === (item.turno || 'Cierre de turno') &&
+      normalizar_(fila[col('producto')]) === normalizar_(item.producto)) {
+      return { sh: sh, headers: headers, fila: r + 1 };
+    }
+  }
+  return null;
 }
 
 function conteoListar_(fecha, sede) {
