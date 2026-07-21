@@ -197,9 +197,6 @@ function trasladosNetosPorItem_(fecha, sede, indice) {
   }).forEach(function (t) {
     // Un traslado resuelto con faltante conserva la cantidad realmente recibida. No usar
     // `||` aquí: cero es un valor válido cuando no llegó nada.
-    const cantidad = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
-      ? t.cantidad_recibida : t.cantidad_enviada;
-    const base = aUnidadBase_(cantidad, t.unidad);
     const clave = claveProducto_(t.producto, indice);
     const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
       ? t.cantidad_recibida : t.cantidad_enviada;

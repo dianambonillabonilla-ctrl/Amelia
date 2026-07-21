@@ -96,12 +96,6 @@ function trasladoConfirmar_(id, cantidadRecibida, usuario) {
     return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
   }
 
-  const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
-  const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
-  if (isNaN(recibida) || recibida <= 0 || recibida > enviada) {
-    return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
-  }
-
   return trasladoActualizar_(id, {
     estado: 'Confirmado',
     usuario_recibe: usuario.nombre,
