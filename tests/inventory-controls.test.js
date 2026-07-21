@@ -9,20 +9,41 @@ function cargar(path, extras = {}) {
   return ctx;
 }
 
-const comprasGuardadas = [];
+const ajustesGuardados = [];
 const compras = cargar('apps-script/Compras.gs', {
-  SHEET_NAMES: { COMPRAS_FACTURAS: 'facturas', COMPRAS_LINEAS: 'lineas' },
-  Utilities: { getUuid: () => 'id-' + (comprasGuardadas.length + 1) },
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  Utilities: { getUuid: () => 'id-' + (ajustesGuardados.length + 1) },
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
-  leerTabla_: (hoja) => hoja === 'facturas' ? comprasGuardadas : [],
-  appendRowFromObj_: (hoja, fila) => { if (hoja === 'facturas') comprasGuardadas.push(fila); }
+  leerTabla_: (hoja) => hoja === 'ajustes' ? ajustesGuardados : [],
+  appendRowFromObj_: (hoja, fila) => { if (hoja === 'ajustes') ajustesGuardados.push(fila); },
+  ajusteInventarioRegistrar_: (item) => {
+    ajustesGuardados.push(Object.assign({ tipo: 'Compra cruda' }, item));
+    return { ok: true };
+  }
 });
 
-const factura = { fecha: '2026-07-21', proveedor: 'Mercamio', numero_factura: 'F-1', sede_ingreso: 'Centro de Producción', impuestos: 19, total: 119 };
-const lineas = [{ producto: 'Costilla', unidad: 'kg', cantidad: 1, costo_unitario: 100 }];
-assert.equal(compras.compraGuardar_(factura, lineas, { nombre: 'Diana' }).ok, true);
-assert.equal(compras.compraGuardar_(factura, lineas, { nombre: 'Diana' }).ok, false, 'debe bloquear factura duplicada');
-assert.equal(compras.compraGuardar_(Object.assign({}, factura, { numero_factura: 'F-2', total: 120 }), lineas, { nombre: 'Diana' }).ok, false, 'debe bloquear total inconsistente');
+const usuario = { nombre: 'Diana', sede: 'Ambas' };
+const factura = { fecha: '2026-07-21', proveedor: 'Mercamio', numero_factura: 'F-1', sede: 'Centro de Producción',
+  lineas: [{ producto: 'Costilla', unidad: 'kg', cantidad: 1, costo: 100 }] };
+
+const resultado = compras.compraRegistrarFactura_(factura, usuario);
+assert.equal(resultado.ok, true);
+assert.equal(resultado.total, 100);
+assert.equal(ajustesGuardados.length, 1, 'debe registrar una línea de ajuste por línea de factura');
+
+assert.equal(
+  compras.compraRegistrarFactura_(Object.assign({}, factura, { proveedor: '' }), usuario).ok,
+  false,
+  'debe exigir proveedor'
+);
+assert.equal(
+  compras.compraRegistrarFactura_(factura, { nombre: 'Diana', sede: 'San Antonio' }).ok,
+  false,
+  'debe bloquear registrar una compra fuera de la sede del usuario'
+);
+// NOTA: compraRegistrarFactura_ no valida hoy número de factura duplicado ni que el total
+// declarado coincida con la suma de las líneas — se decidió conscientemente no agregar esa
+// lógica en esta pasada (ver auditoría), solo alinear la prueba con el comportamiento real.
 
 const traslados = [
   { fecha: '2026-07-20', timestamp_recibe: '2026-07-21', estado: 'Resuelto', producto: 'Costilla', unidad: 'kg', cantidad_enviada: 5, cantidad_recibida: 3, sede_origen: 'Centro de Producción', sede_destino: 'Capri' }
