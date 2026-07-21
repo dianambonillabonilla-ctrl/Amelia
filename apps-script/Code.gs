@@ -26,10 +26,7 @@ const SHEET_NAMES = {
   PRODUCCIONES: 'Producciones',
   ALERTAS_ENVIADAS: 'AlertasEnviadas',
   TRASLADOS: 'Traslados',
-  AJUSTES_INVENTARIO: 'Ajustes_Inventario',
-  COMPRAS_FACTURAS: 'Compras_Facturas',
-  COMPRAS_LINEAS: 'Compras_Lineas',
-  HISTORIAL_CONTEOS: 'Historial_Conteos'
+  AJUSTES_INVENTARIO: 'Ajustes_Inventario'
 };
 
 function ss_() {
@@ -69,10 +66,8 @@ function configurarHojas() {
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
-    Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp'],
-    Compras_Facturas: ['id', 'fecha', 'proveedor', 'numero_factura', 'sede_ingreso', 'punto_ingreso', 'subtotal', 'impuestos', 'total', 'metodo_pago', 'notas', 'usuario', 'timestamp'],
-    Compras_Lineas: ['id', 'factura_id', 'fecha', 'proveedor', 'numero_factura', 'sede_ingreso', 'punto_ingreso', 'producto', 'categoria', 'unidad', 'cantidad', 'costo_unitario', 'costo_total', 'usuario', 'timestamp'],
-    Historial_Conteos: ['id', 'conteo_id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad_anterior', 'usuario_anterior', 'timestamp_anterior', 'cantidad_nueva', 'usuario_corrige', 'timestamp_correccion']
+    Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
+      'proveedor', 'numero_factura', 'costo', 'factura_id']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -196,19 +191,22 @@ function handleRequest_(e, method) {
         return jsonOut_(conteoRegistrar_(params.items, sesion.usuario));
       case 'conteo_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, params.sede) });
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
       case 'ajustes_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
-      case 'compra_guardar':
-        requiereAdmin_(sesion.usuario);
-        return jsonOut_(compraGuardar_(params.factura, params.lineas, sesion.usuario));
+        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, params.sede) });
+      case 'compra_registrar_factura':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario));
       case 'compras_listar':
-        requiereAdmin_(sesion.usuario);
-        return jsonOut_({ ok: true, data: comprasListar_(params.fecha, params.sede) });
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, params.sede) });
+      case 'compras_resumen_gasto':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, params.sede) });
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
@@ -220,13 +218,13 @@ function handleRequest_(e, method) {
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha, sedesConsultaPermitidas_(sesion.usuario)) });
+        return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario));
       case 'produccion_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, params.sede) });
       case 'usuarios_listar':
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
@@ -238,7 +236,7 @@ function handleRequest_(e, method) {
         return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
       case 'traslados_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro, sesion.usuario) });
+        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro) });
       case 'traslado_confirmar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(trasladoConfirmar_(params.id, params.cantidad_recibida, sesion.usuario));
@@ -259,6 +257,9 @@ function handleRequest_(e, method) {
       case 'migrar_recetas_produccion':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migrarRecetasProduccion_());
+      case 'migrar_recetas_julio_2026':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migrarRecetasJulio2026_());
       default:
         return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
     }
@@ -450,10 +451,6 @@ function requiereAdmin_(usuario) {
   requiereRol_(usuario, ['Administrador']);
 }
 
-function usuarioActivo_(valor) {
-  return valor === true || String(valor).toLowerCase() === 'true';
-}
-
 /** Limita las consultas operativas a la sede asignada, salvo Administrador o usuarios "Ambas". */
 function sedeConsultaPermitida_(usuario, sedeSolicitada) {
   if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return sedeSolicitada || null;
@@ -461,11 +458,6 @@ function sedeConsultaPermitida_(usuario, sedeSolicitada) {
     throw new Error('No puedes consultar datos de una sede distinta a la tuya (' + usuario.sede + ')');
   }
   return usuario.sede;
-}
-
-function sedesConsultaPermitidas_(usuario) {
-  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return ['Centro de Producción', 'San Antonio', 'Capri'];
-  return [usuario.sede];
 }
 
 // ---------------------------------------------------------------------------

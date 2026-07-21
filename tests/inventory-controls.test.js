@@ -13,8 +13,6 @@ const comprasGuardadas = [];
 const compras = cargar('apps-script/Compras.gs', {
   SHEET_NAMES: { COMPRAS_FACTURAS: 'facturas', COMPRAS_LINEAS: 'lineas' },
   Utilities: { getUuid: () => 'id-' + (comprasGuardadas.length + 1) },
-  LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
-  validarItemInventario_: (item) => ({ ok: true, producto: item.producto, unidad: item.unidad }),
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
   leerTabla_: (hoja) => hoja === 'facturas' ? comprasGuardadas : [],
   appendRowFromObj_: (hoja, fila) => { if (hoja === 'facturas') comprasGuardadas.push(fila); }
@@ -36,8 +34,8 @@ const conciliacion = cargar('apps-script/Conciliacion.gs', {
   claveProducto_: (v) => v,
   aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
 });
-assert.equal(conciliacion.trasladosNetosPorItem_('2026-07-20', 'Centro de Producción', {}).Costilla.cantidad, -5);
+assert.equal(conciliacion.trasladosNetosPorItem_('2026-07-21', 'Centro de Producción', {}).Costilla.cantidad, -5);
 assert.equal(conciliacion.trasladosNetosPorItem_('2026-07-21', 'Capri', {}).Costilla.cantidad, 3);
-assert.deepEqual(conciliacion.trasladosNetosPorItem_('2026-07-20', 'Capri', {}), {}, 'el destino debe conciliarse en fecha de recepción');
+assert.deepEqual(conciliacion.trasladosNetosPorItem_('2026-07-20', 'Capri', {}), {}, 'debe conciliarse en fecha de recepción');
 
 console.log('inventory-controls: OK');

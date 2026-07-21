@@ -16,10 +16,6 @@ function produccionRegistrar_(items, usuario) {
     if (isNaN(Number(it.cantidad)) || Number(it.cantidad) <= 0) {
       return { ok: false, error: 'La cantidad producida debe ser un número mayor que cero' };
     }
-    const validado = validarItemInventario_(it, 'item');
-    if (!validado.ok) return validado;
-    it.item = validado.producto;
-    it.unidad = validado.unidad;
   }
   if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
     return { ok: false, error: 'No puedes registrar producción para una sede distinta a la tuya (' + usuario.sede + ')' };

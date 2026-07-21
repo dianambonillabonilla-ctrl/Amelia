@@ -22,10 +22,6 @@ function ajusteInventarioRegistrar_(item, usuario) {
   if (isNaN(Number(item.cantidad)) || Number(item.cantidad) <= 0) {
     return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
   }
-  const validado = validarItemInventario_(item, 'producto');
-  if (!validado.ok) return validado;
-  item.producto = validado.producto;
-  item.unidad = validado.unidad;
   if (usuario.sede !== 'Ambas' && item.sede !== usuario.sede) {
     return { ok: false, error: 'No puedes registrar ajustes para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
@@ -41,7 +37,11 @@ function ajusteInventarioRegistrar_(item, usuario) {
     cantidad: Number(item.cantidad),
     motivo: item.motivo || '',
     usuario: usuario.nombre,
-    timestamp: new Date()
+    timestamp: new Date(),
+    proveedor: item.proveedor || '',
+    numero_factura: item.numero_factura || '',
+    costo: item.costo !== undefined && item.costo !== '' && !isNaN(Number(item.costo)) ? Number(item.costo) : '',
+    factura_id: item.factura_id || ''
   });
   return { ok: true };
 }

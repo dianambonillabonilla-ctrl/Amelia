@@ -86,9 +86,6 @@ El backend crea o actualiza estas hojas:
 - `AlertasEnviadas`
 - `Traslados`
 - `Ajustes_Inventario`
-- `Compras_Facturas`
-- `Compras_Lineas`
-- `Historial_Conteos`
 
 ## Desarrollo
 

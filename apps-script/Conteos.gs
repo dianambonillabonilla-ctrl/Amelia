@@ -14,10 +14,6 @@ function conteoRegistrar_(items, usuario) {
     if (isNaN(Number(it.cantidad)) || Number(it.cantidad) < 0) {
       return { ok: false, error: 'La cantidad contada debe ser un número igual o mayor que cero' };
     }
-    const validado = validarItemInventario_(it, 'producto');
-    if (!validado.ok) return validado;
-    it.producto = validado.producto;
-    it.unidad = validado.unidad;
   }
   if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
     return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
@@ -41,7 +37,6 @@ function conteoRegistrar_(items, usuario) {
     };
     const existente = conteoBuscarFila_(it);
     if (existente) {
-      registrarCorreccionConteo_(existente, datos, usuario, ahora);
       existente.headers.forEach(function (h, c) {
         if (h === 'id') return;
         if (datos[h] !== undefined) existente.sh.getRange(existente.fila, c + 1).setValue(datos[h]);
@@ -76,31 +71,10 @@ function conteoBuscarFila_(item) {
       fila[col('punto_conteo')] === (item.punto_conteo || 'Café') &&
       fila[col('turno')] === (item.turno || 'Cierre de turno') &&
       normalizar_(fila[col('producto')]) === normalizar_(item.producto)) {
-      return { sh: sh, headers: headers, fila: r + 1, valores: fila };
+      return { sh: sh, headers: headers, fila: r + 1 };
     }
   }
   return null;
-}
-
-function registrarCorreccionConteo_(existente, datosNuevos, usuario, timestamp) {
-  const anterior = {};
-  existente.headers.forEach(function (h, c) { anterior[h] = existente.valores[c]; });
-  appendRowFromObj_(SHEET_NAMES.HISTORIAL_CONTEOS, {
-    id: Utilities.getUuid(),
-    conteo_id: anterior.id,
-    fecha: anterior.fecha,
-    sede: anterior.sede,
-    punto_conteo: anterior.punto_conteo,
-    turno: anterior.turno,
-    producto: anterior.producto,
-    unidad: anterior.unidad,
-    cantidad_anterior: anterior.cantidad,
-    usuario_anterior: anterior.usuario,
-    timestamp_anterior: anterior.timestamp,
-    cantidad_nueva: datosNuevos.cantidad,
-    usuario_corrige: usuario.nombre,
-    timestamp_correccion: timestamp
-  });
 }
 
 function conteoListar_(fecha, sede) {
