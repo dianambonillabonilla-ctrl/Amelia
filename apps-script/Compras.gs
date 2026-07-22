@@ -32,11 +32,11 @@ function compraRegistrarFactura_(factura, usuario) {
 
   const facturaId = Utilities.getUuid();
   let total = 0;
-  lineas.forEach(function (l) {
+  for (let i = 0; i < lineas.length; i++) {
+    const l = lineas[i];
     catalogoAsegurar_(l.producto, l.unidad);
     const costo = l.costo !== undefined && l.costo !== '' ? Number(l.costo) : 0;
-    total += costo;
-    ajusteInventarioRegistrar_({
+    const resultadoAjuste = ajusteInventarioRegistrar_({
       fecha: factura.fecha,
       sede: factura.sede,
       punto: factura.punto || '',
@@ -50,7 +50,14 @@ function compraRegistrarFactura_(factura, usuario) {
       costo: costo,
       factura_id: facturaId
     }, usuario);
-  });
+    // Antes se ignoraba este resultado: si ajusteInventarioRegistrar_ rechazaba una línea (ej. una
+    // validación interna), la factura igual se reportaba como guardada con éxito sin que quedara
+    // ningún movimiento de inventario registrado para esa línea. Ahora se corta y se avisa.
+    if (!resultadoAjuste.ok) {
+      return { ok: false, error: 'Línea ' + (i + 1) + ' (' + l.producto + '): ' + resultadoAjuste.error };
+    }
+    total += costo;
+  }
 
   return { ok: true, factura_id: facturaId, lineas: lineas.length, total: Number(total.toFixed(2)) };
 }
