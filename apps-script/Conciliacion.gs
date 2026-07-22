@@ -44,7 +44,15 @@ function conciliarBebidas_(fecha) {
   const conteos = conteoListar_(fecha, null);
 
   return catalogo.map(function (item) {
-    const movsItem = movimientos.filter(function (m) { return m.nombre === item.nombre_fudo; });
+    // Comparación normalizada (sin tildes/mayúsculas/espacios de sobra), igual que el resto del
+    // sistema (Catalogo.gs, DisponibleHoy.gs). Antes comparaba con === y una tilde, mayúscula o
+    // espacio distinto entre "nombre_fudo" del catálogo y el nombre real del export de FUDO hacía
+    // que nunca hubiera match: la importación sí guardaba los movimientos, pero esta pantalla
+    // seguía mostrando "Sin datos FUDO" para esa bebida en todas las fechas.
+    const nombreFudoItem = normalizar_(item.nombre_fudo);
+    const movsItem = nombreFudoItem
+      ? movimientos.filter(function (m) { return normalizar_(m.nombre) === nombreFudoItem; })
+      : [];
     movsItem.sort(function (a, b) { return new Date(a.fecha) - new Date(b.fecha); });
     const cierre = movsItem.length ? movsItem[movsItem.length - 1].stock_actual : null;
 
