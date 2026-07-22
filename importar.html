@@ -127,12 +127,22 @@ function mostrarPreview(filas) {
     '<tbody>' + filas.slice(0, 8).map(f => '<tr>' + columnas.map(c => `<td>${escapeHtml(f[c] ?? '')}</td>`).join('') + '</tr>').join('') + '</tbody>';
 }
 
-document.getElementById('btn-confirmar').addEventListener('click', async () => {
-  const data = await llamar('importar_fudo', {
-    tipo: tipoSeleccionado(),
-    filas: filasParaImportar,
-    opciones: { sede: document.getElementById('sede-importacion').value, archivo: archivoParaImportar }
-  });
+document.getElementById('btn-confirmar').addEventListener('click', conBotonProtegido(document.getElementById('btn-confirmar'), async () => {
+  if (!filasParaImportar.length) { alert('No hay filas para importar: sube un archivo primero.'); return; }
+  let data;
+  try {
+    data = await llamar('importar_fudo', {
+      tipo: tipoSeleccionado(),
+      filas: filasParaImportar,
+      opciones: { sede: document.getElementById('sede-importacion').value, archivo: archivoParaImportar }
+    });
+  } catch (err) {
+    // Sin este catch, un fallo de red o una respuesta que no es JSON (ej. la sesión venció y
+    // Apps Script devolvió una página de login en vez del JSON esperado) dejaba la pantalla sin
+    // ningún aviso: ni el letrero verde ni una alerta de error, como si el clic no hubiera hecho nada.
+    alert('No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo. Detalle: ' + err.message);
+    return;
+  }
   const aviso = document.getElementById('aviso-sin-identificar');
   aviso.style.display = 'none';
   if (data.ok) {
@@ -146,7 +156,7 @@ document.getElementById('btn-confirmar').addEventListener('click', async () => {
   } else {
     alert(data.error);
   }
-});
+}));
 </script>
 </body>
 </html>
