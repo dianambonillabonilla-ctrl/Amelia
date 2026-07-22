@@ -180,6 +180,9 @@ function handleRequest_(e, method) {
       case 'catalogo_guardar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoGuardar_(params.item, sesion.usuario));
+      case 'catalogo_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoEliminar_(params.id));
       case 'fudo_nombres_vistos':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoNombresVistos_() });
