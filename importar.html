@@ -131,11 +131,29 @@ function elegirHojaVentas_(wb) {
   return wb.Sheets[wb.SheetNames[0]];
 }
 
+// El radio "Movimientos de Stock" viene marcado por defecto — es fácil subir el archivo de ventas
+// sin acordarse de cambiarlo, y entonces el sistema toma la hoja equivocada (ej. "Ventas", que es
+// info de la orden, no de qué se vendió) y da "0 filas... sin nombre reconocible" sin que sea obvio
+// por qué. FUDO solo pone una hoja "Adiciones" o "Detalle" en los exports de ventas — si el archivo
+// trae alguna de esas dos, es ventas sí o sí, así que se corrige el radio solo en vez de confiar en
+// que haya quedado bien marcado a mano.
+function detectarTipoPorContenido_(wb) {
+  if (wb.Sheets['Adiciones'] || wb.Sheets['Detalle']) return 'ventas';
+  return null;
+}
+
 async function manejarArchivo(file) {
   if (!file) return;
   archivoParaImportar = file.name;
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+
+  const detectado = detectarTipoPorContenido_(wb);
+  if (detectado && detectado !== tipoSeleccionado()) {
+    document.querySelector(`input[name="tipo"][value="${detectado}"]`).checked = true;
+    const hojaEncontrada = wb.Sheets['Adiciones'] ? 'Adiciones' : 'Detalle';
+    avisarGuardado(`Este archivo trae ventas (hoja "${hojaEncontrada}") — cambié el tipo a "Ventas (Adiciones)" automáticamente.`);
+  }
 
   const tipo = tipoSeleccionado();
   // movimientos-de-stock.xls trae 3 filas de encabezado (Desde/Hasta) antes de la fila real de columnas
