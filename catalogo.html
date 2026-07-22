@@ -140,7 +140,21 @@ montarBarraUsuario();
 
 let catalogo = [];
 
+// Filas pegadas directo en el Google Sheet (en vez de creadas desde "Guardar producto" aquí abajo)
+// pueden quedar sin id — sin eso, Editar/Eliminar no tienen con qué encontrarlas y el backend
+// responde "Falta el id del producto a eliminar". Se reparan solas, una vez, antes de pintar la
+// tabla, así no hay que editar la hoja de cálculo a mano fila por fila.
+async function repararIdsCatalogo_() {
+  const usuario = Sesion.usuario();
+  if (!usuario || usuario.rol !== 'Administrador') return;
+  const data = await llamar('catalogo_reparar_ids');
+  if (data.ok && data.reparadas > 0) {
+    avisarGuardado(`Se les asignó id a ${data.reparadas} producto(s) del catálogo que no lo tenían — ya se pueden editar/eliminar.`);
+  }
+}
+
 async function cargarCatalogo() {
+  await repararIdsCatalogo_();
   const data = await llamar('catalogo_listar');
   if (!data.ok) {
     document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="8" class="vacio">${escapeHtml(data.error)}</td></tr>`;
