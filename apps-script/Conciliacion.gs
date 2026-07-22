@@ -20,10 +20,20 @@ function calcularConciliacion_(fecha) {
   };
 }
 
+/**
+ * FUDO no siempre escribe "Cancelada" con tilde — el export real trae "Si" sin tilde (además de
+ * "No", y el formato resumido guarda el booleano `false`). Comparar con === 'Sí' a secas dejaba
+ * pasar ventas canceladas como si fueran válidas, inflando "ventas esperadas" en Conciliación.
+ * normalizar_ ya quita tildes/mayúsculas, así que cubre "Sí"/"Si"/"SI" por igual.
+ */
+function ventaCancelada_(v) {
+  return v.cancelada === true || normalizar_(v.cancelada) === 'si';
+}
+
 function resumirVentasFudo_(fecha) {
   const grupos = {};
   leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-    return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true;
+    return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
   }).forEach(function (v) {
     const clave = [v.sede || 'Sin identificar', v.categoria || 'Sin categoría', v.producto].join('|');
     if (!grupos[clave]) grupos[clave] = { sede: v.sede || 'Sin identificar', categoria: v.categoria || 'Sin categoría', producto: v.producto, cantidad: 0 };
@@ -89,7 +99,7 @@ function conciliarBebidas_(fecha) {
 function conciliarComidaPorSede_(fecha) {
   const indice = indiceCatalogo_();
   const ventas = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
-    .filter(function (v) { return formatearFecha_(v.creacion) === fecha && v.cancelada !== 'Sí' && v.cancelada !== true; });
+    .filter(function (v) { return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v); });
 
   const sedes = ['Centro de Producción', 'San Antonio', 'Capri'];
   const resultado = {};
