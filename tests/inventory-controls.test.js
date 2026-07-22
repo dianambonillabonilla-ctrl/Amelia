@@ -179,4 +179,32 @@ assert.deepEqual(
   'sin faltantes cuando ya están los tres obligatorios de ese día'
 );
 
+// --- Disponible Hoy: traslado recibido y confirmado suma al stock de la sede que lo recibe -----
+const conteosTraslado = [
+  { fecha: '2026-07-01', sede: 'Capri', producto: 'Costilla', unidad: 'g', cantidad: 100 }
+];
+const trasladosStock = [
+  // Confirmado y recibido después del conteo: debe sumar lo REALMENTE recibido (30, no lo enviado).
+  { fecha: '2026-07-03', timestamp_recibe: '2026-07-04', estado: 'Confirmado', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 50, cantidad_recibida: 30, sede_origen: 'Centro de Producción', sede_destino: 'Capri' },
+  // Todavía "Enviado" (no confirmado): no debe contar mientras no se confirme.
+  { fecha: '2026-07-05', timestamp_recibe: '', estado: 'Enviado', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 999, cantidad_recibida: '', sede_origen: 'Centro de Producción', sede_destino: 'Capri' },
+  // Recibido en San Antonio: no debe afectar el stock de Capri.
+  { fecha: '2026-07-03', timestamp_recibe: '2026-07-04', estado: 'Confirmado', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 999, cantidad_recibida: 999, sede_origen: 'Centro de Producción', sede_destino: 'San Antonio' }
+];
+const disponibleHoyTraslado = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes', TRASLADOS: 'traslados' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosTraslado : (hoja === 'traslados' ? trasladosStock : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+assert.equal(
+  disponibleHoyTraslado.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'Capri').costilla.cantidad, 130,
+  '100 contados + 30 recibidos por traslado confirmado = 130 (no cuenta el "Enviado" sin confirmar ni lo de San Antonio)'
+);
+
 console.log('inventory-controls: OK');

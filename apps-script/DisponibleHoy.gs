@@ -240,11 +240,16 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  * ortografía se suman como uno solo en vez de aparecer como dos ingredientes distintos.
  *
  * A partir del último conteo físico de CADA sede, se suman las compras ('Compra cruda') y
- * ajustes operativos, y se restan las mermas/desperdicio (Ajustes_Inventario, ver
- * AjustesInventario.gs) registrados en esa misma sede después de ese conteo y hasta la fecha de
- * corte — así una compra en Capri aumenta de inmediato el disponible de Capri sin esperar al
- * próximo conteo físico, y una compra en San Antonio no afecta el número de Capri. El conteo
- * físico sigue siendo la referencia real; esto solo cubre el tiempo entre conteos.
+ * ajustes operativos, se suman los traslados recibidos y confirmados (o resueltos) desde otra
+ * sede, y se restan las mermas/desperdicio (Ajustes_Inventario, ver AjustesInventario.gs;
+ * Traslados, ver Traslados.gs), todo registrado en esa misma sede después de ese conteo y hasta
+ * la fecha de corte — así una compra o un traslado recibido en Capri aumenta de inmediato el
+ * disponible de Capri sin esperar al próximo conteo físico, y no afecta el número de San Antonio.
+ * El conteo físico sigue siendo la referencia real; esto solo cubre el tiempo entre conteos.
+ *
+ * Los traslados solo suman al llegar (sede_destino) — a propósito NO se restan de la sede de
+ * origen al enviarlos: ver la nota de la auditoría sobre por qué "Disponible Hoy" no intenta
+ * modelar salidas (producción, ventas) más allá de lo que ya cubre el conteo físico siguiente.
  */
 function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   indice = indice || indiceCatalogo_();
@@ -267,6 +272,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   });
 
   const ajustes = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
+  const traslados = leerTabla_(SHEET_NAMES.TRASLADOS);
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
     const entrada = porProducto[clave];
@@ -278,7 +284,9 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
       const ultimaFecha = fechasSede[fechasSede.length - 1];
       const base = entrada.porSede[sedeConteo].fechas[ultimaFecha];
       unidadFinal = unidadFinal || base.unidad;
-      total += base.cantidad + netoAjustesDesdeConteo_(ajustes, clave, sedeConteo, ultimaFecha, fecha, indice, base.unidad);
+      total += base.cantidad
+        + netoAjustesDesdeConteo_(ajustes, clave, sedeConteo, ultimaFecha, fecha, indice, base.unidad)
+        + trasladosRecibidosDesdeConteo_(traslados, clave, sedeConteo, ultimaFecha, fecha, indice, base.unidad);
       if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
     });
     resultado[clave] = { producto: entrada.nombre, cantidad: total, unidad: unidadFinal, fecha_conteo: fechaMasReciente };
@@ -301,4 +309,27 @@ function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, fec
     neto += a.tipo === 'Merma / desperdicio' ? -base.cantidad : base.cantidad;
   });
   return neto;
+}
+
+/** Suma lo recibido por `sede` para `clave` vía traslados Confirmados o Resueltos (ver
+ * Traslados.gs), usando la fecha real de recepción (timestamp_recibe, o `fecha` si por algún
+ * motivo no quedó registrada) — estrictamente después de `fechaConteoExclusive` y hasta
+ * `fechaCorteInclusive`. Un traslado resuelto con faltante suma solo lo realmente recibido
+ * (cantidad_recibida), no lo enviado. */
+function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+  let total = 0;
+  traslados.forEach(function (t) {
+    if (t.sede_destino !== sede) return;
+    if (['Confirmado', 'Resuelto'].indexOf(t.estado) === -1) return;
+    if (claveProducto_(t.producto, indice) !== clave) return;
+    const f = formatearFecha_(t.timestamp_recibe || t.fecha);
+    if (f <= fechaConteoExclusive) return;
+    if (fechaCorteInclusive && f > fechaCorteInclusive) return;
+    const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
+      ? t.cantidad_recibida : t.cantidad_enviada;
+    const base = aUnidadBase_(recibida, t.unidad);
+    if (base.unidad !== unidadEsperada) return;
+    total += base.cantidad;
+  });
+  return total;
 }
