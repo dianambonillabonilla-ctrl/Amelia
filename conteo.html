@@ -57,6 +57,9 @@
         <tbody id="filas"></tbody>
       </table>
       <datalist id="lista-productos"></datalist>
+      <datalist id="lista-unidades">
+        <option value="g"><option value="kg"><option value="u"><option value="ml"><option value="l"><option value="paq">
+      </datalist>
       <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar producto</button>
 
       <div style="margin-top:20px">
@@ -74,7 +77,7 @@
         <div class="campo"><label>Tipo</label><select id="aj-tipo"><option>Merma / desperdicio</option><option>Ajuste operativo</option></select></div>
         <div class="campo"><label>Producto</label><input type="text" id="aj-producto" list="lista-productos" placeholder="ej. Costilla cruda"></div>
         <div class="campo"><label>Cantidad</label><input type="number" step="0.01" id="aj-cantidad"></div>
-        <div class="campo"><label>Unidad</label><select id="aj-unidad"><option>g</option><option>kg</option><option>u</option><option>ml</option><option>l</option></select></div>
+        <div class="campo"><label>Unidad</label><input type="text" id="aj-unidad" list="lista-unidades" value="g"></div>
       </div>
       <div class="campo"><label>Motivo / nota</label><input type="text" id="aj-motivo" placeholder="ej. factura proveedor, merma por limpieza, producto dañado"></div>
       <button class="btn dorado" id="btn-guardar-ajuste">Guardar movimiento</button>
@@ -136,8 +139,6 @@ function frecuenciasDelDia_(fechaStr) {
   return frecuencias;
 }
 
-const UNIDADES_ESTANDAR_ = ['g', 'kg', 'u', 'ml', 'l'];
-
 // `obligatorio` = el producto viene de la lista fija de hoy (Diario/Miércoles/Viernes/Mensual):
 // su nombre queda fijo (no editable) y sin botón "Quitar" — Guardar conteo lo bloquea si falta
 // la cantidad (ver btnGuardarConteo más abajo). Las filas agregadas a mano ("+ Agregar producto")
@@ -145,21 +146,13 @@ const UNIDADES_ESTANDAR_ = ['g', 'kg', 'u', 'ml', 'l'];
 function nuevaFila(producto = '', unidad = 'g', anterior = null, obligatorio = false) {
   const tr = document.createElement('tr');
   if (obligatorio) tr.dataset.obligatorio = '1';
-  const unidadExtra = unidad && !UNIDADES_ESTANDAR_.includes(unidad) ? `<option selected value="${escapeHtml(unidad)}">${escapeHtml(unidad)}</option>` : '';
   tr.innerHTML = `
     <td>
       <input type="text" class="in-producto" list="lista-productos" value="${escapeHtml(producto)}"
         placeholder="ej. Costilla Preparada" ${obligatorio ? 'readonly style="background:var(--cream)"' : ''}>
       ${obligatorio ? '<span title="Obligatorio hoy" style="color:var(--red); font-weight:700; margin-left:4px">*</span>' : ''}
     </td>
-    <td><select class="in-unidad">
-        ${unidadExtra}
-        <option ${unidad==='g'?'selected':''}>g</option>
-        <option ${unidad==='kg'?'selected':''}>kg</option>
-        <option ${unidad==='u'?'selected':''}>u</option>
-        <option ${unidad==='ml'?'selected':''}>ml</option>
-        <option ${unidad==='l'?'selected':''}>l</option>
-      </select></td>
+    <td><input type="text" class="in-unidad" list="lista-unidades" value="${escapeHtml(unidad)}" style="width:70px"></td>
     <td style="color:var(--grey)">${anterior === null ? '—' : escapeHtml(anterior)}</td>
     <td><input type="number" step="0.01" class="in-cantidad" placeholder="${anterior === null ? '' : 'ej. ' + escapeHtml(anterior)}"></td>
     <td>${obligatorio ? '' : '<button class="btn fantasma btn-quitar" type="button">Quitar</button>'}</td>`;

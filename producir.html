@@ -57,6 +57,9 @@
         <tbody id="filas"></tbody>
       </table>
       <datalist id="lista-productos"></datalist>
+      <datalist id="lista-unidades">
+        <option value="g"><option value="kg"><option value="u"><option value="ml"><option value="l"><option value="paq">
+      </datalist>
       <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar ítem</button>
 
       <div style="margin-top:20px">
@@ -95,13 +98,7 @@ function nuevaFila(item = '', unidad = 'g', cantidad = '') {
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input type="text" class="in-item" list="lista-productos" value="${escapeHtml(item)}" placeholder="ej. Costilla Preparada"></td>
-    <td><select class="in-unidad">
-        <option ${unidad==='g'?'selected':''}>g</option>
-        <option ${unidad==='kg'?'selected':''}>kg</option>
-        <option ${unidad==='u'?'selected':''}>u</option>
-        <option ${unidad==='ml'?'selected':''}>ml</option>
-        <option ${unidad==='l'?'selected':''}>l</option>
-      </select></td>
+    <td><input type="text" class="in-unidad" list="lista-unidades" value="${escapeHtml(unidad)}" style="width:70px"></td>
     <td><input type="number" step="0.01" class="in-cantidad" value="${cantidad}"></td>
     <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
   tr.querySelector('.btn-quitar').addEventListener('click', () => tr.remove());
