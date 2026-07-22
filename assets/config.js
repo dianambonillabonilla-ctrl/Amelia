@@ -28,13 +28,27 @@ const Sesion = {
   }
 };
 
+// Nunca deja que un fallo de red o de sesión se convierta en una promesa rechazada sin atrapar:
+// eso dejaba pantallas enteras (ej. el botón "Guardar conteo") sin ningún aviso — ni el letrero
+// verde ni una alerta de error, como si el clic no hubiera hecho nada, aunque a veces el dato sí
+// se hubiera guardado del lado del servidor y solo fallara la respuesta de vuelta al navegador.
+// Con esto, cualquier página que ya haga `if (data.ok) {...} else { alert(data.error) }` queda
+// protegida automáticamente, sin tener que repetir un try/catch en cada botón.
 async function llamar(action, params = {}) {
   const body = Object.assign({ action, token: Sesion.token() }, params);
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
+  let res;
+  try {
+    res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
+  } catch (err) {
+    return { ok: false, error: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    // Ej. la sesión venció y Apps Script devolvió una página de login en vez del JSON esperado.
+    return { ok: false, error: 'El servidor respondió algo que no se pudo leer. Vuelve a intentarlo; si sigue igual, cierra sesión y entra de nuevo.' };
+  }
   if (!data.ok && data.codigo === 'SESION_INVALIDA') {
     Sesion.cerrar();
   }
