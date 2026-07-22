@@ -224,7 +224,13 @@ function pintarTabla_() {
     .filter(p => !categoria || p._partes.principal === categoria)
     .filter(p => !subcategoria || p._partes.sub === subcategoria)
     .filter(p => !nombre || normalizarTexto(p.nombre_estandar).includes(nombre))
-    .sort((a, b) => (a.categoria + a.nombre_estandar).localeCompare(b.categoria + b.nombre_estandar));
+    // Categoría, luego subcategoría, y alfabético por nombre dentro de cada una — antes comparaba
+    // "categoria + nombre_estandar" pegados como un solo texto, que además de no separar por
+    // subcategoría podía intercalar mal los nombres en el borde entre una categoría y la siguiente.
+    .sort((a, b) =>
+      a._partes.principal.localeCompare(b._partes.principal) ||
+      a._partes.sub.localeCompare(b._partes.sub) ||
+      a.nombre_estandar.localeCompare(b.nombre_estandar));
 
   const body = document.getElementById('tabla-catalogo');
   if (!filas.length) { body.innerHTML = '<tr><td colspan="8" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
