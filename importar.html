@@ -110,6 +110,27 @@ function tipoSeleccionado() {
   return document.querySelector('input[name="tipo"]:checked').value;
 }
 
+// El "Reporte de Productos" real que exporta FUDO trae la hoja de detalle llamada "Detalle" (no
+// "Adiciones" como se asumía antes) junto con una segunda hoja "Ranking del período" que también
+// tiene columna Producto pero SIN fecha por fila (es un acumulado, no sirve para importar). Prueba
+// nombres conocidos primero; si no aparece ninguno, busca la primera hoja que tenga a la vez una
+// columna de fecha y una de producto, para no agarrar por accidente el ranking sin fecha.
+function elegirHojaVentas_(wb) {
+  const nombresConocidos = ['Adiciones', 'Detalle'];
+  for (const nombre of nombresConocidos) {
+    if (wb.Sheets[nombre]) return wb.Sheets[nombre];
+  }
+  for (const nombre of wb.SheetNames) {
+    const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { defval: null });
+    if (!filas.length) continue;
+    const columnas = Object.keys(filas[0]).map(c => normalizarTexto(c));
+    const tieneFecha = columnas.some(c => c.includes('fecha') || c.includes('creacion'));
+    const tieneProducto = columnas.some(c => c.includes('producto'));
+    if (tieneFecha && tieneProducto) return wb.Sheets[nombre];
+  }
+  return wb.Sheets[wb.SheetNames[0]];
+}
+
 async function manejarArchivo(file) {
   if (!file) return;
   archivoParaImportar = file.name;
@@ -118,8 +139,7 @@ async function manejarArchivo(file) {
 
   const tipo = tipoSeleccionado();
   // movimientos-de-stock.xls trae 3 filas de encabezado (Desde/Hasta) antes de la fila real de columnas
-  const nombreHoja = tipo === 'movimientos' ? wb.SheetNames[0] : 'Adiciones';
-  const hoja = wb.Sheets[nombreHoja] || wb.Sheets[wb.SheetNames[0]];
+  const hoja = tipo === 'movimientos' ? wb.Sheets[wb.SheetNames[0]] : elegirHojaVentas_(wb);
   const rango = tipo === 'movimientos' ? { range: 3 } : {};
   const filas = XLSX.utils.sheet_to_json(hoja, Object.assign({ defval: null }, rango));
 
