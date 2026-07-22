@@ -115,7 +115,15 @@ function pintarComida(porSede) {
     }
     filas.forEach(f => {
       let nota = '';
-      if (f.implicito === null) nota = '';
+      if (f.sin_receta) {
+        // Se vendió sin encontrar una receta con ese nombre exacto en la hoja Recetas: puede ser
+        // un producto que de verdad no tiene receta (ej. una bebida embotellada, se consume 1:1 y
+        // está bien así), o puede ser un plato que SÍ tiene receta pero el nombre con el que FUDO
+        // lo vende no coincide con el "producto" registrado en Recetas — en ese segundo caso el
+        // consumo esperado de esta fila NO es confiable. No se puede distinguir un caso del otro
+        // desde aquí, así que se avisa siempre en vez de mostrar "Cuadra" o una alerta falsa.
+        nota = '<span class="badge aviso">Sin receta con ese nombre — revisar en Recetas si debería tenerla</span>';
+      } else if (f.implicito === null) nota = '';
       else if (f.implicito < -200 && f.unidad === 'g') nota = `<span class="badge alerta">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else if (f.implicito > 0) nota = `<span class="badge aviso">${escapeHtml(f.implicito)} ${escapeHtml(f.unidad)}</span>`;
       else nota = '<span class="badge ok">Cuadra</span>';

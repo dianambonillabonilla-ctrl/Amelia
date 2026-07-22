@@ -311,4 +311,52 @@ const resultadoSegundaVez = fudoSegundaVez.importarFudo_('ventas', filasPoker, u
 assert.equal(resultadoSegundaVez.importados, 0, 'reimportar el mismo archivo no debe duplicar las ventas ya guardadas');
 assert.equal(resultadoSegundaVez.omitidos_duplicados, 2);
 
+// --- Conciliación: una venta sin receta encontrada debe marcarse sin_receta, no compararse -----
+// como si fuera correcta. Antes, un plato vendido con un nombre que no coincidía con ningún
+// "producto" de la hoja Recetas (el mismo problema que tuvo "Falafel" vs "Falafel (plato)", ver
+// claveRecetaVenta_ en Recetas.gs) se autoconsumía 1:1 en silencio, sin ninguna señal de que la
+// receta no se había encontrado — la fila se veía igual de "confiable" que una sí explotada por
+// receta, mostrando incluso "Cuadra" cuando en realidad no se comparó nada real.
+const ventasComida = [
+  { creacion: '2026-07-21', sede: 'San Antonio', categoria: 'Bebidas', producto: 'Agua', cantidad: 2, cancelada: false },
+  { creacion: '2026-07-21', sede: 'San Antonio', categoria: 'Comida', producto: 'Supremo', cantidad: 1, cancelada: false }
+];
+const recetaMapComida = {
+  supremo: { nombre: 'Supremo', tipo: 'plato', lineas: [{ ingrediente: 'Costilla', cantidad: 100, rendimiento: 1, unidad: 'g', controla_disponibilidad: true }] }
+};
+const conciliacionComida = cargar('apps-script/Conciliacion.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', CONTEOS: 'conteos', TRASLADOS: 'traslados' },
+  leerTabla_: (hoja) => hoja === 'ventas' ? ventasComida : [],
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  nombreCanonico_: (texto) => texto,
+  claveProducto_: (texto) => normalizarSimple_(texto),
+  claveRecetaVenta_: (producto, recetaMap) => { const d = normalizarSimple_(producto); return recetaMap[d] ? d : d; },
+  construirRecetaMap_: () => recetaMapComida,
+  recetasVigentes_: () => [],
+  explotarReceta_: (claveProducto, cantidadBase, recetaMap, acumulado) => {
+    const entrada = recetaMap[claveProducto];
+    if (!entrada) return acumulado;
+    entrada.lineas.forEach(function (l) {
+      const k = normalizarSimple_(l.ingrediente);
+      if (!acumulado[k]) acumulado[k] = { nombre: l.ingrediente, cantidad: 0, unidad: l.unidad };
+      acumulado[k].cantidad += cantidadBase * l.cantidad;
+    });
+    return acumulado;
+  },
+  produccionListar_: () => [],
+  produccionTotalPorItem_: () => ({}),
+  ajustesNetosPorItem_: () => ({}),
+  indiceCatalogo_: () => ({})
+});
+const filasSanAntonio = conciliacionComida.conciliarComidaPorSede_('2026-07-21')['San Antonio'];
+const filaAgua = filasSanAntonio.find(f => f.ingrediente === 'Agua');
+const filaCostilla = filasSanAntonio.find(f => f.ingrediente === 'Costilla');
+assert.ok(filaAgua, 'debe aparecer una fila para la venta sin receta');
+assert.equal(filaAgua.sin_receta, true, 'una venta sin receta encontrada debe marcarse sin_receta');
+assert.equal(filaAgua.consumo_esperado, 2);
+assert.ok(filaCostilla, 'debe aparecer el ingrediente explotado desde la receta de Supremo');
+assert.equal(filaCostilla.sin_receta, false, 'un ingrediente que sí vino de una receta encontrada no debe marcarse sin_receta');
+assert.equal(filaCostilla.consumo_esperado, 100);
+
 console.log('inventory-controls: OK');
