@@ -114,9 +114,10 @@
           <label>Frecuencia de conteo (opcional)</label>
           <select id="nuevo-frecuencia">
             <option value="">Sin lista fija (se agrega a mano cada vez)</option>
-            <option value="Diario">Diario</option>
-            <option value="Miércoles">Miércoles</option>
-            <option value="Viernes">Viernes</option>
+            <option value="Diario">Diario (obligatorio todos los días)</option>
+            <option value="Miércoles">Miércoles (obligatorio ese día)</option>
+            <option value="Viernes">Viernes (obligatorio ese día)</option>
+            <option value="Mensual">Mensual (obligatorio del 1 al 5)</option>
           </select>
         </div>
       </div>
@@ -195,7 +196,7 @@ function pintarTabla_() {
 
   const body = document.getElementById('tabla-catalogo');
   if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
-  const frecuencias = ['', 'Diario', 'Miércoles', 'Viernes'];
+  const frecuencias = ['', 'Diario', 'Miércoles', 'Viernes', 'Mensual'];
   body.innerHTML = filas.map(p => `
     <tr>
       <td>${escapeHtml(p.nombre_estandar)}</td>

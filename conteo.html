@@ -122,8 +122,9 @@ async function cargarSugerenciasProductos_() {
 cargarSugerenciasProductos_();
 
 // Diario se cuenta todos los días; Miércoles/Viernes solo si la fecha elegida cae en ese día de
-// la semana (ver Registrar producto → Frecuencia de conteo). Se arma la fecha con año/mes/día
-// locales, no parseando el string ISO directo, para que la zona horaria no corra el día.
+// la semana; Mensual solo del 1 al 5 de cada mes (menaje/utensilios/equipos — ver "Inicio del
+// Mes" del Excel histórico). Ver Registrar producto → Frecuencia de conteo. Se arma la fecha con
+// año/mes/día locales, no parseando el string ISO directo, para que la zona horaria no corra el día.
 function frecuenciasDelDia_(fechaStr) {
   if (!fechaStr) return ['Diario'];
   const [y, m, d] = fechaStr.split('-').map(Number);
@@ -131,14 +132,28 @@ function frecuenciasDelDia_(fechaStr) {
   const frecuencias = ['Diario'];
   if (dia === 3) frecuencias.push('Miércoles');
   if (dia === 5) frecuencias.push('Viernes');
+  if (d >= 1 && d <= 5) frecuencias.push('Mensual');
   return frecuencias;
 }
 
-function nuevaFila(producto = '', unidad = 'g', anterior = null) {
+const UNIDADES_ESTANDAR_ = ['g', 'kg', 'u', 'ml', 'l'];
+
+// `obligatorio` = el producto viene de la lista fija de hoy (Diario/Miércoles/Viernes/Mensual):
+// su nombre queda fijo (no editable) y sin botón "Quitar" — Guardar conteo lo bloquea si falta
+// la cantidad (ver btnGuardarConteo más abajo). Las filas agregadas a mano ("+ Agregar producto")
+// siguen siendo libres de editar/quitar como antes.
+function nuevaFila(producto = '', unidad = 'g', anterior = null, obligatorio = false) {
   const tr = document.createElement('tr');
+  if (obligatorio) tr.dataset.obligatorio = '1';
+  const unidadExtra = unidad && !UNIDADES_ESTANDAR_.includes(unidad) ? `<option selected value="${escapeHtml(unidad)}">${escapeHtml(unidad)}</option>` : '';
   tr.innerHTML = `
-    <td><input type="text" class="in-producto" list="lista-productos" value="${escapeHtml(producto)}" placeholder="ej. Costilla Preparada"></td>
+    <td>
+      <input type="text" class="in-producto" list="lista-productos" value="${escapeHtml(producto)}"
+        placeholder="ej. Costilla Preparada" ${obligatorio ? 'readonly style="background:var(--cream)"' : ''}>
+      ${obligatorio ? '<span title="Obligatorio hoy" style="color:var(--red); font-weight:700; margin-left:4px">*</span>' : ''}
+    </td>
     <td><select class="in-unidad">
+        ${unidadExtra}
         <option ${unidad==='g'?'selected':''}>g</option>
         <option ${unidad==='kg'?'selected':''}>kg</option>
         <option ${unidad==='u'?'selected':''}>u</option>
@@ -147,8 +162,9 @@ function nuevaFila(producto = '', unidad = 'g', anterior = null) {
       </select></td>
     <td style="color:var(--grey)">${anterior === null ? '—' : escapeHtml(anterior)}</td>
     <td><input type="number" step="0.01" class="in-cantidad" placeholder="${anterior === null ? '' : 'ej. ' + escapeHtml(anterior)}"></td>
-    <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
-  tr.querySelector('.btn-quitar').addEventListener('click', () => tr.remove());
+    <td>${obligatorio ? '' : '<button class="btn fantasma btn-quitar" type="button">Quitar</button>'}</td>`;
+  const btnQuitar = tr.querySelector('.btn-quitar');
+  if (btnQuitar) btnQuitar.addEventListener('click', () => tr.remove());
   document.getElementById('filas').appendChild(tr);
 }
 
@@ -183,7 +199,7 @@ async function cargarConteoAnterior_() {
   catalogo
     .filter(p => p.frecuencia_conteo && frecuencias.includes(p.frecuencia_conteo))
     .forEach(p => {
-      filas[normalizarTexto(p.nombre_estandar)] = { producto: p.nombre_estandar, unidad: p.unidad_base || 'g', anterior: null };
+      filas[normalizarTexto(p.nombre_estandar)] = { producto: p.nombre_estandar, unidad: p.unidad_base || 'g', anterior: null, obligatorio: true };
     });
 
   let fechaReferencia = '';
@@ -196,7 +212,16 @@ async function cargarConteoAnterior_() {
       }, '');
       delPunto
         .filter(r => fechaSolo_(r.fecha) === fechaReferencia)
-        .forEach(r => { filas[normalizarTexto(r.producto)] = { producto: r.producto, unidad: r.unidad, anterior: r.cantidad }; });
+        .forEach(r => {
+          const clave = normalizarTexto(r.producto);
+          if (filas[clave]) {
+            // Ya es obligatorio (viene de la lista fija) — solo se actualiza la cantidad de referencia.
+            filas[clave].anterior = r.cantidad;
+            filas[clave].unidad = r.unidad;
+          } else {
+            filas[clave] = { producto: r.producto, unidad: r.unidad, anterior: r.cantidad, obligatorio: false };
+          }
+        });
     }
   }
 
@@ -207,10 +232,14 @@ async function cargarConteoAnterior_() {
     return;
   }
 
-  info.textContent = fechaReferencia
-    ? `Lista de hoy (${frecuencias.join(' + ')}) + lo último contado en este punto (${fechaReferencia}) — actualiza la cantidad, quita lo que no aplique o agrega productos nuevos.`
-    : `Lista de hoy (${frecuencias.join(' + ')}) — todavía sin conteos previos en este punto.`;
-  productos.forEach(r => nuevaFila(r.producto, r.unidad, r.anterior));
+  const hayObligatorios = productos.some(p => p.obligatorio);
+  const baseTexto = fechaReferencia
+    ? `Lista de hoy (${frecuencias.join(' + ')}) + lo último contado en este punto (${fechaReferencia})`
+    : `Lista de hoy (${frecuencias.join(' + ')}) — todavía sin conteos previos en este punto`;
+  info.textContent = baseTexto + (hayObligatorios
+    ? '. Los productos marcados con * son obligatorios hoy: no se pueden quitar y hay que ponerles cantidad para poder guardar.'
+    : '. Actualiza la cantidad, quita lo que no aplique o agrega productos nuevos.');
+  productos.forEach(r => nuevaFila(r.producto, r.unidad, r.anterior, r.obligatorio));
 }
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
@@ -222,11 +251,28 @@ cargarConteoAnterior_();
 
 const btnGuardarConteo = document.getElementById('btn-guardar');
 btnGuardarConteo.addEventListener('click', conBotonProtegido(btnGuardarConteo, async () => {
+  const filasEl = Array.from(document.getElementById('filas').children);
+
+  // Bloquea el guardado si falta cantidad en algún producto obligatorio de hoy (Diario y, según
+  // el día, Miércoles/Viernes/Mensual) — no se puede guardar el conteo del cierre sin ellos.
+  const faltantes = filasEl
+    .filter(tr => tr.dataset.obligatorio === '1')
+    .filter(tr => {
+      const valor = tr.querySelector('.in-cantidad').value.trim();
+      return valor === '' || isNaN(parseFloat(valor.replace(',', '.')));
+    })
+    .map(tr => tr.querySelector('.in-producto').value);
+
+  if (faltantes.length) {
+    alert('Antes de guardar, completa la cantidad de estos productos obligatorios de hoy:\n\n' + faltantes.join('\n'));
+    return;
+  }
+
   const fecha = document.getElementById('fecha').value;
   const sede = document.getElementById('sede').value;
   const punto = document.getElementById('punto').value;
 
-  const items = Array.from(document.getElementById('filas').children)
+  const items = filasEl
     .map(tr => ({
       fecha, sede, punto_conteo: punto,
       producto: tr.querySelector('.in-producto').value.trim(),
