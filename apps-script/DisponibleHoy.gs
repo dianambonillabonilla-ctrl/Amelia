@@ -250,11 +250,27 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  * Los traslados solo suman al llegar (sede_destino) — a propósito NO se restan de la sede de
  * origen al enviarlos: ver la nota de la auditoría sobre por qué "Disponible Hoy" no intenta
  * modelar salidas (producción, ventas) más allá de lo que ya cubre el conteo físico siguiente.
+ *
+ * IMPORTANTE: un producto que TODAVÍA no se ha contado nunca en una sede, pero ya se compró o se
+ * recibió por traslado allí, igual debe aparecer (con "conteo" = 0 de base) — si no, una compra
+ * de algo nuevo (ej. la primera vez que se compra banano) quedaría invisible en Disponible Hoy
+ * hasta el primer conteo físico de ese producto, que es justo lo contrario de lo que se pidió.
  */
 function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   indice = indice || indiceCatalogo_();
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
+  const ajustes = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
+  const traslados = leerTabla_(SHEET_NAMES.TRASLADOS);
   const porProducto = {};
+
+  function entradaProducto_(clave, nombre) {
+    if (!porProducto[clave]) porProducto[clave] = { nombre: nombre, porSede: {} };
+    return porProducto[clave];
+  }
+  function entradaSede_(entrada, sedeItem) {
+    if (!entrada.porSede[sedeItem]) entrada.porSede[sedeItem] = { fechas: {} };
+    return entrada.porSede[sedeItem];
+  }
 
   conteos.forEach(function (c) {
     const f = formatearFecha_(c.fecha);
@@ -262,42 +278,55 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
     if (sede && sede !== 'Ambas' && c.sede !== sede) return;
     const clave = claveProducto_(c.producto, indice);
     const sedeConteo = c.sede || 'Sin sede';
-    if (!porProducto[clave]) porProducto[clave] = { nombre: nombreCanonico_(c.producto, indice), porSede: {} };
-    if (!porProducto[clave].porSede[sedeConteo]) porProducto[clave].porSede[sedeConteo] = { fechas: {} };
-    const fechas = porProducto[clave].porSede[sedeConteo].fechas;
+    const fechas = entradaSede_(entradaProducto_(clave, nombreCanonico_(c.producto, indice)), sedeConteo).fechas;
     const base = aUnidadBase_(c.cantidad, c.unidad);
     if (!fechas[f]) fechas[f] = { cantidad: 0, unidad: base.unidad };
     if (fechas[f].unidad !== base.unidad) return;
     fechas[f].cantidad += base.cantidad;
   });
 
-  const ajustes = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
-  const traslados = leerTabla_(SHEET_NAMES.TRASLADOS);
+  function asegurarSinConteo_(producto, sedeItem) {
+    if (sede && sede !== 'Ambas' && sedeItem !== sede) return;
+    entradaSede_(entradaProducto_(claveProducto_(producto, indice), nombreCanonico_(producto, indice)), sedeItem);
+  }
+  ajustes.forEach(function (a) { asegurarSinConteo_(a.producto, a.sede || 'Sin sede'); });
+  traslados.forEach(function (t) {
+    if (['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1) asegurarSinConteo_(t.producto, t.sede_destino);
+  });
+
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
     const entrada = porProducto[clave];
     let total = 0;
     let unidadFinal = '';
     let fechaMasReciente = '';
-    Object.keys(entrada.porSede).forEach(function (sedeConteo) {
-      const fechasSede = Object.keys(entrada.porSede[sedeConteo].fechas).sort();
-      const ultimaFecha = fechasSede[fechasSede.length - 1];
-      const base = entrada.porSede[sedeConteo].fechas[ultimaFecha];
-      unidadFinal = unidadFinal || base.unidad;
-      total += base.cantidad
-        + netoAjustesDesdeConteo_(ajustes, clave, sedeConteo, ultimaFecha, fecha, indice, base.unidad)
-        + trasladosRecibidosDesdeConteo_(traslados, clave, sedeConteo, ultimaFecha, fecha, indice, base.unidad);
+    Object.keys(entrada.porSede).forEach(function (sedeItem) {
+      const fechasSede = Object.keys(entrada.porSede[sedeItem].fechas).sort();
+      const hayConteo = fechasSede.length > 0;
+      const ultimaFecha = hayConteo ? fechasSede[fechasSede.length - 1] : '';
+      const base = hayConteo ? entrada.porSede[sedeItem].fechas[ultimaFecha] : { cantidad: 0, unidad: '' };
+      const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, fecha, indice, base.unidad);
+      const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad);
+      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad;
+      if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
+      unidadFinal = unidadFinal || unidadSede;
+      total += base.cantidad + resAjustes.neto + resTraslados.total;
       if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
     });
-    resultado[clave] = { producto: entrada.nombre, cantidad: total, unidad: unidadFinal, fecha_conteo: fechaMasReciente };
+    if (!unidadFinal) return; // sin conteo, compra ni traslado con unidad reconocible en ninguna sede
+    resultado[clave] = { producto: entrada.nombre, cantidad: total, unidad: unidadFinal, fecha_conteo: fechaMasReciente || 'sin conteo aún' };
   });
   return resultado;
 }
 
 /** Suma compras/ajustes operativos y resta mermas de `sede` para `clave`, estrictamente después
- * de `fechaConteoExclusive` y hasta `fechaCorteInclusive` (o sin tope si no se pasa fecha de corte). */
+ * de `fechaConteoExclusive` (vacío = sin tope inferior, para productos sin conteo previo) y hasta
+ * `fechaCorteInclusive` (o sin tope si no se pasa fecha de corte). Si `unidadEsperada` viene
+ * vacío (no hay conteo previo con qué comparar), toma la unidad de la primera compra/ajuste que
+ * encuentre y exige que el resto coincida con esa. */
 function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
   let neto = 0;
+  let unidad = unidadEsperada || '';
   ajustes.forEach(function (a) {
     if ((a.sede || 'Sin sede') !== sede) return;
     if (claveProducto_(a.producto, indice) !== clave) return;
@@ -305,19 +334,22 @@ function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, fec
     if (f <= fechaConteoExclusive) return;
     if (fechaCorteInclusive && f > fechaCorteInclusive) return;
     const base = aUnidadBase_(a.cantidad, a.unidad);
-    if (base.unidad !== unidadEsperada) return;
+    if (!unidad) unidad = base.unidad;
+    if (base.unidad !== unidad) return;
     neto += a.tipo === 'Merma / desperdicio' ? -base.cantidad : base.cantidad;
   });
-  return neto;
+  return { neto: neto, unidad: unidad };
 }
 
 /** Suma lo recibido por `sede` para `clave` vía traslados Confirmados o Resueltos (ver
  * Traslados.gs), usando la fecha real de recepción (timestamp_recibe, o `fecha` si por algún
  * motivo no quedó registrada) — estrictamente después de `fechaConteoExclusive` y hasta
  * `fechaCorteInclusive`. Un traslado resuelto con faltante suma solo lo realmente recibido
- * (cantidad_recibida), no lo enviado. */
+ * (cantidad_recibida), no lo enviado. Mismo auto-detección de unidad que netoAjustesDesdeConteo_
+ * cuando no hay conteo previo. */
 function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
   let total = 0;
+  let unidad = unidadEsperada || '';
   traslados.forEach(function (t) {
     if (t.sede_destino !== sede) return;
     if (['Confirmado', 'Resuelto'].indexOf(t.estado) === -1) return;
@@ -328,8 +360,9 @@ function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclu
     const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
       ? t.cantidad_recibida : t.cantidad_enviada;
     const base = aUnidadBase_(recibida, t.unidad);
-    if (base.unidad !== unidadEsperada) return;
+    if (!unidad) unidad = base.unidad;
+    if (base.unidad !== unidad) return;
     total += base.cantidad;
   });
-  return total;
+  return { total: total, unidad: unidad };
 }
