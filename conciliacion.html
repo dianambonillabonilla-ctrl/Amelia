@@ -68,7 +68,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Lectura']);
 montarBarraUsuario();
-document.getElementById('fecha').valueAsDate = new Date();
+document.getElementById('fecha').value = fechaLocalHoy_();
 
 document.getElementById('btn-cargar').addEventListener('click', cargar);
 

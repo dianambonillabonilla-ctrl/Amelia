@@ -49,6 +49,16 @@ function escapeHtml(valor) {
   });
 }
 
+// Fecha de HOY en hora local como "yyyy-MM-dd", para precargar <input type="date">.
+// OJO: no usar `input.valueAsDate = new Date()` para esto — valueAsDate siempre interpreta el
+// Date en UTC, y en Bogotá (UTC-5) eso hace que después de ~7pm hora local el input ya muestre
+// el día siguiente (la fecha en UTC ya cruzó la medianoche aunque acá todavía sea "hoy").
+// Asignar este string a `input.value` en cambio usa la fecha tal como la ve el reloj del navegador.
+function fechaLocalHoy_() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // Espejo de normalizar_() en Catalogo.gs — para comparar nombres de producto en el navegador
 // (sin tildes, minúsculas, espacios colapsados) antes de mandar nada al backend.
 function normalizarTexto(s) {
