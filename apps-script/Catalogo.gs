@@ -52,6 +52,29 @@ function catalogoEliminar_(id) {
 }
 
 /**
+ * Filas del catálogo sin `id` (ej. pegadas directo en el Google Sheet en vez de creadas desde
+ * Registrar producto) no se pueden editar por id ni eliminar — "Falta el id del producto a
+ * eliminar". Les asigna un id nuevo la primera vez que se detectan, así queda arreglado solo sin
+ * tener que editar la hoja a mano fila por fila. Idempotente y segura de correr seguido: una fila
+ * que ya tiene id no se toca.
+ */
+function catalogoRepararIds_() {
+  const sh = sheet_(SHEET_NAMES.CATALOGO);
+  const data = sh.getDataRange().getValues();
+  if (data.length < 2) return { ok: true, reparadas: 0 };
+  const idCol = data[0].indexOf('id');
+  if (idCol === -1) return { ok: true, reparadas: 0 };
+  let reparadas = 0;
+  for (let r = 1; r < data.length; r++) {
+    if (!data[r][idCol]) {
+      sh.getRange(r + 1, idCol + 1).setValue(Utilities.getUuid());
+      reparadas++;
+    }
+  }
+  return { ok: true, reparadas: reparadas };
+}
+
+/**
  * Si `nombre` no existe todavía en el catálogo (ni como nombre_estandar ni como nombre_fudo), lo
  * crea sin categoría — así queda una entrada "oficial" contra la que comparar la próxima vez que
  * alguien escriba ese mismo producto, en vez de que cada conteo/compra lo escriba distinto. El

@@ -126,6 +126,35 @@ assert.equal(catalogoGuardado[0].nombre_estandar, 'Producto Nuevo');
 catalogoMod.catalogoAsegurar_('producto nuevo', 'kg');
 assert.equal(catalogoGuardado.length, 1, 'no debe duplicar si ya existe (comparación sin tildes/mayúsculas)');
 
+// --- Catálogo: repara filas sin id (pegadas directo en el Sheet, sin pasar por Guardar producto) ---
+// Sin id, "Eliminar" responde "Falta el id del producto a eliminar" y no hay con qué encontrar la
+// fila. catalogoRepararIds_ debe asignarle uno nuevo a cada fila que llegó en blanco, sin tocar
+// las que ya tienen (para no perder ediciones/eliminaciones ya hechas por ese id).
+const filasCatalogoSheet = [
+  ['id', 'nombre_estandar', 'categoria'],
+  ['id-existente', 'Costilla Preparada', 'Elaborados'],
+  ['', 'Aguila Light', 'Bebidas'],   // pegada a mano, sin id
+  ['', 'Aguila Light', 'Bebidas']    // duplicado, también sin id
+];
+const escritos = [];
+let contadorUuid = 0;
+const catalogoReparar = cargar('apps-script/Catalogo.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo' },
+  Utilities: { getUuid: () => 'id-nuevo-' + (++contadorUuid) },
+  sheet_: () => ({
+    getDataRange: () => ({ getValues: () => filasCatalogoSheet }),
+    getRange: (fila, columna) => ({
+      setValue: (valor) => { escritos.push({ fila, columna, valor }); filasCatalogoSheet[fila - 1][columna - 1] = valor; }
+    })
+  })
+});
+const resultadoReparar = catalogoReparar.catalogoRepararIds_();
+assert.equal(resultadoReparar.reparadas, 2, 'debe reparar las 2 filas sin id, sin tocar la que ya tenía');
+assert.equal(escritos.length, 2);
+assert.equal(filasCatalogoSheet[1][0], 'id-existente', 'la fila que ya tenía id no debe cambiar');
+assert.equal(filasCatalogoSheet[2][0], 'id-nuevo-1');
+assert.equal(filasCatalogoSheet[3][0], 'id-nuevo-2');
+
 // --- Extremo a extremo: compra sube el stock Y "para cuántos platos alcanza" (ejemplo del banano) ---
 const conteoBanano = [
   { fecha: '2026-07-01', sede: 'San Antonio', producto: 'Banano', unidad: 'u', cantidad: 2 }
