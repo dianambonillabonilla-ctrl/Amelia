@@ -225,4 +225,27 @@ assert.equal(
   '100 contados + 30 recibidos por traslado confirmado = 130 (no cuenta el "Enviado" sin confirmar ni lo de San Antonio)'
 );
 
+// --- Conciliación: una venta cancelada no debe contar como venta, sin importar tilde/mayúscula --
+// (bug real: el export de FUDO trae "Cancelada" = "Si" sin tilde, pero el filtro solo reconocía
+// "Sí" con tilde exacta — una venta cancelada se contaba como válida en "ventas esperadas").
+function normalizarSimple_(s) {
+  return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+const ventasFudo = [
+  { creacion: '2026-07-20', sede: 'Capri', categoria: 'Bebidas', producto: 'Aguila Light', cantidad: 2, cancelada: 'No' },
+  { creacion: '2026-07-20', sede: 'Capri', categoria: 'Bebidas', producto: 'Aguila Light', cantidad: 5, cancelada: 'Si' }, // sin tilde, como en el export real
+  { creacion: '2026-07-20', sede: 'Capri', categoria: 'Bebidas', producto: 'Poker', cantidad: 3, cancelada: 'Sí' }, // con tilde
+  { creacion: '2026-07-20', sede: 'Capri', categoria: 'Conos', producto: 'Falafel', cantidad: 1, cancelada: false }
+];
+const conciliacionCancelada = cargar('apps-script/Conciliacion.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas' },
+  leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudo : [],
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_
+});
+const resumen = conciliacionCancelada.resumirVentasFudo_('2026-07-20');
+assert.equal(resumen.length, 2, 'solo las 2 ventas no canceladas deben quedar en el resumen');
+assert.equal(resumen.find(r => r.producto === 'Aguila Light').cantidad, 2, 'la venta cancelada sin tilde no debe sumarse');
+assert.equal(resumen.some(r => r.producto === 'Poker'), false, 'la venta cancelada con tilde tampoco debe sumarse');
+
 console.log('inventory-controls: OK');
