@@ -91,6 +91,24 @@ assert.equal(
   'una compra en Capri no debe afectar el stock de San Antonio'
 );
 
+// --- Disponible Hoy: producto comprado por primera vez, SIN ningún conteo físico previo -------
+// (bug reportado: un banano recién comprado no aparecía en absoluto en Disponible Hoy porque el
+// cálculo solo miraba compras de productos que YA tenían al menos un conteo).
+const sinConteoAjustes = [
+  { fecha: '2026-07-21', sede: 'Capri', producto: 'Banano', unidad: 'u', cantidad: 12, tipo: 'Compra cruda' }
+];
+const disponibleHoySinConteo = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes', TRASLADOS: 'traslados' },
+  leerTabla_: (hoja) => hoja === 'ajustes' ? sinConteoAjustes : [],
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+const stockSinConteo = disponibleHoySinConteo.obtenerUltimoStockPorIngrediente_('2026-07-22', {}, 'Capri');
+assert.equal(stockSinConteo.banano.cantidad, 12, 'una compra de un producto nunca contado igual debe aparecer con esa cantidad');
+assert.equal(stockSinConteo.banano.unidad, 'u');
+
 // --- Catálogo: crear producto automáticamente si no existe todavía ---------------------------
 const catalogoGuardado = [];
 const catalogoMod = cargar('apps-script/Catalogo.gs', {

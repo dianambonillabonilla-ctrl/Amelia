@@ -59,7 +59,7 @@
         después de ese conteo en esta sede. Agrupado por categoría; lo marcado en rojo está por
         debajo del mínimo que configuraste en Registrar producto.
       </p>
-      <div id="bloques-stock" class="bloques-stock"><p class="vacio">Cargando…</p></div>
+      <div id="bloques-stock"><p class="vacio">Cargando…</p></div>
     </div>
 
     <div class="card">
@@ -155,16 +155,17 @@ function pintarBloquesStock_(entradas, catalogo) {
 
   cont.innerHTML = Object.keys(porCategoria).sort().map(categoria => {
     const items = porCategoria[categoria].sort((a, b) => a.producto.localeCompare(b.producto));
-    const filas = items.map(s => {
+    const tiles = items.map(s => {
       const bajo = s._minimo !== null && Number(s.cantidad) < s._minimo;
-      return `<tr>
-        <td>${escapeHtml(s.producto)}${bajo ? ' <span class="badge alerta" title="Por debajo del mínimo (' + escapeHtml(s._minimo) + ' ' + escapeHtml(s.unidad) + ')">bajo</span>' : ''}</td>
-        <td style="text-align:right; white-space:nowrap; ${bajo ? 'color:var(--red); font-weight:700' : ''}">${escapeHtml(s.cantidad)} ${escapeHtml(s.unidad)}</td>
-      </tr>`;
+      return `<div class="tile ${bajo ? 'tile-critico' : ''}">
+        <div class="tile-etiqueta">${escapeHtml(s.producto)}</div>
+        <div class="tile-valor">${escapeHtml(s.cantidad)} ${escapeHtml(s.unidad)}</div>
+        <div class="tile-detalle">${bajo ? 'bajo el mínimo (' + escapeHtml(s._minimo) + ' ' + escapeHtml(s.unidad) + ')' : escapeHtml(s.fecha_conteo)}</div>
+      </div>`;
     }).join('');
-    return `<div class="bloque-categoria">
+    return `<div class="grupo-categoria">
       <h3>${escapeHtml(categoria)} <span style="color:var(--grey); font-weight:400; font-size:.78rem">(${items.length})</span></h3>
-      <table class="tabla-mini"><tbody>${filas}</tbody></table>
+      <div class="tiles">${tiles}</div>
     </div>`;
   }).join('');
 }
@@ -176,8 +177,17 @@ function pintarAlertaInsumos_(stockIngredientes, catalogo) {
   const card = document.getElementById('card-alerta-insumos');
   const cont = document.getElementById('alerta-insumos');
 
-  const bajos = catalogo
-    .filter(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined)
+  const conMinimo = catalogo.filter(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined);
+
+  // Sin ningún mínimo configurado todavía, esta tarjeta no tiene nada que comparar — en vez de
+  // ocultarla sin explicar (parece que "no funciona"), avisa que hay que configurar mínimos.
+  if (!conMinimo.length) {
+    card.style.display = 'block';
+    cont.innerHTML = '<p style="margin:0">Todavía no has configurado el "Stock mínimo" de ningún producto — sin eso, esta alerta no tiene con qué comparar. Ve a <a href="catalogo.html">Registrar producto</a> y ponle un mínimo a lo que quieras vigilar.</p>';
+    return;
+  }
+
+  const bajos = conMinimo
     .map(p => {
       // Misma llave que usa el backend (claveProducto_ en Catalogo.gs): para cualquier producto
       // del catálogo, su propia llave es el nombre_estandar normalizado.

@@ -93,12 +93,6 @@ tr:hover td { background: #FBFAF6; }
 .badge.alerta { background: #FBEAEA; color: var(--red); }
 .badge.aviso { background: #FBF1DC; color: var(--amber); }
 
-.bloques-stock { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-items: start; }
-.bloque-categoria { background: var(--cream); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
-.bloque-categoria h3 { margin: 0 0 8px; font-size: .92rem; }
-.tabla-mini { font-size: .84rem; }
-.tabla-mini td { padding: 4px 0; border-bottom: none; }
-
 .grupo-categoria { margin-bottom: 20px; }
 .grupo-categoria:last-child { margin-bottom: 0; }
 .grupo-categoria > h3 { margin: 0 0 10px; font-size: 1rem; }
