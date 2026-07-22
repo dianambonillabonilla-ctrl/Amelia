@@ -14,6 +14,7 @@ const compras = cargar('apps-script/Compras.gs', {
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   Utilities: { getUuid: () => 'id-' + (ajustesGuardados.length + 1) },
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  formatearFecha_: (v) => String(v).slice(0, 10),
   leerTabla_: (hoja) => hoja === 'ajustes' ? ajustesGuardados : [],
   appendRowFromObj_: (hoja, fila) => { if (hoja === 'ajustes') ajustesGuardados.push(fila); },
   ajusteInventarioRegistrar_: (item) => {
@@ -45,6 +46,40 @@ assert.equal(
 // NOTA: compraRegistrarFactura_ no valida hoy número de factura duplicado ni que el total
 // declarado coincida con la suma de las líneas — se decidió conscientemente no agregar esa
 // lógica en esta pasada (ver auditoría), solo alinear la prueba con el comportamiento real.
+
+// --- Compras: una misma factura puede traer productos para sedes distintas --------------------
+// (pedido real: "si compro 3 aceites los 3 no son para capri, si compro costilla cruda debería
+// de poner adicionarla a centro de producción" — antes toda la factura tenía UNA sola sede y
+// cada línea heredaba esa sede sin poder cambiarla).
+const ajustesAntesMixta = ajustesGuardados.length;
+const facturaMixta = {
+  fecha: '2026-07-22', proveedor: 'Mercamio', numero_factura: 'F-2',
+  lineas: [
+    { producto: 'Costilla cruda', sede: 'Centro de Producción', unidad: 'kg', cantidad: 5, costo: 200 },
+    { producto: 'Aceite', sede: 'Capri', unidad: 'l', cantidad: 2, costo: 30 },
+    { producto: 'Aceite', sede: 'San Antonio', unidad: 'l', cantidad: 1, costo: 15 }
+  ]
+};
+const resultadoMixta = compras.compraRegistrarFactura_(facturaMixta, usuario);
+assert.equal(resultadoMixta.ok, true, 'una factura sin sede única, con sede por línea, debe guardarse');
+assert.equal(resultadoMixta.total, 245);
+const lineasMixta = ajustesGuardados.slice(ajustesAntesMixta);
+assert.deepEqual(lineasMixta.map(l => l.sede), ['Centro de Producción', 'Capri', 'San Antonio'],
+  'cada línea debe quedar registrada en SU PROPIA sede, no en una sola sede de toda la factura');
+
+const facturasMixtas = compras.comprasListar_(null, null, null).find(f => f.factura_id === resultadoMixta.factura_id);
+assert.ok(facturasMixtas, 'la factura mixta debe aparecer en el listado');
+assert.deepEqual(facturasMixtas.sedes.sort(), ['Capri', 'Centro de Producción', 'San Antonio'],
+  'el listado debe mostrar TODAS las sedes distintas a las que llegó algo de esa factura');
+assert.equal(facturasMixtas.lineas.find(l => l.producto === 'Costilla cruda').sede, 'Centro de Producción');
+
+const soloCapri = compras.comprasListar_(null, null, 'Capri').find(f => f.factura_id === resultadoMixta.factura_id);
+assert.equal(soloCapri.lineas.length, 1, 'filtrar por sede debe dejar ver solo las líneas de esa sede dentro de la factura');
+assert.equal(soloCapri.lineas[0].producto, 'Aceite');
+
+// Un usuario de una sola sede no puede colar, dentro de la misma factura, una línea para otra sede.
+const resultadoBloqueadoMixta = compras.compraRegistrarFactura_(facturaMixta, { nombre: 'Encargada SA', sede: 'San Antonio' });
+assert.equal(resultadoBloqueadoMixta.ok, false, 'debe bloquear la línea para otra sede aunque otra línea sí sea de la sede del usuario');
 
 const traslados = [
   { fecha: '2026-07-20', timestamp_recibe: '2026-07-21', estado: 'Resuelto', producto: 'Costilla', unidad: 'kg', cantidad_enviada: 5, cantidad_recibida: 3, sede_origen: 'Centro de Producción', sede_destino: 'Capri' }
