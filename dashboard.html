@@ -139,10 +139,16 @@ function pintarTilesPlatos_(platos) {
       : 'tile-ok';
     const limitante = p.cadena_limitante || p.ingrediente_limitante || '—';
     const stockLim = p.stock_limitante ? `${escapeHtml(p.stock_limitante.cantidad)} ${escapeHtml(p.stock_limitante.unidad)}` : '';
+    // Si el insumo que de verdad topa la producción nunca se ha contado, "0 g" no es un
+    // agotamiento confirmado — es un dato que falta. Se marca distinto para no hacer pensar que
+    // ya se sabe que no hay, cuando puede que sí haya y solo falte registrar el conteo.
+    const detalle = p.limitante_sin_dato
+      ? `<div class="tile-detalle" style="color:var(--amber); font-weight:600">⚠ falta contar "${escapeHtml(p.limitante_raiz)}" — nunca se ha registrado</div>`
+      : `<div class="tile-detalle">limita: ${escapeHtml(limitante)}${stockLim ? ' (' + stockLim + ')' : ''}</div>`;
     return `<div class="tile ${clase}">
       <div class="tile-etiqueta">${escapeHtml(p.producto)}</div>
       <div class="tile-valor">${p.preparaciones_posibles ?? '—'}</div>
-      <div class="tile-detalle">limita: ${escapeHtml(limitante)}${stockLim ? ' (' + stockLim + ')' : ''}</div>
+      ${detalle}
     </div>`;
   }).join('');
 }
@@ -239,7 +245,11 @@ function toggleDetalleStock_(fila) {
   fila.querySelector('td').textContent = '▾';
 
   const sinMateriaPrima = !det.producible;
-  const mensaje = sinMateriaPrima
+  // "0 g" solo significa "confirmado agotado" si alguna vez se contó ese insumo. Si nunca se ha
+  // contado, es un dato faltante — muy distinto para decidir si hay o no hay con qué preparar.
+  const mensaje = sinMateriaPrima && det.limitante_sin_dato
+    ? `⚠ Falta contar "${escapeHtml(det.limitante_raiz)}" — nunca se ha registrado, así que no se sabe si hay o no hay para preparar más ${escapeHtml(det.producto)}.`
+    : sinMateriaPrima
     ? `⚠ No hay materia prima para preparar más ${escapeHtml(det.producto)}` +
       (det.cadena_limitante ? ` — falta ${escapeHtml(det.cadena_limitante)}` : '') + '.'
     : `✓ Hay materia prima disponible — solo falta prepararlo (alcanza para ${escapeHtml(det.producible)} más).`;

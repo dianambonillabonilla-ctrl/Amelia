@@ -34,6 +34,7 @@ function calcularDisponibleHoy_(fecha, sede) {
   function detalleClave_(clave) {
     const det = cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, memo, {});
     const limitante = det.limitante;
+    const raiz = limitante ? limitanteRaiz_(limitante) : null;
     return {
       producto: recetaMap[clave].nombre,
       tipo: recetaMap[clave].tipo,
@@ -55,6 +56,12 @@ function calcularDisponibleHoy_(fecha, sede) {
         contado: Number(limitante.contado.toFixed(3)),
         producible: Number(limitante.producible.toFixed(3))
       } : null,
+      // El insumo base que de verdad está topando (fin de la cadena → → →) y si alguna vez se ha
+      // contado. Si nunca se ha contado, "0 g" es un dato faltante, no un agotamiento confirmado —
+      // recetas.html/dashboard.html lo muestran distinto (⚠ falta contar X) en vez de dar a
+      // entender que está confirmado en cero.
+      limitante_raiz: raiz ? raiz.nombre : null,
+      limitante_sin_dato: raiz ? !!raiz.sin_dato : false,
       detalle_receta: aplanarConsumo_(clave, recetaMap, indice)
     };
   }
@@ -164,6 +171,12 @@ function cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, me
           disponible: det.disponible,
           contado: det.contado,
           producible: det.producible,
+          // Distingue "nunca se ha contado este insumo" (sin_dato: no hay ninguna fila en
+          // Conteos_Manuales/compras/traslados con ese nombre) de "sí se contó y dio cero" — antes
+          // ambos casos se veían igual ("0 g"), como si estuviera confirmado agotado, cuando podía
+          // ser simplemente que a nadie se le ocurrió contarlo o que el nombre no coincide con el
+          // de la receta (ver sinDatoRaiz_ más abajo).
+          sin_dato: det.sin_dato,
           sub_limitante: det.limitante
         };
       }
@@ -178,7 +191,8 @@ function cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, me
     producible: producible,
     limitante: limitante,
     nombre: nombreCanonico_(clave, indice),
-    unidad: contadoEntry ? contadoEntry.unidad : ''
+    unidad: contadoEntry ? contadoEntry.unidad : '',
+    sin_dato: !contadoEntry
   };
   memo[clave] = resultado;
   return resultado;
@@ -195,6 +209,21 @@ function cadenaLimitante_(limitante) {
     vueltas++;
   }
   return nombres.join(' → ');
+}
+
+/**
+ * El último eslabón de la cadena de `sub_limitante` — el insumo base que de verdad está topando
+ * la producción (ej. "Costilla San Luis Entera", no el intermedio "Costilla Preparada"). Sobre
+ * ese insumo tiene sentido preguntar "¿nunca se ha contado, o sí se contó y dio cero?".
+ */
+function limitanteRaiz_(limitante) {
+  let actual = limitante;
+  let vueltas = 0;
+  while (actual && actual.sub_limitante && vueltas < 10) {
+    actual = actual.sub_limitante;
+    vueltas++;
+  }
+  return actual;
 }
 
 /**
