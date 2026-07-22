@@ -56,7 +56,10 @@
       <p style="color:var(--grey); font-size:.85rem">
         La columna "Stock mínimo" alimenta la alarma de insumos bajos en "Disponible Hoy" — déjala
         vacía si no quieres vigilar ese producto, o ponle una cantidad (en la misma unidad del
-        producto) para que se avise cuando el conteo más reciente caiga por debajo.
+        producto) para que se avise cuando el conteo más reciente caiga por debajo. Como
+        Administrador puedes editar cualquier campo de la fila (incluido el nombre) y guardar, o
+        eliminar productos duplicados o que ya no se usan — eliminar solo quita la entrada del
+        catálogo, no borra conteos, recetas ni producciones ya registrados con ese nombre.
       </p>
       <table>
         <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th><th>Frecuencia de conteo</th><th></th></tr></thead>
@@ -220,9 +223,15 @@ function pintarTabla_() {
   // Encargado/Cocina solo las ve en texto, no como campos editables.
   body.innerHTML = filas.map(p => `
     <tr>
-      <td>${escapeHtml(p.nombre_estandar)}</td>
-      <td>${escapeHtml(p._partes.principal || '—')}</td>
-      <td>${escapeHtml(p._partes.sub || '—')}</td>
+      <td>${esAdmin
+        ? `<input type="text" class="in-nombre-catalogo" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p.nombre_estandar)}" style="width:170px">`
+        : escapeHtml(p.nombre_estandar)}</td>
+      <td>${esAdmin
+        ? `<input type="text" class="in-categoria-catalogo" list="lista-categorias" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p._partes.principal || '')}" style="width:120px">`
+        : escapeHtml(p._partes.principal || '—')}</td>
+      <td>${esAdmin
+        ? `<input type="text" class="in-subcategoria-catalogo" list="lista-subcategorias" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p._partes.sub || '')}" style="width:130px">`
+        : escapeHtml(p._partes.sub || '—')}</td>
       <td>${esAdmin
         ? `<input type="text" class="in-unidad-catalogo" list="lista-unidades" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p.unidad_base || '')}" style="width:80px">`
         : escapeHtml(p.unidad_base || '—')}</td>
@@ -237,7 +246,10 @@ function pintarTabla_() {
             ${frecuencias.map(f => `<option value="${escapeHtml(f)}" ${p.frecuencia_conteo === f ? 'selected' : ''}>${f || 'Sin lista fija'}</option>`).join('')}
           </select>`
         : escapeHtml(p.frecuencia_conteo || '—')}</td>
-      <td>${esAdmin ? `<button class="btn dorado btn-guardar-fila" data-id="${escapeHtml(p.id)}" type="button">Guardar</button>` : ''}</td>
+      <td>${esAdmin ? `
+        <button class="btn dorado btn-guardar-fila" data-id="${escapeHtml(p.id)}" type="button">Guardar</button>
+        <button class="btn fantasma btn-eliminar-fila" data-id="${escapeHtml(p.id)}" type="button" style="color:var(--red); border-color:var(--red)">Eliminar</button>
+      ` : ''}</td>
     </tr>`).join('');
 
   if (!esAdmin) return;
@@ -247,16 +259,31 @@ function pintarTabla_() {
       const id = boton.dataset.id;
       const fila = boton.closest('tr');
       const item = catalogo.find(p => p.id === id);
+      const nombre = fila.querySelector('.in-nombre-catalogo').value.trim();
+      if (!nombre) { alert('El nombre del producto no puede quedar vacío.'); return; }
+      const categoriaPrincipal = fila.querySelector('.in-categoria-catalogo').value.trim();
+      const subcategoria = fila.querySelector('.in-subcategoria-catalogo').value.trim();
+      const categoria = subcategoria ? `${categoriaPrincipal}/${subcategoria}` : categoriaPrincipal;
       const unidad = fila.querySelector('.in-unidad-catalogo').value.trim();
       if (!unidad) { alert('La unidad no puede quedar vacía.'); return; }
       const stockMinimoTexto = fila.querySelector('.in-stock-minimo').value.trim();
       const frecuencia = fila.querySelector('.in-frecuencia').value;
       const nombreFudo = fila.querySelector('.in-nombre-fudo').value.trim();
 
+      if (nombre !== item.nombre_estandar) {
+        const usados = buscarParecidos_(nombre).filter(p => p.id !== id);
+        if (usados.length && !confirm(
+          `Ya existe "${usados[0].nombre_estandar}" — cambiar el nombre aquí NO actualiza los conteos, ` +
+          `recetas ni producciones ya registrados con el nombre anterior ("${item.nombre_estandar}"). ` +
+          '¿Seguro que quieres renombrarlo de todas formas?'
+        )) return;
+      }
+
       const data = await llamar('catalogo_guardar', {
         item: {
           id: id,
-          nombre_estandar: item ? item.nombre_estandar : '',
+          nombre_estandar: nombre,
+          categoria: categoria,
           unidad_base: unidad,
           stock_minimo: stockMinimoTexto === '' ? '' : parseFloat(stockMinimoTexto),
           frecuencia_conteo: frecuencia,
@@ -265,12 +292,36 @@ function pintarTabla_() {
       });
       if (!data.ok) { alert(data.error); return; }
       if (item) {
+        item.nombre_estandar = nombre;
+        item.categoria = categoria;
         item.unidad_base = unidad;
         item.stock_minimo = stockMinimoTexto === '' ? '' : parseFloat(stockMinimoTexto);
         item.frecuencia_conteo = frecuencia;
         item.nombre_fudo = nombreFudo;
       }
       avisarGuardado('Producto actualizado.');
+      poblarFiltros_();
+      poblarListasNuevoProducto_();
+    }));
+  });
+
+  body.querySelectorAll('.btn-eliminar-fila').forEach(boton => {
+    boton.addEventListener('click', conBotonProtegido(boton, async () => {
+      const id = boton.dataset.id;
+      const item = catalogo.find(p => p.id === id);
+      if (!confirm(
+        `¿Eliminar "${item ? item.nombre_estandar : id}" del catálogo?\n\n` +
+        'Esto NO borra el historial de conteos, recetas ni producciones ya registrados con ese ' +
+        'nombre — solo quita la entrada del catálogo (deja de aparecer como sugerencia y pierde su ' +
+        'mínimo/categoría/nombre FUDO configurados).'
+      )) return;
+      const data = await llamar('catalogo_eliminar', { id });
+      if (!data.ok) { alert(data.error); return; }
+      catalogo = catalogo.filter(p => p.id !== id);
+      avisarGuardado('Producto eliminado del catálogo.');
+      poblarFiltros_();
+      poblarListasNuevoProducto_();
+      pintarTabla_();
     }));
   });
 }

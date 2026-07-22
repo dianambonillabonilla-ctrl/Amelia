@@ -29,6 +29,29 @@ function catalogoGuardar_(item, usuario) {
 }
 
 /**
+ * Borra un producto del catálogo maestro (duplicados, cosas que ya no se usan). Solo quita la
+ * entrada "oficial" — nombre_estandar, categoría, unidad, mínimo, nombre_fudo — de Catalogo_Maestro.
+ * NO borra ni modifica nada en Conteos_Manuales, Recetas, Producciones, Traslados, Ajustes_Inventario
+ * ni Compras: esas hojas guardan el nombre del producto como texto, no una referencia al id del
+ * catálogo, así que el historial ya registrado se conserva intacto. El efecto real es que ese
+ * nombre deja de aparecer como sugerencia/mínimo configurado hasta que se vuelva a registrar (o se
+ * cree solo, sin categoría, la próxima vez que alguien lo cuente — ver catalogoAsegurar_).
+ */
+function catalogoEliminar_(id) {
+  if (!id) return { ok: false, error: 'Falta el id del producto a eliminar' };
+  const sh = sheet_(SHEET_NAMES.CATALOGO);
+  const data = sh.getDataRange().getValues();
+  const idCol = data[0].indexOf('id');
+  for (let r = 1; r < data.length; r++) {
+    if (data[r][idCol] === id) {
+      sh.deleteRow(r + 1);
+      return { ok: true, eliminado: true };
+    }
+  }
+  return { ok: false, error: 'No se encontró el id ' + id };
+}
+
+/**
  * Si `nombre` no existe todavía en el catálogo (ni como nombre_estandar ni como nombre_fudo), lo
  * crea sin categoría — así queda una entrada "oficial" contra la que comparar la próxima vez que
  * alguien escriba ese mismo producto, en vez de que cada conteo/compra lo escriba distinto. El
