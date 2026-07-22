@@ -119,6 +119,28 @@ function conteoListar_(fecha, sede) {
   return rows;
 }
 
+/**
+ * Histórico completo de conteos (a diferencia de conteoListar_, que solo sirve para UN día): por
+ * rango de fechas, sede (vacío o 'Ambas' = todas las sedes, no filtra), punto de conteo y/o
+ * búsqueda por nombre de producto. Más reciente primero por timestamp de registro (no por fecha
+ * del conteo, para que dos conteos del mismo día se ordenen por cuál se guardó después).
+ * fechaDesde/fechaHasta acotan por defecto quién llama esto (ver historial-conteos.html) para no
+ * traer toda la hoja de una vez si crece mucho con el tiempo.
+ */
+function conteosHistorial_(filtros) {
+  filtros = filtros || {};
+  let rows = leerTabla_(SHEET_NAMES.CONTEOS);
+  if (filtros.fecha_desde) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) >= filtros.fecha_desde; });
+  if (filtros.fecha_hasta) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) <= filtros.fecha_hasta; });
+  if (filtros.sede && filtros.sede !== 'Ambas') rows = rows.filter(function (r) { return r.sede === filtros.sede; });
+  if (filtros.punto_conteo) rows = rows.filter(function (r) { return r.punto_conteo === filtros.punto_conteo; });
+  if (filtros.producto) {
+    const q = normalizar_(filtros.producto);
+    rows = rows.filter(function (r) { return normalizar_(r.producto).indexOf(q) !== -1; });
+  }
+  return rows.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+}
+
 function formatearFecha_(valor) {
   if (!valor) return '';
   const d = (valor instanceof Date) ? valor : new Date(valor);
