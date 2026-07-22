@@ -99,6 +99,24 @@ tr:hover td { background: #FBFAF6; }
 .tabla-mini { font-size: .84rem; }
 .tabla-mini td { padding: 4px 0; border-bottom: none; }
 
+.grupo-categoria { margin-bottom: 20px; }
+.grupo-categoria:last-child { margin-bottom: 0; }
+.grupo-categoria > h3 { margin: 0 0 10px; font-size: 1rem; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.tile { border-radius: var(--radius); padding: 14px 16px; border: 1px solid var(--line); background: var(--cream); }
+.tile .tile-etiqueta { font-size: .78rem; color: var(--grey); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+.tile .tile-valor { font-size: 1.6rem; font-weight: 700; color: var(--navy); line-height: 1.1; }
+.tile .tile-detalle { font-size: .78rem; color: var(--grey); margin-top: 6px; }
+.tile.tile-critico { background: #FEF4F3; border-color: var(--red); }
+.tile.tile-critico .tile-valor { color: var(--red); }
+.tile.tile-aviso { background: #FBF1DC; border-color: var(--amber); }
+.tile.tile-aviso .tile-valor { color: var(--amber); }
+.tile.tile-ok .tile-valor { color: var(--green); }
+.tile.tile-compra { background: #FEF4F3; border: 2px solid var(--red); }
+.tile.tile-compra .tile-valor { color: var(--red); font-size: 1.35rem; }
+.tile.tile-compra .tile-detalle { color: var(--ink); }
+
 .btn {
   background: var(--navy); color: white; border: none; border-radius: 7px;
   padding: 10px 18px; font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: .88rem;
