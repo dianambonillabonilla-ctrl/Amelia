@@ -119,8 +119,13 @@ function conciliarComidaPorSede_(fecha) {
         // debe coincidir con la del conteo físico (no siempre es "u": puede venir en g/ml si así
         // se cuenta esa sede), si no, cambio/esperado quedarían en unidades distintas y la resta
         // de más abajo mezclaría cosas que no son comparables.
+        // sin_receta: true queda marcado en el resultado — así se distingue un producto que
+        // GENUINAMENTE no tiene receta (una bebida) de uno que sí debería tener receta pero el
+        // nombre de venta de FUDO no coincidió con ningún producto de Recetas (el mismo problema
+        // que tuvo "Falafel" con "Falafel (plato)", ver claveRecetaVenta_ en Recetas.gs). Antes
+        // ambos casos se mezclaban sin ningún aviso, comparado 1:1 como si fuera correcto.
         const unidadConteo = (cambioFisico[claveProd] && cambioFisico[claveProd].unidad) || 'u';
-        if (!consumoEsperado[claveProd]) consumoEsperado[claveProd] = { nombre: nombreCanonico_(v.producto, indice), cantidad: 0, unidad: unidadConteo };
+        if (!consumoEsperado[claveProd]) consumoEsperado[claveProd] = { nombre: nombreCanonico_(v.producto, indice), cantidad: 0, unidad: unidadConteo, sin_receta: true };
         consumoEsperado[claveProd].cantidad += Number(v.cantidad) || 0;
       }
     });
@@ -154,6 +159,7 @@ function conciliarComidaPorSede_(fecha) {
       return {
         ingrediente: nombreIng,
         unidad: unidad,
+        sin_receta: !!(consumoEsperado[claveIng] && consumoEsperado[claveIng].sin_receta),
         consumo_esperado: Number(esperado.toFixed(3)),
         cambio_fisico: cambio !== null ? Number(cambio.toFixed(3)) : null,
         producido_registrado: producido[claveIng] !== undefined ? Number(producidoIng.toFixed(3)) : null,
