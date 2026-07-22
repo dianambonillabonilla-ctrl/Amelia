@@ -135,4 +135,48 @@ const recetaMapBanano = disponibleHoyBanano.construirRecetaMap_(
 const disponibilidadWafle = disponibleHoyBanano.cantidadDisponibleDetallada_('wafle de banano', recetaMapBanano, stockBanano, {}, {}, {});
 assert.equal(Math.floor(disponibilidadWafle.disponible), 6, 'con 6 bananos y receta 1 banano/wafle, alcanza para 6 wafles de banano');
 
+// --- Registrar conteo: bloqueo de productos obligatorios también en el backend (no solo en la
+// pantalla) — mismo criterio que conteo.html: Diario siempre, Miércoles/Viernes según el día,
+// Mensual del 1 al 5 del mes. ------------------------------------------------------------------
+const catalogoObligatorios = [
+  { nombre_estandar: 'Lavaloza', frecuencia_conteo: 'Diario' },
+  { nombre_estandar: 'Detergente', frecuencia_conteo: 'Miércoles' },
+  { nombre_estandar: 'Sal', frecuencia_conteo: 'Viernes' },
+  { nombre_estandar: 'Tenedores', frecuencia_conteo: 'Mensual' },
+  { nombre_estandar: 'Servilletas', frecuencia_conteo: '' }
+];
+const catalogoMod2 = cargar('apps-script/Catalogo.gs', { normalizar_: (v) => String(v || '').trim().toLowerCase() });
+const conteosMod = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo' },
+  leerTabla_: () => catalogoObligatorios,
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  frecuenciasObligatoriasDelDia_: catalogoMod2.frecuenciasObligatoriasDelDia_
+});
+
+assert.deepEqual(
+  catalogoMod2.frecuenciasObligatoriasDelDia_('2026-07-01'), ['Diario', 'Miércoles', 'Mensual'],
+  '1 de julio 2026 es miércoles y día 1: Diario + Miércoles + Mensual'
+);
+assert.deepEqual(
+  catalogoMod2.frecuenciasObligatoriasDelDia_('2026-07-08'), ['Diario', 'Miércoles'],
+  '8 de julio es miércoles pero fuera del 1-5: sin Mensual'
+);
+assert.deepEqual(catalogoMod2.frecuenciasObligatoriasDelDia_('2026-07-06'), ['Diario'], '6 de julio es lunes: solo Diario');
+
+assert.deepEqual(
+  conteosMod.productosObligatoriosFaltantes_([
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Lavaloza', unidad: 'g', cantidad: 100 }
+  ]).sort(),
+  ['Detergente', 'Tenedores'],
+  'falta Detergente (miércoles) y Tenedores (mensual, día 1) aunque ya se contó Lavaloza'
+);
+assert.deepEqual(
+  conteosMod.productosObligatoriosFaltantes_([
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Lavaloza', unidad: 'g', cantidad: 100 },
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Detergente', unidad: 'g', cantidad: 50 },
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Tenedores', unidad: 'u', cantidad: 20 }
+  ]), [],
+  'sin faltantes cuando ya están los tres obligatorios de ese día'
+);
+
 console.log('inventory-controls: OK');
