@@ -95,7 +95,12 @@
         </div>
         <div class="campo">
           <label>Nombre en FUDO (opcional)</label>
-          <input type="text" id="nuevo-nombre-fudo" placeholder="si es distinto al nombre estándar">
+          <input type="text" id="nuevo-nombre-fudo" list="lista-nombres-fudo" placeholder="si es distinto al nombre estándar">
+          <datalist id="lista-nombres-fudo"></datalist>
+          <p style="color:var(--grey); font-size:.78rem; margin:4px 0 0">
+            La lista sugiere nombres tal como los trajo la última importación de FUDO — elige uno de ahí
+            en vez de tipearlo si ya aparece, para que Conciliación lo reconozca sin falta.
+          </p>
         </div>
         <div class="campo">
           <label>Notas (opcional)</label>
@@ -141,6 +146,18 @@ async function cargarCatalogo() {
   poblarFiltros_();
   poblarListasNuevoProducto_();
   pintarTabla_();
+  cargarNombresFudo_();
+}
+
+// Solo Administrador puede editar "Nombre en FUDO" (el backend también lo exige), así que solo
+// para ese rol vale la pena pedirle al servidor los nombres reales ya vistos en importaciones.
+async function cargarNombresFudo_() {
+  const usuario = Sesion.usuario();
+  if (!usuario || usuario.rol !== 'Administrador') return;
+  const data = await llamar('fudo_nombres_vistos');
+  if (!data.ok) return; // no bloquear el resto de la pantalla por esto
+  document.getElementById('lista-nombres-fudo').innerHTML =
+    data.data.map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
 function categoriasUnicas_() {
@@ -208,7 +225,9 @@ function pintarTabla_() {
       <td>${esAdmin
         ? `<input type="text" class="in-unidad-catalogo" list="lista-unidades" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p.unidad_base || '')}" style="width:80px">`
         : escapeHtml(p.unidad_base || '—')}</td>
-      <td>${escapeHtml(p.nombre_fudo || '—')}</td>
+      <td>${esAdmin
+        ? `<input type="text" class="in-nombre-fudo" list="lista-nombres-fudo" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p.nombre_fudo || '')}" style="width:160px">`
+        : escapeHtml(p.nombre_fudo || '—')}</td>
       <td>${esAdmin
         ? `<input type="number" step="0.01" class="in-stock-minimo" data-id="${escapeHtml(p.id)}" value="${p.stock_minimo !== undefined && p.stock_minimo !== '' ? escapeHtml(p.stock_minimo) : ''}" style="width:90px">`
         : (p.stock_minimo !== undefined && p.stock_minimo !== '' ? escapeHtml(p.stock_minimo) : '—')}</td>
@@ -231,6 +250,7 @@ function pintarTabla_() {
       if (!unidad) { alert('La unidad no puede quedar vacía.'); return; }
       const stockMinimoTexto = fila.querySelector('.in-stock-minimo').value.trim();
       const frecuencia = fila.querySelector('.in-frecuencia').value;
+      const nombreFudo = fila.querySelector('.in-nombre-fudo').value.trim();
 
       const data = await llamar('catalogo_guardar', {
         item: {
@@ -238,7 +258,8 @@ function pintarTabla_() {
           nombre_estandar: item ? item.nombre_estandar : '',
           unidad_base: unidad,
           stock_minimo: stockMinimoTexto === '' ? '' : parseFloat(stockMinimoTexto),
-          frecuencia_conteo: frecuencia
+          frecuencia_conteo: frecuencia,
+          nombre_fudo: nombreFudo
         }
       });
       if (!data.ok) { alert(data.error); return; }
@@ -246,6 +267,7 @@ function pintarTabla_() {
         item.unidad_base = unidad;
         item.stock_minimo = stockMinimoTexto === '' ? '' : parseFloat(stockMinimoTexto);
         item.frecuencia_conteo = frecuencia;
+        item.nombre_fudo = nombreFudo;
       }
       avisarGuardado('Producto actualizado.');
     }));
