@@ -107,6 +107,25 @@ function importarFudo_(tipo, filas, usuario, opciones) {
   return { ok: false, error: 'Tipo de importación no reconocido: ' + tipo };
 }
 
+/**
+ * Nombres crudos que FUDO realmente ha usado, tomados de lo ya importado (Movimientos_FUDO y
+ * Ventas_FUDO), para que Registrar producto ofrezca una lista de dónde elegir en vez de que el
+ * Administrador tenga que adivinar/tipear "Nombre en FUDO" a mano. Evita el problema de fondo:
+ * un nombre mal tipeado ahí nunca vuelve a cruzar con nada en Conciliación, sin ningún aviso.
+ */
+function fudoNombresVistos_() {
+  const nombres = new Set();
+  leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO).forEach(function (m) {
+    const n = String(m.nombre || '').trim();
+    if (n) nombres.add(n);
+  });
+  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) {
+    const n = String(v.producto || '').trim();
+    if (n) nombres.add(n);
+  });
+  return Array.from(nombres).sort(function (a, b) { return a.localeCompare(b); });
+}
+
 function valorFudo_(fila, candidatos) {
   const indice = {};
   Object.keys(fila || {}).forEach(function (k) { indice[normalizar_(k)] = fila[k]; });
