@@ -81,4 +81,13 @@ assert.strictEqual(Math.floor(ctx.cantidadDisponibleDetallada_('falafel', falafe
   falafel: { cantidad: 1868, unidad: 'g' } // fila mal etiquetada: no debe usarse como si fuera platos listos
 }, {}, {}, {}).disponible), 0, 'Falafel (plato) no debe inflarse con un conteo mal etiquetado bajo su propio nombre');
 
+// "0 g" solo significa "confirmado agotado" si alguna vez se contó ese insumo. sin_dato distingue
+// "nunca se ha registrado" (no hay ninguna fila en Conteos_Manuales/compras/traslados) de "sí se
+// contó y dio cero" — para no mostrar un dato faltante como si fuera un agotamiento confirmado.
+const detNuncaContado = ctx.cantidadDisponibleDetallada_('ingrediente fantasma', {}, {}, {}, {}, {});
+assert.strictEqual(detNuncaContado.sin_dato, true, 'Sin ninguna fila de stock, sin_dato debe ser true');
+const detContadoEnCero = ctx.cantidadDisponibleDetallada_('ajo preparado', {},
+  { 'ajo preparado': { cantidad: 0, unidad: 'g' } }, {}, {}, {});
+assert.strictEqual(detContadoEnCero.sin_dato, false, 'Contado y en cero, sin_dato debe ser false');
+
 console.log('recipe-engine: OK');
