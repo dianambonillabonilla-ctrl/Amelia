@@ -32,28 +32,23 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:18px;">
+      <select id="sede-corte" style="width:auto">
+        <option>San Antonio</option><option>Capri</option><option>Ambas</option>
+      </select>
+      <input type="date" id="fecha-corte" style="width:auto">
+      <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+    </div>
+
     <div class="card" id="card-alerta-insumos" style="display:none; border-color:var(--red); background:#FEF4F3">
-      <h2 style="margin:0 0 10px; color:var(--red)">⚠ Insumos bajo su mínimo</h2>
+      <h2 style="margin:0 0 4px; color:var(--red)">🛒 Qué debo comprar</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">Productos por debajo del mínimo configurado en Registrar producto, agrupados por categoría.</p>
       <div id="alerta-insumos"></div>
     </div>
 
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <h2 style="margin:0">¿Para cuántos platos alcanza lo que tengo?</h2>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <select id="sede-corte" style="width:auto">
-            <option>San Antonio</option><option>Capri</option><option>Ambas</option>
-          </select>
-          <input type="date" id="fecha-corte" style="width:auto">
-          <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
-        </div>
-      </div>
-      <table>
-        <thead>
-          <tr><th>Plato</th><th>Preparaciones posibles</th><th>Ingrediente limitante</th><th>Stock del limitante</th></tr>
-        </thead>
-        <tbody id="tabla-platos"><tr><td colspan="4" class="vacio">Cargando…</td></tr></tbody>
-      </table>
+      <h2 style="margin:0 0 14px">¿Para cuántos platos alcanza lo que tengo?</h2>
+      <div id="tiles-platos" class="tiles"><p class="vacio">Cargando…</p></div>
     </div>
 
     <div class="card">
@@ -95,28 +90,7 @@ async function cargar() {
   if (!data.ok) { alert(data.error); return; }
 
   pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoData.ok ? catalogoData.data : []);
-
-  const platosBody = document.getElementById('tabla-platos');
-  platosBody.innerHTML = '';
-  if (!data.data.platos.length) {
-    platosBody.innerHTML = '<tr><td colspan="4" class="vacio">Aún no hay recetas cargadas en la hoja Recetas.</td></tr>';
-  }
-  data.data.platos.forEach(p => {
-    const badge = p.preparaciones_posibles === null ? ''
-      : p.preparaciones_posibles < 5 ? '<span class="badge alerta">Bajo</span>'
-      : p.preparaciones_posibles < 15 ? '<span class="badge aviso">Vigilar</span>'
-      : '<span class="badge ok">OK</span>';
-    const stockLim = p.stock_limitante
-      ? `${escapeHtml(p.stock_limitante.cantidad)} ${escapeHtml(p.stock_limitante.unidad)}` +
-        (p.stock_limitante.producible > 0 ? ` <span style="color:var(--grey); font-size:.8rem">(${escapeHtml(p.stock_limitante.contado)} contado + ${escapeHtml(p.stock_limitante.producible)} producible)</span>` : '')
-      : '—';
-    platosBody.innerHTML += `<tr>
-      <td>${escapeHtml(p.producto)}</td>
-      <td>${p.preparaciones_posibles ?? '—'} ${badge}</td>
-      <td>${escapeHtml(p.cadena_limitante || p.ingrediente_limitante || '—')}</td>
-      <td>${stockLim}</td>
-    </tr>`;
-  });
+  pintarTilesPlatos_(data.data.platos);
 
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
   // nombre para mostrar/usar siempre es s.producto, no la llave del objeto. Incluye TODO lo
@@ -127,6 +101,29 @@ async function cargar() {
   pintarBloquesStock_(entradas, catalogoData.ok ? catalogoData.data : []);
 
   poblarSelectorIngredientes_(entradas.map(s => s.producto));
+}
+
+// Un recuadro grande por plato con el número de preparaciones posibles bien visible — rojo si
+// está bajo, ámbar si toca vigilar, verde si está bien — en vez de una fila de tabla más.
+function pintarTilesPlatos_(platos) {
+  const cont = document.getElementById('tiles-platos');
+  if (!platos.length) {
+    cont.innerHTML = '<p class="vacio">Aún no hay recetas cargadas en la hoja Recetas.</p>';
+    return;
+  }
+  cont.innerHTML = platos.map(p => {
+    const clase = p.preparaciones_posibles === null ? ''
+      : p.preparaciones_posibles < 5 ? 'tile-critico'
+      : p.preparaciones_posibles < 15 ? 'tile-aviso'
+      : 'tile-ok';
+    const limitante = p.cadena_limitante || p.ingrediente_limitante || '—';
+    const stockLim = p.stock_limitante ? `${escapeHtml(p.stock_limitante.cantidad)} ${escapeHtml(p.stock_limitante.unidad)}` : '';
+    return `<div class="tile ${clase}">
+      <div class="tile-etiqueta">${escapeHtml(p.producto)}</div>
+      <div class="tile-valor">${p.preparaciones_posibles ?? '—'}</div>
+      <div class="tile-detalle">limita: ${escapeHtml(limitante)}${stockLim ? ' (' + stockLim + ')' : ''}</div>
+    </div>`;
+  }).join('');
 }
 
 // Agrupa TODO el stock en bloques por categoría del catálogo (Bebidas, Materia Prima,
@@ -203,14 +200,18 @@ function pintarAlertaInsumos_(stockIngredientes, catalogo) {
   });
 
   cont.innerHTML = Object.keys(porCategoria).sort().map(cat => `
-    <div style="margin-bottom:10px">
-      <strong>${escapeHtml(cat)}</strong>
-      <ul style="margin:6px 0 0; padding-left:20px">
+    <div class="grupo-categoria">
+      <h3>${escapeHtml(cat)}</h3>
+      <div class="tiles">
         ${porCategoria[cat]
           .sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar))
-          .map(p => `<li>${escapeHtml(p.nombre_estandar)}: ${escapeHtml(p._actual)} ${escapeHtml(p._unidad || '')} (mínimo ${escapeHtml(p.stock_minimo)})</li>`)
+          .map(p => `<div class="tile tile-compra">
+            <div class="tile-etiqueta">${escapeHtml(p.nombre_estandar)}</div>
+            <div class="tile-valor">${escapeHtml(p._actual)} ${escapeHtml(p._unidad || '')}</div>
+            <div class="tile-detalle">mínimo: ${escapeHtml(p.stock_minimo)} ${escapeHtml(p._unidad || '')}</div>
+          </div>`)
           .join('')}
-      </ul>
+      </div>
     </div>`).join('');
   card.style.display = 'block';
 }
