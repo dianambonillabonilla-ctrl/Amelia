@@ -35,15 +35,17 @@
     <div class="card">
       <h2>Registrar factura</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Una factura de compra (ej. Mercamío) puede traer varias cosas a la vez: materia prima cruda,
-        bebidas, aseo, lo que sea. Cada línea entra al inventario de la sede como una "Compra cruda"
-        (afecta el cuadre en Conciliación) y además queda el proveedor, el número de factura y el
-        costo, para saber cuánto se gastó y con quién.
+        Una factura de compra (ej. Mercamío) puede traer varias cosas a la vez, y no todo tiene que
+        ser para el mismo sitio: 3 aceites pueden repartirse entre sedes, la costilla cruda puede
+        ser solo para Centro de Producción, etc. Por eso cada línea tiene su propia sede — cada una
+        entra al inventario de esa sede como una "Compra cruda" (afecta el cuadre en Conciliación),
+        y además queda el proveedor, el número de factura y el costo, para saber cuánto se gastó y
+        con quién.
       </p>
       <div class="grid grid-4">
         <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
         <div class="campo">
-          <label>Sede que recibe</label>
+          <label>Sede por defecto</label>
           <select id="sede">
             <option>Centro de Producción</option>
             <option>San Antonio</option>
@@ -53,9 +55,10 @@
         <div class="campo"><label>Proveedor</label><input type="text" id="proveedor" placeholder="ej. Mercamío"></div>
         <div class="campo"><label>N.º de factura (opcional)</label><input type="text" id="numero-factura" placeholder="ej. FE-1234"></div>
       </div>
+      <p style="color:var(--grey); font-size:.8rem">"Sede por defecto" solo precarga las líneas nuevas — cambia la sede de cada línea si esa parte de la compra es para otro sitio.</p>
 
       <table>
-        <thead><tr><th>Producto</th><th>Unidad</th><th>Cantidad</th><th>Costo (línea)</th><th></th></tr></thead>
+        <thead><tr><th>Producto</th><th>Sede</th><th>Unidad</th><th>Cantidad</th><th>Costo (línea)</th><th></th></tr></thead>
         <tbody id="filas"></tbody>
       </table>
       <datalist id="lista-productos"></datalist>
@@ -122,9 +125,15 @@ function recalcularTotal_() {
 }
 
 function nuevaFila() {
+  const sedeDefecto = document.getElementById('sede').value;
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input type="text" class="in-producto" list="lista-productos" placeholder="ej. Costilla cruda"></td>
+    <td><select class="in-sede" style="width:150px">
+      <option${sedeDefecto === 'Centro de Producción' ? ' selected' : ''}>Centro de Producción</option>
+      <option${sedeDefecto === 'San Antonio' ? ' selected' : ''}>San Antonio</option>
+      <option${sedeDefecto === 'Capri' ? ' selected' : ''}>Capri</option>
+    </select></td>
     <td><input type="text" class="in-unidad" list="lista-unidades" value="g" style="width:70px"></td>
     <td><input type="number" step="0.01" class="in-cantidad" placeholder="ej. 10"></td>
     <td><input type="number" step="0.01" class="in-costo" placeholder="ej. 80000"></td>
@@ -146,6 +155,7 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
     lineas: Array.from(document.getElementById('filas').children)
       .map(tr => ({
         producto: tr.querySelector('.in-producto').value.trim(),
+        sede: tr.querySelector('.in-sede').value,
         unidad: tr.querySelector('.in-unidad').value,
         cantidad: parseFloat(tr.querySelector('.in-cantidad').value.replace(',', '.')),
         costo: parseFloat(tr.querySelector('.in-costo').value.replace(',', '.')) || 0
@@ -191,9 +201,9 @@ async function cargarFacturas_() {
     body.innerHTML = '<tr><td colspan="7" class="vacio">Sin facturas registradas en este rango.</td></tr>';
   } else {
     body.innerHTML = facturas.data.map(f => `<tr>
-      <td>${escapeHtml(f.fecha)}</td><td>${escapeHtml(f.sede)}</td><td>${escapeHtml(f.proveedor)}</td>
+      <td>${escapeHtml(f.fecha)}</td><td>${escapeHtml(f.sedes.join(', '))}</td><td>${escapeHtml(f.proveedor)}</td>
       <td>${escapeHtml(f.numero_factura || '—')}</td>
-      <td title="${escapeHtml(f.lineas.map(l => l.producto + ': ' + l.cantidad + ' ' + l.unidad).join(', '))}">${f.lineas.length}</td>
+      <td title="${escapeHtml(f.lineas.map(l => l.producto + ' (' + l.sede + '): ' + l.cantidad + ' ' + l.unidad).join(', '))}">${f.lineas.length}</td>
       <td>${formatoMoneda_(f.total)}</td><td>${escapeHtml(f.usuario)}</td>
     </tr>`).join('');
   }
