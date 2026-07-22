@@ -68,4 +68,17 @@ assert.strictEqual(Math.floor(ctx.cantidadDisponibleDetallada_('porcion salsa pi
 }, {}, {}, {}).disponible), 62);
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.aUnidadBase_(2.82, 'kg'))), { cantidad: 2820, unidad: 'g' });
+
+// Un plato nunca se cuenta físicamente por sí mismo (se arma desde su receta). Si por error existe
+// una fila de Conteos_Manuales con el mismo nombre exacto del plato, esa cantidad no debe sumarse
+// directo a "disponible" — si no, el número de preparaciones posibles queda igual al conteo mal
+// etiquetado en vez de reflejar el insumo real que limita la producción (aquí, Falafel Preparado en 0).
+const falafelMap = ctx.construirRecetaMap_([
+  { producto: 'Falafel', ingrediente: 'Falafel Preparado', cantidad: 187, unidad: 'g', tipo: 'plato', controla_disponibilidad: true }
+], {});
+assert.strictEqual(Math.floor(ctx.cantidadDisponibleDetallada_('falafel', falafelMap, {
+  'falafel preparado': { cantidad: 0, unidad: 'g' },
+  falafel: { cantidad: 1868, unidad: 'g' } // fila mal etiquetada: no debe usarse como si fuera platos listos
+}, {}, {}, {}).disponible), 0, 'Falafel (plato) no debe inflarse con un conteo mal etiquetado bajo su propio nombre');
+
 console.log('recipe-engine: OK');
