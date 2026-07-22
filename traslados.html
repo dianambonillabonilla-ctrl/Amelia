@@ -125,7 +125,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
-document.getElementById('env-fecha').valueAsDate = new Date();
+document.getElementById('env-fecha').value = fechaLocalHoy_();
 
 function poblarPuntosEnvio_(sedeSelectId, puntoSelectId) {
   const sede = document.getElementById(sedeSelectId).value;

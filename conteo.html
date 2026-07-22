@@ -95,7 +95,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
-document.getElementById('fecha').valueAsDate = new Date();
+document.getElementById('fecha').value = fechaLocalHoy_();
 
 // Los puntos de conteo dependen de la sede elegida (cada sede tiene sus propias áreas).
 // PUNTOS_POR_SEDE vive en assets/config.js (compartido con traslados.html).

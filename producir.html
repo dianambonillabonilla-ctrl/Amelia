@@ -82,7 +82,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
-document.getElementById('fecha').valueAsDate = new Date();
+document.getElementById('fecha').value = fechaLocalHoy_();
 
 // Sugiere nombres ya existentes en el catálogo maestro (vía <datalist>) para que la producción no
 // dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo.
