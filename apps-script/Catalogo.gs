@@ -104,6 +104,24 @@ function nombreCanonico_(texto, indice) {
 }
 
 /**
+ * Qué frecuencias de conteo son obligatorias para `fechaStr` (yyyy-MM-dd): 'Diario' siempre;
+ * 'Miércoles'/'Viernes' solo si esa fecha cae en ese día de la semana; 'Mensual' del 1 al 5 del
+ * mes. Espejo exacto de frecuenciasDelDia_ en conteo.html — mantener las dos reglas iguales si se
+ * cambia una. Se arma la fecha con año/mes/día locales (no parseando el string ISO directo) para
+ * que la zona horaria no corra el día.
+ */
+function frecuenciasObligatoriasDelDia_(fechaStr) {
+  if (!fechaStr) return ['Diario'];
+  const partes = String(fechaStr).slice(0, 10).split('-').map(Number);
+  const dia = new Date(partes[0], partes[1] - 1, partes[2]).getDay(); // 0=domingo … 3=miércoles … 5=viernes
+  const frecuencias = ['Diario'];
+  if (dia === 3) frecuencias.push('Miércoles');
+  if (dia === 5) frecuencias.push('Viernes');
+  if (partes[2] >= 1 && partes[2] <= 5) frecuencias.push('Mensual');
+  return frecuencias;
+}
+
+/**
  * Etiqueta en el catálogo qué productos se cuentan TODOS LOS DÍAS ('Diario'), cuáles solo un día
  * específico de la semana ('Miércoles' o 'Viernes'), y cuáles solo una vez al mes ('Mensual') —
  * tomado tal cual de las hojas Diario/Miercoles/Viernes/Inicio del Mes del Excel histórico de San

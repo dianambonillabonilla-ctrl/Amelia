@@ -19,6 +19,11 @@ function conteoRegistrar_(items, usuario) {
     return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
 
+  const faltantes = productosObligatoriosFaltantes_(items);
+  if (faltantes.length) {
+    return { ok: false, error: 'Faltan productos obligatorios de hoy: ' + faltantes.join(', ') };
+  }
+
   const ahora = new Date();
   let n = 0;
   let actualizados = 0;
@@ -56,6 +61,35 @@ function conteoRegistrar_(items, usuario) {
   }
 
   return { ok: true, registrados: n, actualizados: actualizados };
+}
+
+/**
+ * Espejo servidor del bloqueo que ya hace conteo.html (marca * y deshabilita Guardar): agrupa
+ * `items` por sesión de cierre (fecha + sede + punto_conteo) y, para cada una, revisa que estén
+ * todos los productos de la lista fija que toca ese día (Diario siempre; Miércoles/Viernes según
+ * el día de la semana; Mensual del 1 al 5 del mes — ver frecuenciasObligatoriasDelDia_ en
+ * Catalogo.gs). Existe para que la regla se cumpla también si alguien llama a conteo_registrar
+ * directo (sin pasar por la pantalla), no solo como ayuda visual en el navegador.
+ */
+function productosObligatoriosFaltantes_(items) {
+  const sesiones = {};
+  items.forEach(function (it) {
+    const clave = [it.fecha, it.sede, it.punto_conteo || ''].join('|');
+    if (!sesiones[clave]) sesiones[clave] = { fecha: it.fecha, productos: {} };
+    sesiones[clave].productos[normalizar_(it.producto)] = true;
+  });
+
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
+  const faltantes = {};
+  Object.keys(sesiones).forEach(function (clave) {
+    const sesion = sesiones[clave];
+    const frecuencias = frecuenciasObligatoriasDelDia_(sesion.fecha);
+    catalogo
+      .filter(function (p) { return p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1; })
+      .filter(function (p) { return !sesion.productos[normalizar_(p.nombre_estandar)]; })
+      .forEach(function (p) { faltantes[p.nombre_estandar] = true; });
+  });
+  return Object.keys(faltantes);
 }
 
 /** Un nuevo conteo del mismo cierre corrige el anterior, no se suma a él. */
