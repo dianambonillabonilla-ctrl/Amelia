@@ -31,20 +31,22 @@ function calcularDisponibleHoy_(fecha, sede) {
   const recetaMap = construirRecetaMap_(recetas, indice);
   const memo = {};
 
-  // Solo los productos "plato" (vendibles) se muestran como fila en Disponible Hoy — los de tipo
-  // "produccion" (Costilla Preparada, Aioli, Papas pre-fritas...) son pasos internos de la cadena,
-  // no algo que se venda directamente. Su disponibilidad igual se calcula y queda disponible en
-  // detalle_receta si hace falta revisarla.
-  const productosVendibles = Object.keys(recetaMap).filter(function (clave) {
-    return recetaMap[clave].tipo !== 'produccion';
-  });
-
-  const resultado = productosVendibles.map(function (claveProducto) {
-    const det = cantidadDisponibleDetallada_(claveProducto, recetaMap, stockContado, indice, memo, {});
+  function detalleClave_(clave) {
+    const det = cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, memo, {});
     const limitante = det.limitante;
     return {
-      producto: recetaMap[claveProducto].nombre,
+      producto: recetaMap[clave].nombre,
+      tipo: recetaMap[clave].tipo,
+      // Para un "plato" (se arma sobre la marcha, nunca se cuenta a sí mismo — ver
+      // cantidadDisponibleDetallada_) esto es igual a lo producible. Para una subreceta
+      // (tipo "produccion") sí puede incluir lo ya preparado y contado (ej. Aioli listo en la
+      // nevera) además de lo que todavía se puede preparar con materia prima disponible.
       preparaciones_posibles: isFinite(det.disponible) ? Math.floor(det.disponible) : null,
+      contado: Number(det.contado.toFixed(3)),
+      // "Ya tengo esto listo" vs. "toca prepararlo": producible es cuánto MÁS se puede preparar
+      // desde materia prima, sin contar lo que ya está armado (det.contado). Si producible es 0,
+      // no hay con qué preparar más aunque el conteo físico esté momentáneamente en cero.
+      producible: isFinite(det.producible) ? Math.floor(det.producible) : null,
       ingrediente_limitante: limitante ? limitante.nombre : null,
       cadena_limitante: limitante ? cadenaLimitante_(limitante) : null,
       stock_limitante: limitante ? {
@@ -53,21 +55,36 @@ function calcularDisponibleHoy_(fecha, sede) {
         contado: Number(limitante.contado.toFixed(3)),
         producible: Number(limitante.producible.toFixed(3))
       } : null,
-      detalle_receta: aplanarConsumo_(claveProducto, recetaMap, indice)
+      detalle_receta: aplanarConsumo_(clave, recetaMap, indice)
     };
-  });
+  }
 
+  // Solo los productos "plato" (vendibles) se muestran como tarjeta grande en "¿Para cuántos
+  // platos alcanza?" — los de tipo "produccion" (Costilla Preparada, Aioli, Papas pre-fritas...)
+  // son pasos internos de la cadena, no algo que se venda directamente.
+  const productosVendibles = Object.keys(recetaMap).filter(function (clave) {
+    return recetaMap[clave].tipo !== 'produccion';
+  });
+  const resultado = productosVendibles.map(detalleClave_);
   resultado.sort(function (a, b) {
     if (a.preparaciones_posibles === null) return 1;
     if (b.preparaciones_posibles === null) return -1;
     return a.preparaciones_posibles - b.preparaciones_posibles;
   });
 
+  // Disponibilidad de TODO lo que tiene receta propia (platos y subrecetas), indexada por la
+  // misma llave normalizada que trae stock_ingredientes — para que "Todo lo que tengo hoy" pueda,
+  // al expandir un producto preparado (ej. Alioli), mostrar si falta materia prima para
+  // prepararlo o si solo falta prepararlo (materia prima disponible, ver "producible" arriba).
+  const disponibilidadPorReceta = {};
+  Object.keys(recetaMap).forEach(function (clave) { disponibilidadPorReceta[clave] = detalleClave_(clave); });
+
   return {
     fecha: fecha || 'último conteo disponible',
     sede: sede || 'Ambas',
     stock_ingredientes: stockContado,
-    platos: resultado
+    platos: resultado,
+    disponibilidad_receta: disponibilidadPorReceta
   };
 }
 
@@ -201,7 +218,7 @@ function aplanarConsumo_(claveProducto, recetaMap, indice, cantidadBase, acumula
     if (recetaMap[claveIngrediente]) {
       aplanarConsumo_(claveIngrediente, recetaMap, indice, cantidadTotal, acumulado, profundidad + 1);
     } else {
-      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0 };
+      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0, unidad: linea.unidad };
       acumulado[claveIngrediente].cantidad += cantidadTotal;
     }
   });
