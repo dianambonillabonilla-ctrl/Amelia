@@ -119,8 +119,14 @@ function cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, me
 
   enCurso[clave] = true;
   const contadoEntry = stockContado[clave];
-  const contado = contadoEntry ? Number(contadoEntry.cantidad) || 0 : 0;
   const entrada = recetaMap[clave];
+  // Un "plato" (Falafel, Cebollita de Amelia...) es un producto vendido, nunca algo que se cuente
+  // físicamente por sí mismo — se arma sobre la marcha desde su receta. Si por error existe una
+  // fila en Conteos_Manuales con el mismo nombre exacto del plato (ej. alguien contó "Falafel" en
+  // vez de "Falafel crudo" o "Falafel Preparado"), esa cantidad se sumaba directo a "disponible"
+  // sin pasar por la receta: el número de "preparaciones posibles" quedaba igual al conteo mal
+  // etiquetado, sin importar que el insumo real que limita la producción estuviera en 0.
+  const contado = (entrada && entrada.tipo === 'plato') ? 0 : (contadoEntry ? Number(contadoEntry.cantidad) || 0 : 0);
 
   let producible = 0;
   let limitante = null;
