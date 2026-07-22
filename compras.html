@@ -168,15 +168,18 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
 
   const data = await llamar('compra_registrar_factura', { factura });
   if (data.ok) {
+    // El aviso de guardado va PRIMERO, antes de tocar el formulario o refrescar la tabla de abajo
+    // — así, si algo más adelante en este mismo bloque falla (ej. cargarFacturas_ con datos en un
+    // formato que no esperaba), la factura ya quedó confirmada en pantalla de todas formas.
     avisarGuardado(`Factura guardada: ${data.lineas} líneas.`);
     document.getElementById('proveedor').value = '';
     document.getElementById('numero-factura').value = '';
     document.getElementById('filas').innerHTML = '';
     for (let i = 0; i < 3; i++) nuevaFila();
     recalcularTotal_();
-    cargarFacturas_();
+    try { await cargarFacturas_(); } catch (err) { console.error(err); }
   } else {
-    alert(data.error);
+    alert(data.error || 'No se pudo guardar la factura. Vuelve a intentarlo; si sigue igual, avisa al administrador.');
   }
 }));
 
@@ -200,12 +203,23 @@ async function cargarFacturas_() {
   if (!facturas.data.length) {
     body.innerHTML = '<tr><td colspan="7" class="vacio">Sin facturas registradas en este rango.</td></tr>';
   } else {
-    body.innerHTML = facturas.data.map(f => `<tr>
-      <td>${escapeHtml(f.fecha)}</td><td>${escapeHtml(f.sedes.join(', '))}</td><td>${escapeHtml(f.proveedor)}</td>
+    // f.sedes (plural) es lo que devuelve el backend actualizado; f.sede (singular) es lo que
+    // devolvía la versión anterior de Compras.gs — si todavía no se hizo el paso de "Nueva
+    // versión" en Apps Script después de este cambio, el backend en producción puede seguir
+    // devolviendo la forma vieja. Sin este resguardo, `f.sedes.join` rompía con un error de
+    // JavaScript y dejaba toda esta tabla (y cualquier código después de cargarFacturas_(),
+    // incluida la señal de "guardado" si esta función se llama justo después de guardar) sin
+    // terminar de ejecutarse.
+    body.innerHTML = facturas.data.map(f => {
+      const sedes = f.sedes || (f.sede ? [f.sede] : []);
+      const lineaSede = l => l.sede || sedes[0] || '';
+      return `<tr>
+      <td>${escapeHtml(f.fecha)}</td><td>${escapeHtml(sedes.join(', '))}</td><td>${escapeHtml(f.proveedor)}</td>
       <td>${escapeHtml(f.numero_factura || '—')}</td>
-      <td title="${escapeHtml(f.lineas.map(l => l.producto + ' (' + l.sede + '): ' + l.cantidad + ' ' + l.unidad).join(', '))}">${f.lineas.length}</td>
+      <td title="${escapeHtml(f.lineas.map(l => l.producto + ' (' + lineaSede(l) + '): ' + l.cantidad + ' ' + l.unidad).join(', '))}">${f.lineas.length}</td>
       <td>${formatoMoneda_(f.total)}</td><td>${escapeHtml(f.usuario)}</td>
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
   }
 
   if (resumen.ok && resumen.data.facturas) {
