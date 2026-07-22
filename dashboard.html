@@ -42,7 +42,10 @@
 
     <div class="card" id="card-alerta-insumos" style="display:none; border-color:var(--red); background:#FEF4F3">
       <h2 style="margin:0 0 4px; color:var(--red)">🛒 Qué debo comprar</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">Productos por debajo del mínimo configurado en Registrar producto, agrupados por categoría.</p>
+      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">
+        Por debajo del mínimo configurado en Registrar producto, o directamente en cero aunque
+        no tengan mínimo configurado — agrupados por categoría.
+      </p>
       <div id="alerta-insumos"></div>
     </div>
 
@@ -56,10 +59,17 @@
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
         Último conteo de cada producto — comida, bebidas, aseo, papelería, menaje, lo que sea —
         ya sumando las compras y los traslados recibidos, y restando las mermas registradas
-        después de ese conteo en esta sede. Agrupado por categoría; lo marcado en rojo está por
-        debajo del mínimo que configuraste en Registrar producto.
+        después de ese conteo en esta sede. Lo marcado en rojo está por debajo del mínimo que
+        configuraste en Registrar producto. Si el producto se prepara (ej. Alioli), haz clic en la
+        fila para ver si falta materia prima para prepararlo o si solo falta prepararlo.
       </p>
-      <div id="bloques-stock"><p class="vacio">Cargando…</p></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+        <select id="stock-filtro-categoria" style="width:auto"><option value="">Todas las categorías</option></select>
+        <input type="text" id="stock-filtro-nombre" placeholder="Buscar por nombre" style="width:auto; min-width:220px">
+      </div>
+      <p id="stock-contador" class="vacio" style="display:none"></p>
+      <div style="overflow-x:auto"><table id="tabla-stock"><tbody><tr><td class="vacio">Cargando…</td></tr></tbody></table></div>
+      <button class="btn fantasma" id="btn-ver-todo-stock" style="display:none; margin-top:12px">Ver todo</button>
     </div>
 
     <div class="card">
@@ -80,6 +90,11 @@ montarBarraUsuario();
 document.getElementById('fecha-corte').value = fechaLocalHoy_();
 
 let grafico = null;
+let catalogoActual = [];
+let entradasStockActual = [];
+let disponibilidadRecetaActual = {};
+let verTodoStock = false;
+const LIMITE_STOCK_INICIAL = 40;
 
 async function cargar() {
   const fecha = document.getElementById('fecha-corte').value;
@@ -90,7 +105,9 @@ async function cargar() {
   ]);
   if (!data.ok) { alert(data.error); return; }
 
-  pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoData.ok ? catalogoData.data : []);
+  catalogoActual = catalogoData.ok ? catalogoData.data : [];
+  disponibilidadRecetaActual = data.data.disponibilidad_receta || {};
+  pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual);
   pintarTilesPlatos_(data.data.platos);
 
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
@@ -98,10 +115,12 @@ async function cargar() {
   // último contado (comida, bebidas, aseo, papelería, menaje...), no solo platos con receta, y
   // ya trae sumadas las compras y restadas las mermas de esa sede desde el último conteo
   // (obtenerUltimoStockPorIngrediente_ en DisponibleHoy.gs).
-  const entradas = Object.values(data.data.stock_ingredientes);
-  pintarBloquesStock_(entradas, catalogoData.ok ? catalogoData.data : []);
+  entradasStockActual = Object.values(data.data.stock_ingredientes);
+  verTodoStock = false;
+  poblarFiltroCategoriaStock_(catalogoActual);
+  pintarListaStock_();
 
-  poblarSelectorIngredientes_(entradas.map(s => s.producto));
+  poblarSelectorIngredientes_(entradasStockActual.map(s => s.producto));
 }
 
 // Un recuadro grande por plato con el número de preparaciones posibles bien visible — rojo si
@@ -127,18 +146,7 @@ function pintarTilesPlatos_(platos) {
   }).join('');
 }
 
-// Agrupa TODO el stock en bloques por categoría del catálogo (Bebidas, Materia Prima,
-// Elaborados, Aseo e Insumos...) — más fácil de escanear con 100+ productos que una lista plana,
-// y marca en rojo lo que está por debajo del mínimo configurado en Registrar producto (para ver
-// de un vistazo qué toca comprar). Lo que no tiene coincidencia en el catálogo queda en "Sin
-// categoría", visible igual — nada se oculta por no estar en Catalogo_Maestro.
-function pintarBloquesStock_(entradas, catalogo) {
-  const cont = document.getElementById('bloques-stock');
-  if (!entradas.length) {
-    cont.innerHTML = '<p class="vacio">Aún no hay conteos registrados.</p>';
-    return;
-  }
-
+function infoPorNombreStock_(catalogo) {
   const infoPorNombre = {};
   catalogo.forEach(p => {
     infoPorNombre[normalizarTexto(p.nombre_estandar)] = {
@@ -146,63 +154,154 @@ function pintarBloquesStock_(entradas, catalogo) {
       minimo: p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined ? Number(p.stock_minimo) : null
     };
   });
+  return infoPorNombre;
+}
 
-  const porCategoria = {};
-  entradas.forEach(s => {
-    const info = infoPorNombre[normalizarTexto(s.producto)] || { categoria: 'Sin categoría', minimo: null };
-    if (!porCategoria[info.categoria]) porCategoria[info.categoria] = [];
-    porCategoria[info.categoria].push(Object.assign({}, s, { _minimo: info.minimo }));
+function poblarFiltroCategoriaStock_(catalogo) {
+  const select = document.getElementById('stock-filtro-categoria');
+  const actual = select.value;
+  const categorias = [...new Set(catalogo.map(p => partesCategoria(p.categoria).principal).filter(Boolean))].sort();
+  select.innerHTML = '<option value="">Todas las categorías</option>' +
+    categorias.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  if (categorias.includes(actual)) select.value = actual;
+}
+
+// Lista (no casillas) de TODO el stock — con 100+ productos, casillas por categoría quedaba muy
+// cargado visualmente. Filtra por categoría/nombre, muestra solo los primeros LIMITE_STOCK_INICIAL
+// hasta que se pida "Ver todo", y si el producto se prepara (tiene receta propia en
+// disponibilidad_receta) la fila se puede expandir para ver si falta materia prima o solo falta
+// prepararlo.
+function pintarListaStock_() {
+  const tabla = document.getElementById('tabla-stock');
+  const contador = document.getElementById('stock-contador');
+  const btnVerTodo = document.getElementById('btn-ver-todo-stock');
+
+  if (!entradasStockActual.length) {
+    tabla.innerHTML = '<tbody><tr><td class="vacio">Aún no hay conteos registrados.</td></tr></tbody>';
+    contador.style.display = 'none';
+    btnVerTodo.style.display = 'none';
+    return;
+  }
+
+  const infoPorNombre = infoPorNombreStock_(catalogoActual);
+  const categoriaFiltro = document.getElementById('stock-filtro-categoria').value;
+  const nombreFiltro = normalizarTexto(document.getElementById('stock-filtro-nombre').value);
+
+  const filas = entradasStockActual
+    .map(s => Object.assign({ _info: infoPorNombre[normalizarTexto(s.producto)] || { categoria: 'Sin categoría', minimo: null } }, s))
+    .filter(s => !categoriaFiltro || s._info.categoria === categoriaFiltro)
+    .filter(s => !nombreFiltro || normalizarTexto(s.producto).includes(nombreFiltro))
+    .sort((a, b) => a._info.categoria.localeCompare(b._info.categoria) || a.producto.localeCompare(b.producto));
+
+  const mostrar = verTodoStock ? filas : filas.slice(0, LIMITE_STOCK_INICIAL);
+
+  contador.style.display = 'block';
+  contador.textContent = `Mostrando ${mostrar.length} de ${filas.length} producto(s)` +
+    (filas.length !== entradasStockActual.length ? ` (de ${entradasStockActual.length} en total)` : '');
+  btnVerTodo.style.display = !verTodoStock && filas.length > mostrar.length ? 'inline-block' : 'none';
+  btnVerTodo.textContent = `Ver todo (${filas.length})`;
+
+  tabla.innerHTML = '<thead><tr><th></th><th>Producto</th><th>Categoría</th><th>Cantidad</th><th>Último conteo</th></tr></thead><tbody>' +
+    mostrar.map(filaStock_).join('') + '</tbody>';
+
+  tabla.querySelectorAll('tr[data-clave]').forEach(fila => {
+    if (disponibilidadRecetaActual[fila.dataset.clave]) fila.addEventListener('click', () => toggleDetalleStock_(fila));
   });
+}
 
-  cont.innerHTML = Object.keys(porCategoria).sort().map(categoria => {
-    const items = porCategoria[categoria].sort((a, b) => a.producto.localeCompare(b.producto));
-    const tiles = items.map(s => {
-      const bajo = s._minimo !== null && Number(s.cantidad) < s._minimo;
-      return `<div class="tile ${bajo ? 'tile-critico' : ''}">
-        <div class="tile-etiqueta">${escapeHtml(s.producto)}</div>
-        <div class="tile-valor">${escapeHtml(s.cantidad)} ${escapeHtml(s.unidad)}</div>
-        <div class="tile-detalle">${bajo ? 'bajo el mínimo (' + escapeHtml(s._minimo) + ' ' + escapeHtml(s.unidad) + ')' : escapeHtml(s.fecha_conteo)}</div>
-      </div>`;
-    }).join('');
-    return `<div class="grupo-categoria">
-      <h3>${escapeHtml(categoria)} <span style="color:var(--grey); font-weight:400; font-size:.78rem">(${items.length})</span></h3>
-      <div class="tiles">${tiles}</div>
-    </div>`;
-  }).join('');
+function filaStock_(s) {
+  const bajo = s._info.minimo !== null && Number(s.cantidad) < s._info.minimo;
+  const clave = normalizarTexto(s.producto);
+  const tieneReceta = !!disponibilidadRecetaActual[clave];
+  return `<tr data-clave="${escapeHtml(clave)}" style="${tieneReceta ? 'cursor:pointer' : ''}">
+    <td style="color:var(--grey)">${tieneReceta ? '▸' : ''}</td>
+    <td>${escapeHtml(s.producto)}${bajo ? ' <span class="badge alerta">bajo mínimo</span>' : ''}</td>
+    <td>${escapeHtml(s._info.categoria)}</td>
+    <td style="${bajo ? 'color:var(--red); font-weight:600' : ''}">${escapeHtml(s.cantidad)} ${escapeHtml(s.unidad)}</td>
+    <td style="color:var(--grey); font-size:.85rem">${escapeHtml(s.fecha_conteo)}</td>
+  </tr>`;
+}
+
+// Al hacer clic en un producto preparado (subreceta con receta propia, ej. Alioli), muestra si hay
+// materia prima para preparar más o si de plano no hay con qué — distinto de "no tengo nada listo
+// contado", que puede pasar aunque sobre materia prima para prepararlo en cualquier momento.
+function toggleDetalleStock_(fila) {
+  const clave = fila.dataset.clave;
+  const det = disponibilidadRecetaActual[clave];
+  const siguiente = fila.nextElementSibling;
+  const yaAbierta = siguiente && siguiente.classList.contains('fila-detalle-stock');
+
+  document.querySelectorAll('.fila-detalle-stock').forEach(f => f.remove());
+  document.querySelectorAll('tr[data-clave] td:first-child').forEach(td => { if (td.textContent) td.textContent = '▸'; });
+  if (yaAbierta || !det) return;
+
+  fila.querySelector('td').textContent = '▾';
+
+  const sinMateriaPrima = !det.producible;
+  const mensaje = sinMateriaPrima
+    ? `⚠ No hay materia prima para preparar más ${escapeHtml(det.producto)}` +
+      (det.cadena_limitante ? ` — falta ${escapeHtml(det.cadena_limitante)}` : '') + '.'
+    : `✓ Hay materia prima disponible — solo falta prepararlo (alcanza para ${escapeHtml(det.producible)} más).`;
+
+  const ingredientes = Object.values(det.detalle_receta || {});
+  const listaIngredientes = ingredientes.length
+    ? `<p style="margin:10px 0 4px; font-size:.85rem">Para preparar 1 unidad se necesita:</p>
+       <ul style="margin:0; padding-left:18px; font-size:.85rem">
+         ${ingredientes.map(i => `<li>${escapeHtml(i.nombre)}: ${escapeHtml(Number(i.cantidad.toFixed(3)))} ${escapeHtml(i.unidad || '')}</li>`).join('')}
+       </ul>`
+    : '';
+
+  const tr = document.createElement('tr');
+  tr.className = 'fila-detalle-stock';
+  tr.innerHTML = `<td></td><td colspan="4" style="background:#FBFAF6; padding:12px">
+    <p style="margin:0; font-weight:600">${mensaje}</p>
+    <p style="margin:6px 0 0; color:var(--grey); font-size:.85rem">
+      Ya preparado y contado: ${escapeHtml(det.contado)} · Se puede preparar de más: ${det.producible === null ? '—' : escapeHtml(det.producible)}
+    </p>
+    ${listaIngredientes}
+  </td>`;
+  fila.after(tr);
 }
 
 // Cruza el catálogo (que trae el mínimo configurado por producto, ej. en catalogo.html) con el
 // último stock contado, y arma el panel de alerta agrupado por categoría (Bebidas, Materia
 // Prima, Elaborados, etc.) — así cubre insumos sueltos, no solo platos armados con receta.
+// Incluye dos casos: por debajo del mínimo configurado, Y en cero aunque no tengan mínimo
+// configurado ("por fuera del stock" — sin esto, un producto sin mínimo que se agotó del todo no
+// aparecía aquí para nada, solo se veía si uno entraba a revisar la lista completa).
 function pintarAlertaInsumos_(stockIngredientes, catalogo) {
   const card = document.getElementById('card-alerta-insumos');
   const cont = document.getElementById('alerta-insumos');
 
-  const conMinimo = catalogo.filter(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined);
-
-  // Sin ningún mínimo configurado todavía, esta tarjeta no tiene nada que comparar — en vez de
-  // ocultarla sin explicar (parece que "no funciona"), avisa que hay que configurar mínimos.
-  if (!conMinimo.length) {
+  if (!catalogo.length) {
     card.style.display = 'block';
-    cont.innerHTML = '<p style="margin:0">Todavía no has configurado el "Stock mínimo" de ningún producto — sin eso, esta alerta no tiene con qué comparar. Ve a <a href="catalogo.html">Registrar producto</a> y ponle un mínimo a lo que quieras vigilar.</p>';
+    cont.innerHTML = '<p style="margin:0">Todavía no hay productos en el catálogo. Ve a <a href="catalogo.html">Registrar producto</a>.</p>';
     return;
   }
 
-  const bajos = conMinimo
+  const bajos = catalogo
     .map(p => {
       // Misma llave que usa el backend (claveProducto_ en Catalogo.gs): para cualquier producto
       // del catálogo, su propia llave es el nombre_estandar normalizado.
       const stock = stockIngredientes[normalizarTexto(p.nombre_estandar)] || null;
       const partes = partesCategoria(p.categoria);
+      const tieneMinimo = p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined;
       return Object.assign({}, p, {
         _actual: stock ? Number(stock.cantidad) : 0,
         _unidad: stock ? stock.unidad : p.unidad_base,
-        _categoria: partes.principal || 'Sin categoría'
+        _categoria: partes.principal || 'Sin categoría',
+        _tieneMinimo: tieneMinimo,
+        _agotado: !tieneMinimo && stock !== null && Number(stock.cantidad) <= 0
       });
     })
-    .filter(p => p._actual < Number(p.stock_minimo));
+    .filter(p => (p._tieneMinimo && p._actual < Number(p.stock_minimo)) || p._agotado);
 
-  if (!bajos.length) { card.style.display = 'none'; cont.innerHTML = ''; return; }
+  if (!bajos.length) {
+    card.style.display = catalogo.some(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined) ? 'none' : 'block';
+    cont.innerHTML = catalogo.some(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined) ? '' :
+      '<p style="margin:0">Todavía no has configurado el "Stock mínimo" de ningún producto — solo se avisará aquí cuando algo llegue a cero. Ve a <a href="catalogo.html">Registrar producto</a> y ponle un mínimo a lo que quieras vigilar antes de que se agote.</p>';
+    return;
+  }
 
   const porCategoria = {};
   bajos.forEach(p => {
@@ -219,7 +318,7 @@ function pintarAlertaInsumos_(stockIngredientes, catalogo) {
           .map(p => `<div class="tile tile-compra">
             <div class="tile-etiqueta">${escapeHtml(p.nombre_estandar)}</div>
             <div class="tile-valor">${escapeHtml(p._actual)} ${escapeHtml(p._unidad || '')}</div>
-            <div class="tile-detalle">mínimo: ${escapeHtml(p.stock_minimo)} ${escapeHtml(p._unidad || '')}</div>
+            <div class="tile-detalle">${p._tieneMinimo ? 'mínimo: ' + escapeHtml(p.stock_minimo) + ' ' + escapeHtml(p._unidad || '') : 'agotado (sin mínimo configurado)'}</div>
           </div>`)
           .join('')}
       </div>
@@ -272,6 +371,9 @@ async function cargarTendencia() {
 document.getElementById('tendencia-ingrediente').addEventListener('change', cargarTendencia);
 document.getElementById('btn-actualizar').addEventListener('click', cargar);
 document.getElementById('sede-corte').addEventListener('change', cargar);
+document.getElementById('stock-filtro-categoria').addEventListener('change', pintarListaStock_);
+document.getElementById('stock-filtro-nombre').addEventListener('input', pintarListaStock_);
+document.getElementById('btn-ver-todo-stock').addEventListener('click', () => { verTodoStock = true; pintarListaStock_(); });
 cargar();
 </script>
 </body>
