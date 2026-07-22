@@ -1,3 +1,31 @@
+/**
+ * Cuenta ocurrencias de cada llave en vez de solo existencia/inexistencia — con un simple
+ * `existe[clave] = true`, la SEGUNDA fila real que comparte llave con otra (ej. el mismo producto
+ * agregado dos veces a la misma mesa, incluso a la misma hora exacta) se confundía con "esta fila
+ * ya se había importado antes" y se descartaba como duplicada, perdiendo una venta real. Contando
+ * cuántas veces ya existía cada llave ANTES de este import, y cuántas se han "consumido" durante
+ * este mismo import, una llave repetida dentro del archivo se sigue aceptando como nueva mientras
+ * no se hayan agotado las coincidencias ya guardadas de una vez anterior.
+ */
+function contadorClaves_() {
+  const estado = {};
+  return {
+    marcarPrevio: function (clave) {
+      if (!estado[clave]) estado[clave] = { previos: 0, usados: 0 };
+      estado[clave].previos++;
+    },
+    // true = esta ocurrencia coincide con una que ya existía de un import anterior (omitir).
+    // false = ocurrencia nueva (no vista antes, o ya se agotaron las coincidencias previas) —
+    // importar, aunque la llave se repita dentro de este mismo archivo.
+    esDuplicadaPrevia: function (clave) {
+      if (!estado[clave]) estado[clave] = { previos: 0, usados: 0 };
+      const duplicada = estado[clave].usados < estado[clave].previos;
+      estado[clave].usados++;
+      return duplicada;
+    }
+  };
+}
+
 /** Importa los dos formatos reales entregados por FUDO: movimientos y reporte resumido/detallado de ventas. */
 function importarFudo_(tipo, filas, usuario, opciones) {
   if (!tipo || !filas || !filas.length) return { ok: false, error: 'Falta tipo o filas' };
@@ -6,8 +34,8 @@ function importarFudo_(tipo, filas, usuario, opciones) {
   const archivo = opciones.archivo || '';
 
   if (tipo === 'movimientos') {
-    const existentes = {};
-    leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO).forEach(function (m) { existentes[claveMovimiento_(m)] = true; });
+    const contador = contadorClaves_();
+    leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO).forEach(function (m) { contador.marcarPrevio(claveMovimiento_(m)); });
     let importados = 0;
     let omitidos = 0;
     let sinFecha = 0;
@@ -36,9 +64,8 @@ function importarFudo_(tipo, filas, usuario, opciones) {
       if (!obj.fecha) { sinFecha++; return; }
       if (!obj.nombre) { sinNombre++; return; }
       const clave = claveMovimiento_(obj);
-      if (existentes[clave]) { omitidos++; return; }
+      if (contador.esDuplicadaPrevia(clave)) { omitidos++; return; }
       appendRowFromObj_(SHEET_NAMES.MOVIMIENTOS_FUDO, obj);
-      existentes[clave] = true;
       importados++;
     });
     return {
@@ -57,8 +84,8 @@ function importarFudo_(tipo, filas, usuario, opciones) {
 
   if (tipo === 'ventas') {
     const esResumen = filas.some(function (f) { return valorFudo_(f, ['Cantidades vendidas']) !== ''; });
-    const existentes = {};
-    leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) { existentes[claveVenta_(v)] = true; });
+    const contador = contadorClaves_();
+    leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) { contador.marcarPrevio(claveVenta_(v)); });
     const sinIdentificar = {};
     let importados = 0;
     let omitidos = 0;
@@ -109,9 +136,8 @@ function importarFudo_(tipo, filas, usuario, opciones) {
         sinIdentificar[k] = (sinIdentificar[k] || 0) + 1;
       }
       const clave = claveVenta_(obj);
-      if (existentes[clave]) { omitidos++; return; }
+      if (contador.esDuplicadaPrevia(clave)) { omitidos++; return; }
       appendRowFromObj_(SHEET_NAMES.VENTAS_FUDO, obj);
-      existentes[clave] = true;
       importados++;
     });
 

@@ -248,4 +248,38 @@ assert.equal(resumen.length, 2, 'solo las 2 ventas no canceladas deben quedar en
 assert.equal(resumen.find(r => r.producto === 'Aguila Light').cantidad, 2, 'la venta cancelada sin tilde no debe sumarse');
 assert.equal(resumen.some(r => r.producto === 'Poker'), false, 'la venta cancelada con tilde tampoco debe sumarse');
 
+// --- Importar FUDO: dos ventas reales que comparten Id. Venta + Producto no deben perderse -----
+// (bug real, encontrado con un export real de FUDO: el mismo producto agregado dos veces a la
+// misma mesa —a veces a horas distintas, a veces a la misma hora exacta— generaba la misma llave
+// de deduplicación que "esta fila ya se había importado antes", y la segunda venta real se
+// descartaba en silencio como si fuera un duplicado).
+let ventasGuardadas = [];
+function cargarFudo_(previas) {
+  ventasGuardadas = previas || [];
+  return cargar('apps-script/Fudo.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos' },
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    leerTabla_: (hoja) => hoja === 'ventas' ? ventasGuardadas : [],
+    appendRowFromObj_: (hoja, fila) => { if (hoja === 'ventas') ventasGuardadas.push(fila); }
+  });
+}
+
+const usuarioFudo = { nombre: 'Diana' };
+const filasPoker = [
+  { 'Id. Venta': 31300, 'Creación': '2026-07-20 19:58:32', Producto: 'Poker', Cantidad: 2, Precio: 13000, 'Creada por': 'terraza', Cancelada: 'No' },
+  { 'Id. Venta': 31300, 'Creación': '2026-07-20 20:47:36', Producto: 'Poker', Cantidad: 2, Precio: 13000, 'Creada por': 'terraza', Cancelada: 'No' }
+];
+
+const fudoPrimeraVez = cargarFudo_([]);
+const resultadoPrimeraVez = fudoPrimeraVez.importarFudo_('ventas', filasPoker, usuarioFudo, { sede: 'San Antonio' });
+assert.equal(resultadoPrimeraVez.importados, 2, 'las dos ventas reales de Poker en la misma mesa deben importarse, no solo la primera');
+assert.equal(resultadoPrimeraVez.omitidos_duplicados, 0);
+
+// Reimportar EXACTAMENTE el mismo archivo (ej. por error) sí debe reconocerse como duplicado esta vez.
+const fudoSegundaVez = cargarFudo_(ventasGuardadas.slice());
+const resultadoSegundaVez = fudoSegundaVez.importarFudo_('ventas', filasPoker, usuarioFudo, { sede: 'San Antonio' });
+assert.equal(resultadoSegundaVez.importados, 0, 'reimportar el mismo archivo no debe duplicar las ventas ya guardadas');
+assert.equal(resultadoSegundaVez.omitidos_duplicados, 2);
+
 console.log('inventory-controls: OK');
