@@ -10,6 +10,8 @@ function importarFudo_(tipo, filas, usuario, opciones) {
     leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO).forEach(function (m) { existentes[claveMovimiento_(m)] = true; });
     let importados = 0;
     let omitidos = 0;
+    let sinFecha = 0;
+    let sinNombre = 0;
     filas.forEach(function (f) {
       const creadaPor = valorFudo_(f, ['Usuario', 'Creada por', 'Creado por']);
       const obj = {
@@ -28,14 +30,29 @@ function importarFudo_(tipo, filas, usuario, opciones) {
         importado_por: usuario.nombre,
         importado_en: ahora
       };
-      if (!obj.fecha || !obj.nombre) return;
+      // Antes se descartaba la fila en silencio si faltaba fecha o nombre — el resultado decía
+      // "Importadas 0 filas" sin ninguna pista de por qué. Ahora se cuenta cada motivo de descarte
+      // por separado para poder explicarlo (ver diagnóstico más abajo).
+      if (!obj.fecha) { sinFecha++; return; }
+      if (!obj.nombre) { sinNombre++; return; }
       const clave = claveMovimiento_(obj);
       if (existentes[clave]) { omitidos++; return; }
       appendRowFromObj_(SHEET_NAMES.MOVIMIENTOS_FUDO, obj);
       existentes[clave] = true;
       importados++;
     });
-    return { ok: true, importados: importados, omitidos_duplicados: omitidos, tipo: tipo };
+    return {
+      ok: true,
+      importados: importados,
+      omitidos_duplicados: omitidos,
+      tipo: tipo,
+      diagnostico: importados === 0 ? {
+        filas_recibidas: filas.length,
+        descartadas_sin_fecha: sinFecha,
+        descartadas_sin_nombre: sinNombre,
+        columnas_detectadas: filas.length ? Object.keys(filas[0]) : []
+      } : null
+    };
   }
 
   if (tipo === 'ventas') {
@@ -45,6 +62,9 @@ function importarFudo_(tipo, filas, usuario, opciones) {
     const sinIdentificar = {};
     let importados = 0;
     let omitidos = 0;
+    let sinFecha = 0;
+    let sinProducto = 0;
+    let cantidadInvalida = 0;
 
     filas.forEach(function (f, i) {
       const creadaPor = valorFudo_(f, ['Creada por', 'Usuario', 'Caja']);
@@ -78,7 +98,12 @@ function importarFudo_(tipo, filas, usuario, opciones) {
         archivo_origen: archivo,
         importado_en: ahora
       };
-      if (!obj.creacion || !obj.producto || !(Number(obj.cantidad) > 0)) return;
+      // Igual que en 'movimientos': antes esto descartaba la fila sin decir por qué. Se cuenta
+      // cada motivo por separado (fecha/creación, producto o cantidad inválida) para poder armar
+      // un diagnóstico legible cuando el resultado sea 0 filas importadas.
+      if (!obj.creacion) { sinFecha++; return; }
+      if (!obj.producto) { sinProducto++; return; }
+      if (!(Number(obj.cantidad) > 0)) { cantidadInvalida++; return; }
       if (sede === 'Sin identificar') {
         const k = String(creadaPor || 'reporte sin sede');
         sinIdentificar[k] = (sinIdentificar[k] || 0) + 1;
@@ -101,6 +126,13 @@ function importarFudo_(tipo, filas, usuario, opciones) {
         ? 'El reporte resumido no trae caja/terminal. Sus ventas quedaron Sin identificar y no se usarán en cálculos por sede.' : null,
       sin_identificar: valores.length ? {
         total: valores.reduce(function (acc, k) { return acc + sinIdentificar[k]; }, 0), valores: valores
+      } : null,
+      diagnostico: importados === 0 ? {
+        filas_recibidas: filas.length,
+        descartadas_sin_fecha: sinFecha,
+        descartadas_sin_producto: sinProducto,
+        descartadas_cantidad_invalida: cantidadInvalida,
+        columnas_detectadas: filas.length ? Object.keys(filas[0]) : []
       } : null
     };
   }

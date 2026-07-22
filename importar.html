@@ -52,6 +52,12 @@
         </label>
       </div>
       <p style="color:var(--grey); font-size:.85rem; margin-top:10px">
+        Se sube <strong>un archivo a la vez</strong>: elige aquí arriba qué tipo de reporte es ese
+        archivo (no hace falta tener los dos a mano). Si tienes tanto el de Movimientos de Stock
+        como el de Ventas, impórtalos uno después del otro — cada vez, marca el tipo correcto para
+        el archivo que vas a subir.
+      </p>
+      <p style="color:var(--grey); font-size:.85rem">
         Recuerda: <code>movimientos-de-stock.xls</code> solo se usa para conciliar <strong>bebidas</strong> — para
         comida el sistema compara ventas × receta contra el conteo físico, no contra el stock de FUDO.
         Si “Reporte de Productos” no trae caja/terminal, selecciona la sede correcta antes de importarlo;
@@ -74,6 +80,10 @@
       <div id="aviso-sin-identificar" class="card" style="display:none; margin-top:14px; border-color:var(--amber); background:#FFFBF0">
         <strong style="color:var(--amber)">⚠ Ventas sin sede identificada</strong>
         <p id="aviso-sin-identificar-texto" style="margin:8px 0 0; font-size:.88rem"></p>
+      </div>
+      <div id="aviso-diagnostico" class="card" style="display:none; margin-top:14px; border-color:var(--red); background:#FEF4F3">
+        <strong style="color:var(--red)">⚠ Se importaron 0 filas</strong>
+        <p id="aviso-diagnostico-texto" style="margin:8px 0 0; font-size:.88rem; white-space:pre-line"></p>
       </div>
     </div>
   </main>
@@ -146,6 +156,8 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
   }
   const aviso = document.getElementById('aviso-sin-identificar');
   aviso.style.display = 'none';
+  const avisoDiag = document.getElementById('aviso-diagnostico');
+  avisoDiag.style.display = 'none';
   if (data.ok) {
     avisarGuardado(`Importadas ${data.importados} filas de tipo "${data.tipo}". ${data.omitidos_duplicados || 0} duplicadas fueron omitidas.`);
     if (data.advertencia) alert(data.advertencia);
@@ -153,6 +165,21 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
       document.getElementById('aviso-sin-identificar-texto').textContent =
         `${data.sin_identificar.total} venta(s) no se pudieron asignar a una sede porque el nombre de caja/terminal no se reconoce: ${data.sin_identificar.valores.join(', ')}. Ajusta sedeDesdeCreadaPor_() en Fudo.gs o revisa el nombre de la caja en FUDO — mientras tanto, esas ventas quedan fuera de la conciliación de comida.`;
       aviso.style.display = 'block';
+    }
+    if (data.diagnostico) {
+      const d = data.diagnostico;
+      const motivos = [];
+      if (d.descartadas_sin_fecha) motivos.push(`${d.descartadas_sin_fecha} fila(s) sin fecha/creación reconocible`);
+      if (d.descartadas_sin_producto) motivos.push(`${d.descartadas_sin_producto} fila(s) sin producto reconocible`);
+      if (d.descartadas_sin_nombre) motivos.push(`${d.descartadas_sin_nombre} fila(s) sin nombre reconocible`);
+      if (d.descartadas_cantidad_invalida) motivos.push(`${d.descartadas_cantidad_invalida} fila(s) con cantidad inválida o en cero`);
+      document.getElementById('aviso-diagnostico-texto').textContent =
+        `Se leyeron ${d.filas_recibidas} fila(s) del archivo, pero ninguna tenía las columnas que este sistema reconoce — se descartaron todas:\n` +
+        (motivos.length ? '• ' + motivos.join('\n• ') + '\n\n' : '\n') +
+        `Columnas encontradas en tu archivo: ${d.columnas_detectadas.join(', ') || '(el archivo llegó vacío)'}\n\n` +
+        'Revisa que el archivo tenga columnas de fecha/producto/cantidad con esos nombres exactos (o muy parecidos) — ' +
+        'si FUDO cambió el nombre de alguna columna, hay que agregarlo a valorFudo_() en Fudo.gs.';
+      avisoDiag.style.display = 'block';
     }
   } else {
     alert(data.error);
