@@ -16,6 +16,7 @@
       <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
       <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Histórico de mermas</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de producción</a>
       <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
@@ -32,6 +33,15 @@
     <div class="topbar">
       <h1>Histórico de mermas y ajustes</h1>
       <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card" id="card-stats-mermas" style="display:none">
+      <h3 style="margin:0 0 10px">📊 Lo que más se pierde en este rango</h3>
+      <p style="color:var(--grey); font-size:.85rem; margin:0 0 10px">
+        Suma de "Merma / desperdicio" por producto en las fechas y sede filtradas, sin importar el
+        filtro de "Tipo" que estés usando abajo para la tabla.
+      </p>
+      <ol id="stats-mermas" style="margin:0; padding-left:20px"></ol>
     </div>
 
     <div class="card">
@@ -128,7 +138,13 @@ async function cargar() {
     tipo: document.getElementById('filtro-tipo').value,
     producto: document.getElementById('filtro-producto').value.trim()
   };
-  const data = await llamar('ajustes_inventario_historial', { filtros });
+  // La estadística de mermas se pide aparte, siempre con tipo "Merma / desperdicio" fijo — así el
+  // ranking no cambia si arriba se está mirando otro tipo de movimiento (ej. "Compra cruda").
+  const [data, datosMerma] = await Promise.all([
+    llamar('ajustes_inventario_historial', { filtros }),
+    llamar('ajustes_inventario_historial', { filtros: Object.assign({}, filtros, { tipo: 'Merma / desperdicio', producto: '' }) })
+  ]);
+  pintarEstadisticasMermas_(datosMerma);
   if (!data.ok) { tabla.innerHTML = `<tr><td colspan="10" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
 
   const soloSinAvalar = document.getElementById('filtro-solo-sin-avalar').checked;
@@ -170,6 +186,25 @@ async function cargar() {
       if (data.ok) { avisarGuardado('Merma avalada.'); cargar(); } else { alert(data.error); }
     }));
   });
+}
+
+function pintarEstadisticasMermas_(datosMerma) {
+  const card = document.getElementById('card-stats-mermas');
+  const cont = document.getElementById('stats-mermas');
+  if (!datosMerma.ok) { card.style.display = 'none'; return; }
+
+  const porProducto = {};
+  datosMerma.data.forEach(r => {
+    const clave = normalizarTexto(r.producto) + '|' + r.unidad;
+    if (!porProducto[clave]) porProducto[clave] = { producto: r.producto, unidad: r.unidad, cantidad: 0 };
+    porProducto[clave].cantidad += Number(r.cantidad) || 0;
+  });
+  const top = Object.values(porProducto).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5);
+
+  card.style.display = 'block';
+  cont.innerHTML = top.length
+    ? top.map(p => `<li>${escapeHtml(p.producto)} — ${escapeHtml(p.cantidad.toFixed(2))} ${escapeHtml(p.unidad)}</li>`).join('')
+    : '<li style="color:var(--grey); list-style:none; margin-left:-20px">Sin mermas en este rango.</li>';
 }
 
 document.getElementById('btn-filtrar').addEventListener('click', cargar);
