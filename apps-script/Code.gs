@@ -465,13 +465,29 @@ function requiereAdmin_(usuario) {
   requiereRol_(usuario, ['Administrador']);
 }
 
-/** Limita las consultas operativas a la sede asignada, salvo Administrador o usuarios "Ambas". */
+/**
+ * Limita las consultas operativas a la sede asignada, salvo Administrador o usuarios "Ambas".
+ * Centro de Producción es la excepción: cualquiera (San Antonio, Capri o Ambas) puede consultarlo
+ * además de su propia sede — en la práctica ese personal también cubre el Centro de Producción.
+ * Ver sedeEscrituraPermitida_ para la misma regla del lado de "guardar".
+ */
 function sedeConsultaPermitida_(usuario, sedeSolicitada) {
   if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return sedeSolicitada || null;
-  if (sedeSolicitada && sedeSolicitada !== usuario.sede) {
+  if (sedeSolicitada && sedeSolicitada !== usuario.sede && sedeSolicitada !== 'Centro de Producción') {
     throw new Error('No puedes consultar datos de una sede distinta a la tuya (' + usuario.sede + ')');
   }
-  return usuario.sede;
+  return sedeSolicitada || usuario.sede;
+}
+
+/**
+ * Igual que sedeConsultaPermitida_ pero para ESCRIBIR (registrar conteos, ajustes, compras,
+ * producción): además de su propia sede, cualquiera puede registrar cosas en Centro de Producción
+ * — pedido explícito: "el que sea de san antonio o capri o ambas todos deben de poder guardar
+ * cosas del centro de producción".
+ */
+function sedeEscrituraPermitida_(usuario, sede) {
+  return usuario.rol === 'Administrador' || usuario.sede === 'Ambas' ||
+    sede === usuario.sede || sede === 'Centro de Producción';
 }
 
 // ---------------------------------------------------------------------------

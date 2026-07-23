@@ -15,7 +15,9 @@ function conteoRegistrar_(items, usuario) {
       return { ok: false, error: 'La cantidad contada debe ser un número igual o mayor que cero' };
     }
   }
-  if (usuario.sede !== 'Ambas' && items.some(function (it) { return it.sede !== usuario.sede; })) {
+  // sedeEscrituraPermitida_ (Code.gs) también deja registrar en Centro de Producción sin importar
+  // la sede propia — San Antonio/Capri/Ambas cubren ese sitio en la práctica.
+  if (items.some(function (it) { return !sedeEscrituraPermitida_(usuario, it.sede); })) {
     return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
 

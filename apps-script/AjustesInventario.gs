@@ -22,7 +22,9 @@ function ajusteInventarioRegistrar_(item, usuario) {
   if (isNaN(Number(item.cantidad)) || Number(item.cantidad) <= 0) {
     return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
   }
-  if (usuario.sede !== 'Ambas' && item.sede !== usuario.sede) {
+  // sedeEscrituraPermitida_ (Code.gs) también deja registrar en Centro de Producción sin importar
+  // la sede propia — San Antonio/Capri/Ambas cubren ese sitio en la práctica.
+  if (!sedeEscrituraPermitida_(usuario, item.sede)) {
     return { ok: false, error: 'No puedes registrar ajustes para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
 
