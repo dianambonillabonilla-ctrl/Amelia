@@ -105,3 +105,43 @@ function claveRecetaVenta_(producto, recetaMap, indice) {
   const destino = alias[normalizar_(producto)];
   return destino ? claveProducto_(destino, indice) : directa;
 }
+
+/**
+ * Nombres de venta de FUDO (Ventas_FUDO) sin ninguna receta con ese nombre — no importa la fecha,
+ * mira TODO el histórico, para que el Administrador los encuentre antes de que se acumulen días de
+ * conciliación ciega. Sin receta, esa venta no descuenta NINGÚN ingrediente del inventario (ver
+ * conciliarComidaPorSede_ en Conciliacion.gs, caso sin_receta) — un plato compuesto como
+ * "Wafle de fresa con chocolate" que no tenga receta hace que ni el wafle, ni la fresa, ni el
+ * chocolate se resten del conteo físico cuando se vende, así que la conciliación de esos tres
+ * ingredientes queda descuadrada sin explicación.
+ *
+ * Las bebidas del catálogo (categoría que empieza en "Bebidas") se excluyen a propósito: para
+ * esas, no tener receta es normal — se consumen 1:1 sin necesidad de una receta que las explote
+ * (ver el mismo comentario en Conciliacion.gs).
+ */
+function platosFudoSinReceta_() {
+  const indice = indiceCatalogo_();
+  const productosConReceta = {};
+  leerTabla_(SHEET_NAMES.RECETAS).forEach(function (r) {
+    productosConReceta[claveProducto_(r.producto, indice)] = true;
+  });
+  const bebidas = {};
+  leerTabla_(SHEET_NAMES.CATALOGO)
+    .filter(function (c) { return c.categoria && c.categoria.indexOf('Bebidas') === 0; })
+    .forEach(function (c) { bebidas[claveProducto_(c.nombre_estandar, indice)] = true; });
+
+  const vistos = {};
+  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) {
+    if (ventaCancelada_(v)) return;
+    const clave = claveProducto_(v.producto, indice);
+    if (productosConReceta[clave] || bebidas[clave]) return;
+    if (!vistos[clave]) vistos[clave] = { producto: nombreCanonico_(v.producto, indice), cantidad_vendida: 0, sedes: {} };
+    vistos[clave].cantidad_vendida += Number(v.cantidad) || 0;
+    if (v.sede) vistos[clave].sedes[v.sede] = true;
+  });
+
+  return Object.keys(vistos).map(function (clave) {
+    const it = vistos[clave];
+    return { producto: it.producto, cantidad_vendida: it.cantidad_vendida, sedes: Object.keys(it.sedes).sort() };
+  }).sort(function (a, b) { return b.cantidad_vendida - a.cantidad_vendida; });
+}

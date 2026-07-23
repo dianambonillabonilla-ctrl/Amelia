@@ -56,6 +56,19 @@
       <button class="btn dorado" id="guardar">Guardar línea</button>
     </div>
 
+    <div class="card" data-solo-rol="Administrador">
+      <h2>Platos de FUDO sin receta</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Nombres que FUDO ha vendido (histórico completo, no solo hoy) sin ninguna receta con ese
+        nombre exacto. Sin receta, esa venta no descuenta ningún ingrediente del inventario — si es
+        un plato compuesto (ej. "Wafle de fresa con chocolate" = wafle + fresa + chocolate), la
+        conciliación de esos ingredientes queda descuadrada sin explicación hasta que le crees una
+        receta. Las bebidas del catálogo no aparecen aquí a propósito: para ellas no tener receta es
+        normal, se consumen 1:1.
+      </p>
+      <div id="platos-sin-receta"><p>Buscando…</p></div>
+    </div>
+
     <div class="card">
       <div style="display:flex;gap:10px;align-items:center;justify-content:space-between">
         <h2 style="margin:0">Matriz de recetas</h2>
@@ -103,6 +116,32 @@ function etiquetaEstado_(estado) {
   if (estado === 'referencia') return 'referencia (sin automatizar)';
   return estado;
 }
+async function cargarPlatosSinReceta_() {
+  const cont = document.getElementById('platos-sin-receta');
+  const r = await llamar('platos_fudo_sin_receta');
+  if (!r.ok) { cont.innerHTML = `<p>${escapeHtml(r.error)}</p>`; return; }
+  if (!r.data.length) {
+    cont.innerHTML = '<p><strong>Todo cubierto:</strong> todos los platos que ha vendido FUDO tienen una receta con ese nombre.</p>';
+    return;
+  }
+  cont.innerHTML = `<p><strong>Sin receta (${r.data.length}):</strong> presiona "Crear receta" para completar el nombre arriba y agregar sus ingredientes.</p>` +
+    '<table><thead><tr><th>Producto vendido en FUDO</th><th>Vendido (histórico)</th><th>Sede(s)</th><th></th></tr></thead><tbody>' +
+    r.data.map(p => `<tr>
+      <td>${escapeHtml(p.producto)}</td>
+      <td>${escapeHtml(p.cantidad_vendida)}</td>
+      <td>${escapeHtml(p.sedes.join(', ') || '—')}</td>
+      <td><button class="btn dorado btn-crear-receta" data-producto="${escapeHtml(p.producto)}" type="button">Crear receta</button></td>
+    </tr>`).join('') + '</tbody></table>';
+
+  cont.querySelectorAll('.btn-crear-receta').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('producto').value = btn.dataset.producto;
+      document.getElementById('producto').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById('ingrediente').focus();
+    });
+  });
+}
+
 document.getElementById('buscar').addEventListener('input', pintar);
 document.getElementById('filtro-estado').addEventListener('change', pintar);
 document.getElementById('guardar').addEventListener('click', conBotonProtegido(document.getElementById('guardar'), async () => {
@@ -121,6 +160,7 @@ document.getElementById('guardar').addEventListener('click', conBotonProtegido(d
   avisarGuardado('Línea de receta guardada.'); cargar();
 }));
 cargar();
+cargarPlatosSinReceta_();
 </script>
 </body>
 </html>
