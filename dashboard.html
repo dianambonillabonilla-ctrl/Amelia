@@ -65,6 +65,11 @@
       <p class="explicacion">Por debajo del mínimo que configuraste, o agotado sin mínimo configurado.</p>
       <div id="alerta-insumos"></div>
     </div>
+    <!-- Un producto con "stock mínimo" configurado pero que TODAVÍA no se ha contado nunca (ej. algo
+         de conteo mensual que no le ha tocado su primer conteo) no es lo mismo que "confirmado en
+         cero" — no se muestra arriba en rojo como si ya se supiera que falta, solo se avisa aparte,
+         en gris, cuántos hay pendientes de su primer conteo. -->
+    <p id="nota-pendientes-conteo" style="display:none; color:var(--grey); font-size:.85rem; margin:-10px 0 20px"></p>
 
     <div class="card" id="card-tiles-platos">
       <h2 style="margin:0 0 14px">¿Para cuántos platos alcanza lo que tengo?</h2>
@@ -451,6 +456,7 @@ function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede, gestion
   if (!catalogoCompleto.length) {
     card.style.display = 'block';
     cont.innerHTML = '<p style="margin:0">Todavía no hay productos en el catálogo. Ve a <a href="catalogo.html">Registrar producto</a>.</p>';
+    document.getElementById('nota-pendientes-conteo').style.display = 'none';
     return 0;
   }
 
@@ -461,22 +467,41 @@ function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede, gestion
     ? catalogoCompleto
     : catalogoCompleto.filter(p => !p.sede || p.sede === 'Ambas' || p.sede === sede);
 
-  const bajos = catalogo
-    .map(p => {
-      // Misma llave que usa el backend (claveProducto_ en Catalogo.gs): para cualquier producto
-      // del catálogo, su propia llave es el nombre_estandar normalizado.
-      const stock = stockIngredientes[normalizarTexto(p.nombre_estandar)] || null;
-      const partes = partesCategoria(p.categoria);
-      const tieneMinimo = p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined;
-      return Object.assign({}, p, {
-        _actual: stock ? Number(stock.cantidad) : 0,
-        _unidad: stock ? stock.unidad : p.unidad_base,
-        _categoria: partes.principal || 'Sin categoría',
-        _tieneMinimo: tieneMinimo,
-        _agotado: !tieneMinimo && stock !== null && Number(stock.cantidad) <= 0
-      });
-    })
-    .filter(p => (p._tieneMinimo && p._actual < Number(p.stock_minimo)) || p._agotado);
+  const evaluados = catalogo.map(p => {
+    // Misma llave que usa el backend (claveProducto_ en Catalogo.gs): para cualquier producto
+    // del catálogo, su propia llave es el nombre_estandar normalizado.
+    const stock = stockIngredientes[normalizarTexto(p.nombre_estandar)] || null;
+    const partes = partesCategoria(p.categoria);
+    const tieneMinimo = p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined;
+    const nuncaContado = stock === null;
+    return Object.assign({}, p, {
+      _actual: stock ? Number(stock.cantidad) : 0,
+      _unidad: stock ? stock.unidad : p.unidad_base,
+      _categoria: partes.principal || 'Sin categoría',
+      _tieneMinimo: tieneMinimo,
+      _nuncaContado: nuncaContado,
+      _agotado: !tieneMinimo && !nuncaContado && Number(stock.cantidad) <= 0
+    });
+  });
+
+  // Pedido real: "de lo que no se ha registrado cuánto hay, aunque sea cero, no ponerlo que está
+  // pendiente... porque dice pendiente cepillo pero si toca contarlo el mes entrante no quiero que
+  // aparezca en cero". Un producto nunca contado (ej. algo de conteo mensual que no le ha tocado
+  // su primer conteo) NO es lo mismo que confirmado en cero — antes se trataba igual porque
+  // `_actual` caía en 0 por falta de dato, y con un mínimo configurado eso siempre se veía "por
+  // debajo del mínimo" aunque nadie supiera todavía cuánto hay.
+  const bajos = evaluados.filter(p => !p._nuncaContado && ((p._tieneMinimo && p._actual < Number(p.stock_minimo)) || p._agotado));
+  const pendientesPrimerConteo = evaluados.filter(p => p._nuncaContado && p._tieneMinimo);
+
+  const notaPendientes = document.getElementById('nota-pendientes-conteo');
+  if (pendientesPrimerConteo.length) {
+    notaPendientes.style.display = 'block';
+    notaPendientes.innerHTML = `ℹ️ ${pendientesPrimerConteo.length} producto${pendientesPrimerConteo.length === 1 ? '' : 's'} ` +
+      `con "stock mínimo" configurado todavía sin ningún conteo registrado (no aparece${pendientesPrimerConteo.length === 1 ? '' : 'n'} arriba ` +
+      `como bajo mínimo hasta su primer conteo): ${pendientesPrimerConteo.map(p => escapeHtml(p.nombre_estandar)).join(', ')}.`;
+  } else {
+    notaPendientes.style.display = 'none';
+  }
 
   if (!bajos.length) {
     card.style.display = catalogo.some(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined) ? 'none' : 'block';
