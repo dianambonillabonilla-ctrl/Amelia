@@ -11,13 +11,27 @@
  * Producciones o Ventas_FUDO se trata como un solo producto en toda la conciliación.
  */
 
-function calcularConciliacion_(fecha) {
+function calcularConciliacion_(fecha, usuario) {
+  const sedeRestringida = sedeRestringidaConciliacion_(usuario);
   return {
     fecha: fecha,
-    ventas: resumirVentasFudo_(fecha),
-    bebidas: conciliarBebidas_(fecha),
-    comida: conciliarComidaPorSede_(fecha)
+    // El frontend usa esto para saber si debe mostrar los controles/columnas de "toda la
+    // empresa" (Administrador o sede "Ambas") o solo lo de su propia sede.
+    sede_restringida: sedeRestringida,
+    ventas: resumirVentasFudo_(fecha).filter(function (v) { return !sedeRestringida || v.sede === sedeRestringida; }),
+    bebidas: conciliarBebidas_(fecha, sedeRestringida),
+    comida: conciliarComidaPorSede_(fecha, sedeRestringida)
   };
+}
+
+/**
+ * Un usuario de una sola sede (no Administrador, no sede "Ambas") solo debe ver que cuadre SU
+ * parte de la conciliación — nunca la de otra sede. Administrador y "Ambas" siguen viendo todo,
+ * igual que antes (null = sin restricción).
+ */
+function sedeRestringidaConciliacion_(usuario) {
+  if (!usuario || usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return null;
+  return usuario.sede;
 }
 
 /**
@@ -45,7 +59,7 @@ function resumirVentasFudo_(fecha) {
 }
 
 // --- BEBIDAS: contra FUDO ----------------------------------------------------
-function conciliarBebidas_(fecha) {
+function conciliarBebidas_(fecha, sedeRestringida) {
   const indice = indiceCatalogo_();
   const movimientos = leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO)
     .filter(function (m) { return formatearFecha_(m.fecha) === fecha; });
@@ -80,7 +94,7 @@ function conciliarBebidas_(fecha) {
     const capri = conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'Capri'; });
     const suma = (sa ? Number(sa.cantidad) : 0) + (capri ? Number(capri.cantidad) : 0);
 
-    return {
+    const fila = {
       producto: item.nombre_estandar,
       sa: sa ? Number(sa.cantidad) : null,
       capri: capri ? Number(capri.cantidad) : null,
@@ -92,16 +106,36 @@ function conciliarBebidas_(fecha) {
       consumo_fudo_capri: consumoSede_('Capri'),
       n_movimientos_fudo: movsItem.length
     };
+    return sedeRestringida ? filaBebidaRestringida_(fila, sedeRestringida) : fila;
   });
 }
 
+/**
+ * FUDO guarda un solo stock de bebidas compartido entre San Antonio y Capri (fudo_cierre no viene
+ * separado por sede) — así que un usuario de una sola sede no puede quedarse ni con eso ni con el
+ * conteo/consumo de la otra sede: mostrarle su propio conteo junto al cierre combinado dejaría
+ * deducir el número de la otra sede por resta. Se conserva solo lo que es enteramente de su sede.
+ */
+function filaBebidaRestringida_(fila, sede) {
+  const propio = sede === 'San Antonio' ? { sa: fila.sa, consumo_fudo_sa: fila.consumo_fudo_sa }
+    : sede === 'Capri' ? { capri: fila.capri, consumo_fudo_capri: fila.consumo_fudo_capri }
+    : {};
+  return Object.assign({
+    producto: fila.producto, sa: null, capri: null, suma_manual: null, fudo_cierre: null,
+    diferencia_vs_suma: null, consumo_fudo_total: null, consumo_fudo_sa: null, consumo_fudo_capri: null,
+    n_movimientos_fudo: null
+  }, propio);
+}
+
 // --- COMIDA: por sede, ventas x receta vs. cambio físico --------------------
-function conciliarComidaPorSede_(fecha) {
+function conciliarComidaPorSede_(fecha, sedeRestringida) {
   const indice = indiceCatalogo_();
   const ventas = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
     .filter(function (v) { return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v); });
 
-  const sedes = ['Centro de Producción', 'San Antonio', 'Capri'];
+  // Con sede restringida, solo se calcula (y se devuelve) el bloque de esa sede — las otras dos
+  // ni siquiera se procesan, así nunca hay nada de otra sede en la respuesta.
+  const sedes = sedeRestringida ? [sedeRestringida] : ['Centro de Producción', 'San Antonio', 'Capri'];
   const resultado = {};
 
   sedes.forEach(function (sede) {

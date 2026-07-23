@@ -32,10 +32,15 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div id="aviso-sede-restringida" class="card" style="display:none; border-color:var(--amber); background:#FFFBF0">
+      <strong style="color:var(--amber)">⚠ Vista limitada a tu sede</strong>
+      <p style="margin:8px 0 0; font-size:.88rem">Tu usuario solo ve la conciliación de <strong id="aviso-sede-restringida-nombre"></strong> — no se muestran datos de las otras sedes.</p>
+    </div>
+
     <div class="card">
       <h2>Ventas reportadas por FUDO</h2>
-      <p style="color:var(--grey);font-size:.85rem">Incluye comida, bebidas y adiciones. “Ambas” o “Sin identificar” significa que el archivo resumido no permitió separar las sedes.</p>
-      <table><thead><tr><th>Sede</th><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr></thead>
+      <p id="ventas-dia-nota" style="color:var(--grey);font-size:.85rem">Incluye comida, bebidas y adiciones. “Ambas” o “Sin identificar” significa que el archivo resumido no permitió separar las sedes.</p>
+      <table><thead id="tabla-ventas-dia-head"><tr><th>Sede</th><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr></thead>
         <tbody id="tabla-ventas-dia"><tr><td colspan="4" class="vacio">Elige una fecha.</td></tr></tbody></table>
     </div>
 
@@ -49,9 +54,9 @@
 
     <div class="card">
       <h2>Bebidas y unidades — conteo manual vs. FUDO</h2>
-      <p style="color:var(--grey); font-size:.85rem">FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.</p>
+      <p id="bebidas-nota" style="color:var(--grey); font-size:.85rem">FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.</p>
       <table>
-        <thead><tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO SA / Capri</th><th>Diferencia</th></tr></thead>
+        <thead id="tabla-bebidas-head"><tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO SA / Capri</th><th>Diferencia</th></tr></thead>
         <tbody id="tabla-bebidas"><tr><td colspan="7" class="vacio">Elige una fecha y presiona "Ver conciliación".</td></tr></tbody>
       </table>
     </div>
@@ -78,20 +83,61 @@ async function cargar() {
   const data = await llamar('conciliacion', { fecha });
   if (!data.ok) { alert(data.error); return; }
 
-  pintarVentasDia(data.data.ventas);
-  pintarBebidas(data.data.bebidas);
+  const sedeRestringida = data.data.sede_restringida;
+  const aviso = document.getElementById('aviso-sede-restringida');
+  if (sedeRestringida) {
+    document.getElementById('aviso-sede-restringida-nombre').textContent = sedeRestringida;
+    aviso.style.display = 'block';
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  pintarVentasDia(data.data.ventas, sedeRestringida);
+  pintarBebidas(data.data.bebidas, sedeRestringida);
   pintarComida(data.data.comida);
 }
 
-function pintarVentasDia(filas) {
+function pintarVentasDia(filas, sedeRestringida) {
   const body = document.getElementById('tabla-ventas-dia');
-  body.innerHTML = filas.length ? filas.map(f => `<tr><td>${escapeHtml(f.sede)}</td><td>${escapeHtml(f.categoria)}</td><td>${escapeHtml(f.producto)}</td><td>${escapeHtml(f.cantidad)}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="vacio">No hay ventas importadas para esta fecha.</td></tr>';
+  document.getElementById('ventas-dia-nota').textContent = sedeRestringida
+    ? `Solo ventas de ${sedeRestringida}. Incluye comida, bebidas y adiciones.`
+    : 'Incluye comida, bebidas y adiciones. "Ambas" o "Sin identificar" significa que el archivo resumido no permitió separar las sedes.';
+  // Con sede restringida, la columna Sede siempre repetiría el mismo valor — se quita para no
+  // sobrecargar la tabla con algo que ya sabemos.
+  document.getElementById('tabla-ventas-dia-head').innerHTML = sedeRestringida
+    ? '<tr><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr>'
+    : '<tr><th>Sede</th><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr>';
+  const colspan = sedeRestringida ? 3 : 4;
+  if (!filas.length) { body.innerHTML = `<tr><td colspan="${colspan}" class="vacio">No hay ventas importadas para esta fecha.</td></tr>`; return; }
+  body.innerHTML = filas.map(f => sedeRestringida
+    ? `<tr><td>${escapeHtml(f.categoria)}</td><td>${escapeHtml(f.producto)}</td><td>${escapeHtml(f.cantidad)}</td></tr>`
+    : `<tr><td>${escapeHtml(f.sede)}</td><td>${escapeHtml(f.categoria)}</td><td>${escapeHtml(f.producto)}</td><td>${escapeHtml(f.cantidad)}</td></tr>`
+  ).join('');
 }
 
-function pintarBebidas(filas) {
+function pintarBebidas(filas, sedeRestringida) {
   const body = document.getElementById('tabla-bebidas');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">No hay datos de catálogo de bebidas o de FUDO para esta fecha.</td></tr>'; return; }
+  // FUDO guarda un solo stock de bebidas compartido entre San Antonio y Capri: con sede
+  // restringida el backend ya no manda el cierre combinado ni el conteo/consumo de la otra sede
+  // (ver filaBebidaRestringida_ en Conciliacion.gs), así que esta tabla se reduce a lo propio.
+  document.getElementById('tabla-bebidas-head').innerHTML = sedeRestringida
+    ? '<tr><th>Bebida</th><th>Tu conteo</th><th>Tu consumo FUDO</th></tr>'
+    : '<tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO SA / Capri</th><th>Diferencia</th></tr>';
+  document.getElementById('bebidas-nota').textContent = sedeRestringida
+    ? `Solo tu propio conteo y consumo de ${sedeRestringida} — FUDO guarda el stock de bebidas combinado entre sedes, así que ese cierre y la diferencia no se muestran aquí.`
+    : 'FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.';
+  const colspan = sedeRestringida ? 3 : 7;
+  if (!filas.length) { body.innerHTML = `<tr><td colspan="${colspan}" class="vacio">No hay datos de catálogo de bebidas o de FUDO para esta fecha.</td></tr>`; return; }
+
+  if (sedeRestringida) {
+    const propio = sedeRestringida === 'San Antonio' ? 'sa' : (sedeRestringida === 'Capri' ? 'capri' : null);
+    const consumoPropio = sedeRestringida === 'San Antonio' ? 'consumo_fudo_sa' : (sedeRestringida === 'Capri' ? 'consumo_fudo_capri' : null);
+    body.innerHTML = filas.map(f => `<tr>
+      <td>${escapeHtml(f.producto)}</td><td>${propio ? (f[propio] ?? '—') : '—'}</td><td>${consumoPropio ? escapeHtml(f[consumoPropio]) : '—'}</td>
+    </tr>`).join('');
+    return;
+  }
+
   body.innerHTML = filas.map(f => {
     let badge = '';
     if (f.diferencia_vs_suma === null) badge = '<span class="badge aviso">Sin datos FUDO</span>';

@@ -167,3 +167,26 @@ function requerirRol_(rolesPermitidos) {
     window.location.href = 'dashboard.html';
   }
 }
+
+// Bloquea un <select> de sede a la sede propia del usuario (Administrador y sede "Ambas" ven todas
+// las opciones, sin cambios). El backend ya rechaza consultar/registrar en otra sede
+// (sedeConsultaPermitida_ en Code.gs, y las validaciones de cada _registrar_), pero sin esto la
+// interfaz seguía OFRECIENDO elegir "Capri" o "Centro de Producción" a alguien de San Antonio,
+// dejándolo intentar algo que de todas formas iba a fallar (o, en pantallas de solo lectura, sin
+// nada que se lo impidiera desde el navegador). Quita las demás opciones del <select> (para que no
+// aparezcan ni como lectura) y lo deja fijo en la sede del usuario.
+function restringirSelectorSede_(select) {
+  if (!select) return;
+  const u = Sesion.usuario();
+  if (!u || u.rol === 'Administrador' || u.sede === 'Ambas') return;
+  Array.from(select.options).forEach(opt => {
+    if (opt.value !== u.sede) opt.remove();
+  });
+  if (!select.options.length) {
+    const opt = document.createElement('option');
+    opt.value = u.sede; opt.textContent = u.sede;
+    select.appendChild(opt);
+  }
+  select.value = u.sede;
+  select.disabled = true;
+}

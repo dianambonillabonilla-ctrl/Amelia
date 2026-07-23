@@ -200,41 +200,41 @@ function handleRequest_(e, method) {
         return jsonOut_(conteoRegistrar_(params.items, sesion.usuario));
       case 'conteo_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'conteos_historial':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_({ ok: true, data: conteosHistorial_(params.filtros) });
+        return jsonOut_({ ok: true, data: conteosHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
       case 'ajustes_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'compra_registrar_factura':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario));
       case 'compras_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, params.sede) });
+        return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'compras_resumen_gasto':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
-        return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, params.sede) });
+        return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
       case 'disponible_hoy':
-        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha) });
+        return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha, sesion.usuario) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario));
       case 'produccion_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, params.sede) });
+        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'usuarios_listar':
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
@@ -246,7 +246,11 @@ function handleRequest_(e, method) {
         return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
       case 'traslados_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro) });
+        // BUG DE SEGURIDAD REAL: faltaba pasar sesion.usuario aquí. trasladosListar_ necesita ese
+        // segundo argumento para filtrar por sede — sin él, `usuario` quedaba undefined dentro de
+        // la función y esto explotaba con un error de servidor en TODAS las llamadas (nunca
+        // devolvía traslados, sin importar el rol), en vez de limitar correctamente por sede.
+        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro, sesion.usuario) });
       case 'traslado_confirmar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(trasladoConfirmar_(params.id, params.cantidad_recibida, sesion.usuario));

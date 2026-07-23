@@ -474,4 +474,95 @@ assert.equal(
   'un rol inválido debe seguir rechazándose incluso al actualizar'
 );
 
+// --- Auditoría de sedes: sedeConsultaPermitida_ (Code.gs) no debe dejar consultar otra sede -----
+// (encontrado en esta auditoría: la función existía en Code.gs pero NUNCA se llamaba desde
+// ninguna acción del router — conteo_listar, ajustes_inventario_listar, compras_listar,
+// compras_resumen_gasto, disponible_hoy, produccion_listar y conteos_historial dejaban pasar
+// cualquier `sede` que mandara el cliente, sin comparar contra la sede real del usuario).
+const codeMod = cargar('apps-script/Code.gs', {});
+const adminAmbas = { rol: 'Administrador', sede: 'Ambas' };
+const encargadaSA = { rol: 'Encargado', sede: 'San Antonio' };
+assert.equal(codeMod.sedeConsultaPermitida_(adminAmbas, 'Capri'), 'Capri', 'Administrador puede pedir cualquier sede');
+assert.equal(codeMod.sedeConsultaPermitida_(adminAmbas, null), null, 'Administrador sin sede pedida no queda limitado');
+assert.equal(codeMod.sedeConsultaPermitida_(encargadaSA, 'San Antonio'), 'San Antonio', 'puede pedir su propia sede');
+assert.equal(codeMod.sedeConsultaPermitida_(encargadaSA, null), 'San Antonio', 'sin pedir sede, se limita a la suya automáticamente (no "todas")');
+assert.throws(() => codeMod.sedeConsultaPermitida_(encargadaSA, 'Capri'), /distinta a la tuya/, 'no puede consultar la sede de otro');
+
+// --- Auditoría de sedes: traslados_listar solo debe mostrar traslados relacionados con tu sede --
+// (bug de seguridad real encontrado en esta auditoría: Code.gs nunca pasaba `sesion.usuario` como
+// segundo argumento a trasladosListar_, así que el filtro por sede que ya existía en Traslados.gs
+// jamás se ejecutaba — de hecho `usuario` quedaba undefined y la función explotaba con un error de
+// servidor en TODAS las llamadas, para cualquier rol, en vez de solo limitar por sede).
+const trasladosFilas = [
+  { id: 't1', sede_origen: 'Centro de Producción', sede_destino: 'San Antonio', producto: 'Costilla', estado: 'Enviado', timestamp_envio: '2026-07-20' },
+  { id: 't2', sede_origen: 'Centro de Producción', sede_destino: 'Capri', producto: 'Costilla', estado: 'Enviado', timestamp_envio: '2026-07-20' },
+  { id: 't3', sede_origen: 'San Antonio', sede_destino: 'Capri', producto: 'Aceite', estado: 'Confirmado', timestamp_envio: '2026-07-19' }
+];
+const trasladosMod = cargar('apps-script/Traslados.gs', {
+  SHEET_NAMES: { TRASLADOS: 'traslados' },
+  leerTabla_: () => trasladosFilas
+});
+const listaSA = trasladosMod.trasladosListar_({}, encargadaSA);
+assert.deepEqual(listaSA.map(t => t.id).sort(), ['t1', 't3'],
+  'San Antonio solo debe ver traslados donde participa (t1: lo recibe, t3: lo envía) — no t2 (Centro de Producción -> Capri)');
+const listaAdminTraslados = trasladosMod.trasladosListar_({}, adminAmbas);
+assert.equal(listaAdminTraslados.length, 3, 'Administrador/Ambas sigue viendo todos los traslados');
+
+// --- Auditoría de sedes: Conciliación solo debe mostrar la parte de la sede del usuario ---------
+// (pedido explícito: "si es conciliacion solo sepa que cuadra su parte" — antes calcularConciliacion_
+// devolvía ventas/bebidas/comida de TODAS las sedes a cualquiera con acceso a Conciliación, sin
+// importar la sede asignada al usuario que preguntara).
+const ventasMultiSede = [
+  { creacion: '2026-07-21', sede: 'San Antonio', categoria: 'Comida', producto: 'Supremo', cantidad: 1, cancelada: false },
+  { creacion: '2026-07-21', sede: 'Capri', categoria: 'Comida', producto: 'Supremo', cantidad: 5, cancelada: false }
+];
+const movimientosMultiSede = [
+  { fecha: '2026-07-21', nombre: 'Poker', evento: 'Adición Creada', sede: 'San Antonio', diferencia: -3, stock_actual: 20 },
+  { fecha: '2026-07-21', nombre: 'Poker', evento: 'Adición Creada', sede: 'Capri', diferencia: -7, stock_actual: 20 }
+];
+const catalogoBebidasMultiSede = [{ nombre_estandar: 'Poker', nombre_fudo: 'Poker', categoria: 'Bebidas/Cerveza' }];
+const conteosBebidasMultiSede = [
+  { fecha: '2026-07-21', sede: 'San Antonio', producto: 'Poker', unidad: 'u', cantidad: 15 },
+  { fecha: '2026-07-21', sede: 'Capri', producto: 'Poker', unidad: 'u', cantidad: 40 }
+];
+const conciliacionSedes = cargar('apps-script/Conciliacion.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo', CONTEOS: 'conteos', TRASLADOS: 'traslados' },
+  leerTabla_: (hoja) => {
+    if (hoja === 'ventas') return ventasMultiSede;
+    if (hoja === 'movimientos') return movimientosMultiSede;
+    if (hoja === 'catalogo') return catalogoBebidasMultiSede;
+    return [];
+  },
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  nombreCanonico_: (texto) => texto,
+  claveProducto_: (texto) => normalizarSimple_(texto),
+  claveRecetaVenta_: (producto, recetaMap) => { const d = normalizarSimple_(producto); return recetaMap[d] ? d : d; },
+  construirRecetaMap_: () => ({ supremo: { nombre: 'Supremo', tipo: 'plato', lineas: [] } }),
+  recetasVigentes_: () => [],
+  explotarReceta_: (claveProducto, cantidadBase, recetaMap, acumulado) => acumulado,
+  conteoListar_: (fecha) => conteosBebidasMultiSede.filter(function (c) { return c.fecha === fecha; }),
+  indiceCatalogo_: () => ({}),
+  produccionListar_: () => [],
+  produccionTotalPorItem_: () => ({}),
+  ajustesNetosPorItem_: () => ({}),
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+
+const resultadoSA = conciliacionSedes.calcularConciliacion_('2026-07-21', encargadaSA);
+assert.equal(resultadoSA.sede_restringida, 'San Antonio');
+assert.ok(resultadoSA.ventas.length > 0 && resultadoSA.ventas.every(function (v) { return v.sede === 'San Antonio'; }), 'ventas de otra sede no deben aparecer');
+assert.deepEqual(Object.keys(resultadoSA.comida), ['San Antonio'], 'comida solo debe traer el bloque de San Antonio, ni siquiera calculado para las otras');
+const filaPokerSA = resultadoSA.bebidas.find(function (b) { return b.producto === 'Poker'; });
+assert.equal(filaPokerSA.sa, 15, 'debe ver su propio conteo');
+assert.equal(filaPokerSA.capri, null, 'no debe ver el conteo de Capri');
+assert.equal(filaPokerSA.fudo_cierre, null, 'no debe ver el cierre combinado de FUDO (revelaría info de Capri por resta)');
+assert.equal(filaPokerSA.consumo_fudo_capri, null, 'no debe ver el consumo de FUDO de Capri');
+
+const resultadoAdminConciliacion = conciliacionSedes.calcularConciliacion_('2026-07-21', adminAmbas);
+assert.equal(resultadoAdminConciliacion.sede_restringida, null);
+assert.deepEqual(Object.keys(resultadoAdminConciliacion.comida).sort(), ['Capri', 'Centro de Producción', 'San Antonio'].sort());
+const filaPokerAdminConciliacion = resultadoAdminConciliacion.bebidas.find(function (b) { return b.producto === 'Poker'; });
+assert.equal(filaPokerAdminConciliacion.capri, 40, 'Administrador/Ambas sigue viendo todo, sin cambios');
+
 console.log('inventory-controls: OK');
