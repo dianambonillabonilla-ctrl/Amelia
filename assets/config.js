@@ -138,12 +138,21 @@ function avisarGuardado(texto) {
 
 // Evita registros duplicados por doble clic: desactiva el botón mientras la operación está en
 // curso y lo reactiva al terminar (con éxito o con error).
+//
+// El catch es lo que de verdad resuelve "a veces guarda, a veces no guarda, no se sabe": llamar()
+// ya atrapa los errores de red/JSON, pero si el código del propio botón lanzaba un error
+// inesperado (ej. un elemento que no existía en esa pantalla, algo null donde no debía) esa
+// excepción se perdía como un "unhandled promise rejection" — no salía ni el aviso verde ni una
+// alerta de error, la pantalla se quedaba muda y quien hizo clic no tenía forma de saber si guardó
+// o no. Ahora cualquier error inesperado, sea cual sea, siempre termina en una alerta visible.
 function conBotonProtegido(boton, fn) {
   return async (...args) => {
     if (boton.disabled) return;
     boton.disabled = true;
     try {
       await fn(...args);
+    } catch (err) {
+      alert('Algo salió mal y no se pudo completar la acción. Vuelve a intentarlo — si sigue pasando, avisa con este detalle: ' + (err && err.message ? err.message : err));
     } finally {
       boton.disabled = false;
     }

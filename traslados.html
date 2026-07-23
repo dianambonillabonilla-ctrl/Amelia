@@ -157,7 +157,7 @@ async function cargarSugerenciasProductos_() {
 }
 cargarSugerenciasProductos_();
 
-document.getElementById('btn-enviar').addEventListener('click', async () => {
+document.getElementById('btn-enviar').addEventListener('click', conBotonProtegido(document.getElementById('btn-enviar'), async () => {
   const item = {
     fecha: document.getElementById('env-fecha').value,
     producto: document.getElementById('env-producto').value.trim(),
@@ -181,7 +181,7 @@ document.getElementById('btn-enviar').addEventListener('click', async () => {
   } else {
     alert(data.error);
   }
-});
+}));
 
 function lugar_(sede, punto) {
   return sede + (punto ? ' / ' + punto : '');
@@ -213,13 +213,13 @@ function pintarPendientes_(filas) {
     </tr>`).join('');
 
   body.querySelectorAll('.btn-confirmar').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
       const data = await llamar('traslado_confirmar', { id: btn.dataset.id, cantidad_recibida: btn.dataset.cantidad });
       if (data.ok) { avisarGuardado('Traslado confirmado.'); cargarTodo(); } else { alert(data.error); }
-    });
+    }));
   });
   body.querySelectorAll('.btn-observar').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
       const cantidad = prompt(`¿Cuánto se recibió realmente? (en ${btn.dataset.unidad})`);
       if (cantidad === null) return;
       const observacion = prompt('¿Qué pasó con este traslado? (ej. "Solo llegaron 3kg de 5kg", "llegó dañado")');
@@ -231,7 +231,7 @@ function pintarPendientes_(filas) {
       } else {
         alert(data.error);
       }
-    });
+    }));
   });
 }
 
@@ -249,11 +249,11 @@ function pintarObservados_(filas) {
     </tr>`).join('');
 
   body.querySelectorAll('.btn-resolver').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
       const nota = prompt('¿Cómo se resolvió? (opcional)') || '';
       const data = await llamar('traslado_resolver', { id: btn.dataset.id, nota_resolucion: nota });
       if (data.ok) { avisarGuardado('Traslado marcado como resuelto.'); cargarTodo(); } else { alert(data.error); }
-    });
+    }));
   });
 }
 
