@@ -87,16 +87,22 @@ async function cargar() {
       <td>${escapeHtml(u.email || '—')}</td>
       <td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge alerta">Inactivo</span>'}</td>
       <td>
-        <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>
+        <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}" data-nombre="${escapeHtml(u.nombre)}">${u.activo ? 'Desactivar' : 'Activar'}</button>
         <button class="btn fantasma btn-resetear" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}">Restablecer contraseña</button>
       </td>
     </tr>`).join('');
 
   document.querySelectorAll('.btn-toggle').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await llamar('usuarios_guardar', { item: { id: btn.dataset.id, activo: btn.dataset.activo !== 'true' } });
-      cargar();
-    });
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const activar = btn.dataset.activo !== 'true';
+      const data = await llamar('usuarios_guardar', { item: { id: btn.dataset.id, activo: activar } });
+      if (data.ok) {
+        avisarGuardado(activar ? `${btn.dataset.nombre || 'Usuario'} activado.` : `${btn.dataset.nombre || 'Usuario'} desactivado.`);
+        cargar();
+      } else {
+        alert(data.error);
+      }
+    }));
   });
 
   document.querySelectorAll('.btn-resetear').forEach(btn => {

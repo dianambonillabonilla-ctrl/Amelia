@@ -394,4 +394,55 @@ assert.ok(filaCostilla, 'debe aparecer el ingrediente explotado desde la receta 
 assert.equal(filaCostilla.sin_receta, false, 'un ingrediente que sí vino de una receta encontrada no debe marcarse sin_receta');
 assert.equal(filaCostilla.consumo_esperado, 100);
 
+// --- Usuarios: activar/desactivar un usuario existente NO debe exigir nombre/usuario/rol --------
+// (bug real: usuarios.html manda solo { id, activo } al togglear Activar/Desactivar. La validación
+// exigía nombre/usuario/rol SIEMPRE, así que esa actualización fallaba en el 100% de los casos —
+// pero el botón no revisaba el resultado, así que fallaba en total silencio: ni el letrero verde
+// ni una alerta de error, como si el clic no hiciera nada).
+function mockHojaUsuarios_(headers, filas) {
+  const data = [headers].concat(filas.map(f => headers.map(h => (f[h] !== undefined ? f[h] : ''))));
+  return {
+    getDataRange: () => ({ getValues: () => data }),
+    getRange: (r, c) => ({ setValue: (v) => { data[r - 1][c - 1] = v; } }),
+    _data: data
+  };
+}
+const headersUsuarios = ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'];
+let hojaUsuarios;
+const usuariosMod = cargar('apps-script/Usuarios.gs', {
+  SHEET_NAMES: { USUARIOS: 'usuarios' },
+  requiereAdmin_: () => {},
+  sheet_: () => hojaUsuarios,
+  leerTabla_: () => [],
+  appendRowFromObj_: () => {},
+  generarSalt_: () => 'salt',
+  hashPasswordSalted_: () => 'hash',
+  Utilities: { getUuid: () => 'nuevo-id' },
+  PASSWORD_LARGO_MINIMO: 8
+});
+const admin = { rol: 'Administrador' };
+
+hojaUsuarios = mockHojaUsuarios_(headersUsuarios, [
+  { id: 'u1', nombre: 'Ana', usuario: 'ana', rol: 'Encargado', sede: 'San Antonio', activo: true, email: '' }
+]);
+const resultadoToggle = usuariosMod.usuarioGuardar_({ id: 'u1', activo: false }, admin);
+assert.equal(resultadoToggle.ok, true, 'togglear activo de un usuario existente debe funcionar sin mandar nombre/usuario/rol');
+const activoCol = headersUsuarios.indexOf('activo');
+assert.equal(hojaUsuarios._data[1][activoCol], false, 'la hoja debe quedar con activo en false tras el toggle');
+
+assert.equal(
+  usuariosMod.usuarioGuardar_({ nombre: '', usuario: '', rol: '' }, admin).ok,
+  false,
+  'crear un usuario nuevo SÍ debe seguir exigiendo nombre/usuario/rol'
+);
+
+hojaUsuarios = mockHojaUsuarios_(headersUsuarios, [
+  { id: 'u1', nombre: 'Ana', usuario: 'ana', rol: 'Encargado', sede: 'San Antonio', activo: true, email: '' }
+]);
+assert.equal(
+  usuariosMod.usuarioGuardar_({ id: 'u1', rol: 'RolQueNoExiste' }, admin).ok,
+  false,
+  'un rol inválido debe seguir rechazándose incluso al actualizar'
+);
+
 console.log('inventory-controls: OK');

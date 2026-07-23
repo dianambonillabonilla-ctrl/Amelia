@@ -23,10 +23,15 @@ function usuariosListar_(usuario) {
 
 function usuarioGuardar_(item, usuarioSesion) {
   requiereAdmin_(usuarioSesion);
-  if (!item || !item.nombre || !item.usuario || !item.rol) {
+  if (!item) return { ok: false, error: 'Faltan datos del usuario' };
+  // Crear un usuario nuevo sí exige nombre/usuario/rol. Actualizar uno existente (ej. el botón
+  // Activar/Desactivar de usuarios.html, que solo manda { id, activo }) NO debe exigir estos tres
+  // campos de nuevo — antes esta validación corría siempre, así que ese botón fallaba en silencio
+  // cada vez con "Faltan campos obligatorios (nombre, usuario, rol)" sin que nadie lo notara.
+  if (!item.id && (!item.nombre || !item.usuario || !item.rol)) {
     return { ok: false, error: 'Faltan campos obligatorios (nombre, usuario, rol)' };
   }
-  if (ROLES_DISPONIBLES.indexOf(item.rol) === -1) {
+  if (item.rol !== undefined && ROLES_DISPONIBLES.indexOf(item.rol) === -1) {
     return { ok: false, error: 'Rol no válido: ' + item.rol };
   }
   const sh = sheet_(SHEET_NAMES.USUARIOS);
