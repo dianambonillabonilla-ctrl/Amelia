@@ -86,7 +86,7 @@ function productosObligatoriosFaltantes_(items) {
   const sesiones = {};
   items.forEach(function (it) {
     const clave = [it.fecha, it.sede, it.punto_conteo || ''].join('|');
-    if (!sesiones[clave]) sesiones[clave] = { fecha: it.fecha, productos: {} };
+    if (!sesiones[clave]) sesiones[clave] = { fecha: it.fecha, sede: it.sede, productos: {} };
     sesiones[clave].productos[normalizar_(it.producto)] = true;
   });
 
@@ -97,6 +97,10 @@ function productosObligatoriosFaltantes_(items) {
     const frecuencias = frecuenciasObligatoriasDelDia_(sesion.fecha);
     catalogo
       .filter(function (p) { return p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1; })
+      // Un producto solo de una sede (ej. "Salsa de mora" que solo se vende en Capri) no debe
+      // exigirse en la otra — pedido real: "que no me aparezca en San Antonio que me falta salsa
+      // de mora cuando allá no se usa". Vacío o 'Ambas' = aplica a cualquier sede, como antes.
+      .filter(function (p) { return !p.sede || p.sede === 'Ambas' || p.sede === sesion.sede; })
       .filter(function (p) { return !sesion.productos[normalizar_(p.nombre_estandar)]; })
       .forEach(function (p) { faltantes[p.nombre_estandar] = true; });
   });

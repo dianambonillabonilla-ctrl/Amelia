@@ -197,6 +197,9 @@ async function cargarConteoAnterior_() {
   const filas = {};
   catalogo
     .filter(p => p.frecuencia_conteo && frecuencias.includes(p.frecuencia_conteo))
+    // Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) no debe exigirse como
+    // obligatorio en la otra — vacío o 'Ambas' = aplica a cualquier sede.
+    .filter(p => !p.sede || p.sede === 'Ambas' || p.sede === sede)
     .forEach(p => {
       filas[normalizarTexto(p.nombre_estandar)] = { producto: p.nombre_estandar, unidad: p.unidad_base || 'g', anterior: null, obligatorio: true };
     });

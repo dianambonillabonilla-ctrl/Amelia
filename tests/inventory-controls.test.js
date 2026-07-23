@@ -335,6 +335,35 @@ assert.deepEqual(
   'sin faltantes cuando ya están los tres obligatorios de ese día'
 );
 
+// Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) no debe exigirse en la otra —
+// pedido real: "que no me aparezca en San Antonio que me falta salsa de mora cuando allá no se usa".
+const catalogoConSedeUnica = catalogoObligatorios.concat([
+  { nombre_estandar: 'Salsa de mora', frecuencia_conteo: 'Diario', sede: 'Capri' }
+]);
+const conteosModSedeUnica = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo' },
+  leerTabla_: () => catalogoConSedeUnica,
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  frecuenciasObligatoriasDelDia_: catalogoMod2.frecuenciasObligatoriasDelDia_
+});
+assert.deepEqual(
+  conteosModSedeUnica.productosObligatoriosFaltantes_([
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Lavaloza', unidad: 'g', cantidad: 100 },
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Detergente', unidad: 'g', cantidad: 50 },
+    { fecha: '2026-07-01', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Tenedores', unidad: 'u', cantidad: 20 }
+  ]), [],
+  'Salsa de mora (solo Capri) no debe exigirse al cerrar San Antonio'
+);
+assert.deepEqual(
+  conteosModSedeUnica.productosObligatoriosFaltantes_([
+    { fecha: '2026-07-01', sede: 'Capri', punto_conteo: 'Bodega', producto: 'Lavaloza', unidad: 'g', cantidad: 100 },
+    { fecha: '2026-07-01', sede: 'Capri', punto_conteo: 'Bodega', producto: 'Detergente', unidad: 'g', cantidad: 50 },
+    { fecha: '2026-07-01', sede: 'Capri', punto_conteo: 'Bodega', producto: 'Tenedores', unidad: 'u', cantidad: 20 }
+  ]),
+  ['Salsa de mora'],
+  'Salsa de mora sí debe exigirse al cerrar Capri'
+);
+
 // --- Disponible Hoy: traslado recibido y confirmado suma al stock de la sede que lo recibe -----
 const conteosTraslado = [
   { fecha: '2026-07-01', sede: 'Capri', producto: 'Costilla', unidad: 'g', cantidad: 100 }
@@ -890,7 +919,9 @@ const turnosHoy = [{ fecha: '2026-07-21', usuario_id: 'u1', sector: 'Cocina' }];
 const catalogoTurno = [
   { nombre_estandar: 'Sal Marina', sector: 'Cocina', frecuencia_conteo: 'Diario' },
   { nombre_estandar: 'Leche', sector: 'Café', frecuencia_conteo: 'Diario' },
-  { nombre_estandar: 'Servilletas', sector: '', frecuencia_conteo: 'Diario' }
+  { nombre_estandar: 'Servilletas', sector: '', frecuencia_conteo: 'Diario' },
+  // Solo se vende/usa en Capri — no debe exigirse al cerrar el turno de Cocina en San Antonio.
+  { nombre_estandar: 'Salsa de mora', sector: 'Cocina', frecuencia_conteo: 'Diario', sede: 'Capri' }
 ];
 const conteosHoyHechos = [];
 const turnosModFaltantes = cargar('apps-script/Turnos.gs', {
@@ -904,7 +935,7 @@ const turnosModFaltantes = cargar('apps-script/Turnos.gs', {
 const faltantesInicial = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
 assert.equal(faltantesInicial.length, 1, 'solo debe aparecer el sector que alguien eligió hoy en esa sede (Cocina)');
 assert.equal(faltantesInicial[0].sector, 'Cocina');
-assert.deepEqual(faltantesInicial[0].faltantes, ['Sal Marina']);
+assert.deepEqual(faltantesInicial[0].faltantes, ['Sal Marina'], 'Salsa de mora es solo de Capri, no debe bloquear el cierre de San Antonio');
 
 // Con Sal Marina ya contada hoy, Cocina queda completo.
 conteosHoyHechos.push({ producto: 'Sal Marina' });
