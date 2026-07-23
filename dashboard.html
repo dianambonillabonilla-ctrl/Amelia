@@ -60,45 +60,58 @@
       <div id="alerta-frecuencia"></div>
     </div>
 
-    <div class="card card-alerta critico" id="card-alerta-insumos" style="display:none">
-      <h2>🛒 Qué debo comprar</h2>
-      <p class="explicacion">Por debajo del mínimo que configuraste, o agotado sin mínimo configurado.</p>
-      <div id="alerta-insumos"></div>
-    </div>
-    <!-- Un producto con "stock mínimo" configurado pero que TODAVÍA no se ha contado nunca (ej. algo
-         de conteo mensual que no le ha tocado su primer conteo) no es lo mismo que "confirmado en
-         cero" — no se muestra arriba en rojo como si ya se supiera que falta, solo se avisa aparte,
-         en gris, cuántos hay pendientes de su primer conteo. -->
-    <p id="nota-pendientes-conteo" style="display:none; color:var(--grey); font-size:.85rem; margin:-10px 0 20px"></p>
-
-    <div class="card" id="card-tiles-platos">
-      <h2 style="margin:0 0 14px">¿Para cuántos platos alcanza lo que tengo?</h2>
-      <div id="tiles-platos" class="tiles"><p class="vacio">Cargando…</p></div>
+    <!-- Pestañas para no tener que desplazarse hacia abajo por las tres secciones — cada una es su
+         propio panel, se navega entre ellas en vez de hacer scroll. -->
+    <div class="tabs" role="tablist">
+      <button class="tab-btn activo" type="button" data-tab="comprar" role="tab">🛒 Qué debo comprar</button>
+      <button class="tab-btn" type="button" data-tab="platos" role="tab">🍽️ ¿Para cuántos platos alcanza?</button>
+      <button class="tab-btn" type="button" data-tab="todo" role="tab">📦 Todo lo que tengo hoy</button>
     </div>
 
-    <div class="card">
-      <h2>Todo lo que tengo hoy</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Último conteo de cada producto, ya con compras, traslados y mermas aplicados desde entonces.
-        En rojo: por debajo del mínimo. Haz clic en un producto preparado (ej. Alioli) para ver si
-        falta materia prima o solo falta prepararlo.
-      </p>
-      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
-        <select id="stock-filtro-categoria" style="width:auto"><option value="">Todas las categorías</option></select>
-        <input type="text" id="stock-filtro-nombre" placeholder="Buscar por nombre" style="width:auto; min-width:220px">
+    <div class="tab-panel" data-panel="comprar">
+      <div class="card card-alerta critico" id="card-alerta-insumos" style="display:none">
+        <h2>🛒 Qué debo comprar</h2>
+        <p class="explicacion">Por debajo del mínimo que configuraste, o agotado sin mínimo configurado.</p>
+        <div id="alerta-insumos"></div>
       </div>
-      <p id="stock-contador" class="vacio" style="display:none"></p>
-      <div style="overflow-x:auto"><table id="tabla-stock"><tbody><tr><td class="vacio">Cargando…</td></tr></tbody></table></div>
-      <button class="btn fantasma" id="btn-ver-todo-stock" style="display:none; margin-top:12px">Ver todo</button>
+      <!-- Un producto con "stock mínimo" configurado pero que TODAVÍA no se ha contado nunca (ej. algo
+           de conteo mensual que no le ha tocado su primer conteo) no es lo mismo que "confirmado en
+           cero" — no se muestra arriba en rojo como si ya se supiera que falta, solo se avisa aparte,
+           en gris, cuántos hay pendientes de su primer conteo. -->
+      <p id="nota-pendientes-conteo" style="display:none; color:var(--grey); font-size:.85rem; margin:-10px 0 20px"></p>
     </div>
 
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <h2 style="margin:0">Tendencia de días restantes</h2>
-        <select id="tendencia-ingrediente" style="width:auto; min-width:220px"></select>
+    <div class="tab-panel" data-panel="platos" hidden>
+      <div class="card" id="card-tiles-platos">
+        <h2 style="margin:0 0 14px">¿Para cuántos platos alcanza lo que tengo?</h2>
+        <div id="tiles-platos" class="tiles"><p class="vacio">Cargando…</p></div>
       </div>
-      <canvas id="grafico-tendencia" height="90"></canvas>
-      <p id="tendencia-vacio" class="vacio" style="display:none">Elige un ingrediente para ver su tendencia.</p>
+    </div>
+
+    <div class="tab-panel" data-panel="todo" hidden>
+      <div class="card">
+        <h2>Todo lo que tengo hoy</h2>
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Último conteo de cada producto, ya con compras, traslados y mermas aplicados desde entonces.
+          En rojo: por debajo del mínimo. Haz clic en un producto preparado (ej. Alioli) para ver si
+          falta materia prima o solo falta prepararlo. Agrupado automáticamente por categoría — haz
+          clic en una para ver solo esa.
+        </p>
+        <div id="stock-chips-categoria" class="chips"></div>
+        <input type="text" id="stock-filtro-nombre" placeholder="Buscar por nombre" style="width:auto; min-width:220px; margin-bottom:12px">
+        <p id="stock-contador" class="vacio" style="display:none"></p>
+        <div style="overflow-x:auto"><table id="tabla-stock"><tbody><tr><td class="vacio">Cargando…</td></tr></tbody></table></div>
+        <button class="btn fantasma" id="btn-ver-todo-stock" style="display:none; margin-top:12px">Ver todo</button>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h2 style="margin:0">Tendencia de días restantes</h2>
+          <select id="tendencia-ingrediente" style="width:auto; min-width:220px"></select>
+        </div>
+        <canvas id="grafico-tendencia" height="90"></canvas>
+        <p id="tendencia-vacio" class="vacio" style="display:none">Elige un ingrediente para ver su tendencia.</p>
+      </div>
     </div>
   </main>
 </div>
@@ -158,15 +171,29 @@ function actualizarResumenDia_(n) {
   const items = [
     { valor: n.pendientes, etiqueta: 'Pendientes de cierre', href: '#card-pendientes', severidad: 'critico' },
     { valor: n.frecuencia, etiqueta: 'Por contar hoy', href: '#card-alerta-frecuencia', severidad: 'aviso' },
-    { valor: n.platosBajos, etiqueta: 'Platos con alcance bajo', href: '#card-tiles-platos', severidad: 'aviso' },
-    { valor: n.insumos, etiqueta: 'Insumos por comprar', href: '#card-alerta-insumos', severidad: 'critico' }
+    { valor: n.platosBajos, etiqueta: 'Platos con alcance bajo', tab: 'platos', severidad: 'aviso' },
+    { valor: n.insumos, etiqueta: 'Insumos por comprar', tab: 'comprar', severidad: 'critico' }
   ];
   document.getElementById('resumen-dia').innerHTML = items.map(i => `
-    <a class="stat ${i.valor > 0 ? i.severidad : 'ok'}" href="${i.href}">
+    <a class="stat ${i.valor > 0 ? i.severidad : 'ok'}" href="${i.href || '#'}" ${i.tab ? `data-tab-ir="${i.tab}"` : ''}>
       <div class="valor">${i.valor}</div>
       <div class="etiqueta">${escapeHtml(i.etiqueta)}</div>
     </a>`).join('');
+  document.querySelectorAll('#resumen-dia a[data-tab-ir]').forEach(a => {
+    a.addEventListener('click', (e) => { e.preventDefault(); activarPestanaDisponible_(a.dataset.tabIr); });
+  });
 }
+
+/** Cambia entre las tres pestañas de Disponible Hoy (Qué debo comprar / Para cuántos platos
+ * alcanza / Todo lo que tengo hoy) — evita tener que desplazarse por las tres secciones apiladas. */
+function activarPestanaDisponible_(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('activo', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== tab; });
+  // Chart.js no se redibuja solo al salir de un contenedor oculto (display:none/[hidden]) — sin
+  // este resize queda con tamaño 0 si el gráfico ya se había dibujado antes de abrir esta pestaña.
+  if (tab === 'todo' && grafico) grafico.resize();
+}
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => activarPestanaDisponible_(b.dataset.tab)));
 
 // Un recuadro grande por plato con el número de preparaciones posibles bien visible — rojo si
 // está bajo, ámbar si toca vigilar, verde si está bien — en vez de una fila de tabla más.
@@ -211,13 +238,25 @@ function infoPorNombreStock_(catalogo) {
   return infoPorNombre;
 }
 
+// Agrupa "Todo lo que tengo hoy" automáticamente por la categoría que ya existe en el Catálogo
+// Maestro (partesCategoria) — pedido real: "todo lo que tengo hoy dividido en bebidas, comidas,
+// insumos... no sé, por grupos". En vez de crear un campo nuevo que haya que asignar producto por
+// producto, se reusa la categoría que ya se registra en Registrar producto: cada categoría
+// distinta se ve como un chip clicable, sin tener que desplazarse por una lista larga sin dividir.
+let categoriaStockFiltro_ = '';
+
 function poblarFiltroCategoriaStock_(catalogo) {
-  const select = document.getElementById('stock-filtro-categoria');
-  const actual = select.value;
+  const cont = document.getElementById('stock-chips-categoria');
   const categorias = [...new Set(catalogo.map(p => partesCategoria(p.categoria).principal).filter(Boolean))].sort();
-  select.innerHTML = '<option value="">Todas las categorías</option>' +
-    categorias.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-  if (categorias.includes(actual)) select.value = actual;
+  if (!categorias.includes(categoriaStockFiltro_)) categoriaStockFiltro_ = '';
+  cont.innerHTML = ['', ...categorias].map(c => `
+    <button type="button" class="chip${c === categoriaStockFiltro_ ? ' activo' : ''}" data-categoria="${escapeHtml(c)}">${c ? escapeHtml(c) : 'Todas'}</button>
+  `).join('');
+  cont.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
+    categoriaStockFiltro_ = b.dataset.categoria;
+    poblarFiltroCategoriaStock_(catalogoActual);
+    pintarListaStock_();
+  }));
 }
 
 // Lista (no casillas) de TODO el stock — con 100+ productos, casillas por categoría quedaba muy
@@ -238,7 +277,7 @@ function pintarListaStock_() {
   }
 
   const infoPorNombre = infoPorNombreStock_(catalogoActual);
-  const categoriaFiltro = document.getElementById('stock-filtro-categoria').value;
+  const categoriaFiltro = categoriaStockFiltro_;
   const nombreFiltro = normalizarTexto(document.getElementById('stock-filtro-nombre').value);
 
   const filas = entradasStockActual
@@ -603,7 +642,6 @@ async function cargarTendencia() {
 document.getElementById('tendencia-ingrediente').addEventListener('change', cargarTendencia);
 document.getElementById('btn-actualizar').addEventListener('click', cargar);
 document.getElementById('sede-corte').addEventListener('change', cargar);
-document.getElementById('stock-filtro-categoria').addEventListener('change', pintarListaStock_);
 document.getElementById('stock-filtro-nombre').addEventListener('input', pintarListaStock_);
 document.getElementById('btn-ver-todo-stock').addEventListener('click', () => { verTodoStock = true; pintarListaStock_(); });
 cargar();

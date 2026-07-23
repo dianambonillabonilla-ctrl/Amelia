@@ -61,7 +61,6 @@
         <thead><tr><th>Producto</th><th>Sede</th><th>Unidad</th><th>Cantidad</th><th>Costo (línea)</th><th></th></tr></thead>
         <tbody id="filas"></tbody>
       </table>
-      <datalist id="lista-productos"></datalist>
       <datalist id="lista-unidades">
         <option value="g"><option value="kg"><option value="u"><option value="ml"><option value="l"><option value="paq">
       </datalist>
@@ -111,13 +110,43 @@ const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000);
 document.getElementById('filtro-desde').valueAsDate = hace30;
 document.getElementById('filtro-hasta').valueAsDate = hoy;
 
+// Pedido real: "la unica forma de que algo ingrese es que se compre, en compras deberia de tener
+// una lista desplegable de los nombres que ya existen para que sea escogido, y de lo que no se
+// tiene si deje agregar el producto" — antes el campo era texto libre con sugerencias (datalist),
+// que no obligaba a elegir un nombre existente. Un typo o una palabra de más al escribirlo creaba
+// en silencio un producto NUEVO en el catálogo (catalogoAsegurar_ en Catalogo.gs) en vez de sumar
+// al que ya existía, y esa compra quedaba invisible en Disponible Hoy para el producto real (ver
+// diagnostico.html → "Compras que no están sumando"). Ahora cada línea es un <select> con lo que
+// ya existe en el catálogo, más una opción explícita "+ Agregar producto nuevo…" que revela un
+// campo de texto aparte — así un producto nuevo siempre es una decisión a propósito, no un accidente.
+let productosCatalogo_ = [];
+
+function opcionesProducto_() {
+  return '<option value="">Elegir producto…</option>' +
+    productosCatalogo_.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('') +
+    '<option value="__nuevo__">+ Agregar producto nuevo…</option>';
+}
+
+function poblarSelectProducto_(select) {
+  const valorActual = select.value;
+  select.innerHTML = opcionesProducto_();
+  if (valorActual && Array.from(select.options).some(o => o.value === valorActual)) select.value = valorActual;
+}
+
 async function cargarSugerenciasProductos_() {
   const data = await llamar('catalogo_listar');
   if (!data.ok) return;
-  document.getElementById('lista-productos').innerHTML = data.data
-    .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
+  productosCatalogo_ = data.data.map(p => p.nombre_estandar).filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
+  document.querySelectorAll('.in-producto-select').forEach(poblarSelectProducto_);
 }
 cargarSugerenciasProductos_();
+
+/** Nombre real del producto de una fila: el elegido en el desplegable, o lo escrito si es "nuevo". */
+function productoDeFila_(tr) {
+  const select = tr.querySelector('.in-producto-select');
+  if (select.value === '__nuevo__') return tr.querySelector('.in-producto-nuevo').value.trim();
+  return select.value;
+}
 
 function recalcularTotal_() {
   const total = Array.from(document.getElementById('filas').children).reduce((acc, tr) => {
@@ -131,7 +160,10 @@ function nuevaFila() {
   const sedeDefecto = document.getElementById('sede').value;
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" class="in-producto" list="lista-productos" placeholder="ej. Costilla cruda"></td>
+    <td>
+      <select class="in-producto-select">${opcionesProducto_()}</select>
+      <input type="text" class="in-producto-nuevo" placeholder="Nombre del producto nuevo" style="display:none; margin-top:4px; width:100%">
+    </td>
     <td><select class="in-sede" style="width:150px">
       <option${sedeDefecto === 'Centro de Producción' ? ' selected' : ''}>Centro de Producción</option>
       <option${sedeDefecto === 'San Antonio' ? ' selected' : ''}>San Antonio</option>
@@ -143,6 +175,13 @@ function nuevaFila() {
     <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
   tr.querySelector('.btn-quitar').addEventListener('click', () => { tr.remove(); recalcularTotal_(); });
   tr.querySelector('.in-costo').addEventListener('input', recalcularTotal_);
+  const selectProducto = tr.querySelector('.in-producto-select');
+  const inputProductoNuevo = tr.querySelector('.in-producto-nuevo');
+  selectProducto.addEventListener('change', () => {
+    const esNuevo = selectProducto.value === '__nuevo__';
+    inputProductoNuevo.style.display = esNuevo ? 'block' : 'none';
+    if (esNuevo) inputProductoNuevo.focus(); else inputProductoNuevo.value = '';
+  });
   restringirSelectorSede_(tr.querySelector('.in-sede'));
   document.getElementById('filas').appendChild(tr);
 }
@@ -158,7 +197,7 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
     numero_factura: document.getElementById('numero-factura').value.trim(),
     lineas: Array.from(document.getElementById('filas').children)
       .map(tr => ({
-        producto: tr.querySelector('.in-producto').value.trim(),
+        producto: productoDeFila_(tr),
         sede: tr.querySelector('.in-sede').value,
         unidad: tr.querySelector('.in-unidad').value,
         cantidad: parseFloat(tr.querySelector('.in-cantidad').value.replace(',', '.')),
@@ -170,6 +209,15 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
   if (!factura.proveedor) { alert('Escribe el proveedor.'); return; }
   if (!factura.numero_factura) { alert('Escribe el número de factura.'); return; }
   if (!factura.lineas.length) { alert('Agrega al menos una línea con producto y cantidad.'); return; }
+
+  // Si alguien escribió un "producto nuevo" que en realidad ya existe (con tilde, mayúscula o
+  // espacio distinto), avisar en vez de dejar que se cree un duplicado — mismo motivo por el que
+  // se cambió el campo a desplegable en primer lugar.
+  const yaExiste = factura.lineas.find(l => productosCatalogo_.some(p => normalizarTexto(p) === normalizarTexto(l.producto) && p !== l.producto));
+  if (yaExiste) {
+    const coincidencia = productosCatalogo_.find(p => normalizarTexto(p) === normalizarTexto(yaExiste.producto));
+    if (!confirm(`"${yaExiste.producto}" es muy parecido a "${coincidencia}", que ya existe en el catálogo. ¿Seguro que es un producto distinto? Si es el mismo, cancela y elígelo de la lista en vez de escribirlo de nuevo.`)) return;
+  }
 
   let data = await llamar('compra_registrar_factura', { factura });
   if (!data.ok && data.duplicado) {
