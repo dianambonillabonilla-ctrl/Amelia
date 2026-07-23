@@ -146,3 +146,29 @@ label { font-size: .8rem; color: var(--grey); display: block; margin-bottom: 4px
   color: var(--grey); cursor: pointer;
 }
 .dropzone:hover { border-color: var(--gold); background: #FFFDF7; }
+
+/* Franja de resumen del día: números grandes y clicables que llevan a la tarjeta con el detalle —
+   para saber de un vistazo si hace falta atender algo antes de ver cualquier otro detalle. */
+.resumen-dia { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.resumen-dia a.stat {
+  text-decoration: none; display: block; transition: transform .15s ease, box-shadow .15s ease;
+}
+.resumen-dia a.stat:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(11,31,58,.10); }
+.resumen-dia .stat.ok { border-color: var(--green); background: #F2F8F4; }
+.resumen-dia .stat.ok .valor { color: var(--green); }
+.resumen-dia .stat.aviso { border-color: var(--amber); background: #FFFBF0; }
+.resumen-dia .stat.aviso .valor { color: var(--amber); }
+.resumen-dia .stat.critico { border-color: var(--red); background: #FEF4F3; }
+.resumen-dia .stat.critico .valor { color: var(--red); }
+
+/* Tarjetas de alerta: mismo tratamiento visual (borde + icono) en vez de estilos sueltos
+   repetidos en cada página — más fácil de mantener consistente. */
+.card-alerta { border-width: 1px 1px 1px 4px; border-style: solid; border-color: var(--line); }
+.card-alerta h2 { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; }
+.card-alerta.critico { border-left-color: var(--red); background: #FEF4F3; }
+.card-alerta.critico h2 { color: var(--red); }
+.card-alerta.aviso { border-left-color: var(--amber); background: #FFFBF0; }
+.card-alerta.aviso h2 { color: var(--amber); }
+.card-alerta.ok { border-left-color: var(--green); background: #F2F8F4; }
+.card-alerta.ok h2 { color: var(--green); }
+.card-alerta p.explicacion { color: var(--grey); font-size: .85rem; margin: 0 0 14px; }
