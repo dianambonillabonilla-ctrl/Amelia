@@ -88,6 +88,7 @@
 <script>
 Sesion.requerir();
 montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('sede-corte'));
 document.getElementById('fecha-corte').value = fechaLocalHoy_();
 
 let grafico = null;

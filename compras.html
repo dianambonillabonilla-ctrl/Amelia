@@ -101,6 +101,8 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('sede'));
+restringirSelectorSede_(document.getElementById('filtro-sede'));
 document.getElementById('fecha').value = fechaLocalHoy_();
 
 const hoy = new Date();
@@ -140,6 +142,7 @@ function nuevaFila() {
     <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
   tr.querySelector('.btn-quitar').addEventListener('click', () => { tr.remove(); recalcularTotal_(); });
   tr.querySelector('.in-costo').addEventListener('input', recalcularTotal_);
+  restringirSelectorSede_(tr.querySelector('.in-sede'));
   document.getElementById('filas').appendChild(tr);
 }
 document.getElementById('btn-agregar-fila').addEventListener('click', nuevaFila);

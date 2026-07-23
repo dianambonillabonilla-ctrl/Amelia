@@ -77,6 +77,7 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Lectura']);
 montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('filtro-sede'));
 
 // Por defecto, últimos 7 días — evita traer todo el histórico de una vez si la hoja ya creció
 // mucho; el filtro de fechas se puede ampliar a mano.
