@@ -2,7 +2,9 @@
  * TRASLADOS ENTRE SEDES
  * El personal puede rotar, pero la sede asignada en Usuarios sigue protegiendo el movimiento:
  * Administrador y usuarios con sede "Ambas" pueden operar cualquier traslado; los demás solo
- * pueden enviar desde su sede, recibir en su sede y ver traslados relacionados con ella.
+ * pueden enviar desde su sede, recibir en su sede y ver traslados relacionados con ella —
+ * EXCEPTO Centro de Producción, que cualquiera (San Antonio, Capri o Ambas) puede enviar/recibir/
+ * ver además de su propia sede (ver sedeEscrituraPermitida_ en Code.gs).
  *
  * Flujo:
  *  1. Quien envía crea el traslado (producto, cantidad, origen -> destino). Queda "Enviado".
@@ -57,7 +59,12 @@ function trasladosListar_(filtro, usuario) {
   let rows = leerTabla_(SHEET_NAMES.TRASLADOS);
   if (filtro.estado) rows = rows.filter(function (r) { return r.estado === filtro.estado; });
   if (usuario.rol !== 'Administrador' && usuario.sede !== 'Ambas') {
-    rows = rows.filter(function (r) { return r.sede_origen === usuario.sede || r.sede_destino === usuario.sede; });
+    // sedeEscrituraPermitida_ (Code.gs) también deja ver traslados que involucren Centro de
+    // Producción, no solo la sede propia — si San Antonio/Capri pueden registrar/confirmar ahí,
+    // también necesitan verlo en la lista para poder hacerlo.
+    rows = rows.filter(function (r) {
+      return sedeEscrituraPermitida_(usuario, r.sede_origen) || sedeEscrituraPermitida_(usuario, r.sede_destino);
+    });
   }
   return rows.sort(function (a, b) { return new Date(b.timestamp_envio) - new Date(a.timestamp_envio); });
 }
@@ -145,7 +152,7 @@ function trasladoResolver_(id, notaResolucion, usuario) {
   if (estadoActual !== 'Con observación') return { ok: false, error: 'Solo se pueden resolver traslados con una observación pendiente' };
   const origen = encontrado.valores[encontrado.headers.indexOf('sede_origen')];
   const destino = encontrado.valores[encontrado.headers.indexOf('sede_destino')];
-  if (usuario.rol !== 'Administrador' && usuario.sede !== 'Ambas' && usuario.sede !== origen && usuario.sede !== destino) {
+  if (!sedeEscrituraPermitida_(usuario, origen) && !sedeEscrituraPermitida_(usuario, destino)) {
     throw new Error('Solo puedes resolver traslados relacionados con tu sede');
   }
 
@@ -158,8 +165,8 @@ function trasladoResolver_(id, notaResolucion, usuario) {
 }
 
 function requiereSedeTraslado_(usuario, sede, accion) {
-  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return;
-  if (usuario.sede !== sede) throw new Error('No puedes ' + accion + ' un traslado de una sede distinta a la tuya (' + usuario.sede + ')');
+  if (sedeEscrituraPermitida_(usuario, sede)) return;
+  throw new Error('No puedes ' + accion + ' un traslado de una sede distinta a la tuya (' + usuario.sede + ')');
 }
 
 function enviarCorreoObservacionTraslado_(traslado) {

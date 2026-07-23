@@ -548,20 +548,59 @@ assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCapriConteo, encargadaSA)
 // segundo argumento a trasladosListar_, así que el filtro por sede que ya existía en Traslados.gs
 // jamás se ejecutaba — de hecho `usuario` quedaba undefined y la función explotaba con un error de
 // servidor en TODAS las llamadas, para cualquier rol, en vez de solo limitar por sede).
+// Nota: t2 (Centro de Producción -> Capri) SÍ debe aparecer para San Antonio — ver el pedido
+// "todos deben de poder registrar en centro de producción" más abajo: cualquiera puede ver/operar
+// traslados que involucren Centro de Producción, no solo los que involucran su propia sede. t4 es
+// puramente interno de Capri (no toca ni San Antonio ni Centro de Producción) y NO debe verse.
 const trasladosFilas = [
   { id: 't1', sede_origen: 'Centro de Producción', sede_destino: 'San Antonio', producto: 'Costilla', estado: 'Enviado', timestamp_envio: '2026-07-20' },
   { id: 't2', sede_origen: 'Centro de Producción', sede_destino: 'Capri', producto: 'Costilla', estado: 'Enviado', timestamp_envio: '2026-07-20' },
-  { id: 't3', sede_origen: 'San Antonio', sede_destino: 'Capri', producto: 'Aceite', estado: 'Confirmado', timestamp_envio: '2026-07-19' }
+  { id: 't3', sede_origen: 'San Antonio', sede_destino: 'Capri', producto: 'Aceite', estado: 'Confirmado', timestamp_envio: '2026-07-19' },
+  { id: 't4', sede_origen: 'Capri', sede_destino: 'Capri', producto: 'Servilletas', estado: 'Enviado', timestamp_envio: '2026-07-18' }
 ];
 const trasladosMod = cargar('apps-script/Traslados.gs', {
   SHEET_NAMES: { TRASLADOS: 'traslados' },
-  leerTabla_: () => trasladosFilas
+  leerTabla_: () => trasladosFilas,
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
 });
 const listaSA = trasladosMod.trasladosListar_({}, encargadaSA);
-assert.deepEqual(listaSA.map(t => t.id).sort(), ['t1', 't3'],
-  'San Antonio solo debe ver traslados donde participa (t1: lo recibe, t3: lo envía) — no t2 (Centro de Producción -> Capri)');
+assert.deepEqual(listaSA.map(t => t.id).sort(), ['t1', 't2', 't3'],
+  'San Antonio ve lo suyo (t1, t3) y lo que involucra Centro de Producción (t2), pero no lo puramente interno de Capri (t4)');
 const listaAdminTraslados = trasladosMod.trasladosListar_({}, adminAmbas);
-assert.equal(listaAdminTraslados.length, 3, 'Administrador/Ambas sigue viendo todos los traslados');
+assert.equal(listaAdminTraslados.length, 4, 'Administrador/Ambas sigue viendo todos los traslados');
+
+// --- "Todos deben de poder registrar en Centro de Producción" también aplica a Traslados --------
+// (pedido de seguimiento: la auditoría de sedes había dejado Traslados sin esta excepción a
+// propósito, por ser una operación más sensible — pero el frontend ya heredaba la opción de
+// Centro de Producción en el selector de "Sede origen" desde el cambio de restringirSelectorSede_,
+// así que sin este arreglo se podía ELEGIR Centro de Producción para enviar pero el backend lo
+// rechazaba igual: una inconsistencia real, no solo una mejora).
+assert.doesNotThrow(() => trasladosMod.requiereSedeTraslado_(encargadaSA, 'Centro de Producción', 'enviar'),
+  'San Antonio SÍ debe poder enviar/recibir traslados de Centro de Producción');
+assert.throws(() => trasladosMod.requiereSedeTraslado_(encargadaSA, 'Capri', 'enviar'),
+  /distinta a la tuya/, 'San Antonio sigue sin poder enviar/recibir traslados de Capri');
+
+const trasladoHeaders = ['id', 'sede_origen', 'sede_destino', 'estado', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'];
+function filaTraslado_(campos) { return trasladoHeaders.map(function (h) { return campos[h] !== undefined ? campos[h] : ''; }); }
+function mockTrasladoResolver_(campos) {
+  const data = [trasladoHeaders, filaTraslado_(campos)];
+  return cargar('apps-script/Traslados.gs', {
+    SHEET_NAMES: { TRASLADOS: 'traslados' },
+    leerTabla_: () => [],
+    requiereRol_: () => {},
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    sheet_: () => ({
+      getDataRange: () => ({ getValues: () => data }),
+      getRange: (fila, columna) => ({ setValue: (v) => { data[fila - 1][columna - 1] = v; } })
+    })
+  });
+}
+const resolverCentro = mockTrasladoResolver_({ id: 'tr1', sede_origen: 'Centro de Producción', sede_destino: 'Capri', estado: 'Con observación' });
+assert.equal(resolverCentro.trasladoResolver_('tr1', 'listo', encargadaSA).ok, true,
+  'San Antonio debe poder resolver un traslado con Centro de Producción como origen, aunque el destino (Capri) no sea suyo');
+const resolverAjeno = mockTrasladoResolver_({ id: 'tr2', sede_origen: 'Capri', sede_destino: 'Capri', estado: 'Con observación' });
+assert.throws(() => resolverAjeno.trasladoResolver_('tr2', 'listo', encargadaSA), /relacionados con tu sede/,
+  'San Antonio NO debe poder resolver un traslado puramente de Capri (ni origen ni destino le aplican)');
 
 // --- Auditoría de sedes: Conciliación solo debe mostrar la parte de la sede del usuario ---------
 // (pedido explícito: "si es conciliacion solo sepa que cuadra su parte" — antes calcularConciliacion_
