@@ -127,9 +127,10 @@ Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
 document.getElementById('env-fecha').value = fechaLocalHoy_();
-// Solo se restringe el origen: solo puedes ENVIAR desde tu propia sede (el backend también lo
-// exige). El destino se deja abierto a propósito — enviar a otra sede (o a otro punto de la misma)
-// es justo para lo que sirve esta pantalla, y elegir un destino no revela nada de esa otra sede.
+// Solo se restringe el origen: solo puedes ENVIAR desde tu propia sede o desde Centro de
+// Producción (el backend también lo exige — ver sedeEscrituraPermitida_ en Code.gs). El destino
+// se deja abierto a propósito — enviar a otra sede (o a otro punto de la misma) es justo para lo
+// que sirve esta pantalla, y elegir un destino no revela nada de esa otra sede.
 restringirSelectorSede_(document.getElementById('env-sede-origen'));
 
 function poblarPuntosEnvio_(sedeSelectId, puntoSelectId) {

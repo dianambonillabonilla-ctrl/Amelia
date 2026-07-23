@@ -9,6 +9,14 @@ function cargar(path, extras = {}) {
   return ctx;
 }
 
+// Espejo de sedeEscrituraPermitida_ en Code.gs — en Apps Script real todos los archivos comparten
+// un mismo scope global, pero aquí cada .gs se carga en un contexto aislado, así que hay que
+// pasarla como mock a cada módulo que la use.
+function sedeEscrituraPermitidaMock_(usuario, sede) {
+  return usuario.rol === 'Administrador' || usuario.sede === 'Ambas' ||
+    sede === usuario.sede || sede === 'Centro de Producción';
+}
+
 const ajustesGuardados = [];
 const compras = cargar('apps-script/Compras.gs', {
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -21,7 +29,8 @@ const compras = cargar('apps-script/Compras.gs', {
     ajustesGuardados.push(Object.assign({ tipo: 'Compra cruda' }, item));
     return { ok: true };
   },
-  catalogoAsegurar_: () => {}
+  catalogoAsegurar_: () => {},
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
 });
 
 const usuario = { nombre: 'Diana', sede: 'Ambas' };
@@ -39,9 +48,17 @@ assert.equal(
   'debe exigir proveedor'
 );
 assert.equal(
-  compras.compraRegistrarFactura_(factura, { nombre: 'Diana', sede: 'San Antonio' }).ok,
+  compras.compraRegistrarFactura_(Object.assign({}, factura, { sede: 'Capri' }), { nombre: 'Diana', sede: 'San Antonio' }).ok,
   false,
   'debe bloquear registrar una compra fuera de la sede del usuario'
+);
+// Excepción explícita: San Antonio/Capri/Ambas SÍ pueden registrar en Centro de Producción, aunque
+// no sea su propia sede — pedido real: "el que sea de san antonio o capri o ambas todos deben de
+// poder guardar cosas del centro de producción".
+assert.equal(
+  compras.compraRegistrarFactura_(factura, { nombre: 'Diana', sede: 'San Antonio' }).ok,
+  true,
+  'San Antonio SÍ debe poder registrar una compra para Centro de Producción'
 );
 // NOTA: compraRegistrarFactura_ no valida hoy número de factura duplicado ni que el total
 // declarado coincida con la suma de las líneas — se decidió conscientemente no agregar esa
@@ -77,9 +94,11 @@ const soloCapri = compras.comprasListar_(null, null, 'Capri').find(f => f.factur
 assert.equal(soloCapri.lineas.length, 1, 'filtrar por sede debe dejar ver solo las líneas de esa sede dentro de la factura');
 assert.equal(soloCapri.lineas[0].producto, 'Aceite');
 
-// Un usuario de una sola sede no puede colar, dentro de la misma factura, una línea para otra sede.
+// Un usuario de una sola sede no puede colar, dentro de la misma factura, una línea para una sede
+// que de verdad no le corresponde (Capri) — aunque las otras dos líneas de esta misma factura SÍ
+// le estarían permitidas (San Antonio es la suya, Centro de Producción es la excepción general).
 const resultadoBloqueadoMixta = compras.compraRegistrarFactura_(facturaMixta, { nombre: 'Encargada SA', sede: 'San Antonio' });
-assert.equal(resultadoBloqueadoMixta.ok, false, 'debe bloquear la línea para otra sede aunque otra línea sí sea de la sede del usuario');
+assert.equal(resultadoBloqueadoMixta.ok, false, 'debe bloquear la línea de Capri aunque las otras dos sean su sede o Centro de Producción');
 
 const traslados = [
   { fecha: '2026-07-20', timestamp_recibe: '2026-07-21', estado: 'Resuelto', producto: 'Costilla', unidad: 'kg', cantidad_enviada: 5, cantidad_recibida: 3, sede_origen: 'Centro de Producción', sede_destino: 'Capri' }
@@ -488,25 +507,100 @@ assert.equal(codeMod.sedeConsultaPermitida_(encargadaSA, 'San Antonio'), 'San An
 assert.equal(codeMod.sedeConsultaPermitida_(encargadaSA, null), 'San Antonio', 'sin pedir sede, se limita a la suya automáticamente (no "todas")');
 assert.throws(() => codeMod.sedeConsultaPermitida_(encargadaSA, 'Capri'), /distinta a la tuya/, 'no puede consultar la sede de otro');
 
+// --- Auditoría de sedes: excepción de Centro de Producción ("todos deben poder guardar cosas ---
+// del centro de producción", pedido explícito) — San Antonio, Capri y Ambas pueden consultar Y
+// registrar en Centro de Producción además de su propia sede; entre ellos (San Antonio <-> Capri)
+// se mantiene el bloqueo de siempre.
+const encargadaCapri = { rol: 'Encargado', sede: 'Capri' };
+assert.equal(codeMod.sedeConsultaPermitida_(encargadaSA, 'Centro de Producción'), 'Centro de Producción', 'San Antonio SÍ puede consultar Centro de Producción');
+assert.equal(codeMod.sedeConsultaPermitida_(encargadaCapri, 'Centro de Producción'), 'Centro de Producción', 'Capri SÍ puede consultar Centro de Producción');
+assert.throws(() => codeMod.sedeConsultaPermitida_(encargadaSA, 'Capri'), /distinta a la tuya/, 'San Antonio sigue sin poder consultar Capri');
+const encargadoCentro = { rol: 'Encargado', sede: 'Centro de Producción' };
+assert.throws(() => codeMod.sedeConsultaPermitida_(encargadoCentro, 'San Antonio'), /distinta a la tuya/, 'Centro de Producción NO gana acceso a San Antonio (la excepción no es de ida y vuelta)');
+
+assert.equal(codeMod.sedeEscrituraPermitida_(encargadaSA, 'Centro de Producción'), true, 'San Antonio puede REGISTRAR en Centro de Producción');
+assert.equal(codeMod.sedeEscrituraPermitida_(encargadaCapri, 'Centro de Producción'), true, 'Capri puede REGISTRAR en Centro de Producción');
+assert.equal(codeMod.sedeEscrituraPermitida_(encargadaSA, 'Capri'), false, 'San Antonio sigue sin poder registrar en Capri');
+assert.equal(codeMod.sedeEscrituraPermitida_({ rol: 'Encargado', sede: 'Ambas' }, 'Capri'), true, 'Ambas puede registrar en cualquier sede, sin cambios');
+
+// conteoRegistrar_ (Conteos.gs) debe aplicar la misma excepción al guardar de verdad.
+const conteosGuardados = [];
+const conteosRegistrarMod = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosGuardados : [],
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  catalogoAsegurar_: () => {},
+  appendRowFromObj_: (hoja, fila) => { if (hoja === 'conteos') conteosGuardados.push(fila); },
+  Utilities: { getUuid: () => 'conteo-id' },
+  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
+  revisarAlertas_: () => {},
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
+});
+const itemsCentro = [{ fecha: '2026-07-21', sede: 'Centro de Producción', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
+assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCentro, encargadaSA).ok, true, 'San Antonio debe poder registrar un conteo para Centro de Producción');
+const itemsCapriConteo = [{ fecha: '2026-07-21', sede: 'Capri', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
+assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCapriConteo, encargadaSA).ok, false, 'San Antonio NO debe poder registrar un conteo para Capri');
+
 // --- Auditoría de sedes: traslados_listar solo debe mostrar traslados relacionados con tu sede --
 // (bug de seguridad real encontrado en esta auditoría: Code.gs nunca pasaba `sesion.usuario` como
 // segundo argumento a trasladosListar_, así que el filtro por sede que ya existía en Traslados.gs
 // jamás se ejecutaba — de hecho `usuario` quedaba undefined y la función explotaba con un error de
 // servidor en TODAS las llamadas, para cualquier rol, en vez de solo limitar por sede).
+// Nota: t2 (Centro de Producción -> Capri) SÍ debe aparecer para San Antonio — ver el pedido
+// "todos deben de poder registrar en centro de producción" más abajo: cualquiera puede ver/operar
+// traslados que involucren Centro de Producción, no solo los que involucran su propia sede. t4 es
+// puramente interno de Capri (no toca ni San Antonio ni Centro de Producción) y NO debe verse.
 const trasladosFilas = [
   { id: 't1', sede_origen: 'Centro de Producción', sede_destino: 'San Antonio', producto: 'Costilla', estado: 'Enviado', timestamp_envio: '2026-07-20' },
   { id: 't2', sede_origen: 'Centro de Producción', sede_destino: 'Capri', producto: 'Costilla', estado: 'Enviado', timestamp_envio: '2026-07-20' },
-  { id: 't3', sede_origen: 'San Antonio', sede_destino: 'Capri', producto: 'Aceite', estado: 'Confirmado', timestamp_envio: '2026-07-19' }
+  { id: 't3', sede_origen: 'San Antonio', sede_destino: 'Capri', producto: 'Aceite', estado: 'Confirmado', timestamp_envio: '2026-07-19' },
+  { id: 't4', sede_origen: 'Capri', sede_destino: 'Capri', producto: 'Servilletas', estado: 'Enviado', timestamp_envio: '2026-07-18' }
 ];
 const trasladosMod = cargar('apps-script/Traslados.gs', {
   SHEET_NAMES: { TRASLADOS: 'traslados' },
-  leerTabla_: () => trasladosFilas
+  leerTabla_: () => trasladosFilas,
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
 });
 const listaSA = trasladosMod.trasladosListar_({}, encargadaSA);
-assert.deepEqual(listaSA.map(t => t.id).sort(), ['t1', 't3'],
-  'San Antonio solo debe ver traslados donde participa (t1: lo recibe, t3: lo envía) — no t2 (Centro de Producción -> Capri)');
+assert.deepEqual(listaSA.map(t => t.id).sort(), ['t1', 't2', 't3'],
+  'San Antonio ve lo suyo (t1, t3) y lo que involucra Centro de Producción (t2), pero no lo puramente interno de Capri (t4)');
 const listaAdminTraslados = trasladosMod.trasladosListar_({}, adminAmbas);
-assert.equal(listaAdminTraslados.length, 3, 'Administrador/Ambas sigue viendo todos los traslados');
+assert.equal(listaAdminTraslados.length, 4, 'Administrador/Ambas sigue viendo todos los traslados');
+
+// --- "Todos deben de poder registrar en Centro de Producción" también aplica a Traslados --------
+// (pedido de seguimiento: la auditoría de sedes había dejado Traslados sin esta excepción a
+// propósito, por ser una operación más sensible — pero el frontend ya heredaba la opción de
+// Centro de Producción en el selector de "Sede origen" desde el cambio de restringirSelectorSede_,
+// así que sin este arreglo se podía ELEGIR Centro de Producción para enviar pero el backend lo
+// rechazaba igual: una inconsistencia real, no solo una mejora).
+assert.doesNotThrow(() => trasladosMod.requiereSedeTraslado_(encargadaSA, 'Centro de Producción', 'enviar'),
+  'San Antonio SÍ debe poder enviar/recibir traslados de Centro de Producción');
+assert.throws(() => trasladosMod.requiereSedeTraslado_(encargadaSA, 'Capri', 'enviar'),
+  /distinta a la tuya/, 'San Antonio sigue sin poder enviar/recibir traslados de Capri');
+
+const trasladoHeaders = ['id', 'sede_origen', 'sede_destino', 'estado', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'];
+function filaTraslado_(campos) { return trasladoHeaders.map(function (h) { return campos[h] !== undefined ? campos[h] : ''; }); }
+function mockTrasladoResolver_(campos) {
+  const data = [trasladoHeaders, filaTraslado_(campos)];
+  return cargar('apps-script/Traslados.gs', {
+    SHEET_NAMES: { TRASLADOS: 'traslados' },
+    leerTabla_: () => [],
+    requiereRol_: () => {},
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    sheet_: () => ({
+      getDataRange: () => ({ getValues: () => data }),
+      getRange: (fila, columna) => ({ setValue: (v) => { data[fila - 1][columna - 1] = v; } })
+    })
+  });
+}
+const resolverCentro = mockTrasladoResolver_({ id: 'tr1', sede_origen: 'Centro de Producción', sede_destino: 'Capri', estado: 'Con observación' });
+assert.equal(resolverCentro.trasladoResolver_('tr1', 'listo', encargadaSA).ok, true,
+  'San Antonio debe poder resolver un traslado con Centro de Producción como origen, aunque el destino (Capri) no sea suyo');
+const resolverAjeno = mockTrasladoResolver_({ id: 'tr2', sede_origen: 'Capri', sede_destino: 'Capri', estado: 'Con observación' });
+assert.throws(() => resolverAjeno.trasladoResolver_('tr2', 'listo', encargadaSA), /relacionados con tu sede/,
+  'San Antonio NO debe poder resolver un traslado puramente de Capri (ni origen ni destino le aplican)');
 
 // --- Auditoría de sedes: Conciliación solo debe mostrar la parte de la sede del usuario ---------
 // (pedido explícito: "si es conciliacion solo sepa que cuadra su parte" — antes calcularConciliacion_

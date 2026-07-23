@@ -33,7 +33,9 @@ function compraRegistrarFactura_(factura, usuario) {
     if (l.costo !== undefined && l.costo !== '' && (isNaN(Number(l.costo)) || Number(l.costo) < 0)) {
       return { ok: false, error: 'Línea ' + (i + 1) + ' (' + l.producto + '): el costo no puede ser negativo' };
     }
-    if (usuario.sede !== 'Ambas' && sedeLinea !== usuario.sede) {
+    // sedeEscrituraPermitida_ (Code.gs) también deja registrar en Centro de Producción sin
+    // importar la sede propia — San Antonio/Capri/Ambas cubren ese sitio en la práctica.
+    if (!sedeEscrituraPermitida_(usuario, sedeLinea)) {
       return { ok: false, error: 'Línea ' + (i + 1) + ' (' + l.producto + '): no puedes registrar compras para una sede distinta a la tuya (' + usuario.sede + ')' };
     }
   }

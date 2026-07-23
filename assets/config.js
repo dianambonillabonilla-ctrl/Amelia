@@ -168,25 +168,33 @@ function requerirRol_(rolesPermitidos) {
   }
 }
 
-// Bloquea un <select> de sede a la sede propia del usuario (Administrador y sede "Ambas" ven todas
-// las opciones, sin cambios). El backend ya rechaza consultar/registrar en otra sede
-// (sedeConsultaPermitida_ en Code.gs, y las validaciones de cada _registrar_), pero sin esto la
-// interfaz seguía OFRECIENDO elegir "Capri" o "Centro de Producción" a alguien de San Antonio,
-// dejándolo intentar algo que de todas formas iba a fallar (o, en pantallas de solo lectura, sin
-// nada que se lo impidiera desde el navegador). Quita las demás opciones del <select> (para que no
-// aparezcan ni como lectura) y lo deja fijo en la sede del usuario.
+// Bloquea un <select> de sede a lo que el usuario realmente puede ver/registrar (Administrador y
+// sede "Ambas" ven todas las opciones, sin cambios). El backend ya rechaza consultar/registrar en
+// otra sede (sedeConsultaPermitida_/sedeEscrituraPermitida_ en Code.gs), pero sin esto la interfaz
+// seguía OFRECIENDO elegir una sede ajena, dejando intentar algo que de todas formas iba a fallar
+// (o, en pantallas de solo lectura, sin nada que se lo impidiera desde el navegador).
+//
+// Centro de Producción es la excepción: además de su propia sede, San Antonio y Capri también
+// pueden ver/registrar cosas ahí (ese personal también lo cubre en la práctica — mismo criterio
+// que sedeEscrituraPermitida_ del lado del servidor), así que se deja como segunda opción en vez
+// de quitarla. Un usuario cuya sede YA es Centro de Producción no gana ninguna sede extra.
 function restringirSelectorSede_(select) {
   if (!select) return;
   const u = Sesion.usuario();
   if (!u || u.rol === 'Administrador' || u.sede === 'Ambas') return;
+  const permitidas = u.sede === 'Centro de Producción' ? [u.sede] : [u.sede, 'Centro de Producción'];
   Array.from(select.options).forEach(opt => {
-    if (opt.value !== u.sede) opt.remove();
+    if (!permitidas.includes(opt.value)) opt.remove();
   });
-  if (!select.options.length) {
-    const opt = document.createElement('option');
-    opt.value = u.sede; opt.textContent = u.sede;
-    select.appendChild(opt);
-  }
-  select.value = u.sede;
-  select.disabled = true;
+  permitidas.forEach(sede => {
+    if (!Array.from(select.options).some(opt => opt.value === sede)) {
+      const opt = document.createElement('option');
+      opt.value = sede; opt.textContent = sede;
+      select.appendChild(opt);
+    }
+  });
+  if (!permitidas.includes(select.value)) select.value = u.sede;
+  // Con una sola opción posible no hay nada que elegir: se deja fija como antes. Con dos (su sede
+  // + Centro de Producción) se deja elegir entre las dos.
+  select.disabled = permitidas.length <= 1;
 }
