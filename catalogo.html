@@ -39,7 +39,7 @@
         iguales (ej. "Costilla Preparada" vs "Costilla preparada ") que después no coinciden
         entre el conteo y las recetas.
       </p>
-      <div class="grid grid-3">
+      <div class="grid grid-4">
         <div class="campo">
           <label>Categoría</label>
           <select id="filtro-categoria"><option value="">Todas</option></select>
@@ -47,6 +47,17 @@
         <div class="campo">
           <label>Subcategoría</label>
           <select id="filtro-subcategoria"><option value="">Todas</option></select>
+        </div>
+        <div class="campo">
+          <label>Periodicidad de conteo</label>
+          <select id="filtro-frecuencia">
+            <option value="">Todas</option>
+            <option value="Diario">Diario</option>
+            <option value="Miércoles">Miércoles</option>
+            <option value="Viernes">Viernes</option>
+            <option value="Mensual">Mensual</option>
+            <option value="__sin__">Sin lista fija</option>
+          </select>
         </div>
         <div class="campo">
           <label>Buscar por nombre</label>
@@ -217,12 +228,16 @@ function poblarListasNuevoProducto_() {
 function pintarTabla_() {
   const categoria = document.getElementById('filtro-categoria').value;
   const subcategoria = document.getElementById('filtro-subcategoria').value;
+  const frecuencia = document.getElementById('filtro-frecuencia').value;
   const nombre = normalizarTexto(document.getElementById('filtro-nombre').value);
 
   const filas = catalogo
     .map(p => Object.assign({ _partes: partesCategoria(p.categoria) }, p))
     .filter(p => !categoria || p._partes.principal === categoria)
     .filter(p => !subcategoria || p._partes.sub === subcategoria)
+    // "__sin__" = productos sin periodicidad fija asignada (frecuencia_conteo vacía) — no se
+    // puede usar el valor vacío para esto porque vacío ya significa "sin filtrar" (Todas).
+    .filter(p => !frecuencia || (frecuencia === '__sin__' ? !p.frecuencia_conteo : p.frecuencia_conteo === frecuencia))
     .filter(p => !nombre || normalizarTexto(p.nombre_estandar).includes(nombre))
     // Categoría, luego subcategoría, y alfabético por nombre dentro de cada una — antes comparaba
     // "categoria + nombre_estandar" pegados como un solo texto, que además de no separar por
@@ -348,6 +363,7 @@ function pintarTabla_() {
 
 document.getElementById('filtro-categoria').addEventListener('change', () => { poblarSubcategoriasFiltro_(); pintarTabla_(); });
 document.getElementById('filtro-subcategoria').addEventListener('change', pintarTabla_);
+document.getElementById('filtro-frecuencia').addEventListener('change', pintarTabla_);
 document.getElementById('filtro-nombre').addEventListener('input', pintarTabla_);
 
 // Busca coincidencias exactas o muy parecidas (mismo nombre normalizado, o uno contiene al otro)
