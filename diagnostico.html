@@ -22,8 +22,8 @@
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
-      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
       <a href="diagnostico.html" class="activo" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
   </aside>
 
@@ -42,34 +42,24 @@
       <span id="msg-error" style="margin-left:12px; color:var(--red); font-weight:600;"></span>
     </div>
 
-    <div class="card" style="border-color:var(--dorado)">
-      <h2>Corregir y completar Recetas</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        A diferencia del diagnóstico de arriba, esto SÍ escribe en la hoja Recetas: corrige las
-        cantidades que perdieron el punto decimal, carga el estándar validado de Amelia y La
-        Wafflería, y conserva los conos pendientes como borrador. Antes de escribir crea un respaldo
-        de Recetas. Es seguro correrlo más de una vez: actualiza las mismas líneas sin duplicarlas.
-      </p>
-      <button class="btn dorado" id="btn-migrar">Corregir y completar Recetas</button>
-      <span id="msg-migrar" style="margin-left:12px; font-weight:600;"></span>
-      <div id="resultado-migrar" style="margin-top:14px; font-size:.85rem"></div>
-    </div>
-
-    <div class="card" style="border-color:var(--dorado)">
-      <h2>Cargar RECETAS_FINAL_DILANA_OS v3 (16 jul 2026)</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Archiva las recetas viejas que este archivo reemplaza (Chanchostilla/Supremo/Costilla/Costilafel
-        con números antiguos, los borradores "Cono Costilla/Chanchostilla/Panceta" nunca confirmados) y
-        carga los Conos, Costilla, Panceta, Falafel, Costilafel, Combo Libra/Media Libra, La Wafflería
-        y las subrecetas del letrero de cocina + WhatsApp de Rafa/Carolina. Las opciones de salsa/topping
-        y el reparto de proteína quedan guardadas como "solo referencia" (no se descuentan solas: FUDO no
-        registra qué eligió cada cliente). La Reducción Balsámica queda "pendiente" hasta pesar el lote
-        después de reducir. Crea un respaldo de Recetas antes de escribir. Segura de correr más de una vez.
-      </p>
-      <button class="btn dorado" id="btn-migrar-julio">Cargar RECETAS_FINAL_DILANA_OS v3</button>
-      <span id="msg-migrar-julio" style="margin-left:12px; font-weight:600;"></span>
-      <div id="resultado-migrar-julio" style="margin-top:14px; font-size:.85rem"></div>
-    </div>
+    <details class="card">
+      <summary style="cursor:pointer; font-weight:700; color:var(--navy)">Mantenimiento avanzado de Recetas (uso puntual, no necesitas esto en el día a día)</summary>
+      <div style="margin-top:14px; border-color:var(--gold)">
+        <h2>Cargar RECETAS_FINAL_DILANA_OS v3 (16 jul 2026)</h2>
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Archiva las recetas viejas que este archivo reemplaza (Chanchostilla/Supremo/Costilla/Costilafel
+          con números antiguos, los borradores "Cono Costilla/Chanchostilla/Panceta" nunca confirmados) y
+          carga los Conos, Costilla, Panceta, Falafel, Costilafel, Combo Libra/Media Libra, La Wafflería
+          y las subrecetas del letrero de cocina + WhatsApp de Rafa/Carolina. Las opciones de salsa/topping
+          y el reparto de proteína quedan guardadas como "solo referencia" (no se descuentan solas: FUDO no
+          registra qué eligió cada cliente). La Reducción Balsámica queda "pendiente" hasta pesar el lote
+          después de reducir. Crea un respaldo de Recetas antes de escribir. Segura de correr más de una vez.
+        </p>
+        <button class="btn dorado" id="btn-migrar-julio">Cargar RECETAS_FINAL_DILANA_OS v3</button>
+        <span id="msg-migrar-julio" style="margin-left:12px; font-weight:600;"></span>
+        <div id="resultado-migrar-julio" style="margin-top:14px; font-size:.85rem"></div>
+      </div>
+    </details>
 
     <div class="card">
       <h2>Recetas con cantidades sospechosas</h2>
@@ -181,26 +171,6 @@ function pintarVentas_(data) {
 
 document.getElementById('btn-actualizar').addEventListener('click', correrDiagnostico);
 correrDiagnostico();
-
-document.getElementById('btn-migrar').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar'), async () => {
-  if (!confirm('Esto va a corregir y agregar filas en la hoja Recetas real. ¿Continuar?')) return;
-  const msg = document.getElementById('msg-migrar');
-  const resultadoEl = document.getElementById('resultado-migrar');
-  msg.textContent = 'Corriendo…';
-  resultadoEl.innerHTML = '';
-  const data = await llamar('migrar_recetas_produccion');
-  if (!data.ok) { msg.textContent = ''; alert(data.error); return; }
-  msg.textContent = '';
-  avisarGuardado('Recetas corregida y completada.');
-
-  const r = data.resumen;
-  resultadoEl.innerHTML = `
-    <p><strong>${r.creadas}</strong> línea(s) creada(s), <strong>${r.actualizadas}</strong> actualizada(s),
-    <strong>${r.desactivadas}</strong> duplicada(s) desactivada(s) y <strong>${r.borradores}</strong> línea(s) conservada(s) como borrador.</p>
-    <p>Se conservó un respaldo de la hoja Recetas antes de la migración.</p>
-  `;
-  correrDiagnostico();
-}));
 
 document.getElementById('btn-migrar-julio').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-julio'), async () => {
   if (!confirm('Esto va a archivar recetas viejas y cargar RECETAS_FINAL_DILANA_OS v3 en la hoja Recetas real. ¿Continuar?')) return;

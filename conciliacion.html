@@ -57,7 +57,7 @@
       <h2>Bebidas y unidades — conteo manual vs. FUDO</h2>
       <p id="bebidas-nota" style="color:var(--grey); font-size:.85rem">FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.</p>
       <table>
-        <thead id="tabla-bebidas-head"><tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO SA / Capri</th><th>Diferencia</th></tr></thead>
+        <thead id="tabla-bebidas-head"><tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO San Antonio / Capri</th><th>Diferencia</th></tr></thead>
         <tbody id="tabla-bebidas"><tr><td colspan="7" class="vacio">Elige una fecha y presiona "Ver conciliación".</td></tr></tbody>
       </table>
     </div>
@@ -123,7 +123,7 @@ function pintarBebidas(filas, sedeRestringida) {
   // (ver filaBebidaRestringida_ en Conciliacion.gs), así que esta tabla se reduce a lo propio.
   document.getElementById('tabla-bebidas-head').innerHTML = sedeRestringida
     ? '<tr><th>Bebida</th><th>Tu conteo</th><th>Tu consumo FUDO</th></tr>'
-    : '<tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO SA / Capri</th><th>Diferencia</th></tr>';
+    : '<tr><th>Bebida</th><th>San Antonio</th><th>Capri</th><th>Suma manual</th><th>FUDO cierre</th><th>Consumo FUDO San Antonio / Capri</th><th>Diferencia</th></tr>';
   document.getElementById('bebidas-nota').textContent = sedeRestringida
     ? `Solo tu propio conteo y consumo de ${sedeRestringida} — FUDO guarda el stock de bebidas combinado entre sedes, así que ese cierre y la diferencia no se muestran aquí.`
     : 'FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.';

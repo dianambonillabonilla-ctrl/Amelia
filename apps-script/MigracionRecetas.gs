@@ -1,5 +1,14 @@
 /**
- * MIGRACIÓN SEGURA DEL MODELO DE RECETAS.
+ * MIGRACIÓN SEGURA DEL MODELO DE RECETAS (15 jul 2026) — YA CUMPLIÓ SU FUNCIÓN, SUPERADA.
+ *
+ * MigracionRecetasJulio2026.gs (16 jul 2026) archiva (estado='archivado') las recetas que esta
+ * migración cargaba con la versión 'amelia_historica_validada' (Chanchostilla, Supremo, Costilla,
+ * Costilafel con números antiguos) por tener cantidades incorrectas. A propósito YA NO tiene ruta
+ * en Code.gs (se quitó de handleRequest_): si se vuelve a correr, su upsert_ busca esas mismas
+ * filas por producto+ingrediente+versión y las reescribe con estado='activo' por defecto, sin
+ * saber que fueron archivadas a propósito — resucitaría en silencio recetas con números
+ * incorrectos junto a las nuevas correctas. Se conserva el archivo solo como referencia histórica
+ * de qué se corrigió y por qué; no debe volver a exponerse en el router ni en una pantalla.
  *
  * - crea un respaldo de la hoja antes del primer cambio;
  * - corrige los decimales perdidos de la base entregada;

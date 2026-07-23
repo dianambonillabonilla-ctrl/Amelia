@@ -64,7 +64,13 @@ function conciliarBebidas_(fecha, sedeRestringida) {
   const movimientos = leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO)
     .filter(function (m) { return formatearFecha_(m.fecha) === fecha; });
 
-  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO).filter(function (c) { return c.categoria && c.categoria.indexOf('Bebidas') === 0; });
+  // Una bebida de una sola sede (ej. algo que solo se vende en Capri, marcado con "Sede donde se
+  // vende/usa" en Registrar producto) no debe aparecer en la conciliación de la otra — mismo
+  // criterio que ya se aplica en Registrar conteo, cierre de turno y Registrar producción.
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO).filter(function (c) {
+    if (!c.categoria || c.categoria.indexOf('Bebidas') !== 0) return false;
+    return !c.sede || c.sede === 'Ambas' || !sedeRestringida || c.sede === sedeRestringida;
+  });
   const conteos = conteoListar_(fecha, null);
 
   return catalogo.map(function (item) {

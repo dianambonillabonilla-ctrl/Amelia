@@ -122,7 +122,15 @@ function claveRecetaVenta_(producto, recetaMap, indice) {
 function platosFudoSinReceta_() {
   const indice = indiceCatalogo_();
   const productosConReceta = {};
+  // Solo cuenta como "resuelto" una receta cuyo estado de verdad participa en la conciliación
+  // (mismos estados que excluye recetasVigentes_) — una receta en borrador, pendiente, inactiva o
+  // archivada NO explota nada todavía, así que el plato seguiría sin receta real aunque exista una
+  // fila para él en la hoja. Antes cualquier fila (sin importar el estado) marcaba el plato como
+  // resuelto, escondiendo el hueco real.
   leerTabla_(SHEET_NAMES.RECETAS).forEach(function (r) {
+    const estado = normalizar_(r.estado || 'activo');
+    if (estado === 'borrador' || estado === 'inactivo' || estado === 'archivado' ||
+      estado === 'pendiente' || estado === 'referencia') return;
     productosConReceta[claveProducto_(r.producto, indice)] = true;
   });
   const bebidas = {};
