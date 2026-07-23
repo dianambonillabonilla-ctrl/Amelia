@@ -19,8 +19,8 @@
  */
 
 function compraRegistrarFactura_(factura, usuario) {
-  if (!factura || !factura.fecha || !factura.proveedor) {
-    return { ok: false, error: 'Faltan datos de la factura (fecha y proveedor son obligatorios)' };
+  if (!factura || !factura.fecha || !factura.proveedor || !factura.numero_factura) {
+    return { ok: false, error: 'Faltan datos de la factura (fecha, proveedor y número de factura son obligatorios)' };
   }
   const lineas = factura.lineas || [];
   if (!lineas.length) return { ok: false, error: 'Agrega al menos una línea de producto' };
@@ -55,9 +55,9 @@ function compraRegistrarFactura_(factura, usuario) {
       producto: l.producto,
       unidad: l.unidad,
       cantidad: l.cantidad,
-      motivo: factura.numero_factura ? ('Factura ' + factura.numero_factura + ' — ' + factura.proveedor) : ('Compra — ' + factura.proveedor),
+      motivo: 'Factura ' + factura.numero_factura + ' — ' + factura.proveedor,
       proveedor: factura.proveedor,
-      numero_factura: factura.numero_factura || '',
+      numero_factura: factura.numero_factura,
       costo: costo,
       factura_id: facturaId
     }, usuario);

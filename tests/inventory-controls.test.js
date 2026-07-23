@@ -48,6 +48,11 @@ assert.equal(
   'debe exigir proveedor'
 );
 assert.equal(
+  compras.compraRegistrarFactura_(Object.assign({}, factura, { numero_factura: '' }), usuario).ok,
+  false,
+  'el número de factura ahora es obligatorio, no opcional'
+);
+assert.equal(
   compras.compraRegistrarFactura_(Object.assign({}, factura, { sede: 'Capri' }), { nombre: 'Diana', sede: 'San Antonio' }).ok,
   false,
   'debe bloquear registrar una compra fuera de la sede del usuario'
