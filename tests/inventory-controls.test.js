@@ -190,6 +190,35 @@ assert.equal(filasCatalogoSheet[1][0], 'id-existente', 'la fila que ya tenía id
 assert.equal(filasCatalogoSheet[2][0], 'id-nuevo-1');
 assert.equal(filasCatalogoSheet[3][0], 'id-nuevo-2');
 
+// --- Catálogo: actualizar un producto existente NO debe exigir nombre_estandar de nuevo ---------
+// (bug real, mismo patrón que el de usuarios.html: la herramienta de "barrido" para vincular
+// nombres de FUDO manda solo { id, nombre_fudo } al vincular un nombre visto en FUDO a un producto
+// que ya existe. La validación exigía nombre_estandar SIEMPRE, así que esa actualización parcial
+// fallaba con "Falta nombre_estandar" aunque el producto ya lo tuviera puesto).
+const filasCatalogoParcial = [
+  ['id', 'nombre_estandar', 'categoria', 'nombre_fudo'],
+  ['id-costilla', 'Costilla Preparada', 'Elaborados', '']
+];
+const catalogoParcial = cargar('apps-script/Catalogo.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo' },
+  sheet_: () => ({
+    getDataRange: () => ({ getValues: () => filasCatalogoParcial }),
+    getRange: (fila, columna) => ({
+      setValue: (valor) => { filasCatalogoParcial[fila - 1][columna - 1] = valor; }
+    })
+  })
+});
+const resultadoVincular = catalogoParcial.catalogoGuardar_({ id: 'id-costilla', nombre_fudo: 'Costilla' });
+assert.equal(resultadoVincular.ok, true, 'actualizar solo nombre_fudo de un producto existente debe funcionar sin repetir nombre_estandar');
+assert.equal(filasCatalogoParcial[1][3], 'Costilla', 'el nombre_fudo debe quedar guardado en la hoja');
+assert.equal(filasCatalogoParcial[1][1], 'Costilla Preparada', 'el resto de la fila no debe tocarse');
+
+assert.equal(
+  catalogoParcial.catalogoGuardar_({ categoria: 'Elaborados' }).ok,
+  false,
+  'crear un producto nuevo (sin id) SÍ debe seguir exigiendo nombre_estandar'
+);
+
 // --- Extremo a extremo: compra sube el stock Y "para cuántos platos alcanza" (ejemplo del banano) ---
 const conteoBanano = [
   { fecha: '2026-07-01', sede: 'San Antonio', producto: 'Banano', unidad: 'u', cantidad: 2 }
