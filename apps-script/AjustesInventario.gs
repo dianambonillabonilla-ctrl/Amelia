@@ -95,14 +95,25 @@ function ajusteInventarioAvalar_(id, usuario) {
   const headers = data[0];
   const idCol = headers.indexOf('id');
   const tipoCol = headers.indexOf('tipo');
+  const avaladoCol = headers.indexOf('avalado');
+  const avaladoPorCol = headers.indexOf('avalado_por');
+  const timestampAvaladoCol = headers.indexOf('timestamp_avalado');
+  // Si la hoja Ajustes_Inventario todavía no tiene estas 3 columnas (falta correr
+  // configurarHojas() una vez desde el editor de Apps Script después de este cambio), .indexOf
+  // devuelve -1 y sh.getRange(fila, -1 + 1) = sh.getRange(fila, 0) explota con un error de Sheets
+  // ("La columna inicial del intervalo es demasiado pequeña") que no dice nada de esto. Se
+  // detecta antes y se explica qué hace falta en vez de dejar pasar ese error críptico.
+  if (avaladoCol === -1 || avaladoPorCol === -1 || timestampAvaladoCol === -1) {
+    return { ok: false, error: 'Falta preparar la hoja Ajustes_Inventario para avalar mermas: corre configurarHojas() una vez desde el editor de Apps Script (Extensiones → Apps Script → elige configurarHojas en el menú de funciones → Ejecutar) y vuelve a intentar.' };
+  }
   for (let r = 1; r < data.length; r++) {
     if (data[r][idCol] === id) {
       if (data[r][tipoCol] !== 'Merma / desperdicio') {
         return { ok: false, error: 'Solo las mermas se avalan (compras y ajustes operativos no lo necesitan)' };
       }
-      sh.getRange(r + 1, headers.indexOf('avalado') + 1).setValue(true);
-      sh.getRange(r + 1, headers.indexOf('avalado_por') + 1).setValue(usuario.nombre);
-      sh.getRange(r + 1, headers.indexOf('timestamp_avalado') + 1).setValue(new Date());
+      sh.getRange(r + 1, avaladoCol + 1).setValue(true);
+      sh.getRange(r + 1, avaladoPorCol + 1).setValue(usuario.nombre);
+      sh.getRange(r + 1, timestampAvaladoCol + 1).setValue(new Date());
       return { ok: true };
     }
   }

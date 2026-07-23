@@ -791,4 +791,17 @@ const avalarModCompra = cargar('apps-script/AjustesInventario.gs', {
 assert.equal(avalarModCompra.ajusteInventarioAvalar_('c1', adminDiana).ok, false, 'una compra no se avala (no es una merma)');
 assert.equal(avalarMod.ajusteInventarioAvalar_('no-existe', adminDiana).ok, false, 'un id que no existe debe fallar con claridad');
 
+// Si la hoja real todavía no tiene las columnas avalado/avalado_por/timestamp_avalado (falta
+// correr configurarHojas() tras agregarlas), debe fallar con un mensaje claro en vez de romper
+// con el error críptico de Sheets "La columna inicial del intervalo es demasiado pequeña".
+const headersSinAvalar = ['id', 'tipo'];
+const hojaSinColumnasAvalar = mockHojaAjustes_(headersSinAvalar, [{ id: 'm2', tipo: 'Merma / desperdicio' }]);
+const avalarModSinColumnas = cargar('apps-script/AjustesInventario.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  sheet_: function () { return hojaSinColumnasAvalar; }
+});
+const resultadoSinColumnas = avalarModSinColumnas.ajusteInventarioAvalar_('m2', adminDiana);
+assert.equal(resultadoSinColumnas.ok, false, 'sin las columnas de aval, debe fallar con mensaje claro en vez de reventar');
+assert.ok(/configurarHojas/.test(resultadoSinColumnas.error), 'el mensaje debe guiar a correr configurarHojas()');
+
 console.log('inventory-controls: OK');
