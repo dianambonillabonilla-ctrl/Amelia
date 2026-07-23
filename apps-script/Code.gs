@@ -542,3 +542,22 @@ function appendRowFromObj_(nombreHoja, obj) {
   const row = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
   sh.appendRow(row);
 }
+
+/**
+ * Igual que appendRowFromObj_ pero para muchas filas de una sola vez: UNA sola escritura a Sheets
+ * (getRange().setValues()) en vez de una llamada `appendRow` por fila. Un `appendRow` por fila es
+ * lentísimo para importaciones grandes (cada llamada es un viaje a la API de Sheets) — con un
+ * archivo de FUDO de un día completo (cientos o miles de filas de ventas) esto podía tardar tanto
+ * que la importación se sentía "trabada" sin ningún aviso, y en archivos grandes llegaba a superar
+ * el límite de 6 minutos de ejecución de Apps Script y fallaba sin guardar nada. No hace nada si
+ * `objs` viene vacío (evita pedirle a Sheets un rango de 0 filas, que revienta).
+ */
+function appendRowsFromObjs_(nombreHoja, objs) {
+  if (!objs || !objs.length) return;
+  const sh = sheet_(nombreHoja);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const filas = objs.map(function (obj) {
+    return headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, filas.length, headers.length).setValues(filas);
+}

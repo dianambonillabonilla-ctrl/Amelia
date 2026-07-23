@@ -78,6 +78,12 @@
       <h2>3. Vista previa (<span id="n-filas"></span> filas)</h2>
       <div style="overflow-x:auto"><table id="tabla-preview"></table></div>
       <button class="btn dorado" id="btn-confirmar" style="margin-top:16px">Confirmar e importar</button>
+      <div id="progreso-importacion" style="display:none; margin-top:16px">
+        <div style="background:#EEE; border-radius:8px; overflow:hidden; height:18px">
+          <div id="progreso-barra" style="background:var(--navy); height:100%; width:0%; transition:width .2s"></div>
+        </div>
+        <p id="progreso-texto" style="margin:8px 0 0; font-size:.85rem; color:var(--grey)"></p>
+      </div>
       <div id="aviso-sin-identificar" class="card" style="display:none; margin-top:14px; border-color:var(--amber); background:#FFFBF0">
         <strong style="color:var(--amber)">⚠ Ventas sin sede identificada</strong>
         <p id="aviso-sin-identificar-texto" style="margin:8px 0 0; font-size:.88rem"></p>
@@ -177,51 +183,98 @@ function mostrarPreview(filas) {
     '<tbody>' + filas.slice(0, 8).map(f => '<tr>' + columnas.map(c => `<td>${escapeHtml(f[c] ?? '')}</td>`).join('') + '</tr>').join('') + '</tbody>';
 }
 
+// Importar todo en una sola llamada, con archivos grandes (un día completo de ventas puede ser
+// cientos o miles de filas), se sentía "trabado" sin ningún aviso — sin barra de progreso, y en
+// archivos muy grandes se arriesgaba a pasar el límite de 6 minutos de ejecución de Apps Script y
+// fallar sin guardar nada. Ahora se manda por lotes chicos, uno detrás de otro, actualizando una
+// barra de progreso real entre cada uno — y cada lote es rápido de por sí, sin importar qué tan
+// grande sea el archivo completo.
+const FILAS_POR_LOTE = 300;
+
+function actualizarProgreso_(hechas, total, extra) {
+  const cont = document.getElementById('progreso-importacion');
+  const barra = document.getElementById('progreso-barra');
+  const texto = document.getElementById('progreso-texto');
+  cont.style.display = 'block';
+  const pct = total ? Math.round((hechas / total) * 100) : 0;
+  barra.style.width = pct + '%';
+  texto.textContent = `Importando… ${hechas} de ${total} filas (${pct}%)${extra ? ' — ' + extra : ''}`;
+}
+
 document.getElementById('btn-confirmar').addEventListener('click', conBotonProtegido(document.getElementById('btn-confirmar'), async () => {
   if (!filasParaImportar.length) { alert('No hay filas para importar: sube un archivo primero.'); return; }
-  let data;
-  try {
-    data = await llamar('importar_fudo', {
-      tipo: tipoSeleccionado(),
-      filas: filasParaImportar,
-      opciones: { sede: document.getElementById('sede-importacion').value, archivo: archivoParaImportar }
-    });
-  } catch (err) {
-    // Sin este catch, un fallo de red o una respuesta que no es JSON (ej. la sesión venció y
-    // Apps Script devolvió una página de login en vez del JSON esperado) dejaba la pantalla sin
-    // ningún aviso: ni el letrero verde ni una alerta de error, como si el clic no hubiera hecho nada.
-    alert('No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo. Detalle: ' + err.message);
-    return;
-  }
+
   const aviso = document.getElementById('aviso-sin-identificar');
   aviso.style.display = 'none';
   const avisoDiag = document.getElementById('aviso-diagnostico');
   avisoDiag.style.display = 'none';
-  if (data.ok) {
-    avisarGuardado(`Importadas ${data.importados} filas de tipo "${data.tipo}". ${data.omitidos_duplicados || 0} duplicadas fueron omitidas.`);
-    if (data.advertencia) alert(data.advertencia);
+
+  const tipo = tipoSeleccionado();
+  const opciones = { sede: document.getElementById('sede-importacion').value, archivo: archivoParaImportar };
+  const total = filasParaImportar.length;
+
+  let totalImportadas = 0;
+  let totalOmitidas = 0;
+  let advertencia = null;
+  let sinIdentificarTotal = 0;
+  const sinIdentificarValores = new Set();
+  let ultimoDiagnostico = null;
+
+  actualizarProgreso_(0, total);
+
+  for (let inicio = 0; inicio < total; inicio += FILAS_POR_LOTE) {
+    const lote = filasParaImportar.slice(inicio, inicio + FILAS_POR_LOTE);
+    let data;
+    try {
+      data = await llamar('importar_fudo', { tipo, filas: lote, opciones });
+    } catch (err) {
+      // Sin este catch, un fallo de red o una respuesta que no es JSON (ej. la sesión venció y
+      // Apps Script devolvió una página de login en vez del JSON esperado) dejaba la pantalla sin
+      // ningún aviso: ni el letrero verde ni una alerta de error, como si el clic no hubiera hecho nada.
+      alert(`No se pudo conectar con el servidor en la fila ${inicio + 1}. Ya se importaron ${totalImportadas} filas antes de esto — puedes volver a subir el mismo archivo, las que ya se guardaron se reconocen como duplicadas y no se repiten. Detalle: ${err.message}`);
+      document.getElementById('progreso-importacion').style.display = 'none';
+      return;
+    }
+    if (!data.ok) {
+      alert(`Error en la fila ${inicio + 1}: ${data.error}\n\nYa se importaron ${totalImportadas} filas antes de esto — puedes volver a subir el mismo archivo, las que ya se guardaron se reconocen como duplicadas y no se repiten.`);
+      document.getElementById('progreso-importacion').style.display = 'none';
+      return;
+    }
+
+    totalImportadas += data.importados;
+    totalOmitidas += data.omitidos_duplicados || 0;
+    if (data.advertencia) advertencia = data.advertencia;
     if (data.sin_identificar) {
-      document.getElementById('aviso-sin-identificar-texto').textContent =
-        `${data.sin_identificar.total} venta(s) no se pudieron asignar a una sede porque el nombre de caja/terminal no se reconoce: ${data.sin_identificar.valores.join(', ')}. Ajusta sedeDesdeCreadaPor_() en Fudo.gs o revisa el nombre de la caja en FUDO — mientras tanto, esas ventas quedan fuera de la conciliación de comida.`;
-      aviso.style.display = 'block';
+      sinIdentificarTotal += data.sin_identificar.total;
+      data.sin_identificar.valores.forEach(v => sinIdentificarValores.add(v));
     }
-    if (data.diagnostico) {
-      const d = data.diagnostico;
-      const motivos = [];
-      if (d.descartadas_sin_fecha) motivos.push(`${d.descartadas_sin_fecha} fila(s) sin fecha/creación reconocible`);
-      if (d.descartadas_sin_producto) motivos.push(`${d.descartadas_sin_producto} fila(s) sin producto reconocible`);
-      if (d.descartadas_sin_nombre) motivos.push(`${d.descartadas_sin_nombre} fila(s) sin nombre reconocible`);
-      if (d.descartadas_cantidad_invalida) motivos.push(`${d.descartadas_cantidad_invalida} fila(s) con cantidad inválida o en cero`);
-      document.getElementById('aviso-diagnostico-texto').textContent =
-        `Se leyeron ${d.filas_recibidas} fila(s) del archivo, pero ninguna tenía las columnas que este sistema reconoce — se descartaron todas:\n` +
-        (motivos.length ? '• ' + motivos.join('\n• ') + '\n\n' : '\n') +
-        `Columnas encontradas en tu archivo: ${d.columnas_detectadas.join(', ') || '(el archivo llegó vacío)'}\n\n` +
-        'Revisa que el archivo tenga columnas de fecha/producto/cantidad con esos nombres exactos (o muy parecidos) — ' +
-        'si FUDO cambió el nombre de alguna columna, hay que agregarlo a valorFudo_() en Fudo.gs.';
-      avisoDiag.style.display = 'block';
-    }
-  } else {
-    alert(data.error);
+    if (data.diagnostico) ultimoDiagnostico = data.diagnostico;
+
+    actualizarProgreso_(Math.min(inicio + FILAS_POR_LOTE, total), total, `${totalImportadas} importadas, ${totalOmitidas} duplicadas`);
+  }
+
+  document.getElementById('progreso-importacion').style.display = 'none';
+  avisarGuardado(`Importadas ${totalImportadas} filas de tipo "${tipo}". ${totalOmitidas} duplicadas fueron omitidas.`);
+  if (advertencia) alert(advertencia);
+  if (sinIdentificarValores.size) {
+    document.getElementById('aviso-sin-identificar-texto').textContent =
+      `${sinIdentificarTotal} venta(s) no se pudieron asignar a una sede porque el nombre de caja/terminal no se reconoce: ${Array.from(sinIdentificarValores).join(', ')}. Ajusta sedeDesdeCreadaPor_() en Fudo.gs o revisa el nombre de la caja en FUDO — mientras tanto, esas ventas quedan fuera de la conciliación de comida.`;
+    aviso.style.display = 'block';
+  }
+  if (totalImportadas === 0 && ultimoDiagnostico) {
+    const d = ultimoDiagnostico;
+    const motivos = [];
+    if (d.descartadas_sin_fecha) motivos.push(`${d.descartadas_sin_fecha} fila(s) sin fecha/creación reconocible`);
+    if (d.descartadas_sin_producto) motivos.push(`${d.descartadas_sin_producto} fila(s) sin producto reconocible`);
+    if (d.descartadas_sin_nombre) motivos.push(`${d.descartadas_sin_nombre} fila(s) sin nombre reconocible`);
+    if (d.descartadas_cantidad_invalida) motivos.push(`${d.descartadas_cantidad_invalida} fila(s) con cantidad inválida o en cero`);
+    document.getElementById('aviso-diagnostico-texto').textContent =
+      `Se leyeron ${total} fila(s) del archivo, pero ninguna tenía las columnas que este sistema reconoce — se descartaron todas:\n` +
+      (motivos.length ? '• ' + motivos.join('\n• ') + '\n\n' : '\n') +
+      `Columnas encontradas en tu archivo: ${d.columnas_detectadas.join(', ') || '(el archivo llegó vacío)'}\n\n` +
+      'Revisa que el archivo tenga columnas de fecha/producto/cantidad con esos nombres exactos (o muy parecidos) — ' +
+      'si FUDO cambió el nombre de alguna columna, hay que agregarlo a valorFudo_() en Fudo.gs.';
+    avisoDiag.style.display = 'block';
   }
 }));
 </script>

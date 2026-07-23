@@ -428,7 +428,11 @@ function cargarFudo_(previas) {
     normalizar_: normalizarSimple_,
     formatearFecha_: (v) => String(v).slice(0, 10),
     leerTabla_: (hoja) => hoja === 'ventas' ? ventasGuardadas : [],
-    appendRowFromObj_: (hoja, fila) => { if (hoja === 'ventas') ventasGuardadas.push(fila); }
+    // appendRowsFromObjs_ (no appendRowFromObj_): la importación ahora escribe todas las filas
+    // nuevas de una sola vez (una escritura a Sheets en vez de una por fila — ver appendRowsFromObjs_
+    // en Code.gs, arreglo de rendimiento para que importar un día completo de ventas no se sienta
+    // "trabado" ni se acerque al límite de 6 minutos de Apps Script en archivos grandes).
+    appendRowsFromObjs_: (hoja, filas) => { if (hoja === 'ventas') ventasGuardadas.push.apply(ventasGuardadas, filas); }
   });
 }
 
@@ -448,6 +452,27 @@ const fudoSegundaVez = cargarFudo_(ventasGuardadas.slice());
 const resultadoSegundaVez = fudoSegundaVez.importarFudo_('ventas', filasPoker, usuarioFudo, { sede: 'San Antonio' });
 assert.equal(resultadoSegundaVez.importados, 0, 'reimportar el mismo archivo no debe duplicar las ventas ya guardadas');
 assert.equal(resultadoSegundaVez.omitidos_duplicados, 2);
+
+// --- Importar FUDO: lo mismo vendido en días distintos no debe verse como duplicado -------------
+// Pedido real: "pueden venir lo mismo cada día pero sería un día y hora diferente". Si el archivo
+// de FUDO no trae la columna "Id. Venta" con un nombre reconocido (o llega vacía), antes la llave
+// de deduplicación quedaba SOLO en producto+sede, sin fecha — el mismo producto vendido hoy se
+// veía igual a como se vendió ayer y se descartaba como "ya importado" aunque fuera un día
+// distinto. Ahora la fecha/hora de creación también entra en la llave.
+const filasFalafelSinId = [
+  { 'Creación': '2026-07-20 12:00:00', Producto: 'Falafel', Cantidad: 3, Precio: 9000, 'Creada por': 'terraza', Cancelada: 'No' }
+];
+const fudoDia1 = cargarFudo_([]);
+const resultadoDia1 = fudoDia1.importarFudo_('ventas', filasFalafelSinId, usuarioFudo, { sede: 'San Antonio' });
+assert.equal(resultadoDia1.importados, 1);
+
+const filasFalafelDia2SinId = [
+  { 'Creación': '2026-07-21 12:00:00', Producto: 'Falafel', Cantidad: 3, Precio: 9000, 'Creada por': 'terraza', Cancelada: 'No' }
+];
+const fudoDia2 = cargarFudo_(ventasGuardadas.slice());
+const resultadoDia2 = fudoDia2.importarFudo_('ventas', filasFalafelDia2SinId, usuarioFudo, { sede: 'San Antonio' });
+assert.equal(resultadoDia2.importados, 1, 'la venta de Falafel del día siguiente no debe verse como duplicada de la de ayer solo por tener el mismo producto/sede y sin Id. Venta');
+assert.equal(resultadoDia2.omitidos_duplicados, 0);
 
 // --- Conciliación: una venta sin receta encontrada debe marcarse sin_receta, no compararse -----
 // como si fuera correcta. Antes, un plato vendido con un nombre que no coincidía con ningún
