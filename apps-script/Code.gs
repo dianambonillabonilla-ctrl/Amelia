@@ -309,6 +309,12 @@ function handleRequest_(e, method) {
       case 'diagnostico_ventas_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarVentasFudo_() });
+      case 'diagnostico_compras_no_suman':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarComprasNoSuman_() });
+      case 'diagnostico_catalogo_duplicados':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarCatalogoDuplicados_() });
       case 'migrar_recetas_julio_2026':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migrarRecetasJulio2026_());

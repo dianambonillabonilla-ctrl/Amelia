@@ -89,6 +89,32 @@
         <tbody id="tabla-ventas"><tr><td colspan="2" class="vacio">Sin correr todavía.</td></tr></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h2>Compras que no están sumando a Disponible Hoy</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Para cada compra registrada, revisa si de verdad quedó contando en "Disponible Hoy" o si se
+        ignoró en silencio (nombre que no existe en el catálogo, unidad que no combina con el último
+        conteo físico, o fecha ya cubierta por ese conteo).
+      </p>
+      <table>
+        <thead><tr><th>Fecha</th><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Proveedor / Factura</th><th>Por qué no suma</th></tr></thead>
+        <tbody id="tabla-compras-no-suman"><tr><td colspan="6" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Catálogo — posibles nombres duplicados</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Pares de productos con nombres muy parecidos entre sí — revisa si en realidad son el mismo
+        producto escrito distinto (ej. "Limón" vs "Limón Tahití") y fusiónalos a mano desde
+        <a href="catalogo.html">Registrar producto</a> si corresponde.
+      </p>
+      <table>
+        <thead><tr><th>Producto A</th><th>Producto B</th><th>Motivo</th></tr></thead>
+        <tbody id="tabla-catalogo-duplicados"><tr><td colspan="3" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
   </main>
 </div>
 
@@ -104,21 +130,27 @@ async function correrDiagnostico() {
   document.getElementById('tabla-recetas').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-duplicados').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-ventas').innerHTML = '<tr><td colspan="2" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="6" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="3" class="vacio">Cargando…</td></tr>';
 
-  const [recetas, duplicados, ventas] = await Promise.all([
+  const [recetas, duplicados, ventas, comprasNoSuman, catalogoDuplicados] = await Promise.all([
     llamar('diagnostico_recetas'),
     llamar('diagnostico_conteos_duplicados'),
-    llamar('diagnostico_ventas_fudo')
+    llamar('diagnostico_ventas_fudo'),
+    llamar('diagnostico_compras_no_suman'),
+    llamar('diagnostico_catalogo_duplicados')
   ]);
 
-  if (!recetas.ok || !duplicados.ok || !ventas.ok) {
-    msg.textContent = (recetas.error || duplicados.error || ventas.error || 'Error al correr el diagnóstico.');
+  if (!recetas.ok || !duplicados.ok || !ventas.ok || !comprasNoSuman.ok || !catalogoDuplicados.ok) {
+    msg.textContent = (recetas.error || duplicados.error || ventas.error || comprasNoSuman.error || catalogoDuplicados.error || 'Error al correr el diagnóstico.');
     return;
   }
 
   pintarRecetas_(recetas.data);
   pintarDuplicados_(duplicados.data);
   pintarVentas_(ventas.data);
+  pintarComprasNoSuman_(comprasNoSuman.data);
+  pintarCatalogoDuplicados_(catalogoDuplicados.data);
 }
 
 function pintarRecetas_(data) {
@@ -169,6 +201,42 @@ function pintarVentas_(data) {
   body.innerHTML = camposVacios.map(([campo, n]) => `
     <tr><td>${escapeHtml(campo)}</td><td><span class="badge alerta">${n} de ${data.total_filas}</span></td></tr>
   `).join('');
+}
+
+function pintarComprasNoSuman_(data) {
+  const body = document.getElementById('tabla-compras-no-suman');
+  if (!data.total_compras) {
+    body.innerHTML = '<tr><td colspan="6" class="vacio">No hay compras registradas todavía.</td></tr>';
+    return;
+  }
+  if (!data.problemas.length) {
+    body.innerHTML = `<tr><td colspan="6" class="vacio">Las ${data.total_compras} compras revisadas están sumando correctamente.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.problemas.map(p => `
+    <tr>
+      <td>${escapeHtml(p.fecha)}</td>
+      <td>${escapeHtml(p.producto)}</td>
+      <td>${escapeHtml(p.sede)}</td>
+      <td>${escapeHtml(p.cantidad)} ${escapeHtml(p.unidad)}</td>
+      <td>${escapeHtml(p.proveedor)}${p.numero_factura ? ' — ' + escapeHtml(p.numero_factura) : ''}</td>
+      <td><span class="badge alerta">${escapeHtml(p.motivo)}</span></td>
+    </tr>`).join('') +
+    `<tr><td colspan="6" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
+}
+
+function pintarCatalogoDuplicados_(data) {
+  const body = document.getElementById('tabla-catalogo-duplicados');
+  if (!data.sospechosos.length) {
+    body.innerHTML = `<tr><td colspan="3" class="vacio">Sin pares sospechosos en ${data.total_productos} productos revisados.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.sospechosos.map(s => `
+    <tr>
+      <td>${escapeHtml(s.a)}${s.a_categoria ? ` <span style="color:var(--grey); font-size:.78rem">(${escapeHtml(s.a_categoria)})</span>` : ''}</td>
+      <td>${escapeHtml(s.b)}${s.b_categoria ? ` <span style="color:var(--grey); font-size:.78rem">(${escapeHtml(s.b_categoria)})</span>` : ''}</td>
+      <td>${escapeHtml(s.razon)}</td>
+    </tr>`).join('');
 }
 
 document.getElementById('btn-actualizar').addEventListener('click', correrDiagnostico);

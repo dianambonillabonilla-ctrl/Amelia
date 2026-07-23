@@ -2,7 +2,7 @@
   "name": "dilana-os",
   "private": true,
   "scripts": {
-    "test": "node tests/recipe-engine.test.js && node tests/inventory-controls.test.js && node tests/gestiones.test.js && node tests/syntax.test.js",
+    "test": "node tests/recipe-engine.test.js && node tests/inventory-controls.test.js && node tests/gestiones.test.js && node tests/diagnostico.test.js && node tests/syntax.test.js",
     "clasp:login": "cd apps-script && clasp login",
     "clasp:pull": "cd apps-script && clasp pull",
     "clasp:push": "cd apps-script && clasp push",
