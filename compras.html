@@ -54,7 +54,7 @@
           </select>
         </div>
         <div class="campo"><label>Proveedor</label><input type="text" id="proveedor" placeholder="ej. Mercamío"></div>
-        <div class="campo"><label>N.º de factura (opcional)</label><input type="text" id="numero-factura" placeholder="ej. FE-1234"></div>
+        <div class="campo"><label>N.º de factura</label><input type="text" id="numero-factura" placeholder="ej. FE-1234" required></div>
       </div>
       <p style="color:var(--grey); font-size:.8rem">"Sede por defecto" solo precarga las líneas nuevas — cambia la sede de cada línea si esa parte de la compra es para otro sitio.</p>
 
@@ -89,9 +89,10 @@
       </div>
       <button class="btn fantasma" id="btn-filtrar" style="margin-bottom:14px">Filtrar</button>
       <p id="resumen-gasto" style="color:var(--grey); font-size:.85rem"></p>
+      <p style="color:var(--grey); font-size:.8rem">Haz clic en una factura para ver el detalle de lo que se registró (producto, sede, cantidad y costo de cada línea).</p>
       <table>
-        <thead><tr><th>Fecha</th><th>Sede</th><th>Proveedor</th><th>N.º factura</th><th>Líneas</th><th>Total</th><th>Usuario</th></tr></thead>
-        <tbody id="tabla-facturas"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th></th><th>Fecha</th><th>Sede</th><th>Proveedor</th><th>N.º factura</th><th>Líneas</th><th>Total</th><th>Usuario</th></tr></thead>
+        <tbody id="tabla-facturas"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
   </main>
@@ -168,6 +169,7 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
   };
 
   if (!factura.proveedor) { alert('Escribe el proveedor.'); return; }
+  if (!factura.numero_factura) { alert('Escribe el número de factura.'); return; }
   if (!factura.lineas.length) { alert('Agrega al menos una línea con producto y cantidad.'); return; }
 
   const data = await llamar('compra_registrar_factura', { factura });
@@ -191,21 +193,57 @@ function formatoMoneda_(valor) {
   return Number(valor || 0).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 }
 
+// Despliega/oculta, debajo de la fila de la factura, el detalle de cada línea registrada
+// (producto, sede, cantidad, costo) — antes solo se veía en un tooltip al pasar el mouse por
+// encima del número de líneas, algo fácil de no notar (y que no funciona en el celular).
+function toggleDetalleFactura_(fila) {
+  const siguiente = fila.nextElementSibling;
+  const yaAbierta = siguiente && siguiente.classList.contains('fila-detalle-factura');
+
+  document.querySelectorAll('.fila-detalle-factura').forEach(f => f.remove());
+  document.querySelectorAll('.fila-factura td:first-child').forEach(td => { td.textContent = '▸'; });
+  if (yaAbierta) return;
+
+  const factura = facturasCache_[fila.dataset.facturaId];
+  if (!factura) return;
+  fila.querySelector('td').textContent = '▾';
+
+  const detalle = document.createElement('tr');
+  detalle.className = 'fila-detalle-factura';
+  detalle.innerHTML = `<td></td><td colspan="7" style="background:var(--cream); padding:12px">
+    <table style="margin:0">
+      <thead><tr><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Costo</th></tr></thead>
+      <tbody>
+        ${factura.lineas.map(l => `<tr>
+          <td>${escapeHtml(l.producto)}</td><td>${escapeHtml(l.sede || '')}</td>
+          <td>${escapeHtml(l.cantidad)} ${escapeHtml(l.unidad)}</td><td>${formatoMoneda_(l.costo)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </td>`;
+  fila.after(detalle);
+}
+
+// factura_id -> factura completa (con líneas) del último cargarFacturas_() — para poder desplegar
+// el detalle de una fila sin tener que volver a pedirle nada al servidor.
+let facturasCache_ = {};
+
 async function cargarFacturas_() {
   const fecha_desde = document.getElementById('filtro-desde').value;
   const fecha_hasta = document.getElementById('filtro-hasta').value;
   const sede = document.getElementById('filtro-sede').value;
   const body = document.getElementById('tabla-facturas');
-  body.innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
+  body.innerHTML = '<tr><td colspan="8" class="vacio">Cargando…</td></tr>';
 
   const [facturas, resumen] = await Promise.all([
     llamar('compras_listar', { fecha_desde, fecha_hasta, sede }),
     llamar('compras_resumen_gasto', { fecha_desde, fecha_hasta, sede })
   ]);
 
-  if (!facturas.ok) { body.innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(facturas.error)}</td></tr>`; return; }
+  if (!facturas.ok) { body.innerHTML = `<tr><td colspan="8" class="vacio">${escapeHtml(facturas.error)}</td></tr>`; return; }
+  facturasCache_ = {};
   if (!facturas.data.length) {
-    body.innerHTML = '<tr><td colspan="7" class="vacio">Sin facturas registradas en este rango.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="vacio">Sin facturas registradas en este rango.</td></tr>';
   } else {
     // f.sedes (plural) es lo que devuelve el backend actualizado; f.sede (singular) es lo que
     // devolvía la versión anterior de Compras.gs — si todavía no se hizo el paso de "Nueva
@@ -215,15 +253,19 @@ async function cargarFacturas_() {
     // incluida la señal de "guardado" si esta función se llama justo después de guardar) sin
     // terminar de ejecutarse.
     body.innerHTML = facturas.data.map(f => {
+      facturasCache_[f.factura_id] = f;
       const sedes = f.sedes || (f.sede ? [f.sede] : []);
-      const lineaSede = l => l.sede || sedes[0] || '';
-      return `<tr>
+      return `<tr class="fila-factura" data-factura-id="${escapeHtml(f.factura_id)}" style="cursor:pointer">
+      <td style="color:var(--grey)">▸</td>
       <td>${escapeHtml(f.fecha)}</td><td>${escapeHtml(sedes.join(', '))}</td><td>${escapeHtml(f.proveedor)}</td>
       <td>${escapeHtml(f.numero_factura || '—')}</td>
-      <td title="${escapeHtml(f.lineas.map(l => l.producto + ' (' + lineaSede(l) + '): ' + l.cantidad + ' ' + l.unidad).join(', '))}">${f.lineas.length}</td>
+      <td>${f.lineas.length}</td>
       <td>${formatoMoneda_(f.total)}</td><td>${escapeHtml(f.usuario)}</td>
     </tr>`;
     }).join('');
+    body.querySelectorAll('.fila-factura').forEach(fila => {
+      fila.addEventListener('click', () => toggleDetalleFactura_(fila));
+    });
   }
 
   if (resumen.ok && resumen.data.facturas) {
