@@ -46,6 +46,20 @@ function produccionListar_(fecha, sede) {
   return rows;
 }
 
+/** Mismo patrón que conteosHistorial_ (Conteos.gs) y ajustesInventarioHistorial_ (AjustesInventario.gs). */
+function produccionHistorial_(filtros) {
+  filtros = filtros || {};
+  let rows = leerTabla_(SHEET_NAMES.PRODUCCIONES);
+  if (filtros.fecha_desde) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) >= filtros.fecha_desde; });
+  if (filtros.fecha_hasta) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) <= filtros.fecha_hasta; });
+  if (filtros.sede && filtros.sede !== 'Ambas') rows = rows.filter(function (r) { return r.sede === filtros.sede; });
+  if (filtros.producto) {
+    const q = normalizar_(filtros.producto);
+    rows = rows.filter(function (r) { return normalizar_(r.item).indexOf(q) !== -1; });
+  }
+  return rows.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+}
+
 /**
  * Total producido de un ítem en una fecha, en unidad base (g/ml/u).
  * Agrupa por claveProducto_ (Catalogo.gs) para que coincida con cómo se agrupan los conteos y

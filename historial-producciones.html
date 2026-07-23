@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Histórico de producción</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
+      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Histórico de producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Histórico de producción</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card" id="card-stats-produccion" style="display:none">
+      <h3 style="margin:0 0 10px">📊 Lo que más se produce en este rango</h3>
+      <ol id="stats-produccion" style="margin:0; padding-left:20px"></ol>
+    </div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Todo lo registrado en <a href="producir.html">Registrar producción</a> — por sede o todo
+        junto, con quién lo registró y a qué hora. Esta página es solo de consulta.
+      </p>
+      <div class="grid grid-4" style="margin-bottom:10px">
+        <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
+        <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta"></div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="filtro-sede">
+            <option value="Ambas">Ambas (todas)</option>
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo"><label>Buscar producto</label><input type="text" id="filtro-producto" placeholder="ej. costilla"></div>
+      </div>
+      <button class="btn dorado" id="btn-filtrar">Filtrar</button>
+      <p id="contador-resultados" class="vacio" style="display:none"></p>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Fecha</th><th>Sede</th><th>Producto</th><th>Cantidad</th><th>Registrado por</th><th>Registrado el</th></tr>
+          </thead>
+          <tbody id="tabla-historial"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Lectura']);
+montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('filtro-sede'));
+
+// Por defecto, últimos 30 días — igual que Histórico de mermas.
+const hoy = fechaLocalHoy_();
+const hace30dias = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+})();
+document.getElementById('filtro-desde').value = hace30dias;
+document.getElementById('filtro-hasta').value = hoy;
+
+function formatearHora_(valor) {
+  if (!valor) return '—';
+  const d = new Date(valor);
+  if (isNaN(d)) return String(valor);
+  return d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function cargar() {
+  const tabla = document.getElementById('tabla-historial');
+  const contador = document.getElementById('contador-resultados');
+  tabla.innerHTML = '<tr><td colspan="6" class="vacio">Cargando…</td></tr>';
+  contador.style.display = 'none';
+
+  const filtros = {
+    fecha_desde: document.getElementById('filtro-desde').value,
+    fecha_hasta: document.getElementById('filtro-hasta').value,
+    sede: document.getElementById('filtro-sede').value,
+    producto: document.getElementById('filtro-producto').value.trim()
+  };
+  const data = await llamar('produccion_historial', { filtros });
+  if (!data.ok) {
+    tabla.innerHTML = `<tr><td colspan="6" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+    document.getElementById('card-stats-produccion').style.display = 'none';
+    return;
+  }
+
+  pintarEstadisticasProduccion_(data.data);
+
+  if (!data.data.length) {
+    tabla.innerHTML = '<tr><td colspan="6" class="vacio">Sin producción registrada que coincida con el filtro.</td></tr>';
+    return;
+  }
+
+  contador.style.display = 'block';
+  contador.textContent = `${data.data.length} registro(s) encontrado(s).`;
+  tabla.innerHTML = data.data.map(r => `
+    <tr>
+      <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
+      <td>${escapeHtml(r.sede)}</td>
+      <td>${escapeHtml(r.item)}</td>
+      <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
+      <td>${escapeHtml(r.usuario)}</td>
+      <td style="color:var(--grey); font-size:.85rem">${formatearHora_(r.timestamp)}</td>
+    </tr>`).join('');
+}
+
+function pintarEstadisticasProduccion_(filas) {
+  const card = document.getElementById('card-stats-produccion');
+  const cont = document.getElementById('stats-produccion');
+  if (!filas.length) { card.style.display = 'none'; return; }
+
+  const porItem = {};
+  filas.forEach(r => {
+    const clave = normalizarTexto(r.item) + '|' + r.unidad;
+    if (!porItem[clave]) porItem[clave] = { item: r.item, unidad: r.unidad, cantidad: 0 };
+    porItem[clave].cantidad += Number(r.cantidad) || 0;
+  });
+  const top = Object.values(porItem).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5);
+
+  card.style.display = 'block';
+  cont.innerHTML = top.map(p => `<li>${escapeHtml(p.item)} — ${escapeHtml(p.cantidad.toFixed(2))} ${escapeHtml(p.unidad)}</li>`).join('');
+}
+
+document.getElementById('btn-filtrar').addEventListener('click', cargar);
+cargar();
+</script>
+</body>
+</html>

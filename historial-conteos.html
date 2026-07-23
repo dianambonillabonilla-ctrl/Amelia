@@ -16,6 +16,7 @@
       <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Histórico de conteos</a>
       <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de producción</a>
       <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
@@ -32,6 +33,15 @@
     <div class="topbar">
       <h1>Histórico de conteos</h1>
       <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card" id="card-stats-agotados" style="display:none">
+      <h3 style="margin:0 0 10px">📊 Lo que más se agota en este rango</h3>
+      <p style="color:var(--grey); font-size:.85rem; margin:0 0 10px">
+        Cuántas veces se abrió una gestión de faltante (ver <a href="gestiones.html">Gestiones</a>)
+        para cada producto, en las fechas y sede filtradas.
+      </p>
+      <ol id="stats-agotados" style="margin:0; padding-left:20px"></ol>
     </div>
 
     <div class="card">
@@ -146,6 +156,34 @@ async function cargar() {
       <td>${escapeHtml(r.usuario)}</td>
       <td style="color:var(--grey); font-size:.85rem">${formatearHora_(r.timestamp)}</td>
     </tr>`).join('');
+
+  pintarEstadisticasAgotados_(filtros);
+}
+
+// "Lo que más se agota" = cuántas veces se abrió una gestión de faltante para cada producto en
+// este mismo rango de fechas/sede — el dato más directo de "esto de verdad faltó" (ver
+// Gestiones.gs), no un conteo en cero que puede ser normal para ciertos productos.
+async function pintarEstadisticasAgotados_(filtros) {
+  const card = document.getElementById('card-stats-agotados');
+  const cont = document.getElementById('stats-agotados');
+  const data = await llamar('gestiones_listar', { filtro: { sede: filtros.sede !== 'Ambas' ? filtros.sede : undefined } });
+  // Si el rol no alcanza a ver Gestiones (ej. Lectura), se oculta el bloque sin reventar el resto
+  // de la página — el histórico de conteos sigue funcionando igual.
+  if (!data.ok) { card.style.display = 'none'; return; }
+
+  const enRango = data.data.filter(g => g.fecha >= filtros.fecha_desde && g.fecha <= filtros.fecha_hasta);
+  const porProducto = {};
+  enRango.forEach(g => {
+    const clave = normalizarTexto(g.producto);
+    if (!porProducto[clave]) porProducto[clave] = { producto: g.producto, veces: 0 };
+    porProducto[clave].veces++;
+  });
+  const top = Object.values(porProducto).sort((a, b) => b.veces - a.veces).slice(0, 5);
+
+  card.style.display = 'block';
+  cont.innerHTML = top.length
+    ? top.map(p => `<li>${escapeHtml(p.producto)} — ${p.veces} ${p.veces === 1 ? 'vez' : 'veces'}</li>`).join('')
+    : '<li style="color:var(--grey); list-style:none; margin-left:-20px">Sin gestiones de faltantes en este rango.</li>';
 }
 
 document.getElementById('btn-filtrar').addEventListener('click', cargar);

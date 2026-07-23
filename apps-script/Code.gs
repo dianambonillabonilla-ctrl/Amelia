@@ -273,6 +273,9 @@ function handleRequest_(e, method) {
       case 'produccion_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'produccion_historial':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: produccionHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
       case 'usuarios_listar':
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
