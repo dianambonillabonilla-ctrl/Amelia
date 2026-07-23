@@ -110,6 +110,7 @@ tr:hover td { background: #FBFAF6; }
 .tile.tile-compra { background: #FEF4F3; border: 2px solid var(--red); }
 .tile.tile-compra .tile-valor { color: var(--red); font-size: 1.35rem; }
 .tile.tile-compra .tile-detalle { color: var(--ink); }
+.tile-gestion { font-size: .78rem; color: var(--navy); margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
 
 .btn {
   background: var(--navy); color: white; border: none; border-radius: 7px;

@@ -28,7 +28,8 @@ const SHEET_NAMES = {
   TRASLADOS: 'Traslados',
   AJUSTES_INVENTARIO: 'Ajustes_Inventario',
   TURNOS_SECTOR: 'Turnos_Sector',
-  CIERRES_TURNO: 'Cierres_Turno'
+  CIERRES_TURNO: 'Cierres_Turno',
+  GESTIONES: 'Gestiones'
 };
 
 function ss_() {
@@ -71,7 +72,9 @@ function configurarHojas() {
     Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
       'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado'],
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
-    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp']
+    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp'],
+    Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
+      'actualizado_por', 'timestamp_actualizado', 'factura_id']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -245,6 +248,15 @@ function handleRequest_(e, method) {
       case 'compras_resumen_gasto':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'gestion_crear':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(gestionCrear_(params.item, sesion.usuario));
+      case 'gestiones_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: gestionesListar_(params.filtro, sesion.usuario) });
+      case 'gestion_actualizar_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(gestionActualizarEstado_(params.id, params.estado, params.nota, sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));

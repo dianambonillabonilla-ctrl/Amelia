@@ -33,7 +33,10 @@ const compras = cargar('apps-script/Compras.gs', {
   },
   ajusteInventarioFila_: (item, usuarioFila) => Object.assign({ tipo: 'Compra cruda' }, item, { usuario: usuarioFila.nombre }),
   catalogoAsegurar_: () => {},
-  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  // gestionAutoResolverPorCompra_ real vive en Gestiones.gs (ver tests/gestiones.test.js) — aquí
+  // solo hace falta que exista para que compraRegistrarFactura_ no reviente al llamarla.
+  gestionAutoResolverPorCompra_: () => {}
 });
 
 const usuario = { nombre: 'Diana', sede: 'Ambas' };

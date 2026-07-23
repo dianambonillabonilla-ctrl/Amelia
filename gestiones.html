@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Gestiones</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
+      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina" class="activo">Gestiones</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Gestiones de faltantes</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <h2>1. Abrir una gestión</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Úsalo cuando algo falta y ya se está resolviendo (ej. "ya voy a comprar banano") — así
+        queda visible para todos y nadie lo vuelve a reportar creyendo que nadie lo sabe.
+      </p>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Producto</label>
+          <input type="text" id="nuevo-producto" list="lista-productos" placeholder="ej. Banano">
+          <datalist id="lista-productos"></datalist>
+        </div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="nuevo-sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Nota (opcional)</label>
+          <input type="text" id="nuevo-nota" placeholder="ej. pedido a Mercamío, llega el viernes">
+        </div>
+      </div>
+      <button class="btn dorado" id="btn-crear">Abrir gestión</button>
+    </div>
+
+    <div class="card">
+      <h2>2. Abiertas</h2>
+      <table>
+        <thead><tr><th>Producto</th><th>Sede</th><th>Estado</th><th>Nota</th><th>Abierta por</th><th>Fecha</th><th></th></tr></thead>
+        <tbody id="tabla-abiertas"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Historial reciente</h2>
+      <table>
+        <thead><tr><th>Producto</th><th>Sede</th><th>Estado</th><th>Nota</th><th>Última actualización</th><th>Fecha</th></tr></thead>
+        <tbody id="tabla-historial"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Cocina']);
+montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('nuevo-sede'));
+
+async function cargarSugerenciasProductos_() {
+  const data = await llamar('catalogo_listar');
+  if (!data.ok) return;
+  document.getElementById('lista-productos').innerHTML = data.data
+    .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
+}
+cargarSugerenciasProductos_();
+
+function badgeEstado_(estado) {
+  if (estado === 'Resuelto') return `<span class="badge ok">${escapeHtml(estado)}</span>`;
+  if (estado === 'Cancelada') return `<span class="badge">${escapeHtml(estado)}</span>`;
+  if (estado === 'Pedido realizado') return `<span class="badge aviso">${escapeHtml(estado)}</span>`;
+  return `<span class="badge alerta">${escapeHtml(estado)}</span>`;
+}
+
+document.getElementById('btn-crear').addEventListener('click', conBotonProtegido(document.getElementById('btn-crear'), async () => {
+  const item = {
+    producto: document.getElementById('nuevo-producto').value.trim(),
+    sede: document.getElementById('nuevo-sede').value,
+    nota: document.getElementById('nuevo-nota').value.trim()
+  };
+  if (!item.producto) { alert('Escribe qué producto falta.'); return; }
+  const data = await llamar('gestion_crear', { item });
+  if (data.ok) {
+    avisarGuardado('Gestión abierta.');
+    document.getElementById('nuevo-producto').value = '';
+    document.getElementById('nuevo-nota').value = '';
+    cargarTodo();
+  } else {
+    alert(data.error);
+  }
+}));
+
+async function cargarTodo() {
+  const data = await llamar('gestiones_listar', { filtro: {} });
+  if (!data.ok) return;
+  pintarAbiertas_(data.data.filter(g => g.estado === 'Pendiente' || g.estado === 'Pedido realizado'));
+  pintarHistorial_(data.data.filter(g => g.estado === 'Resuelto' || g.estado === 'Cancelada').slice(0, 30));
+}
+
+function pintarAbiertas_(filas) {
+  const body = document.getElementById('tabla-abiertas');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">No hay gestiones abiertas.</td></tr>'; return; }
+  body.innerHTML = filas.map(g => `
+    <tr>
+      <td>${escapeHtml(g.producto)}</td>
+      <td>${escapeHtml(g.sede)}</td>
+      <td>${badgeEstado_(g.estado)}</td>
+      <td>${escapeHtml(g.nota || '—')}</td>
+      <td>${escapeHtml(g.creado_por)}</td>
+      <td>${escapeHtml(g.fecha)}</td>
+      <td>
+        ${g.estado === 'Pendiente' ? `<button class="btn fantasma btn-pedido" data-id="${escapeHtml(g.id)}">Ya se pidió</button>` : ''}
+        <button class="btn dorado btn-resolver" data-id="${escapeHtml(g.id)}">Marcar resuelto</button>
+        <button class="btn fantasma btn-cancelar" data-id="${escapeHtml(g.id)}">Cancelar</button>
+      </td>
+    </tr>`).join('');
+
+  body.querySelectorAll('.btn-pedido').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const data = await llamar('gestion_actualizar_estado', { id: btn.dataset.id, estado: 'Pedido realizado' });
+      if (data.ok) { avisarGuardado('Marcada como pedido realizado.'); cargarTodo(); } else { alert(data.error); }
+    }));
+  });
+  body.querySelectorAll('.btn-resolver').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const data = await llamar('gestion_actualizar_estado', { id: btn.dataset.id, estado: 'Resuelto' });
+      if (data.ok) { avisarGuardado('Gestión marcada como resuelta.'); cargarTodo(); } else { alert(data.error); }
+    }));
+  });
+  body.querySelectorAll('.btn-cancelar').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      if (!confirm('¿Cancelar esta gestión?')) return;
+      const data = await llamar('gestion_actualizar_estado', { id: btn.dataset.id, estado: 'Cancelada' });
+      if (data.ok) { avisarGuardado('Gestión cancelada.'); cargarTodo(); } else { alert(data.error); }
+    }));
+  });
+}
+
+function pintarHistorial_(filas) {
+  const body = document.getElementById('tabla-historial');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">Sin gestiones cerradas todavía.</td></tr>'; return; }
+  body.innerHTML = filas.map(g => `
+    <tr>
+      <td>${escapeHtml(g.producto)}</td>
+      <td>${escapeHtml(g.sede)}</td>
+      <td>${badgeEstado_(g.estado)}</td>
+      <td>${escapeHtml(g.nota || '—')}</td>
+      <td>${escapeHtml(g.actualizado_por || '—')}</td>
+      <td>${escapeHtml(g.fecha)}</td>
+    </tr>`).join('');
+}
+
+cargarTodo();
+</script>
+</body>
+</html>
