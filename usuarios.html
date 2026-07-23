@@ -119,7 +119,7 @@ async function cargar() {
   });
 
   document.querySelectorAll('.btn-resetear').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
       const nueva = prompt(`Nueva contraseña para ${btn.dataset.nombre} (mínimo 8 caracteres). No hace falta la contraseña anterior.`);
       if (!nueva) return;
       const data = await llamar('usuario_resetear_password', { id: btn.dataset.id, password_nueva: nueva });
@@ -128,11 +128,11 @@ async function cargar() {
       } else {
         alert(data.error);
       }
-    });
+    }));
   });
 
   document.querySelectorAll('.btn-sectores').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
       const nuevos = prompt(`Sectores que puede elegir ${btn.dataset.nombre} (separados por coma, ej. "Cocina, Café"). Vacío = no se le pide elegir sector.`, btn.dataset.sectores || '');
       if (nuevos === null) return;
       const data = await llamar('usuarios_guardar', { item: { id: btn.dataset.id, sectores_permitidos: nuevos.trim() } });
@@ -142,11 +142,11 @@ async function cargar() {
       } else {
         alert(data.error);
       }
-    });
+    }));
   });
 }
 
-document.getElementById('btn-crear').addEventListener('click', async () => {
+document.getElementById('btn-crear').addEventListener('click', conBotonProtegido(document.getElementById('btn-crear'), async () => {
   const item = {
     nombre: document.getElementById('nuevo-nombre').value.trim(),
     usuario: document.getElementById('nuevo-usuario').value.trim(),
@@ -165,7 +165,7 @@ document.getElementById('btn-crear').addEventListener('click', async () => {
   } else {
     alert(data.error);
   }
-});
+}));
 
 cargar();
 </script>

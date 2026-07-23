@@ -579,7 +579,7 @@ function poblarSubcategoriasNuevo_() {
     subcategoriasUnicas_(categoria).map(s => `<option value="${escapeHtml(s)}">`).join('');
 }
 
-document.getElementById('btn-guardar').addEventListener('click', async () => {
+document.getElementById('btn-guardar').addEventListener('click', conBotonProtegido(document.getElementById('btn-guardar'), async () => {
   const nombre = document.getElementById('nuevo-nombre').value.trim();
   if (!nombre) { alert('El nombre del producto es obligatorio.'); return; }
 
@@ -625,7 +625,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
   } else {
     alert(data.error);
   }
-});
+}));
 
 cargarCatalogo();
 </script>
