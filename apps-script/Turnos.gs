@@ -93,7 +93,12 @@ function turnoFaltantesPorSector_(fecha, sede) {
   conteoListar_(fecha, sede).forEach(function (c) { contados[normalizar_(c.producto)] = true; });
 
   return Object.keys(sectoresHoy).sort().map(function (sector) {
-    const items = catalogo.filter(function (p) { return p.sector === sector && p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1; });
+    const items = catalogo.filter(function (p) {
+      // Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) no debe exigirse en la
+      // otra — vacío o 'Ambas' = aplica a cualquier sede, igual que en productosObligatoriosFaltantes_.
+      return p.sector === sector && p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1 &&
+        (!p.sede || p.sede === 'Ambas' || p.sede === sede);
+    });
     const faltantes = items.filter(function (p) { return !contados[normalizar_(p.nombre_estandar)]; }).map(function (p) { return p.nombre_estandar; });
     return { sector: sector, total: items.length, faltantes: faltantes };
   });

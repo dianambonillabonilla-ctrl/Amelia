@@ -125,8 +125,8 @@ async function cargar() {
 
   catalogoActual = catalogoData.ok ? catalogoData.data : [];
   disponibilidadRecetaActual = data.data.disponibilidad_receta || {};
-  pintarAlertaFrecuenciaHoy_(catalogoActual, fecha);
-  pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual);
+  pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
+  pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede);
   pintarTilesPlatos_(data.data.platos);
   pintarPendientes_();
 
@@ -308,16 +308,19 @@ function toggleDetalleStock_(fila) {
 // Si un producto (ej. "Sillas") nunca aparece aquí, es porque en Registrar producto no tiene
 // ninguna "Frecuencia de conteo" asignada — sin ese dato el sistema no tiene cómo saber cuándo
 // recordarlo.
-function pintarAlertaFrecuenciaHoy_(catalogo, fecha) {
+function pintarAlertaFrecuenciaHoy_(catalogo, fecha, sede) {
   const card = document.getElementById('card-alerta-frecuencia');
   const cont = document.getElementById('alerta-frecuencia');
   const frecuenciasHoy = frecuenciasDelDia_(fecha).filter(f => f !== 'Diario');
 
   if (!frecuenciasHoy.length) { card.style.display = 'none'; return; }
 
+  // Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) no debe avisarse como
+  // pendiente en la otra. Viendo "Ambas" no se filtra (vista agregada de las dos sedes).
+  const filtroSede = p => !sede || sede === 'Ambas' || !p.sede || p.sede === 'Ambas' || p.sede === sede;
   const porFrecuencia = frecuenciasHoy.map(frecuencia => ({
     frecuencia,
-    productos: catalogo.filter(p => p.frecuencia_conteo === frecuencia).map(p => p.nombre_estandar).sort()
+    productos: catalogo.filter(p => p.frecuencia_conteo === frecuencia && filtroSede(p)).map(p => p.nombre_estandar).sort()
   })).filter(g => g.productos.length);
 
   if (!porFrecuencia.length) { card.style.display = 'none'; return; }
@@ -410,15 +413,22 @@ async function pintarPendientes_() {
   }
 }
 
-function pintarAlertaInsumos_(stockIngredientes, catalogo) {
+function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
   const card = document.getElementById('card-alerta-insumos');
   const cont = document.getElementById('alerta-insumos');
 
-  if (!catalogo.length) {
+  if (!catalogoCompleto.length) {
     card.style.display = 'block';
     cont.innerHTML = '<p style="margin:0">Todavía no hay productos en el catálogo. Ve a <a href="catalogo.html">Registrar producto</a>.</p>';
     return;
   }
+
+  // Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) nunca se cuenta en la otra,
+  // así que sin este filtro aparecía como "agotado"/"por debajo del mínimo" ahí solo por no
+  // tener ningún conteo — no porque de verdad falte. Viendo "Ambas" no se filtra.
+  const catalogo = (!sede || sede === 'Ambas')
+    ? catalogoCompleto
+    : catalogoCompleto.filter(p => !p.sede || p.sede === 'Ambas' || p.sede === sede);
 
   const bajos = catalogo
     .map(p => {

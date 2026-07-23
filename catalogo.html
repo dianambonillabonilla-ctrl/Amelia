@@ -74,8 +74,8 @@
         catálogo, no borra conteos, recetas ni producciones ya registrados con ese nombre.
       </p>
       <table>
-        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th><th>Frecuencia de conteo</th><th>Sector</th><th>Producción</th><th>Obligatorio en producción</th><th></th></tr></thead>
-        <tbody id="tabla-catalogo"><tr><td colspan="11" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th><th>Frecuencia de conteo</th><th>Sector</th><th>Sede</th><th>Producción</th><th>Obligatorio en producción</th><th></th></tr></thead>
+        <tbody id="tabla-catalogo"><tr><td colspan="12" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
 
@@ -146,6 +146,20 @@
             Qué sector es responsable de contar esto (ver Usuarios → Sectores). Vacío = nadie en
             particular, sigue exigiéndose por la frecuencia de conteo normal, no bloquea el cierre
             de turno de ningún sector.
+          </p>
+        </div>
+      </div>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Sede donde se vende/usa (opcional)</label>
+          <select id="nuevo-sede-producto">
+            <option value="">Ambas (por defecto)</option>
+            <option value="San Antonio">Solo San Antonio</option>
+            <option value="Capri">Solo Capri</option>
+          </select>
+          <p style="color:var(--grey); font-size:.78rem; margin:4px 0 0">
+            Si algo solo se vende/usa en una sede (ej. Salsa de mora solo en Capri), elígela aquí
+            para que no aparezca como obligatorio ni bloquee el conteo/cierre de turno en la otra.
           </p>
         </div>
       </div>
@@ -285,7 +299,7 @@ function pintarTabla_() {
       a.nombre_estandar.localeCompare(b.nombre_estandar));
 
   const body = document.getElementById('tabla-catalogo');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="11" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="12" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
   const frecuencias = ['', 'Diario', 'Miércoles', 'Viernes', 'Mensual'];
   const usuario = Sesion.usuario();
   const esAdmin = !!usuario && usuario.rol === 'Administrador';
@@ -321,6 +335,13 @@ function pintarTabla_() {
       <td>${esAdmin
         ? `<input type="text" class="in-sector" list="lista-sectores" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p.sector || '')}" style="width:110px">`
         : escapeHtml(p.sector || '—')}</td>
+      <td>${esAdmin
+        ? `<select class="in-sede-producto" data-id="${escapeHtml(p.id)}" style="width:auto">
+            <option value="" ${!p.sede || p.sede === 'Ambas' ? 'selected' : ''}>Ambas</option>
+            <option value="San Antonio" ${p.sede === 'San Antonio' ? 'selected' : ''}>Solo San Antonio</option>
+            <option value="Capri" ${p.sede === 'Capri' ? 'selected' : ''}>Solo Capri</option>
+          </select>`
+        : escapeHtml(p.sede || 'Ambas')}</td>
       <td style="text-align:center">${esAdmin
         ? `<input type="checkbox" class="in-tipo-produccion" data-id="${escapeHtml(p.id)}" ${p.tipo === 'Producción' ? 'checked' : ''}>`
         : (p.tipo === 'Producción' ? 'Sí' : '—')}</td>
@@ -351,6 +372,7 @@ function pintarTabla_() {
       const frecuencia = fila.querySelector('.in-frecuencia').value;
       const nombreFudo = fila.querySelector('.in-nombre-fudo').value.trim();
       const sector = fila.querySelector('.in-sector').value.trim();
+      const sedeProducto = fila.querySelector('.in-sede-producto').value;
       const tipoProduccion = fila.querySelector('.in-tipo-produccion').checked;
       const obligatorioProduccion = fila.querySelector('.in-obligatorio-produccion').checked;
 
@@ -373,6 +395,7 @@ function pintarTabla_() {
           frecuencia_conteo: frecuencia,
           nombre_fudo: nombreFudo,
           sector: sector,
+          sede: sedeProducto,
           tipo: tipoProduccion ? 'Producción' : '',
           obligatorio_produccion: obligatorioProduccion
         }
@@ -386,6 +409,7 @@ function pintarTabla_() {
         item.frecuencia_conteo = frecuencia;
         item.nombre_fudo = nombreFudo;
         item.sector = sector;
+        item.sede = sedeProducto;
         item.tipo = tipoProduccion ? 'Producción' : '';
         item.obligatorio_produccion = obligatorioProduccion;
       }
@@ -583,6 +607,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     stock_minimo: stockMinimo === '' ? '' : parseFloat(stockMinimo),
     frecuencia_conteo: document.getElementById('nuevo-frecuencia').value,
     sector: document.getElementById('nuevo-sector').value.trim(),
+    sede: document.getElementById('nuevo-sede-producto').value,
     tipo: document.getElementById('nuevo-tipo-produccion').checked ? 'Producción' : '',
     obligatorio_produccion: document.getElementById('nuevo-obligatorio-produccion').checked
   };
@@ -592,6 +617,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     avisarGuardado('Producto guardado.');
     ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas', 'nuevo-stock-minimo', 'nuevo-frecuencia', 'nuevo-sector'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('nuevo-unidad').value = 'g';
+    document.getElementById('nuevo-sede-producto').value = '';
     document.getElementById('nuevo-tipo-produccion').checked = false;
     document.getElementById('nuevo-obligatorio-produccion').checked = false;
     document.getElementById('aviso-parecido').style.display = 'none';
