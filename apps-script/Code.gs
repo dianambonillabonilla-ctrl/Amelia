@@ -51,7 +51,7 @@ function sheet_(name) {
 function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'],
-    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion'],
     Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
       'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
       'controla_disponibilidad', 'notas'],
@@ -197,7 +197,7 @@ function handleRequest_(e, method) {
         return jsonOut_(recetaGuardar_(params.item, sesion.usuario));
       case 'conteo_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(conteoRegistrar_(params.items, sesion.usuario));
+        return jsonOut_(conteoRegistrar_(params.items, sesion.usuario, params.opciones));
       case 'conteo_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: conteoListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });

@@ -74,8 +74,8 @@
         catálogo, no borra conteos, recetas ni producciones ya registrados con ese nombre.
       </p>
       <table>
-        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th><th>Frecuencia de conteo</th><th></th></tr></thead>
-        <tbody id="tabla-catalogo"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Subcategoría</th><th>Unidad</th><th>Nombre en FUDO</th><th>Stock mínimo</th><th>Frecuencia de conteo</th><th>Obligatorio en producción</th><th></th></tr></thead>
+        <tbody id="tabla-catalogo"><tr><td colspan="9" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
 
@@ -139,6 +139,12 @@
           </select>
         </div>
       </div>
+      <div class="campo">
+        <label style="display:flex; align-items:center; gap:8px; margin:0">
+          <input type="checkbox" id="nuevo-obligatorio-produccion" style="width:auto">
+          Obligatorio al registrar producción (ej. vinagre balsámico, salsa de soya, sal marina — insumos de cocina que hay que revisar cada vez que se registra producción)
+        </label>
+      </div>
       <button class="btn dorado" id="btn-guardar">Guardar producto</button>
     </div>
 
@@ -183,7 +189,7 @@ async function cargarCatalogo() {
   await repararIdsCatalogo_();
   const data = await llamar('catalogo_listar');
   if (!data.ok) {
-    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="8" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+    document.getElementById('tabla-catalogo').innerHTML = `<tr><td colspan="9" class="vacio">${escapeHtml(data.error)}</td></tr>`;
     return;
   }
   catalogo = data.data;
@@ -263,7 +269,7 @@ function pintarTabla_() {
       a.nombre_estandar.localeCompare(b.nombre_estandar));
 
   const body = document.getElementById('tabla-catalogo');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="8" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="9" class="vacio">Sin productos que coincidan.</td></tr>'; return; }
   const frecuencias = ['', 'Diario', 'Miércoles', 'Viernes', 'Mensual'];
   const usuario = Sesion.usuario();
   const esAdmin = !!usuario && usuario.rol === 'Administrador';
@@ -296,6 +302,9 @@ function pintarTabla_() {
             ${frecuencias.map(f => `<option value="${escapeHtml(f)}" ${p.frecuencia_conteo === f ? 'selected' : ''}>${f || 'Sin lista fija'}</option>`).join('')}
           </select>`
         : escapeHtml(p.frecuencia_conteo || '—')}</td>
+      <td style="text-align:center">${esAdmin
+        ? `<input type="checkbox" class="in-obligatorio-produccion" data-id="${escapeHtml(p.id)}" ${p.obligatorio_produccion === true ? 'checked' : ''}>`
+        : (p.obligatorio_produccion === true ? 'Sí' : '—')}</td>
       <td>${esAdmin ? `
         <button class="btn dorado btn-guardar-fila" data-id="${escapeHtml(p.id)}" type="button">Guardar</button>
         <button class="btn fantasma btn-eliminar-fila" data-id="${escapeHtml(p.id)}" type="button" style="color:var(--red); border-color:var(--red)">Eliminar</button>
@@ -319,6 +328,7 @@ function pintarTabla_() {
       const stockMinimoTexto = fila.querySelector('.in-stock-minimo').value.trim();
       const frecuencia = fila.querySelector('.in-frecuencia').value;
       const nombreFudo = fila.querySelector('.in-nombre-fudo').value.trim();
+      const obligatorioProduccion = fila.querySelector('.in-obligatorio-produccion').checked;
 
       if (nombre !== item.nombre_estandar) {
         const usados = buscarParecidos_(nombre).filter(p => p.id !== id);
@@ -337,7 +347,8 @@ function pintarTabla_() {
           unidad_base: unidad,
           stock_minimo: stockMinimoTexto === '' ? '' : parseFloat(stockMinimoTexto),
           frecuencia_conteo: frecuencia,
-          nombre_fudo: nombreFudo
+          nombre_fudo: nombreFudo,
+          obligatorio_produccion: obligatorioProduccion
         }
       });
       if (!data.ok) { alert(data.error); return; }
@@ -348,6 +359,7 @@ function pintarTabla_() {
         item.stock_minimo = stockMinimoTexto === '' ? '' : parseFloat(stockMinimoTexto);
         item.frecuencia_conteo = frecuencia;
         item.nombre_fudo = nombreFudo;
+        item.obligatorio_produccion = obligatorioProduccion;
       }
       avisarGuardado('Producto actualizado.');
       poblarFiltros_();
@@ -533,7 +545,8 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     nombre_fudo: document.getElementById('nuevo-nombre-fudo').value.trim(),
     notas: document.getElementById('nuevo-notas').value.trim(),
     stock_minimo: stockMinimo === '' ? '' : parseFloat(stockMinimo),
-    frecuencia_conteo: document.getElementById('nuevo-frecuencia').value
+    frecuencia_conteo: document.getElementById('nuevo-frecuencia').value,
+    obligatorio_produccion: document.getElementById('nuevo-obligatorio-produccion').checked
   };
 
   const data = await llamar('catalogo_guardar', { item });
@@ -541,6 +554,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     avisarGuardado('Producto guardado.');
     ['nuevo-nombre', 'nuevo-categoria', 'nuevo-subcategoria', 'nuevo-nombre-fudo', 'nuevo-notas', 'nuevo-stock-minimo', 'nuevo-frecuencia'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('nuevo-unidad').value = 'g';
+    document.getElementById('nuevo-obligatorio-produccion').checked = false;
     document.getElementById('aviso-parecido').style.display = 'none';
     cargarCatalogo();
   } else {
