@@ -804,4 +804,34 @@ const resultadoSinColumnas = avalarModSinColumnas.ajusteInventarioAvalar_('m2', 
 assert.equal(resultadoSinColumnas.ok, false, 'sin las columnas de aval, debe fallar con mensaje claro en vez de reventar');
 assert.ok(/configurarHojas/.test(resultadoSinColumnas.error), 'el mensaje debe guiar a correr configurarHojas()');
 
+// --- Recetas: platos vendidos en FUDO sin ninguna receta con ese nombre --------------------------
+// Pedido real: "si en FUDO saca un wafle de fresa con chocolate el sistema debe de guardar el
+// wafle, la fresa y el chocolate y si no lo guarda la conciliacion no funciona" — sin receta, esa
+// venta no descuenta ningún ingrediente. Debe detectarlo en TODO el histórico (no solo hoy), pero
+// dejar fuera bebidas del catálogo (para esas no tener receta es normal, se consumen 1:1) y
+// cualquier producto que sí tenga receta.
+const ventasParaRecetas = [
+  { producto: 'Wafle de fresa con chocolate', cantidad: 3, sede: 'San Antonio', cancelada: false },
+  { producto: 'Wafle de fresa con chocolate', cantidad: 2, sede: 'Capri', cancelada: false },
+  { producto: 'Supremo', cantidad: 1, sede: 'San Antonio', cancelada: false }, // sí tiene receta
+  { producto: 'Agua', cantidad: 5, sede: 'San Antonio', cancelada: false }, // es bebida del catálogo
+  { producto: 'Wafle de fresa con chocolate', cantidad: 99, sede: 'San Antonio', cancelada: true } // cancelada, no debe sumar
+];
+const recetasParaRecetas = [{ producto: 'Supremo', ingrediente: 'Costilla' }];
+const catalogoParaRecetas = [{ nombre_estandar: 'Agua', categoria: 'Bebidas/Sin gas' }];
+const recetasMod = cargar('apps-script/Recetas.gs', {
+  SHEET_NAMES: { RECETAS: 'recetas', CATALOGO: 'catalogo', VENTAS_FUDO: 'ventas' },
+  leerTabla_: (hoja) => hoja === 'recetas' ? recetasParaRecetas : (hoja === 'catalogo' ? catalogoParaRecetas : ventasParaRecetas),
+  normalizar_: normalizarSimple_,
+  claveProducto_: (texto) => normalizarSimple_(texto),
+  nombreCanonico_: (texto) => texto,
+  indiceCatalogo_: () => ({}),
+  ventaCancelada_: (v) => v.cancelada === true
+});
+const sinReceta = recetasMod.platosFudoSinReceta_();
+assert.equal(sinReceta.length, 1, 'Supremo (con receta) y Agua (bebida del catálogo) no deben aparecer');
+assert.equal(sinReceta[0].producto, 'Wafle de fresa con chocolate');
+assert.equal(sinReceta[0].cantidad_vendida, 5, 'debe sumar San Antonio + Capri y excluir la venta cancelada (3 + 2, no 99)');
+assert.deepEqual(sinReceta[0].sedes.sort(), ['Capri', 'San Antonio']);
+
 console.log('inventory-controls: OK');

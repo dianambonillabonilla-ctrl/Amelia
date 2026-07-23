@@ -195,6 +195,9 @@ function handleRequest_(e, method) {
       case 'receta_guardar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(recetaGuardar_(params.item, sesion.usuario));
+      case 'platos_fudo_sin_receta':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: platosFudoSinReceta_() });
       case 'conteo_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(conteoRegistrar_(params.items, sesion.usuario, params.opciones));
