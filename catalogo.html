@@ -140,6 +140,20 @@
       </div>
       <button class="btn dorado" id="btn-guardar">Guardar producto</button>
     </div>
+
+    <div class="card" data-solo-rol="Administrador">
+      <h2>3. Barrido: duplicados y nombres de FUDO sin asignar</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Revisa dos cosas para organizar el catálogo: nombres muy parecidos dentro del catálogo
+        (posibles duplicados) y nombres que ya han traído las importaciones de FUDO pero que
+        ningún producto tiene guardado como "Nombre en FUDO" — sin ese vínculo, Conciliación y
+        Disponible Hoy no los reconocen. Nada se une ni se cambia solo: cada caso se muestra para
+        que tú decidas.
+      </p>
+      <button class="btn fantasma" id="btn-barrido">Buscar duplicados y nombres de FUDO sin asignar</button>
+      <div id="resultado-duplicados" style="margin-top:18px"></div>
+      <div id="resultado-fudo-sin-asignar" style="margin-top:18px"></div>
+    </div>
   </main>
 </div>
 
@@ -374,6 +388,102 @@ function buscarParecidos_(nombre) {
   return catalogo.filter(p => {
     const pn = normalizarTexto(p.nombre_estandar);
     return pn === norm || pn.includes(norm) || norm.includes(pn);
+  });
+}
+
+// --- Barrido: duplicados dentro del catálogo + nombres de FUDO sin vincular --------------------
+// No une ni cambia nada solo — cada resultado es una sugerencia para revisar a mano, porque un
+// nombre parecido no siempre es el mismo producto (ej. "Aguila" y "Aguila Light" son bebidas
+// distintas aunque uno contenga al otro).
+document.getElementById('btn-barrido').addEventListener('click', conBotonProtegido(document.getElementById('btn-barrido'), async () => {
+  pintarDuplicados_();
+  await pintarFudoSinAsignar_();
+}));
+
+function pintarDuplicados_() {
+  const vistos = new Set();
+  const pares = [];
+  catalogo.forEach((a, i) => {
+    catalogo.forEach((b, j) => {
+      if (j <= i) return;
+      const na = normalizarTexto(a.nombre_estandar);
+      const nb = normalizarTexto(b.nombre_estandar);
+      if (!na || !nb) return;
+      const parecidos = na === nb || na.includes(nb) || nb.includes(na);
+      if (!parecidos) return;
+      const clave = [a.id, b.id].sort().join('|');
+      if (!vistos.has(clave)) { vistos.add(clave); pares.push([a, b]); }
+    });
+  });
+
+  const cont = document.getElementById('resultado-duplicados');
+  if (!pares.length) {
+    cont.innerHTML = '<p><strong>Posibles duplicados:</strong> no se encontró ningún par de nombres parecidos.</p>';
+    return;
+  }
+  cont.innerHTML = `<p><strong>Posibles duplicados (${pares.length}):</strong> revisa si son el mismo producto — si sí, elimina uno desde la tabla de arriba (el historial de conteos/recetas queda intacto, no depende del catálogo).</p>` +
+    '<table><thead><tr><th>Producto A</th><th>Producto B</th><th></th></tr></thead><tbody>' +
+    pares.map(([a, b]) => `<tr>
+      <td>${escapeHtml(a.nombre_estandar)} <span style="color:var(--grey)">(${escapeHtml(a.categoria || 'sin categoría')})</span></td>
+      <td>${escapeHtml(b.nombre_estandar)} <span style="color:var(--grey)">(${escapeHtml(b.categoria || 'sin categoría')})</span></td>
+      <td><button class="btn fantasma btn-ver-par" data-nombre="${escapeHtml(a.nombre_estandar)}" type="button">Ver en la tabla</button></td>
+    </tr>`).join('') + '</tbody></table>';
+
+  cont.querySelectorAll('.btn-ver-par').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('filtro-categoria').value = '';
+      poblarSubcategoriasFiltro_();
+      document.getElementById('filtro-frecuencia').value = '';
+      document.getElementById('filtro-nombre').value = btn.dataset.nombre;
+      pintarTabla_();
+      document.getElementById('tabla-catalogo').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+}
+
+async function pintarFudoSinAsignar_() {
+  const cont = document.getElementById('resultado-fudo-sin-asignar');
+  cont.innerHTML = '<p>Buscando nombres de FUDO…</p>';
+  const data = await llamar('fudo_nombres_vistos');
+  if (!data.ok) { cont.innerHTML = `<p>${escapeHtml(data.error)}</p>`; return; }
+
+  const sinAsignar = data.data.filter(nombreFudo => {
+    const n = normalizarTexto(nombreFudo);
+    return !catalogo.some(p => normalizarTexto(p.nombre_fudo) === n || normalizarTexto(p.nombre_estandar) === n);
+  });
+
+  if (!sinAsignar.length) {
+    cont.innerHTML = '<p><strong>Nombres de FUDO:</strong> todos los nombres que ha traído FUDO hasta ahora ya están vinculados a un producto del catálogo.</p>';
+    return;
+  }
+
+  const opcionesProductos = catalogo.slice().sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar));
+  cont.innerHTML = `<p><strong>Nombres de FUDO sin vincular (${sinAsignar.length}):</strong> FUDO ha traído ventas o movimientos con estos nombres, pero ningún producto los tiene guardados como "Nombre en FUDO". Si ya sabes a cuál corresponde, elígelo y presiona Vincular (si hay algo parecido, aparece sugerido); si el producto todavía no existe, créalo arriba con ese nombre de FUDO.</p>` +
+    '<table><thead><tr><th>Nombre en FUDO</th><th>Vincular a</th><th></th></tr></thead><tbody>' +
+    sinAsignar.map(nombreFudo => {
+      const sugerido = buscarParecidos_(nombreFudo)[0];
+      const opciones = opcionesProductos.map(p => `<option value="${escapeHtml(p.id)}" ${sugerido && sugerido.id === p.id ? 'selected' : ''}>${escapeHtml(p.nombre_estandar)}</option>`).join('');
+      return `<tr data-fudo="${escapeHtml(nombreFudo)}">
+        <td>${escapeHtml(nombreFudo)}</td>
+        <td><select class="in-vincular-producto"><option value="">-- elige un producto --</option>${opciones}</select></td>
+        <td><button class="btn dorado btn-vincular" type="button">Vincular</button></td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+
+  cont.querySelectorAll('.btn-vincular').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const fila = btn.closest('tr');
+      const nombreFudo = fila.dataset.fudo;
+      const idProducto = fila.querySelector('.in-vincular-producto').value;
+      if (!idProducto) { alert('Elige a qué producto corresponde este nombre de FUDO.'); return; }
+      const producto = catalogo.find(p => p.id === idProducto);
+      const data = await llamar('catalogo_guardar', { item: { id: idProducto, nombre_fudo: nombreFudo } });
+      if (!data.ok) { alert(data.error); return; }
+      if (producto) producto.nombre_fudo = nombreFudo;
+      avisarGuardado(`"${nombreFudo}" vinculado a "${producto ? producto.nombre_estandar : idProducto}".`);
+      pintarTabla_();
+      fila.remove();
+    }));
   });
 }
 

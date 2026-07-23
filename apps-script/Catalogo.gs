@@ -5,7 +5,13 @@
  */
 
 function catalogoGuardar_(item, usuario) {
-  if (!item || !item.nombre_estandar) return { ok: false, error: 'Falta nombre_estandar' };
+  if (!item) return { ok: false, error: 'Falta el producto' };
+  // Crear un producto nuevo sí exige nombre_estandar. Actualizar uno existente (por item.id) no
+  // debería exigirlo de nuevo si esta llamada solo trae un campo puntual (ej. el barrido de
+  // "nombres de FUDO sin asignar" que solo manda { id, nombre_fudo }) — antes esta validación
+  // corría siempre y esas actualizaciones parciales fallaban con "Falta nombre_estandar" aunque
+  // el producto ya existiera con su nombre puesto.
+  if (!item.id && !item.nombre_estandar) return { ok: false, error: 'Falta nombre_estandar' };
   const sh = sheet_(SHEET_NAMES.CATALOGO);
   const data = sh.getDataRange().getValues();
   const headers = data[0];
