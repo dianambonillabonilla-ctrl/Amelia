@@ -659,4 +659,77 @@ assert.deepEqual(Object.keys(resultadoAdminConciliacion.comida).sort(), ['Capri'
 const filaPokerAdminConciliacion = resultadoAdminConciliacion.bebidas.find(function (b) { return b.producto === 'Poker'; });
 assert.equal(filaPokerAdminConciliacion.capri, 40, 'Administrador/Ambas sigue viendo todo, sin cambios');
 
+// --- Mermas: registro con avalado:false por defecto, histórico y aval del Administrador --------
+// (pedido: "el administrador puede ver que mermas le registraron y si están avaladas" — antes no
+// existía ni una vista consolidada de mermas/ajustes ni un estado de revisión).
+function mockHojaAjustes_(headers, filas) {
+  const data = [headers].concat(filas.map(function (f) { return headers.map(function (h) { return f[h] !== undefined ? f[h] : ''; }); }));
+  return {
+    getDataRange: function () { return { getValues: function () { return data; } }; },
+    getRange: function (fila, columna) { return { setValue: function (valor) { data[fila - 1][columna - 1] = valor; } }; },
+    _data: data
+  };
+}
+const ajustesGuardadosMermas = [];
+const ajustesMod = cargar('apps-script/AjustesInventario.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  Utilities: { getUuid: function () { return 'ajuste-' + (ajustesGuardadosMermas.length + 1); } },
+  formatearFecha_: function (v) { return String(v).slice(0, 10); },
+  normalizar_: function (v) { return String(v || '').trim().toLowerCase(); },
+  claveProducto_: function (v) { return String(v || '').trim().toLowerCase(); },
+  aUnidadBase_: function (cantidad, unidad) { return { cantidad: Number(cantidad), unidad: unidad }; },
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  leerTabla_: function () { return ajustesGuardadosMermas; },
+  appendRowFromObj_: function (hoja, fila) { ajustesGuardadosMermas.push(fila); }
+});
+
+const resultadoMerma = ajustesMod.ajusteInventarioRegistrar_(
+  { fecha: '2026-07-21', sede: 'San Antonio', tipo: 'Merma / desperdicio', producto: 'Costilla', unidad: 'kg', cantidad: 2, motivo: 'se dañó' },
+  encargadaSA
+);
+assert.equal(resultadoMerma.ok, true);
+assert.equal(ajustesGuardadosMermas[0].avalado, false, 'una merma nueva debe quedar sin avalar por defecto');
+assert.equal(ajustesGuardadosMermas[0].avalado_por, '');
+
+// ajustesInventarioHistorial_ debe filtrar por rango de fechas, sede, tipo y producto.
+ajustesGuardadosMermas.push(
+  { id: 'a2', fecha: '2026-07-19', sede: 'San Antonio', tipo: 'Merma / desperdicio', producto: 'Aceite', usuario: 'Ana', timestamp: '2026-07-19T10:00:00', avalado: false },
+  { id: 'a3', fecha: '2026-07-21', sede: 'Capri', tipo: 'Merma / desperdicio', producto: 'Costilla', usuario: 'Ana', timestamp: '2026-07-21T09:00:00', avalado: false },
+  { id: 'a4', fecha: '2026-07-21', sede: 'San Antonio', tipo: 'Compra cruda', producto: 'Costilla', usuario: 'Ana', timestamp: '2026-07-21T08:00:00', avalado: false }
+);
+// fecha_desde 2026-07-20 + sede San Antonio: deja la merma recién registrada (21 jul) y a4 (21
+// jul, Compra cruda) — a2 queda fuera por fecha (19 jul) y a3 por sede (Capri).
+const historialSA = ajustesMod.ajustesInventarioHistorial_({ fecha_desde: '2026-07-20', sede: 'San Antonio' });
+assert.equal(historialSA.length, 2, 'sin filtro de tipo debe traer la merma y la compra de San Antonio del 21, no la del 19 ni la de Capri');
+// Con tipo=Merma además, solo debe quedar la merma recién registrada (a4 es Compra cruda).
+const historialSoloMermasSA = ajustesMod.ajustesInventarioHistorial_({ fecha_desde: '2026-07-20', sede: 'San Antonio', tipo: 'Merma / desperdicio' });
+assert.equal(historialSoloMermasSA.length, 1, 'con tipo=Merma y sede=San Antonio, la compra (a4) debe quedar fuera');
+assert.equal(historialSoloMermasSA[0].producto, 'Costilla');
+const historialPorProducto = ajustesMod.ajustesInventarioHistorial_({ producto: 'aceite' });
+assert.equal(historialPorProducto.length, 1, 'la búsqueda por producto debe ser insensible a mayúsculas/tildes (vía normalizar_)');
+assert.equal(historialPorProducto[0].id, 'a2');
+
+// ajusteInventarioAvalar_: solo mermas, marca avalado/avalado_por/timestamp_avalado.
+const headersAjustes = ['id', 'tipo', 'avalado', 'avalado_por', 'timestamp_avalado'];
+const hojaMermaPendiente = mockHojaAjustes_(headersAjustes, [{ id: 'm1', tipo: 'Merma / desperdicio', avalado: false }]);
+const avalarMod = cargar('apps-script/AjustesInventario.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  sheet_: function () { return hojaMermaPendiente; }
+});
+const adminDiana = { nombre: 'Diana', rol: 'Administrador' };
+const resultadoAvalar = avalarMod.ajusteInventarioAvalar_('m1', adminDiana);
+assert.equal(resultadoAvalar.ok, true);
+const avaladoCol = headersAjustes.indexOf('avalado');
+const avaladoPorCol = headersAjustes.indexOf('avalado_por');
+assert.equal(hojaMermaPendiente._data[1][avaladoCol], true, 'debe quedar marcada avalado=true en la hoja');
+assert.equal(hojaMermaPendiente._data[1][avaladoPorCol], 'Diana', 'debe quedar registrado quién la avaló');
+
+const hojaCompra = mockHojaAjustes_(headersAjustes, [{ id: 'c1', tipo: 'Compra cruda', avalado: false }]);
+const avalarModCompra = cargar('apps-script/AjustesInventario.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  sheet_: function () { return hojaCompra; }
+});
+assert.equal(avalarModCompra.ajusteInventarioAvalar_('c1', adminDiana).ok, false, 'una compra no se avala (no es una merma)');
+assert.equal(avalarMod.ajusteInventarioAvalar_('no-existe', adminDiana).ok, false, 'un id que no existe debe fallar con claridad');
+
 console.log('inventory-controls: OK');

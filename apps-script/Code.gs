@@ -67,7 +67,7 @@ function configurarHojas() {
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
     Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
-      'proveedor', 'numero_factura', 'costo', 'factura_id']
+      'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -210,6 +210,12 @@ function handleRequest_(e, method) {
       case 'ajustes_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'ajustes_inventario_historial':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: ajustesInventarioHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'ajuste_inventario_avalar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ajusteInventarioAvalar_(params.id, sesion.usuario));
       case 'compra_registrar_factura':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario));

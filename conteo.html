@@ -83,9 +83,12 @@
       <div class="campo"><label>Motivo / nota</label><input type="text" id="aj-motivo" placeholder="ej. factura proveedor, merma por limpieza, producto dañado"></div>
       <button class="btn dorado" id="btn-guardar-ajuste">Guardar movimiento</button>
       <h3>Movimientos de la fecha y sede seleccionadas</h3>
+      <p style="color:var(--grey); font-size:.85rem">
+        Ver todas las mermas y ajustes (de cualquier fecha/sede) en <a href="historial-mermas.html">Histórico de mermas y ajustes</a>.
+      </p>
       <table>
-        <thead><tr><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Usuario</th></tr></thead>
-        <tbody id="tabla-ajustes"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Usuario</th><th>Avalado</th><th></th></tr></thead>
+        <tbody id="tabla-ajustes"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
   </main>
@@ -293,9 +296,27 @@ async function cargarAjustes_() {
   const sede = document.getElementById('sede').value;
   const data = await llamar('ajustes_inventario_listar', { fecha, sede });
   const body = document.getElementById('tabla-ajustes');
-  if (!data.ok) { body.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
-  if (!data.data.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin mermas ni ajustes registrados (las compras se ven en Compras).</td></tr>'; return; }
-  body.innerHTML = data.data.map(a => `<tr><td>${escapeHtml(a.tipo)}</td><td>${escapeHtml(a.producto)}</td><td>${escapeHtml(a.cantidad)} ${escapeHtml(a.unidad)}</td><td>${escapeHtml(a.motivo || '')}</td><td>${escapeHtml(a.usuario)}</td></tr>`).join('');
+  if (!data.ok) { body.innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  if (!data.data.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">Sin mermas ni ajustes registrados (las compras se ven en Compras).</td></tr>'; return; }
+  const esAdmin = Sesion.usuario() && Sesion.usuario().rol === 'Administrador';
+  // "Avalado" solo aplica a mermas — una compra ya tiene su rastro en Compras (proveedor/factura)
+  // y un ajuste operativo es una corrección documentada al momento, no algo que se revise aparte.
+  body.innerHTML = data.data.map(a => {
+    const esMerma = a.tipo === 'Merma / desperdicio';
+    const avalado = esMerma
+      ? (a.avalado === true ? `<span class="badge ok">Avalada${a.avalado_por ? ' — ' + escapeHtml(a.avalado_por) : ''}</span>` : '<span class="badge aviso">Sin avalar</span>')
+      : '—';
+    const accion = esAdmin && esMerma && a.avalado !== true
+      ? `<button class="btn fantasma btn-avalar" data-id="${escapeHtml(a.id)}" type="button">Avalar</button>` : '';
+    return `<tr><td>${escapeHtml(a.tipo)}</td><td>${escapeHtml(a.producto)}</td><td>${escapeHtml(a.cantidad)} ${escapeHtml(a.unidad)}</td><td>${escapeHtml(a.motivo || '')}</td><td>${escapeHtml(a.usuario)}</td><td>${avalado}</td><td>${accion}</td></tr>`;
+  }).join('');
+
+  body.querySelectorAll('.btn-avalar').forEach(boton => {
+    boton.addEventListener('click', conBotonProtegido(boton, async () => {
+      const data = await llamar('ajuste_inventario_avalar', { id: boton.dataset.id });
+      if (data.ok) { avisarGuardado('Merma avalada.'); cargarAjustes_(); } else { alert(data.error); }
+    }));
+  });
 }
 
 const btnGuardarAjuste = document.getElementById('btn-guardar-ajuste');
