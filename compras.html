@@ -172,7 +172,14 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
   if (!factura.numero_factura) { alert('Escribe el número de factura.'); return; }
   if (!factura.lineas.length) { alert('Agrega al menos una línea con producto y cantidad.'); return; }
 
-  const data = await llamar('compra_registrar_factura', { factura });
+  let data = await llamar('compra_registrar_factura', { factura });
+  if (!data.ok && data.duplicado) {
+    // La misma factura (proveedor + número) puede repartirse entre sedes en momentos distintos —
+    // eso es normal y no se bloquea. Solo se avisa cuando la sede exacta ya tiene esa factura,
+    // por si es un reintento o un doble clic sin querer.
+    if (!confirm(data.error + '\n\n¿Guardar de todas formas?')) return;
+    data = await llamar('compra_registrar_factura', { factura, opciones: { confirmar_duplicado: true } });
+  }
   if (data.ok) {
     // El aviso de guardado va PRIMERO, antes de tocar el formulario o refrescar la tabla de abajo
     // — así, si algo más adelante en este mismo bloque falla (ej. cargarFacturas_ con datos en un

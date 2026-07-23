@@ -12,7 +12,10 @@
 
 const TIPOS_AJUSTE_INVENTARIO = ['Compra cruda', 'Merma / desperdicio', 'Ajuste operativo'];
 
-function ajusteInventarioRegistrar_(item, usuario) {
+/** Solo valida — no escribe nada. Separado de ajusteInventarioRegistrar_ para que Compras.gs
+ * (que registra varias líneas de una factura de una sola vez) pueda validar cada línea con las
+ * mismas reglas sin tener que escribir fila por fila — ver ajusteInventarioFila_ + compraRegistrarFactura_. */
+function ajusteInventarioValidar_(item, usuario) {
   if (!item || !item.fecha || !item.sede || !item.tipo || !item.producto || !item.unidad) {
     return { ok: false, error: 'Faltan datos del ajuste (fecha, sede, tipo, producto y unidad son obligatorios)' };
   }
@@ -27,8 +30,13 @@ function ajusteInventarioRegistrar_(item, usuario) {
   if (!sedeEscrituraPermitida_(usuario, item.sede)) {
     return { ok: false, error: 'No puedes registrar ajustes para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
+  return { ok: true };
+}
 
-  appendRowFromObj_(SHEET_NAMES.AJUSTES_INVENTARIO, {
+/** La fila lista para escribir en Ajustes_Inventario — no valida, asume que ya se llamó
+ * ajusteInventarioValidar_. Separado para que appendRowsFromObjs_ pueda escribir muchas de una vez. */
+function ajusteInventarioFila_(item, usuario) {
+  return {
     id: Utilities.getUuid(),
     fecha: item.fecha,
     sede: item.sede,
@@ -51,7 +59,13 @@ function ajusteInventarioRegistrar_(item, usuario) {
     avalado: false,
     avalado_por: '',
     timestamp_avalado: ''
-  });
+  };
+}
+
+function ajusteInventarioRegistrar_(item, usuario) {
+  const validacion = ajusteInventarioValidar_(item, usuario);
+  if (!validacion.ok) return validacion;
+  appendRowFromObj_(SHEET_NAMES.AJUSTES_INVENTARIO, ajusteInventarioFila_(item, usuario));
   return { ok: true };
 }
 

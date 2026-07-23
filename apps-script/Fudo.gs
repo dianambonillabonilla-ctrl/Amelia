@@ -26,10 +26,32 @@ function contadorClaves_() {
   };
 }
 
-/** Importa los dos formatos reales entregados por FUDO: movimientos y reporte resumido/detallado de ventas. */
+/**
+ * Importa los dos formatos reales entregados por FUDO: movimientos y reporte resumido/detallado de
+ * ventas. Toma un lock de todo el script mientras dura la importación: el algoritmo de
+ * deduplicación (contadorClaves_) primero LEE todo lo ya guardado y después ESCRIBE lo nuevo — sin
+ * este lock, dos importaciones al mismo tiempo (dos administradores, o el mismo archivo subido dos
+ * veces por accidente en pestañas distintas) podrían leer el mismo estado "antes" y las dos
+ * concluir que las mismas filas son nuevas, duplicándolas. Con archivos grandes divididos en lotes
+ * (ver importar.html) cada lote pide y suelta el lock por separado, así que un lote no bloquea al
+ * siguiente de la misma importación, solo a una importación distinta que intente cruzarse.
+ */
 function importarFudo_(tipo, filas, usuario, opciones) {
   if (!tipo || !filas || !filas.length) return { ok: false, error: 'Falta tipo o filas' };
   opciones = opciones || {};
+
+  const lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(30000)) {
+      return { ok: false, error: 'Otra importación de FUDO está en curso ahora mismo — espera un momento y vuelve a intentarlo.' };
+    }
+    return importarFudoConLock_(tipo, filas, usuario, opciones);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function importarFudoConLock_(tipo, filas, usuario, opciones) {
   const ahora = new Date();
   const archivo = opciones.archivo || '';
 

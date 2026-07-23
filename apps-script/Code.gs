@@ -238,7 +238,7 @@ function handleRequest_(e, method) {
         return jsonOut_(ajusteInventarioAvalar_(params.id, sesion.usuario));
       case 'compra_registrar_factura':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario));
+        return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario, params.opciones));
       case 'compras_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
