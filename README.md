@@ -109,6 +109,10 @@ npm run clasp:deploy
 - `apps-script/.clasp.json` está ignorado porque contiene el `scriptId` real.
 - Revisa manualmente los cambios antes de desplegar a producción con `clasp`.
 
+## Auditoría
+
+La auditoría técnica más reciente está documentada en `AUDIT.md`. El backend solo permite `GET` para comprobación de salud; las acciones autenticadas o con credenciales deben enviarse por `POST`.
+
 ## Pruebas
 
 El comando principal es:
