@@ -34,22 +34,7 @@
       <div id="barra-usuario"></div>
     </div>
 
-    <div class="card" id="card-pendientes" style="display:none; border-color:var(--red); background:#FEF4F3">
-      <h2 style="margin:0 0 4px; color:var(--red)">⏳ Pendientes antes de cerrar turno</h2>
-      <div id="pendientes-contenido"></div>
-    </div>
-
-    <div class="card" id="card-alerta-frecuencia" style="display:none; border-color:var(--amber); background:#FFFBF0">
-      <h2 style="margin:0 0 4px; color:var(--amber)">📋 Hoy también toca contar</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">
-        Además de la lista diaria de siempre, hoy caen estos productos con periodicidad especial
-        (Miércoles/Viernes/Mensual) — mejor saberlo al empezar el turno que descubrirlo al cerrar.
-        Se registran igual que cualquier otro producto en <a href="conteo.html">Registrar conteo</a>.
-      </p>
-      <div id="alerta-frecuencia"></div>
-    </div>
-
-    <div style="display:flex; gap:10px; align-items:center; margin-bottom:18px;">
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px;">
       <select id="sede-corte" style="width:auto">
         <option>San Antonio</option><option>Capri</option><option>Centro de Producción</option><option>Ambas</option>
       </select>
@@ -57,16 +42,29 @@
       <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
     </div>
 
-    <div class="card" id="card-alerta-insumos" style="display:none; border-color:var(--red); background:#FEF4F3">
-      <h2 style="margin:0 0 4px; color:var(--red)">🛒 Qué debo comprar</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">
-        Por debajo del mínimo configurado en Registrar producto, o directamente en cero aunque
-        no tengan mínimo configurado — agrupados por categoría.
-      </p>
+    <!-- De un vistazo, antes de cualquier detalle: cuántas cosas piden atención hoy. En verde con
+         0 cuando no hay nada pendiente — confirma que todo está al día en vez de dejar la pantalla
+         en blanco. Cada número lleva directo a la tarjeta con el detalle. -->
+    <div class="resumen-dia" id="resumen-dia"></div>
+
+    <div class="card card-alerta" id="card-pendientes" style="display:none">
+      <h2>⏳ Pendientes antes de cerrar turno</h2>
+      <div id="pendientes-contenido"></div>
+    </div>
+
+    <div class="card card-alerta aviso" id="card-alerta-frecuencia" style="display:none">
+      <h2>📋 Hoy también toca contar</h2>
+      <p class="explicacion">No son de conteo diario, pero hoy sí — regístralos en <a href="conteo.html">Registrar conteo</a> junto con lo demás.</p>
+      <div id="alerta-frecuencia"></div>
+    </div>
+
+    <div class="card card-alerta critico" id="card-alerta-insumos" style="display:none">
+      <h2>🛒 Qué debo comprar</h2>
+      <p class="explicacion">Por debajo del mínimo que configuraste, o agotado sin mínimo configurado.</p>
       <div id="alerta-insumos"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="card-tiles-platos">
       <h2 style="margin:0 0 14px">¿Para cuántos platos alcanza lo que tengo?</h2>
       <div id="tiles-platos" class="tiles"><p class="vacio">Cargando…</p></div>
     </div>
@@ -74,11 +72,9 @@
     <div class="card">
       <h2>Todo lo que tengo hoy</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Último conteo de cada producto — comida, bebidas, aseo, papelería, menaje, lo que sea —
-        ya sumando las compras y los traslados recibidos, y restando las mermas registradas
-        después de ese conteo en esta sede. Lo marcado en rojo está por debajo del mínimo que
-        configuraste en Registrar producto. Si el producto se prepara (ej. Alioli), haz clic en la
-        fila para ver si falta materia prima para prepararlo o si solo falta prepararlo.
+        Último conteo de cada producto, ya con compras, traslados y mermas aplicados desde entonces.
+        En rojo: por debajo del mínimo. Haz clic en un producto preparado (ej. Alioli) para ver si
+        falta materia prima o solo falta prepararlo.
       </p>
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
         <select id="stock-filtro-categoria" style="width:auto"><option value="">Todas las categorías</option></select>
@@ -125,10 +121,11 @@ async function cargar() {
 
   catalogoActual = catalogoData.ok ? catalogoData.data : [];
   disponibilidadRecetaActual = data.data.disponibilidad_receta || {};
-  pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
-  pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede);
-  pintarTilesPlatos_(data.data.platos);
-  pintarPendientes_();
+  const nFrecuencia = pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
+  const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede);
+  const nPlatosBajos = pintarTilesPlatos_(data.data.platos);
+  const nPendientes = await pintarPendientes_();
+  actualizarResumenDia_({ pendientes: nPendientes, frecuencia: nFrecuencia, platosBajos: nPlatosBajos, insumos: nInsumos });
 
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
   // nombre para mostrar/usar siempre es s.producto, no la llave del objeto. Incluye TODO lo
@@ -143,19 +140,40 @@ async function cargar() {
   poblarSelectorIngredientes_(entradasStockActual.map(s => s.producto));
 }
 
+// Franja de arriba: 4 números clicables que resumen el día antes de entrar en cualquier detalle.
+// En verde con 0 cuando no hay nada de eso — así se ve claro que ya se revisó y está todo bien,
+// en vez de simplemente no mostrar nada (que se puede confundir con "todavía no cargó").
+function actualizarResumenDia_(n) {
+  // Misma severidad que la tarjeta de detalle a la que apunta cada número — pendientes e insumos
+  // por comprar son "critico" (rojo) ahí abajo, por contar hoy y platos bajos son "aviso" (ámbar).
+  const items = [
+    { valor: n.pendientes, etiqueta: 'Pendientes de cierre', href: '#card-pendientes', severidad: 'critico' },
+    { valor: n.frecuencia, etiqueta: 'Por contar hoy', href: '#card-alerta-frecuencia', severidad: 'aviso' },
+    { valor: n.platosBajos, etiqueta: 'Platos con alcance bajo', href: '#card-tiles-platos', severidad: 'aviso' },
+    { valor: n.insumos, etiqueta: 'Insumos por comprar', href: '#card-alerta-insumos', severidad: 'critico' }
+  ];
+  document.getElementById('resumen-dia').innerHTML = items.map(i => `
+    <a class="stat ${i.valor > 0 ? i.severidad : 'ok'}" href="${i.href}">
+      <div class="valor">${i.valor}</div>
+      <div class="etiqueta">${escapeHtml(i.etiqueta)}</div>
+    </a>`).join('');
+}
+
 // Un recuadro grande por plato con el número de preparaciones posibles bien visible — rojo si
 // está bajo, ámbar si toca vigilar, verde si está bien — en vez de una fila de tabla más.
 function pintarTilesPlatos_(platos) {
   const cont = document.getElementById('tiles-platos');
   if (!platos.length) {
     cont.innerHTML = '<p class="vacio">Aún no hay recetas cargadas en la hoja Recetas.</p>';
-    return;
+    return 0;
   }
+  let bajos = 0;
   cont.innerHTML = platos.map(p => {
     const clase = p.preparaciones_posibles === null ? ''
       : p.preparaciones_posibles < 5 ? 'tile-critico'
       : p.preparaciones_posibles < 15 ? 'tile-aviso'
       : 'tile-ok';
+    if (clase === 'tile-critico' || clase === 'tile-aviso') bajos++;
     const limitante = p.cadena_limitante || p.ingrediente_limitante || '—';
     const stockLim = p.stock_limitante ? `${escapeHtml(p.stock_limitante.cantidad)} ${escapeHtml(p.stock_limitante.unidad)}` : '';
     // Si el insumo que de verdad topa la producción nunca se ha contado, "0 g" no es un
@@ -170,6 +188,7 @@ function pintarTilesPlatos_(platos) {
       ${detalle}
     </div>`;
   }).join('');
+  return bajos;
 }
 
 function infoPorNombreStock_(catalogo) {
@@ -313,7 +332,7 @@ function pintarAlertaFrecuenciaHoy_(catalogo, fecha, sede) {
   const cont = document.getElementById('alerta-frecuencia');
   const frecuenciasHoy = frecuenciasDelDia_(fecha).filter(f => f !== 'Diario');
 
-  if (!frecuenciasHoy.length) { card.style.display = 'none'; return; }
+  if (!frecuenciasHoy.length) { card.style.display = 'none'; return 0; }
 
   // Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) no debe avisarse como
   // pendiente en la otra. Viendo "Ambas" no se filtra (vista agregada de las dos sedes).
@@ -323,13 +342,14 @@ function pintarAlertaFrecuenciaHoy_(catalogo, fecha, sede) {
     productos: catalogo.filter(p => p.frecuencia_conteo === frecuencia && filtroSede(p)).map(p => p.nombre_estandar).sort()
   })).filter(g => g.productos.length);
 
-  if (!porFrecuencia.length) { card.style.display = 'none'; return; }
+  if (!porFrecuencia.length) { card.style.display = 'none'; return 0; }
 
   card.style.display = 'block';
   cont.innerHTML = porFrecuencia.map(g => `
     <p style="margin:0 0 4px"><strong>${escapeHtml(g.frecuencia)}</strong> (${g.productos.length} producto${g.productos.length === 1 ? '' : 's'}):</p>
     <p style="margin:0 0 12px">${g.productos.map(escapeHtml).join(', ')}</p>
   `).join('');
+  return porFrecuencia.reduce((acc, g) => acc + g.productos.length, 0);
 }
 
 // Un usuario de una sola sede también puede recibir/enviar en Centro de Producción (misma
@@ -353,14 +373,16 @@ async function pintarPendientes_() {
   const card = document.getElementById('card-pendientes');
   const cont = document.getElementById('pendientes-contenido');
   const usuario = Sesion.usuario();
-  if (!usuario) { card.style.display = 'none'; return; }
+  if (!usuario) { card.style.display = 'none'; return 0; }
   const hoy = fechaLocalHoy_();
   const bloques = [];
+  let pendientesReales = 0; // solo lo accionable — no cuenta "ya cerrado" ni "listo para cerrar"
 
   const dataTraslados = await llamar('traslados_listar', { filtro: { estado: 'Enviado' } });
   if (dataTraslados.ok) {
     const pendientes = dataTraslados.data.filter(t => sedeAlcanzable_(t.sede_destino));
     if (pendientes.length) {
+      pendientesReales += pendientes.length;
       bloques.push(`<p style="margin:0 0 10px"><strong>${pendientes.length} traslado${pendientes.length === 1 ? '' : 's'} por aceptar:</strong> ` +
         pendientes.map(t => `${escapeHtml(t.producto)} (${escapeHtml(t.cantidad_enviada)} ${escapeHtml(t.unidad)}) hacia ${escapeHtml(t.sede_destino)}`).join(', ') +
         ` — ve a <a href="traslados.html">Traslados</a> para confirmarlos.</p>`);
@@ -371,6 +393,7 @@ async function pintarPendientes_() {
   if (sectoresPermitidos.length) {
     const dataSector = await llamar('turno_sector_hoy', { fecha: hoy });
     if (dataSector.ok && !dataSector.sector) {
+      pendientesReales += 1;
       bloques.push('<p style="margin:0 0 10px"><strong>Todavía no elegiste tu sector de hoy</strong> — ve a ' +
         '<a href="conteo.html">Registrar conteo</a> y elige cuál te toca (' + sectoresPermitidos.map(escapeHtml).join(', ') + ').</p>');
     }
@@ -388,19 +411,22 @@ async function pintarPendientes_() {
       } else if (dataFaltantes.ok) {
         const pendientesSector = dataFaltantes.data.filter(s => s.faltantes.length);
         if (pendientesSector.length) {
+          pendientesReales += pendientesSector.length;
           bloques.push('<p style="margin:0 0 6px"><strong>Sectores de hoy con conteo pendiente en ' + escapeHtml(sede) + ':</strong></p>' +
             '<ul style="margin:0 0 10px">' + pendientesSector.map(s => `<li>${escapeHtml(s.sector)}: falta ${s.faltantes.map(escapeHtml).join(', ')}</li>`).join('') + '</ul>');
         } else {
           const detalle = dataFaltantes.data.length
             ? `Todos los sectores de hoy en ${escapeHtml(sede)} ya contaron lo suyo.`
-            : `Nadie ha elegido sector hoy en ${escapeHtml(sede)} todavía (o el catálogo no tiene productos asignados por sector).`;
+            : `Nadie ha elegido sector hoy en ${escapeHtml(sede)} (o el catálogo no tiene productos asignados por sector).`;
           bloques.push(`<p style="margin:0 0 10px">${detalle} <button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`);
         }
       }
     }
   }
 
-  if (!bloques.length) { card.style.display = 'none'; return; }
+  card.classList.toggle('critico', pendientesReales > 0);
+  card.classList.toggle('ok', pendientesReales === 0 && bloques.length > 0);
+  if (!bloques.length) { card.style.display = 'none'; return 0; }
   card.style.display = 'block';
   cont.innerHTML = bloques.join('');
 
@@ -411,6 +437,7 @@ async function pintarPendientes_() {
       if (data.ok) { avisarGuardado('Turno cerrado.'); pintarPendientes_(); } else { alert(data.error); }
     }));
   }
+  return pendientesReales;
 }
 
 function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
@@ -420,7 +447,7 @@ function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
   if (!catalogoCompleto.length) {
     card.style.display = 'block';
     cont.innerHTML = '<p style="margin:0">Todavía no hay productos en el catálogo. Ve a <a href="catalogo.html">Registrar producto</a>.</p>';
-    return;
+    return 0;
   }
 
   // Un producto de una sola sede (ej. "Salsa de mora" solo en Capri) nunca se cuenta en la otra,
@@ -451,7 +478,7 @@ function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
     card.style.display = catalogo.some(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined) ? 'none' : 'block';
     cont.innerHTML = catalogo.some(p => p.stock_minimo !== '' && p.stock_minimo !== null && p.stock_minimo !== undefined) ? '' :
       '<p style="margin:0">Todavía no has configurado el "Stock mínimo" de ningún producto — solo se avisará aquí cuando algo llegue a cero. Ve a <a href="catalogo.html">Registrar producto</a> y ponle un mínimo a lo que quieras vigilar antes de que se agote.</p>';
-    return;
+    return 0;
   }
 
   const porCategoria = {};
@@ -475,6 +502,7 @@ function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
       </div>
     </div>`).join('');
   card.style.display = 'block';
+  return bajos.length;
 }
 
 function poblarSelectorIngredientes_(ingredientes) {
