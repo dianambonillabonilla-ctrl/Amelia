@@ -216,9 +216,6 @@ function handleRequest_(e, method) {
         return jsonOut_(turnoSectorElegir_(params.fecha, params.sector, sesion.usuario));
       case 'turno_sector_hoy':
         return jsonOut_(turnoSectorDeHoy_(sesion.usuario, params.fecha));
-      case 'turnos_sector_del_dia':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
-        return jsonOut_({ ok: true, data: turnosSectorDelDia_(params.fecha) });
       case 'turno_faltantes_por_sector':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_({ ok: true, data: turnoFaltantesPorSector_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
@@ -254,7 +251,7 @@ function handleRequest_(e, method) {
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
-        return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias) });
+        return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha, sesion.usuario) });
@@ -297,9 +294,6 @@ function handleRequest_(e, method) {
       case 'diagnostico_ventas_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarVentasFudo_() });
-      case 'migrar_recetas_produccion':
-        requiereAdmin_(sesion.usuario);
-        return jsonOut_(migrarRecetasProduccion_());
       case 'migrar_recetas_julio_2026':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migrarRecetasJulio2026_());

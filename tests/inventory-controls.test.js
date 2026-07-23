@@ -715,6 +715,32 @@ const resolverAjeno = mockTrasladoResolver_({ id: 'tr2', sede_origen: 'Capri', s
 assert.throws(() => resolverAjeno.trasladoResolver_('tr2', 'listo', encargadaSA), /relacionados con tu sede/,
   'San Antonio NO debe poder resolver un traslado puramente de Capri (ni origen ni destino le aplican)');
 
+// --- BUG DE SEGURIDAD REAL: trasladoObservar_ no validaba la sede (a diferencia de
+// trasladoConfirmar_) — un usuario de una sola sede podía reportar una observación sobre un
+// traslado ajeno con solo saber su id.
+const observarHeaders = ['id', 'sede_origen', 'sede_destino', 'estado', 'cantidad_enviada', 'cantidad_recibida', 'observacion', 'usuario_recibe', 'timestamp_recibe'];
+function filaObservar_(campos) { return observarHeaders.map(function (h) { return campos[h] !== undefined ? campos[h] : ''; }); }
+function mockTrasladoObservar_(campos) {
+  const data = [observarHeaders, filaObservar_(campos)];
+  return cargar('apps-script/Traslados.gs', {
+    SHEET_NAMES: { TRASLADOS: 'traslados' },
+    leerTabla_: () => [],
+    requiereRol_: () => {},
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    destinatariosAlerta_: () => [],
+    sheet_: () => ({
+      getDataRange: () => ({ getValues: () => data }),
+      getRange: (fila, columna) => ({ setValue: (v) => { data[fila - 1][columna - 1] = v; } })
+    })
+  });
+}
+const observarPropio = mockTrasladoObservar_({ id: 'ob1', sede_origen: 'Centro de Producción', sede_destino: 'San Antonio', estado: 'Enviado', cantidad_enviada: 5 });
+assert.equal(observarPropio.trasladoObservar_('ob1', 3, 'llegó menos de lo enviado', encargadaSA).ok, true,
+  'San Antonio sí puede reportar un problema en un traslado que le llega a él');
+const observarAjeno = mockTrasladoObservar_({ id: 'ob2', sede_origen: 'Capri', sede_destino: 'Capri', estado: 'Enviado', cantidad_enviada: 5 });
+assert.throws(() => observarAjeno.trasladoObservar_('ob2', 3, 'llegó menos de lo enviado', encargadaSA), /distinta a la tuya/,
+  'San Antonio NO debe poder reportar un problema en un traslado puramente de Capri');
+
 // --- Auditoría de sedes: Conciliación solo debe mostrar la parte de la sede del usuario ---------
 // (pedido explícito: "si es conciliacion solo sepa que cuadra su parte" — antes calcularConciliacion_
 // devolvía ventas/bebidas/comida de TODAS las sedes a cualquiera con acceso a Conciliación, sin
@@ -727,7 +753,11 @@ const movimientosMultiSede = [
   { fecha: '2026-07-21', nombre: 'Poker', evento: 'Adición Creada', sede: 'San Antonio', diferencia: -3, stock_actual: 20 },
   { fecha: '2026-07-21', nombre: 'Poker', evento: 'Adición Creada', sede: 'Capri', diferencia: -7, stock_actual: 20 }
 ];
-const catalogoBebidasMultiSede = [{ nombre_estandar: 'Poker', nombre_fudo: 'Poker', categoria: 'Bebidas/Cerveza' }];
+const catalogoBebidasMultiSede = [
+  { nombre_estandar: 'Poker', nombre_fudo: 'Poker', categoria: 'Bebidas/Cerveza' },
+  // Solo se vende en Capri — no debe aparecer en la conciliación de bebidas de San Antonio.
+  { nombre_estandar: 'Cerveza Especial', nombre_fudo: 'Cerveza Especial', categoria: 'Bebidas/Cerveza', sede: 'Capri' }
+];
 const conteosBebidasMultiSede = [
   { fecha: '2026-07-21', sede: 'San Antonio', producto: 'Poker', unidad: 'u', cantidad: 15 },
   { fecha: '2026-07-21', sede: 'Capri', producto: 'Poker', unidad: 'u', cantidad: 40 }
@@ -765,12 +795,16 @@ assert.equal(filaPokerSA.sa, 15, 'debe ver su propio conteo');
 assert.equal(filaPokerSA.capri, null, 'no debe ver el conteo de Capri');
 assert.equal(filaPokerSA.fudo_cierre, null, 'no debe ver el cierre combinado de FUDO (revelaría info de Capri por resta)');
 assert.equal(filaPokerSA.consumo_fudo_capri, null, 'no debe ver el consumo de FUDO de Capri');
+assert.equal(resultadoSA.bebidas.some(function (b) { return b.producto === 'Cerveza Especial'; }), false,
+  'una bebida marcada "Solo Capri" no debe aparecer en la conciliación de San Antonio');
 
 const resultadoAdminConciliacion = conciliacionSedes.calcularConciliacion_('2026-07-21', adminAmbas);
 assert.equal(resultadoAdminConciliacion.sede_restringida, null);
 assert.deepEqual(Object.keys(resultadoAdminConciliacion.comida).sort(), ['Capri', 'Centro de Producción', 'San Antonio'].sort());
 const filaPokerAdminConciliacion = resultadoAdminConciliacion.bebidas.find(function (b) { return b.producto === 'Poker'; });
 assert.equal(filaPokerAdminConciliacion.capri, 40, 'Administrador/Ambas sigue viendo todo, sin cambios');
+assert.equal(resultadoAdminConciliacion.bebidas.some(function (b) { return b.producto === 'Cerveza Especial'; }), true,
+  'Administrador/Ambas sí debe ver una bebida de una sola sede');
 
 // --- Mermas: registro con avalado:false por defecto, histórico y aval del Administrador --------
 // (pedido: "el administrador puede ver que mermas le registraron y si están avaladas" — antes no
@@ -869,9 +903,15 @@ const ventasParaRecetas = [
   { producto: 'Wafle de fresa con chocolate', cantidad: 2, sede: 'Capri', cancelada: false },
   { producto: 'Supremo', cantidad: 1, sede: 'San Antonio', cancelada: false }, // sí tiene receta
   { producto: 'Agua', cantidad: 5, sede: 'San Antonio', cancelada: false }, // es bebida del catálogo
-  { producto: 'Wafle de fresa con chocolate', cantidad: 99, sede: 'San Antonio', cancelada: true } // cancelada, no debe sumar
+  { producto: 'Wafle de fresa con chocolate', cantidad: 99, sede: 'San Antonio', cancelada: true }, // cancelada, no debe sumar
+  { producto: 'Chancostilla', cantidad: 4, sede: 'San Antonio', cancelada: false } // receta existe pero en borrador
 ];
-const recetasParaRecetas = [{ producto: 'Supremo', ingrediente: 'Costilla' }];
+const recetasParaRecetas = [
+  { producto: 'Supremo', ingrediente: 'Costilla' },
+  // Una receta en borrador todavía no explota nada en la conciliación (recetasVigentes_ la
+  // excluye) — no debe contar como "resuelto" solo porque existe la fila.
+  { producto: 'Chancostilla', ingrediente: 'Costilla', estado: 'borrador' }
+];
 const catalogoParaRecetas = [{ nombre_estandar: 'Agua', categoria: 'Bebidas/Sin gas' }];
 const recetasMod = cargar('apps-script/Recetas.gs', {
   SHEET_NAMES: { RECETAS: 'recetas', CATALOGO: 'catalogo', VENTAS_FUDO: 'ventas' },
@@ -883,10 +923,13 @@ const recetasMod = cargar('apps-script/Recetas.gs', {
   ventaCancelada_: (v) => v.cancelada === true
 });
 const sinReceta = recetasMod.platosFudoSinReceta_();
-assert.equal(sinReceta.length, 1, 'Supremo (con receta) y Agua (bebida del catálogo) no deben aparecer');
-assert.equal(sinReceta[0].producto, 'Wafle de fresa con chocolate');
-assert.equal(sinReceta[0].cantidad_vendida, 5, 'debe sumar San Antonio + Capri y excluir la venta cancelada (3 + 2, no 99)');
-assert.deepEqual(sinReceta[0].sedes.sort(), ['Capri', 'San Antonio']);
+assert.equal(sinReceta.length, 2, 'Supremo (con receta activa) y Agua (bebida del catálogo) no deben aparecer; Chancostilla sí (receta en borrador no cuenta como resuelta)');
+const filaWafle = sinReceta.find(function (s) { return s.producto === 'Wafle de fresa con chocolate'; });
+assert.ok(filaWafle);
+assert.equal(filaWafle.cantidad_vendida, 5, 'debe sumar San Antonio + Capri y excluir la venta cancelada (3 + 2, no 99)');
+assert.deepEqual(filaWafle.sedes.sort(), ['Capri', 'San Antonio']);
+assert.ok(sinReceta.some(function (s) { return s.producto === 'Chancostilla'; }),
+  'una receta en borrador no debe "resolver" el plato — todavía no explota nada de verdad en la conciliación');
 
 // --- Turnos y sectores del día ------------------------------------------------------------------
 // Pedido real: "yo debería manualmente definir las opciones de sub usuario de cada usuario y
@@ -996,5 +1039,24 @@ const cierreOk = turnosModCerrarOk.turnoCerrar_('2026-07-21', 'San Antonio', { n
 assert.equal(cierreOk.ok, true, 'con todo contado, debe permitir cerrar el turno');
 assert.equal(cierresGuardados.length, 1, 'debe dejar registro del cierre en Cierres_Turno');
 assert.equal(cierresGuardados[0].usuario, 'Diana');
+
+// --- Tendencia de días restantes: debe respetar la sede del usuario ------------------------------
+// BUG DE SEGURIDAD REAL: a diferencia de disponible_hoy (que sí aplica sedeConsultaPermitida_),
+// calcularTendenciaIngrediente_ nunca recibía ni pasaba la sede — siempre agregaba San Antonio +
+// Capri sin importar quién preguntara, revelando el dato combinado a un usuario de una sola sede.
+let sedesRecibidasTendencia = [];
+const tendenciaMod = cargar('apps-script/Tendencia.gs', {
+  indiceCatalogo_: () => ({}),
+  claveProducto_: (texto) => normalizarSimple_(texto),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  obtenerUltimoStockPorIngrediente_: (fecha, indice, sede) => {
+    sedesRecibidasTendencia.push(sede);
+    return { costilla: { cantidad: 100, unidad: 'g' } };
+  },
+  producidoTotalIngrediente_: () => 0
+});
+tendenciaMod.calcularTendenciaIngrediente_('Costilla', 3, 'San Antonio');
+assert.ok(sedesRecibidasTendencia.length > 0 && sedesRecibidasTendencia.every(function (s) { return s === 'San Antonio'; }),
+  'debe pasar la sede del usuario a obtenerUltimoStockPorIngrediente_ en cada fecha del rango, no consultar sin sede (que agrega ambas)');
 
 console.log('inventory-controls: OK');

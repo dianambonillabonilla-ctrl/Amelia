@@ -104,22 +104,30 @@ document.getElementById('fecha').value = fechaLocalHoy_();
 // Sugiere nombres ya existentes en el catálogo maestro (vía <datalist>) para que la producción no
 // dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo. De
 // paso arma la lista de insumos obligatorios de cocina (ver pintarObligatoriosProduccion_).
+let catalogoParaObligatorios_ = [];
 async function cargarSugerenciasProductos_() {
   const data = await llamar('catalogo_listar');
   if (!data.ok) return;
   document.getElementById('lista-productos').innerHTML = data.data
     .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
-  pintarObligatoriosProduccion_(data.data);
+  catalogoParaObligatorios_ = data.data;
+  pintarObligatoriosProduccion_(catalogoParaObligatorios_);
 }
 cargarSugerenciasProductos_();
+document.getElementById('sede').addEventListener('change', () => pintarObligatoriosProduccion_(catalogoParaObligatorios_));
 
 // Pedido real: "hay algunas cosas que son de obligatoriedad cuando se registra producción como
 // vinagre balsámico, salsa de soya, sal marina... el día que se registra producción debe de tener
 // todos esos items obligatorios". Se marcan en Registrar producto (obligatorio_produccion) y acá
 // se exigen cada vez que se guarda esta pantalla — sin importar qué se esté produciendo ese día.
 // Se registran como CONTEO (cuánto queda), no como producción (nada se "produce" del vinagre).
+//
+// Un insumo obligatorio de una sola sede (ej. algo que solo se usa en la cocina de Capri, marcado
+// con "Sede donde se vende/usa" en Registrar producto) no debe exigirse al producir en la otra —
+// mismo criterio que ya se aplica en Registrar conteo y en el cierre de turno.
 function pintarObligatoriosProduccion_(catalogo) {
-  const obligatorios = catalogo.filter(p => p.obligatorio_produccion === true);
+  const sede = document.getElementById('sede').value;
+  const obligatorios = catalogo.filter(p => p.obligatorio_produccion === true && (!p.sede || p.sede === 'Ambas' || p.sede === sede));
   const bloque = document.getElementById('bloque-obligatorios-produccion');
   const cuerpo = document.getElementById('filas-obligatorios-produccion');
   if (!obligatorios.length) { bloque.style.display = 'none'; cuerpo.innerHTML = ''; return; }

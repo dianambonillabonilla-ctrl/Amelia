@@ -117,6 +117,11 @@ function trasladoObservar_(id, cantidadRecibida, observacion, usuario) {
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
   const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
   if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+  // BUG DE SEGURIDAD REAL: a diferencia de trasladoConfirmar_, esto nunca validaba la sede — un
+  // usuario de una sola sede podía reportar una observación (cantidad recibida falsa/menor) sobre
+  // un traslado que ni siquiera es suyo (ni origen ni destino), algo que sí estaba bloqueado
+  // correctamente al confirmar un traslado normal.
+  requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'reportar un problema con');
   const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
   const recibida = Number(cantidadRecibida);
   if (isNaN(recibida) || recibida < 0 || recibida >= enviada) {

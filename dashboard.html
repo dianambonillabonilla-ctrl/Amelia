@@ -488,7 +488,8 @@ function poblarSelectorIngredientes_(ingredientes) {
 async function cargarTendencia() {
   const ingrediente = document.getElementById('tendencia-ingrediente').value;
   if (!ingrediente) return;
-  const data = await llamar('tendencia_ingrediente', { ingrediente, dias: 30 });
+  const sede = document.getElementById('sede-corte').value;
+  const data = await llamar('tendencia_ingrediente', { ingrediente, dias: 30, sede });
   if (!data.ok) { document.getElementById('tendencia-vacio').style.display = 'block'; document.getElementById('tendencia-vacio').textContent = data.error; return; }
 
   const serie = data.data.serie;
