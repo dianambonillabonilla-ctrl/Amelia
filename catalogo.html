@@ -457,21 +457,29 @@ function pintarDuplicados_() {
 async function pintarFudoSinAsignar_() {
   const cont = document.getElementById('resultado-fudo-sin-asignar');
   cont.innerHTML = '<p>Buscando nombres de FUDO…</p>';
-  const data = await llamar('fudo_nombres_vistos');
+  const [data, dataRecetas] = await Promise.all([llamar('fudo_nombres_vistos'), llamar('recetas_listar')]);
   if (!data.ok) { cont.innerHTML = `<p>${escapeHtml(data.error)}</p>`; return; }
+
+  // Un nombre de FUDO no siempre es un ingrediente que hay que vincular en el catálogo — puede
+  // ser un plato compuesto (ej. "Chancostilla" = papas + costilla + panceta) que ya se resuelve
+  // con una receta (Recetas.gs, campo "producto"). Ese caso no necesita "Vincular" aquí, necesita
+  // que el nombre del producto de la receta sea EXACTAMENTE igual al nombre con el que se vende
+  // en FUDO — por eso se excluye de la lista de sin vincular en vez de aparecer como pendiente.
+  const productosConReceta = dataRecetas.ok ? new Set(dataRecetas.data.map(r => normalizarTexto(r.producto))) : new Set();
 
   const sinAsignar = data.data.filter(nombreFudo => {
     const n = normalizarTexto(nombreFudo);
+    if (productosConReceta.has(n)) return false;
     return !catalogo.some(p => normalizarTexto(p.nombre_fudo) === n || normalizarTexto(p.nombre_estandar) === n);
   });
 
   if (!sinAsignar.length) {
-    cont.innerHTML = '<p><strong>Nombres de FUDO:</strong> todos los nombres que ha traído FUDO hasta ahora ya están vinculados a un producto del catálogo.</p>';
+    cont.innerHTML = '<p><strong>Nombres de FUDO:</strong> todos los nombres que ha traído FUDO hasta ahora ya están vinculados a un producto del catálogo o resueltos por una receta.</p>';
     return;
   }
 
   const opcionesProductos = catalogo.slice().sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar));
-  cont.innerHTML = `<p><strong>Nombres de FUDO sin vincular (${sinAsignar.length}):</strong> FUDO ha traído ventas o movimientos con estos nombres, pero ningún producto los tiene guardados como "Nombre en FUDO". Si ya sabes a cuál corresponde, elígelo y presiona Vincular (si hay algo parecido, aparece sugerido); si el producto todavía no existe, créalo arriba con ese nombre de FUDO.</p>` +
+  cont.innerHTML = `<p><strong>Nombres de FUDO sin vincular (${sinAsignar.length}):</strong> FUDO ha traído ventas o movimientos con estos nombres, pero ningún producto los tiene guardados como "Nombre en FUDO" ni hay una receta con ese nombre exacto. Si es un ingrediente/insumo, elígelo abajo y presiona Vincular (si hay algo parecido, aparece sugerido); si el producto todavía no existe, créalo arriba con ese nombre de FUDO. <strong>Si es un plato compuesto</strong> (como "Chancostilla") que ya tiene una receta armada, no lo vincules aquí — ve a <a href="recetas.html">Recetas</a> y verifica que el nombre del producto de la receta sea exactamente igual a este nombre de FUDO.</p>` +
     '<table><thead><tr><th>Nombre en FUDO</th><th>Vincular a</th><th></th></tr></thead><tbody>' +
     sinAsignar.map(nombreFudo => {
       const sugerido = buscarParecidos_(nombreFudo)[0];
