@@ -137,12 +137,11 @@
         </div>
         <div class="campo">
           <label>Sector responsable (opcional)</label>
-          <input type="text" id="nuevo-sector" list="lista-sectores" placeholder="ej. Cocina, Café, Caja, Bebidas">
-          <datalist id="lista-sectores"><option value="Cocina"><option value="Café"><option value="Caja"><option value="Bebidas"></datalist>
+          <select id="nuevo-sector"><option value="">Ninguno en particular</option></select>
           <p style="color:var(--grey); font-size:.78rem; margin:4px 0 0">
-            Qué sector es responsable de contar esto (ver Usuarios → Sectores). Vacío = nadie en
-            particular, sigue exigiéndose por la frecuencia de conteo normal, no bloquea el cierre
-            de turno de ningún sector.
+            Qué sector es responsable de contar esto (ver Usuarios → Sectores). Ninguno = sigue
+            exigiéndose por la frecuencia de conteo normal, no bloquea el cierre de turno de ningún
+            sector.
           </p>
         </div>
       </div>
@@ -196,6 +195,9 @@
 Sesion.requerir();
 requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
+
+document.getElementById('nuevo-sector').innerHTML = '<option value="">Ninguno en particular</option>' +
+  SECTORES_DISPONIBLES.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
 
 let catalogo = [];
 
@@ -330,7 +332,10 @@ function pintarTabla_() {
           </select>`
         : escapeHtml(p.frecuencia_conteo || '—')}</td>
       <td>${esAdmin
-        ? `<input type="text" class="in-sector" list="lista-sectores" data-id="${escapeHtml(p.id)}" value="${escapeHtml(p.sector || '')}" style="width:110px">`
+        ? `<select class="in-sector" data-id="${escapeHtml(p.id)}" style="width:auto">
+            <option value="" ${!p.sector ? 'selected' : ''}>Ninguno</option>
+            ${SECTORES_DISPONIBLES.map(s => `<option value="${escapeHtml(s)}" ${p.sector === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+          </select>`
         : escapeHtml(p.sector || '—')}</td>
       <td>${esAdmin
         ? `<select class="in-sede-producto" data-id="${escapeHtml(p.id)}" style="width:auto">
