@@ -60,12 +60,11 @@
         <div class="campo"><label>Correo (para alertas de stock bajo)</label><input type="email" id="nuevo-email" placeholder="opcional, solo Administrador/Encargado reciben alertas"></div>
         <div class="campo">
           <label>Sectores que puede elegir (opcional)</label>
-          <input type="text" id="nuevo-sectores" list="lista-sectores" placeholder="ej. Cocina, Café">
-          <datalist id="lista-sectores"><option value="Cocina"><option value="Café"><option value="Caja"><option value="Bebidas"></datalist>
+          <div id="nuevo-sectores-checks" style="display:flex; flex-wrap:wrap; gap:4px 14px; padding-top:6px"></div>
           <p style="color:var(--grey); font-size:.78rem; margin:4px 0 0">
-            Separados por coma. Si una persona puede rotar (un día cocina, otro café), pon los dos —
-            cada vez que entre, Dilana OS le pedirá elegir cuál de esos le toca hoy. Vacío = no se le
-            pide elegir sector.
+            Si una persona puede rotar (un día cocina, otro café), marca los dos — cada vez que
+            entre, Dilana OS le pedirá elegir cuál le toca hoy. Ninguno marcado = no se le pide
+            elegir sector.
           </p>
         </div>
       </div>
@@ -87,6 +86,23 @@
 Sesion.requerir();
 requerirRol_(['Administrador']);
 montarBarraUsuario();
+
+// Casillas de sectores (SECTORES_DISPONIBLES en assets/config.js) — pedido real: "que se dejen
+// seleccionar con selección múltiple nada de escribir y comas porque eso hace que si me equivoco
+// escribiendo no se organice bien". `idPrefix` da ids únicos por si hay varios grupos de casillas
+// a la vez en la página (el del formulario "Crear usuario" y uno por fila al editar).
+function sectoresChecksHtml_(idPrefix, seleccionados) {
+  const actuales = String(seleccionados || '').split(',').map(s => s.trim()).filter(Boolean);
+  return SECTORES_DISPONIBLES.map(s => `
+    <label style="display:flex; align-items:center; gap:5px; font-size:.85rem; color:var(--ink); margin:0">
+      <input type="checkbox" class="chk-sector-${idPrefix}" value="${escapeHtml(s)}" style="width:auto" ${actuales.includes(s) ? 'checked' : ''}>
+      ${escapeHtml(s)}
+    </label>`).join('');
+}
+function sectoresMarcados_(idPrefix) {
+  return Array.from(document.querySelectorAll(`.chk-sector-${idPrefix}:checked`)).map(c => c.value).join(', ');
+}
+document.getElementById('nuevo-sectores-checks').innerHTML = sectoresChecksHtml_('nuevo', '');
 
 async function cargar() {
   const data = await llamar('usuarios_listar');
@@ -131,18 +147,40 @@ async function cargar() {
     }));
   });
 
+  // Marcar casillas en vez de escribir texto libre — abre/cierra una fila con las casillas justo
+  // debajo de la persona, para no navegar a otra pantalla ni depender de un prompt() de solo texto.
   document.querySelectorAll('.btn-sectores').forEach(btn => {
-    btn.addEventListener('click', conBotonProtegido(btn, async () => {
-      const nuevos = prompt(`Sectores que puede elegir ${btn.dataset.nombre} (separados por coma, ej. "Cocina, Café"). Vacío = no se le pide elegir sector.`, btn.dataset.sectores || '');
-      if (nuevos === null) return;
-      const data = await llamar('usuarios_guardar', { item: { id: btn.dataset.id, sectores_permitidos: nuevos.trim() } });
-      if (data.ok) {
-        avisarGuardado(`Sectores de ${btn.dataset.nombre} actualizados.`);
-        cargar();
-      } else {
-        alert(data.error);
-      }
-    }));
+    btn.addEventListener('click', () => {
+      const fila = btn.closest('tr');
+      const siguiente = fila.nextElementSibling;
+      const yaAbierta = siguiente && siguiente.classList.contains('fila-editar-sectores');
+      document.querySelectorAll('.fila-editar-sectores').forEach(f => f.remove());
+      if (yaAbierta) return;
+
+      const id = btn.dataset.id;
+      const tr = document.createElement('tr');
+      tr.className = 'fila-editar-sectores';
+      tr.innerHTML = `<td colspan="8" style="background:var(--cream); padding:14px">
+        <strong>Sectores de ${escapeHtml(btn.dataset.nombre)}:</strong>
+        <div style="display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 0">${sectoresChecksHtml_('editar-' + id, btn.dataset.sectores)}</div>
+        <button class="btn dorado btn-guardar-sectores" data-id="${escapeHtml(id)}" data-nombre="${escapeHtml(btn.dataset.nombre)}" type="button">Guardar</button>
+        <button class="btn fantasma btn-cancelar-sectores" type="button">Cancelar</button>
+      </td>`;
+      fila.after(tr);
+
+      tr.querySelector('.btn-cancelar-sectores').addEventListener('click', () => tr.remove());
+      const btnGuardar = tr.querySelector('.btn-guardar-sectores');
+      btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
+        const sectores = sectoresMarcados_('editar-' + id);
+        const data = await llamar('usuarios_guardar', { item: { id, sectores_permitidos: sectores } });
+        if (data.ok) {
+          avisarGuardado(`Sectores de ${btnGuardar.dataset.nombre} actualizados.`);
+          cargar();
+        } else {
+          alert(data.error);
+        }
+      }));
+    });
   });
 }
 
@@ -154,13 +192,14 @@ document.getElementById('btn-crear').addEventListener('click', conBotonProtegido
     sede: document.getElementById('nuevo-sede').value,
     password: document.getElementById('nuevo-password').value,
     email: document.getElementById('nuevo-email').value.trim(),
-    sectores_permitidos: document.getElementById('nuevo-sectores').value.trim()
+    sectores_permitidos: sectoresMarcados_('nuevo')
   };
   if (!item.nombre || !item.usuario || item.password.length < 8) { alert('Nombre, usuario y una contraseña de mínimo 8 caracteres son obligatorios.'); return; }
   const data = await llamar('usuarios_guardar', { item });
   if (data.ok) {
     avisarGuardado('Usuario creado.');
-    ['nuevo-nombre','nuevo-usuario','nuevo-password','nuevo-email','nuevo-sectores'].forEach(id => document.getElementById(id).value = '');
+    ['nuevo-nombre','nuevo-usuario','nuevo-password','nuevo-email'].forEach(id => document.getElementById(id).value = '');
+    document.querySelectorAll('.chk-sector-nuevo').forEach(c => { c.checked = false; });
     cargar();
   } else {
     alert(data.error);

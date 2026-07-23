@@ -107,6 +107,16 @@ const PUNTOS_POR_SEDE = {
   'Centro de Producción': ['General']
 };
 
+// Lista fija de sectores (compartida entre usuarios.html y catalogo.html) — pedido explícito: "que
+// se dejen seleccionar con selección múltiple nada de escribir y comas porque eso hace que si me
+// equivoco escribiendo no se organice bien". Antes "Sectores que puede elegir" (Usuarios) y "Sector
+// responsable" (Registrar producto) eran campos de texto libre, y el sistema los compara letra por
+// letra (turnoFaltantesPorSector_ en Turnos.gs) — un typo o una mayúscula distinta entre los dos
+// rompía en silencio el chequeo de "qué sector falta contar" sin ningún aviso. Con una lista fija
+// en los dos lados, siempre coinciden exactamente. Si algún día hace falta un sector nuevo, se
+// agrega aquí (una sola vez) en vez de dejar que cualquiera lo escriba distinto cada vez.
+const SECTORES_DISPONIBLES = ['Cocina', 'Café', 'Caja', 'Bebidas'];
+
 // La hoja Catalogo_Maestro guarda categoría y subcategoría juntas en un solo campo "categoria",
 // separadas por "/" (ej. "Bebidas/Cerveza", "Materia Prima/Fruver") — no hay columna aparte.
 // Parte ese texto para poder filtrar/agrupar por cada parte.
