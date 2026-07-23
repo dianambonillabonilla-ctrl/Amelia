@@ -18,7 +18,8 @@
  * defecto opcional para las líneas que no traigan su propio `sede`.
  */
 
-function compraRegistrarFactura_(factura, usuario) {
+function compraRegistrarFactura_(factura, usuario, opciones) {
+  opciones = opciones || {};
   if (!factura || !factura.fecha || !factura.proveedor || !factura.numero_factura) {
     return { ok: false, error: 'Faltan datos de la factura (fecha, proveedor y número de factura son obligatorios)' };
   }
@@ -40,14 +41,40 @@ function compraRegistrarFactura_(factura, usuario) {
     }
   }
 
+  // Pedido real: la MISMA factura (mismo proveedor + número) puede entrar en más de una sede —
+  // a veces se registra la parte de cada sede en momentos distintos. Por eso el aviso es POR
+  // SEDE, no por proveedor+número solo: una sede nueva para esa factura pasa sin preguntar; solo
+  // avisa si esa sede EXACTA ya tiene esa factura registrada (probable reintento/doble clic), y
+  // deja continuar si de verdad se quiere repetir (opciones.confirmar_duplicado).
+  if (!opciones.confirmar_duplicado) {
+    const sedesDeEstaFactura = comprasListar_(null, null, null)
+      .filter(function (f) {
+        return normalizar_(f.proveedor) === normalizar_(factura.proveedor) &&
+          normalizar_(f.numero_factura) === normalizar_(factura.numero_factura);
+      })
+      .reduce(function (acc, f) { return acc.concat(f.sedes || []); }, []);
+    const sedesNuevas = lineas.map(function (l) { return l.sede || factura.sede; });
+    const sedesDuplicadas = Array.from(new Set(sedesNuevas.filter(function (s) { return sedesDeEstaFactura.indexOf(s) !== -1; })));
+    if (sedesDuplicadas.length) {
+      return {
+        ok: false,
+        duplicado: true,
+        sedes_duplicadas: sedesDuplicadas,
+        error: 'Ya existe una factura de "' + factura.proveedor + '" número "' + factura.numero_factura + '" registrada para ' + sedesDuplicadas.join(', ') +
+          '. Si es la misma factura repetida por error, no la guardes de nuevo. Si es otra parte de esa factura para esa(s) sede(s), puedes continuar.'
+      };
+    }
+  }
+
   const facturaId = Utilities.getUuid();
+  const filasNuevas = [];
   let total = 0;
   for (let i = 0; i < lineas.length; i++) {
     const l = lineas[i];
     const sedeLinea = l.sede || factura.sede;
     catalogoAsegurar_(l.producto, l.unidad);
     const costo = l.costo !== undefined && l.costo !== '' ? Number(l.costo) : 0;
-    const resultadoAjuste = ajusteInventarioRegistrar_({
+    const itemAjuste = {
       fecha: factura.fecha,
       sede: sedeLinea,
       punto: factura.punto || '',
@@ -60,15 +87,22 @@ function compraRegistrarFactura_(factura, usuario) {
       numero_factura: factura.numero_factura,
       costo: costo,
       factura_id: facturaId
-    }, usuario);
-    // Antes se ignoraba este resultado: si ajusteInventarioRegistrar_ rechazaba una línea (ej. una
-    // validación interna), la factura igual se reportaba como guardada con éxito sin que quedara
-    // ningún movimiento de inventario registrado para esa línea. Ahora se corta y se avisa.
-    if (!resultadoAjuste.ok) {
-      return { ok: false, error: 'Línea ' + (i + 1) + ' (' + l.producto + '): ' + resultadoAjuste.error };
-    }
+    };
+    // Antes se ignoraba este resultado: si la validación rechazaba una línea, la factura igual se
+    // reportaba como guardada con éxito sin que quedara ningún movimiento de inventario
+    // registrado para esa línea. Ahora se corta y se avisa ANTES de escribir nada (ver más abajo:
+    // se valida todo primero, se escribe todo junto al final, en vez de fila por fila).
+    const validacion = ajusteInventarioValidar_(itemAjuste, usuario);
+    if (!validacion.ok) return { ok: false, error: 'Línea ' + (i + 1) + ' (' + l.producto + '): ' + validacion.error };
+    filasNuevas.push(ajusteInventarioFila_(itemAjuste, usuario));
     total += costo;
   }
+
+  // Una sola escritura a Sheets para toda la factura (no una por línea): si algo falla a mitad de
+  // camino (ej. un error temporal de Sheets), antes podía quedar la factura a medias, con algunas
+  // líneas ya guardadas y otras no, sin ningún registro de que pasó. Con todas las líneas ya
+  // validadas arriba, esta escritura es la única que puede fallar, y falla completa o no falla.
+  appendRowsFromObjs_(SHEET_NAMES.AJUSTES_INVENTARIO, filasNuevas);
 
   return { ok: true, factura_id: facturaId, lineas: lineas.length, total: Number(total.toFixed(2)) };
 }

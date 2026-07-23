@@ -24,11 +24,14 @@ const compras = cargar('apps-script/Compras.gs', {
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
   formatearFecha_: (v) => String(v).slice(0, 10),
   leerTabla_: (hoja) => hoja === 'ajustes' ? ajustesGuardados : [],
-  appendRowFromObj_: (hoja, fila) => { if (hoja === 'ajustes') ajustesGuardados.push(fila); },
-  ajusteInventarioRegistrar_: (item) => {
-    ajustesGuardados.push(Object.assign({ tipo: 'Compra cruda' }, item));
+  appendRowsFromObjs_: (hoja, filas) => { if (hoja === 'ajustes') ajustesGuardados.push.apply(ajustesGuardados, filas); },
+  ajusteInventarioValidar_: (item, usuarioValidar) => {
+    if (!item || !item.fecha || !item.sede || !item.tipo || !item.producto || !item.unidad) return { ok: false, error: 'Faltan datos del ajuste' };
+    if (isNaN(Number(item.cantidad)) || Number(item.cantidad) <= 0) return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
+    if (!sedeEscrituraPermitidaMock_(usuarioValidar, item.sede)) return { ok: false, error: 'No puedes registrar ajustes para una sede distinta a la tuya (' + usuarioValidar.sede + ')' };
     return { ok: true };
   },
+  ajusteInventarioFila_: (item, usuarioFila) => Object.assign({ tipo: 'Compra cruda' }, item, { usuario: usuarioFila.nombre }),
   catalogoAsegurar_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
 });
@@ -59,15 +62,16 @@ assert.equal(
 );
 // Excepción explícita: San Antonio/Capri/Ambas SÍ pueden registrar en Centro de Producción, aunque
 // no sea su propia sede — pedido real: "el que sea de san antonio o capri o ambas todos deben de
-// poder guardar cosas del centro de producción".
+// poder guardar cosas del centro de producción". Número de factura distinto ("F-1b") a propósito
+// para no chocar con el chequeo de factura duplicada (se prueba aparte más abajo).
 assert.equal(
-  compras.compraRegistrarFactura_(factura, { nombre: 'Diana', sede: 'San Antonio' }).ok,
+  compras.compraRegistrarFactura_(Object.assign({}, factura, { numero_factura: 'F-1b' }), { nombre: 'Diana', sede: 'San Antonio' }).ok,
   true,
   'San Antonio SÍ debe poder registrar una compra para Centro de Producción'
 );
-// NOTA: compraRegistrarFactura_ no valida hoy número de factura duplicado ni que el total
-// declarado coincida con la suma de las líneas — se decidió conscientemente no agregar esa
-// lógica en esta pasada (ver auditoría), solo alinear la prueba con el comportamiento real.
+// NOTA: compraRegistrarFactura_ no valida que el total declarado coincida con la suma de las
+// líneas — se decidió conscientemente no agregar esa lógica en esta pasada (ver auditoría), solo
+// alinear la prueba con el comportamiento real.
 
 // --- Compras: una misma factura puede traer productos para sedes distintas --------------------
 // (pedido real: "si compro 3 aceites los 3 no son para capri, si compro costilla cruda debería
@@ -104,6 +108,25 @@ assert.equal(soloCapri.lineas[0].producto, 'Aceite');
 // le estarían permitidas (San Antonio es la suya, Centro de Producción es la excepción general).
 const resultadoBloqueadoMixta = compras.compraRegistrarFactura_(facturaMixta, { nombre: 'Encargada SA', sede: 'San Antonio' });
 assert.equal(resultadoBloqueadoMixta.ok, false, 'debe bloquear la línea de Capri aunque las otras dos sean su sede o Centro de Producción');
+
+// --- Compras: factura duplicada se avisa POR SEDE, no se bloquea siempre ------------------------
+// Pedido real (Diana): "puedo guardar la misma factura... pero ingresa a una sede diferente" — la
+// MISMA factura (proveedor + número) puede repartirse entre sedes en momentos distintos, así que
+// una sede nueva para esa factura no debe avisar nada; solo la sede EXACTA que ya la tiene.
+const ajustesAntesDuplicado = ajustesGuardados.length;
+const resultadoDuplicadoExacto = compras.compraRegistrarFactura_(factura, usuario); // mismo F-1, misma sede (Centro de Producción) que la primera vez
+assert.equal(resultadoDuplicadoExacto.ok, false, 'repetir la misma factura en la misma sede debe avisar, no guardar directo');
+assert.equal(resultadoDuplicadoExacto.duplicado, true);
+assert.deepEqual(resultadoDuplicadoExacto.sedes_duplicadas, ['Centro de Producción']);
+assert.equal(ajustesGuardados.length, ajustesAntesDuplicado, 'no debe haber guardado nada mientras esperaba confirmación');
+
+const facturaOtraSede = { fecha: '2026-07-23', proveedor: 'Mercamio', numero_factura: 'F-1', sede: 'San Antonio',
+  lineas: [{ producto: 'Costilla', unidad: 'kg', cantidad: 2, costo: 150 }] };
+const resultadoOtraSede = compras.compraRegistrarFactura_(facturaOtraSede, usuario);
+assert.equal(resultadoOtraSede.ok, true, 'la MISMA factura F-1 para una sede que todavía no la tenía (San Antonio) debe guardarse sin preguntar');
+
+const resultadoConfirmado = compras.compraRegistrarFactura_(factura, usuario, { confirmar_duplicado: true });
+assert.equal(resultadoConfirmado.ok, true, 'con confirmar_duplicado, si de verdad se quiere repetir, debe dejar guardar');
 
 const traslados = [
   { fecha: '2026-07-20', timestamp_recibe: '2026-07-21', estado: 'Resuelto', producto: 'Costilla', unidad: 'kg', cantidad_enviada: 5, cantidad_recibida: 3, sede_origen: 'Centro de Producción', sede_destino: 'Capri' }
@@ -432,7 +455,10 @@ function cargarFudo_(previas) {
     // nuevas de una sola vez (una escritura a Sheets en vez de una por fila — ver appendRowsFromObjs_
     // en Code.gs, arreglo de rendimiento para que importar un día completo de ventas no se sienta
     // "trabado" ni se acerque al límite de 6 minutos de Apps Script en archivos grandes).
-    appendRowsFromObjs_: (hoja, filas) => { if (hoja === 'ventas') ventasGuardadas.push.apply(ventasGuardadas, filas); }
+    appendRowsFromObjs_: (hoja, filas) => { if (hoja === 'ventas') ventasGuardadas.push.apply(ventasGuardadas, filas); },
+    // LockService: real solo en Apps Script — se simula un lock que siempre se consigue, para
+    // poder probar la lógica de importación sin depender de la plataforma.
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) }
   });
 }
 
@@ -473,6 +499,22 @@ const fudoDia2 = cargarFudo_(ventasGuardadas.slice());
 const resultadoDia2 = fudoDia2.importarFudo_('ventas', filasFalafelDia2SinId, usuarioFudo, { sede: 'San Antonio' });
 assert.equal(resultadoDia2.importados, 1, 'la venta de Falafel del día siguiente no debe verse como duplicada de la de ayer solo por tener el mismo producto/sede y sin Id. Venta');
 assert.equal(resultadoDia2.omitidos_duplicados, 0);
+
+// --- Importar FUDO: si otra importación ya tiene el lock, avisa en vez de arriesgar duplicados --
+// Riesgo real sin lock: el algoritmo de deduplicación primero LEE lo ya guardado y después
+// ESCRIBE lo nuevo — dos importaciones al mismo tiempo podrían leer el mismo estado "antes" y
+// duplicar filas. Se simula que el lock ya está tomado (tryLock devuelve false).
+const fudoBloqueado = cargar('apps-script/Fudo.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos' },
+  normalizar_: normalizarSimple_,
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  leerTabla_: () => { throw new Error('no debería siquiera leer si no consiguió el lock'); },
+  appendRowsFromObjs_: () => { throw new Error('no debería escribir si no consiguió el lock'); },
+  LockService: { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => {} }) }
+});
+const resultadoBloqueadoLock = fudoBloqueado.importarFudo_('ventas', filasPoker, usuarioFudo, { sede: 'San Antonio' });
+assert.equal(resultadoBloqueadoLock.ok, false, 'sin conseguir el lock, debe avisar en vez de importar');
+assert.ok(/otra importación/i.test(resultadoBloqueadoLock.error));
 
 // --- Conciliación: una venta sin receta encontrada debe marcarse sin_receta, no compararse -----
 // como si fuera correcta. Antes, un plato vendido con un nombre que no coincidía con ningún
@@ -1011,34 +1053,38 @@ const faltantesCompleto = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-2
 assert.deepEqual(faltantesCompleto[0].faltantes, [], 'con Sal Marina contada, Cocina ya no debe tener faltantes');
 
 // turnoCerrar_: bloquea si falta algo, dejando el detalle; permite y registra el cierre si no falta nada.
+let cierresExistentes = [];
 const cierresGuardados = [];
-const turnosModCerrarBloqueado = cargar('apps-script/Turnos.gs', {
-  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
-  leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : catalogoTurno),
-  formatearFecha_: (v) => String(v).slice(0, 10),
-  normalizar_: normalizarSimple_,
-  frecuenciasObligatoriasDelDia_: () => ['Diario'],
-  conteoListar_: () => [],
-  appendRowFromObj_: () => { throw new Error('no debería cerrar el turno si falta algo'); }
-});
-const cierreBloqueado = turnosModCerrarBloqueado.turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
+function cargarTurnosCerrar_(conteosHoy) {
+  return cargar('apps-script/Turnos.gs', {
+    SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+    leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : (hoja === 'cierres' ? cierresExistentes : catalogoTurno)),
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    frecuenciasObligatoriasDelDia_: () => ['Diario'],
+    conteoListar_: () => conteosHoy,
+    appendRowFromObj_: (hoja, fila) => cierresGuardados.push(fila),
+    Utilities: { getUuid: () => 'cierre-1' }
+  });
+}
+
+cierresExistentes = [];
+const cierreBloqueado = cargarTurnosCerrar_([]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
 assert.equal(cierreBloqueado.ok, false, 'debe bloquear el cierre si Cocina no ha contado Sal Marina');
 assert.ok(/Sal Marina/.test(cierreBloqueado.error));
+assert.equal(cierresGuardados.length, 0, 'un cierre bloqueado no debe dejar ningún registro');
 
-const turnosModCerrarOk = cargar('apps-script/Turnos.gs', {
-  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
-  leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : catalogoTurno),
-  formatearFecha_: (v) => String(v).slice(0, 10),
-  normalizar_: normalizarSimple_,
-  frecuenciasObligatoriasDelDia_: () => ['Diario'],
-  conteoListar_: () => [{ producto: 'Sal Marina' }],
-  appendRowFromObj_: (hoja, fila) => cierresGuardados.push(fila),
-  Utilities: { getUuid: () => 'cierre-1' }
-});
-const cierreOk = turnosModCerrarOk.turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
+const cierreOk = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
 assert.equal(cierreOk.ok, true, 'con todo contado, debe permitir cerrar el turno');
 assert.equal(cierresGuardados.length, 1, 'debe dejar registro del cierre en Cierres_Turno');
 assert.equal(cierresGuardados[0].usuario, 'Diana');
+
+// Dos Encargados cerrando casi al mismo tiempo (o un doble clic) no debe dejar dos filas de cierre.
+cierresExistentes = [{ fecha: '2026-07-21', sede: 'San Antonio', usuario: 'Diana', timestamp: '2026-07-21T20:00:00' }];
+const cierreRepetido = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Otro Encargado' });
+assert.equal(cierreRepetido.ok, true, 'volver a cerrar un turno ya cerrado no debe fallar');
+assert.equal(cierreRepetido.ya_cerrado, true, 'debe avisar que ya estaba cerrado en vez de duplicarlo');
+assert.equal(cierresGuardados.length, 1, 'no debe crear una segunda fila de cierre para el mismo día/sede');
 
 // --- Tendencia de días restantes: debe respetar la sede del usuario ------------------------------
 // BUG DE SEGURIDAD REAL: a diferencia de disponible_hoy (que sí aplica sedeConsultaPermitida_),

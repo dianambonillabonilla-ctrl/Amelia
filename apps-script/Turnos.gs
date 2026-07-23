@@ -111,6 +111,13 @@ function turnoFaltantesPorSector_(fecha, sede) {
  */
 function turnoCerrar_(fecha, sede, usuario) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+  // Sin este chequeo, dos Encargados cerrando casi al mismo tiempo (o un doble clic) dejaban dos
+  // filas de cierre para el mismo día/sede en Cierres_Turno — no rompía nada más, pero ensuciaba
+  // la auditoría de quién cerró. Cerrar de nuevo un turno ya cerrado simplemente confirma el
+  // cierre existente en vez de duplicarlo.
+  const yaCerrado = turnoCierreEstado_(fecha, sede);
+  if (yaCerrado.cerrado) return { ok: true, ya_cerrado: true, usuario: yaCerrado.usuario, timestamp: yaCerrado.timestamp };
+
   const estado = turnoFaltantesPorSector_(fecha, sede);
   const pendientes = estado.filter(function (s) { return s.faltantes.length; });
   if (pendientes.length) {
