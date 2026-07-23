@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Histórico de conteos</title>
+<title>Dilana OS — Histórico de mermas y ajustes</title>
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -13,8 +13,8 @@
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
-      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Histórico de conteos</a>
-      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
+      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
+      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Histórico de mermas</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
       <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
@@ -29,15 +29,19 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Histórico de conteos</h1>
+      <h1>Histórico de mermas y ajustes</h1>
       <div id="barra-usuario"></div>
     </div>
 
     <div class="card">
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Todos los conteos registrados — por sede, por punto de conteo o todos juntos — con quién
-        los registró y a qué hora. Para revisar/corregir el conteo del día en curso usa
-        <a href="conteo.html">Registrar conteo</a>; esta página es solo de consulta.
+        Todas las mermas y ajustes registrados — por sede, por tipo o todos juntos — con quién los
+        registró y a qué hora. Las mermas ("Merma / desperdicio") además muestran si el
+        Administrador ya las avaló: eso no cambia el inventario (la merma ya se descontó de
+        "Disponible Hoy" desde que se registró), es solo para llevar el control de qué se ha
+        revisado. Las compras con proveedor/factura se ven mejor detalladas en
+        <a href="compras.html">Compras</a>; para registrar una merma nueva ve a
+        <a href="conteo.html">Registrar conteo</a>.
       </p>
       <div class="grid grid-4" style="margin-bottom:10px">
         <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
@@ -52,21 +56,31 @@
           </select>
         </div>
         <div class="campo">
-          <label>Punto de conteo</label>
-          <select id="filtro-punto"><option value="">Todos</option></select>
+          <label>Tipo</label>
+          <select id="filtro-tipo">
+            <option value="Merma / desperdicio">Merma / desperdicio</option>
+            <option value="">Todos los tipos</option>
+            <option value="Ajuste operativo">Ajuste operativo</option>
+            <option value="Compra cruda">Compra cruda</option>
+          </select>
         </div>
       </div>
       <div class="grid grid-4" style="margin-bottom:14px">
         <div class="campo"><label>Buscar producto</label><input type="text" id="filtro-producto" placeholder="ej. costilla"></div>
+        <div class="campo" id="campo-solo-sin-avalar" style="display:flex; align-items:flex-end; gap:6px">
+          <label style="margin:0; display:flex; align-items:center; gap:6px; font-size:.85rem; color:var(--text)">
+            <input type="checkbox" id="filtro-solo-sin-avalar" style="width:auto"> Solo mermas sin avalar
+          </label>
+        </div>
       </div>
       <button class="btn dorado" id="btn-filtrar">Filtrar</button>
       <p id="contador-resultados" class="vacio" style="display:none"></p>
       <div style="overflow-x:auto">
         <table>
           <thead>
-            <tr><th>Fecha</th><th>Sede</th><th>Punto de conteo</th><th>Turno</th><th>Producto</th><th>Cantidad</th><th>Registrado por</th><th>Registrado el</th></tr>
+            <tr><th>Fecha</th><th>Sede</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Registrado por</th><th>Registrado el</th><th>Avalado</th><th></th></tr>
           </thead>
-          <tbody id="tabla-historial"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
+          <tbody id="tabla-historial"><tr><td colspan="10" class="vacio">Cargando…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -80,29 +94,18 @@ requerirRol_(['Administrador', 'Encargado', 'Lectura']);
 montarBarraUsuario();
 restringirSelectorSede_(document.getElementById('filtro-sede'));
 
-// Por defecto, últimos 7 días — evita traer todo el histórico de una vez si la hoja ya creció
-// mucho; el filtro de fechas se puede ampliar a mano.
+// Por defecto, últimos 30 días — las mermas se revisan con menos frecuencia que se consultan los
+// conteos, así que vale la pena traer un rango más amplio de entrada; se puede ampliar a mano.
 const hoy = fechaLocalHoy_();
-const hace7dias = (() => {
+const hace30dias = (() => {
   const d = new Date();
-  d.setDate(d.getDate() - 7);
+  d.setDate(d.getDate() - 30);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 })();
-document.getElementById('filtro-desde').value = hace7dias;
+document.getElementById('filtro-desde').value = hace30dias;
 document.getElementById('filtro-hasta').value = hoy;
 
-function poblarPuntos_() {
-  const sede = document.getElementById('filtro-sede').value;
-  const select = document.getElementById('filtro-punto');
-  const anterior = select.value;
-  const opciones = sede === 'Ambas'
-    ? Array.from(new Set(Object.values(PUNTOS_POR_SEDE).flat()))
-    : (PUNTOS_POR_SEDE[sede] || []);
-  select.innerHTML = '<option value="">Todos</option>' + opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
-  if (opciones.includes(anterior)) select.value = anterior;
-}
-document.getElementById('filtro-sede').addEventListener('change', () => { poblarPuntos_(); cargar(); });
-poblarPuntos_();
+const esAdmin = !!Sesion.usuario() && Sesion.usuario().rol === 'Administrador';
 
 function formatearHora_(valor) {
   if (!valor) return '—';
@@ -114,41 +117,62 @@ function formatearHora_(valor) {
 async function cargar() {
   const tabla = document.getElementById('tabla-historial');
   const contador = document.getElementById('contador-resultados');
-  tabla.innerHTML = '<tr><td colspan="8" class="vacio">Cargando…</td></tr>';
+  tabla.innerHTML = '<tr><td colspan="10" class="vacio">Cargando…</td></tr>';
   contador.style.display = 'none';
 
   const filtros = {
     fecha_desde: document.getElementById('filtro-desde').value,
     fecha_hasta: document.getElementById('filtro-hasta').value,
     sede: document.getElementById('filtro-sede').value,
-    punto_conteo: document.getElementById('filtro-punto').value,
+    tipo: document.getElementById('filtro-tipo').value,
     producto: document.getElementById('filtro-producto').value.trim()
   };
-  const data = await llamar('conteos_historial', { filtros });
-  if (!data.ok) { tabla.innerHTML = `<tr><td colspan="8" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  const data = await llamar('ajustes_inventario_historial', { filtros });
+  if (!data.ok) { tabla.innerHTML = `<tr><td colspan="10" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
 
-  if (!data.data.length) {
-    tabla.innerHTML = '<tr><td colspan="8" class="vacio">Sin conteos que coincidan con el filtro.</td></tr>';
+  const soloSinAvalar = document.getElementById('filtro-solo-sin-avalar').checked;
+  const filas = soloSinAvalar
+    ? data.data.filter(r => r.tipo === 'Merma / desperdicio' && r.avalado !== true)
+    : data.data;
+
+  if (!filas.length) {
+    tabla.innerHTML = '<tr><td colspan="10" class="vacio">Sin movimientos que coincidan con el filtro.</td></tr>';
     return;
   }
 
   contador.style.display = 'block';
-  contador.textContent = `${data.data.length} conteo(s) encontrado(s).`;
-  tabla.innerHTML = data.data.map(r => `
-    <tr>
+  contador.textContent = `${filas.length} movimiento(s) encontrado(s).`;
+  tabla.innerHTML = filas.map(r => {
+    const esMerma = r.tipo === 'Merma / desperdicio';
+    const avalado = esMerma
+      ? (r.avalado === true ? `<span class="badge ok">Avalada${r.avalado_por ? ' — ' + escapeHtml(r.avalado_por) : ''}</span>` : '<span class="badge aviso">Sin avalar</span>')
+      : '—';
+    const accion = esAdmin && esMerma && r.avalado !== true
+      ? `<button class="btn fantasma btn-avalar" data-id="${escapeHtml(r.id)}" type="button">Avalar</button>` : '';
+    return `<tr>
       <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
       <td>${escapeHtml(r.sede)}</td>
-      <td>${escapeHtml(r.punto_conteo)}</td>
-      <td>${escapeHtml(r.turno)}</td>
+      <td>${escapeHtml(r.tipo)}</td>
       <td>${escapeHtml(r.producto)}</td>
       <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
+      <td>${escapeHtml(r.motivo || '')}</td>
       <td>${escapeHtml(r.usuario)}</td>
       <td style="color:var(--grey); font-size:.85rem">${formatearHora_(r.timestamp)}</td>
-    </tr>`).join('');
+      <td>${avalado}</td>
+      <td>${accion}</td>
+    </tr>`;
+  }).join('');
+
+  tabla.querySelectorAll('.btn-avalar').forEach(boton => {
+    boton.addEventListener('click', conBotonProtegido(boton, async () => {
+      const data = await llamar('ajuste_inventario_avalar', { id: boton.dataset.id });
+      if (data.ok) { avisarGuardado('Merma avalada.'); cargar(); } else { alert(data.error); }
+    }));
+  });
 }
 
 document.getElementById('btn-filtrar').addEventListener('click', cargar);
-document.getElementById('filtro-punto').addEventListener('change', cargar);
+document.getElementById('filtro-solo-sin-avalar').addEventListener('change', cargar);
 cargar();
 </script>
 </body>

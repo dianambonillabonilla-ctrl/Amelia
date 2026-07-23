@@ -43,7 +43,14 @@ function ajusteInventarioRegistrar_(item, usuario) {
     proveedor: item.proveedor || '',
     numero_factura: item.numero_factura || '',
     costo: item.costo !== undefined && item.costo !== '' && !isNaN(Number(item.costo)) ? Number(item.costo) : '',
-    factura_id: item.factura_id || ''
+    factura_id: item.factura_id || '',
+    // "avalado" es solo un estado de revisión del Administrador (ver ajusteInventarioAvalar_) —
+    // no bloquea nada: la merma/ajuste ya afecta Disponible Hoy y Conciliación desde que se
+    // registra, esperar a que alguien la revise dejaría el inventario desactualizado mientras
+    // tanto. Es puramente para que el Administrador pueda marcar "ya revisé esto".
+    avalado: false,
+    avalado_por: '',
+    timestamp_avalado: ''
   });
   return { ok: true };
 }
@@ -53,6 +60,53 @@ function ajustesInventarioListar_(fecha, sede) {
   if (fecha) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) === fecha; });
   if (sede) rows = rows.filter(function (r) { return r.sede === sede; });
   return rows.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+}
+
+/**
+ * Histórico completo de mermas/ajustes (a diferencia de ajustesInventarioListar_, que solo sirve
+ * para UN día): por rango de fechas, sede, tipo y/o búsqueda por producto. Más reciente primero.
+ * Espejo de conteosHistorial_ en Conteos.gs — misma idea, para "Registrar conteo"/"Compras" pero
+ * para mermas y ajustes operativos.
+ */
+function ajustesInventarioHistorial_(filtros) {
+  filtros = filtros || {};
+  let rows = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
+  if (filtros.fecha_desde) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) >= filtros.fecha_desde; });
+  if (filtros.fecha_hasta) rows = rows.filter(function (r) { return formatearFecha_(r.fecha) <= filtros.fecha_hasta; });
+  if (filtros.sede && filtros.sede !== 'Ambas') rows = rows.filter(function (r) { return r.sede === filtros.sede; });
+  if (filtros.tipo) rows = rows.filter(function (r) { return r.tipo === filtros.tipo; });
+  if (filtros.producto) {
+    const q = normalizar_(filtros.producto);
+    rows = rows.filter(function (r) { return normalizar_(r.producto).indexOf(q) !== -1; });
+  }
+  return rows.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+}
+
+/**
+ * Marca una merma como revisada por el Administrador — pedido explícito: "el administrador puede
+ * ver que mermas le registraron y si están avaladas". Solo aplica a "Merma / desperdicio": una
+ * compra ya tiene su propio rastro (proveedor/factura en Compras) y un ajuste operativo es una
+ * corrección ya documentada al momento, no algo que necesite revisión aparte.
+ */
+function ajusteInventarioAvalar_(id, usuario) {
+  if (!id) return { ok: false, error: 'Falta el id del movimiento a avalar' };
+  const sh = sheet_(SHEET_NAMES.AJUSTES_INVENTARIO);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const tipoCol = headers.indexOf('tipo');
+  for (let r = 1; r < data.length; r++) {
+    if (data[r][idCol] === id) {
+      if (data[r][tipoCol] !== 'Merma / desperdicio') {
+        return { ok: false, error: 'Solo las mermas se avalan (compras y ajustes operativos no lo necesitan)' };
+      }
+      sh.getRange(r + 1, headers.indexOf('avalado') + 1).setValue(true);
+      sh.getRange(r + 1, headers.indexOf('avalado_por') + 1).setValue(usuario.nombre);
+      sh.getRange(r + 1, headers.indexOf('timestamp_avalado') + 1).setValue(new Date());
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'No se encontró el movimiento ' + id };
 }
 
 function ajustesNetosPorItem_(fecha, sede, indice) {
