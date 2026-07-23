@@ -83,6 +83,23 @@ function normalizarTexto(s) {
     .replace(/\s+/g, ' ');
 }
 
+// Diario se cuenta todos los días; Miércoles/Viernes solo si la fecha elegida cae en ese día de
+// la semana; Mensual solo del 1 al 5 de cada mes (menaje/utensilios/equipos — ver "Inicio del
+// Mes" del Excel histórico). Ver Registrar producto → Frecuencia de conteo. Se arma la fecha con
+// año/mes/día locales, no parseando el string ISO directo, para que la zona horaria no corra el
+// día. Compartida entre conteo.html (bloquea guardar si falta algo obligatorio de hoy) y
+// dashboard.html (avisa al abrir la app qué toca contar hoy además de lo diario).
+function frecuenciasDelDia_(fechaStr) {
+  if (!fechaStr) return ['Diario'];
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  const dia = new Date(y, m - 1, d).getDay(); // 0=domingo … 3=miércoles … 5=viernes
+  const frecuencias = ['Diario'];
+  if (dia === 3) frecuencias.push('Miércoles');
+  if (dia === 5) frecuencias.push('Viernes');
+  if (d >= 1 && d <= 5) frecuencias.push('Mensual');
+  return frecuencias;
+}
+
 // Puntos de conteo disponibles por sede — compartido entre conteo.html y traslados.html.
 const PUNTOS_POR_SEDE = {
   'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],

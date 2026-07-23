@@ -34,6 +34,16 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div class="card" id="card-alerta-frecuencia" style="display:none; border-color:var(--amber); background:#FFFBF0">
+      <h2 style="margin:0 0 4px; color:var(--amber)">📋 Hoy también toca contar</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">
+        Además de la lista diaria de siempre, hoy caen estos productos con periodicidad especial
+        (Miércoles/Viernes/Mensual) — mejor saberlo al empezar el turno que descubrirlo al cerrar.
+        Se registran igual que cualquier otro producto en <a href="conteo.html">Registrar conteo</a>.
+      </p>
+      <div id="alerta-frecuencia"></div>
+    </div>
+
     <div style="display:flex; gap:10px; align-items:center; margin-bottom:18px;">
       <select id="sede-corte" style="width:auto">
         <option>San Antonio</option><option>Capri</option><option>Centro de Producción</option><option>Ambas</option>
@@ -110,6 +120,7 @@ async function cargar() {
 
   catalogoActual = catalogoData.ok ? catalogoData.data : [];
   disponibilidadRecetaActual = data.data.disponibilidad_receta || {};
+  pintarAlertaFrecuenciaHoy_(catalogoActual, fecha);
   pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual);
   pintarTilesPlatos_(data.data.platos);
 
@@ -282,6 +293,36 @@ function toggleDetalleStock_(fila) {
 // Incluye dos casos: por debajo del mínimo configurado, Y en cero aunque no tengan mínimo
 // configurado ("por fuera del stock" — sin esto, un producto sin mínimo que se agotó del todo no
 // aparecía aquí para nada, solo se veía si uno entraba a revisar la lista completa).
+// Pedido real: "el encargado que abra el sistema debería de saber iniciando el turno que toca
+// contar cosas que no hacen parte del registro diario, no vaya a ser que termine el turno y
+// apenas sepa que tiene que contar las sillas". frecuenciasDelDia_ (assets/config.js) es la misma
+// función que ya usa conteo.html para marcar qué queda obligatorio hoy — aquí se resta 'Diario'
+// (eso ya se sabe, se cuenta siempre) y se muestra solo lo especial de hoy (Miércoles/Viernes/
+// Mensual), para que se note ANTES de entrar a Registrar conteo, no a medio llenar la lista.
+// Si un producto (ej. "Sillas") nunca aparece aquí, es porque en Registrar producto no tiene
+// ninguna "Frecuencia de conteo" asignada — sin ese dato el sistema no tiene cómo saber cuándo
+// recordarlo.
+function pintarAlertaFrecuenciaHoy_(catalogo, fecha) {
+  const card = document.getElementById('card-alerta-frecuencia');
+  const cont = document.getElementById('alerta-frecuencia');
+  const frecuenciasHoy = frecuenciasDelDia_(fecha).filter(f => f !== 'Diario');
+
+  if (!frecuenciasHoy.length) { card.style.display = 'none'; return; }
+
+  const porFrecuencia = frecuenciasHoy.map(frecuencia => ({
+    frecuencia,
+    productos: catalogo.filter(p => p.frecuencia_conteo === frecuencia).map(p => p.nombre_estandar).sort()
+  })).filter(g => g.productos.length);
+
+  if (!porFrecuencia.length) { card.style.display = 'none'; return; }
+
+  card.style.display = 'block';
+  cont.innerHTML = porFrecuencia.map(g => `
+    <p style="margin:0 0 4px"><strong>${escapeHtml(g.frecuencia)}</strong> (${g.productos.length} producto${g.productos.length === 1 ? '' : 's'}):</p>
+    <p style="margin:0 0 12px">${g.productos.map(escapeHtml).join(', ')}</p>
+  `).join('');
+}
+
 function pintarAlertaInsumos_(stockIngredientes, catalogo) {
   const card = document.getElementById('card-alerta-insumos');
   const cont = document.getElementById('alerta-insumos');
