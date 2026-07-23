@@ -99,7 +99,118 @@ function diagnosticarVentasFudo_() {
   return { total_filas: filas.length, vacios: vacios };
 }
 
-/** Corre las tres revisiones de una sola vez (para el uso manual desde el editor). */
+/**
+ * Para cada compra ('Compra cruda' en Ajustes_Inventario), revisa si de verdad se está sumando
+ * al cálculo de "Disponible Hoy" o si quedó descartada en silencio, y por qué — mismas reglas
+ * exactas que usa obtenerUltimoStockPorIngrediente_/netoAjustesDesdeConteo_ (DisponibleHoy.gs):
+ *   - El nombre no coincide con ningún producto del Catálogo Maestro (ver claveProducto_): cuenta
+ *     como un producto aparte, nunca suma al que sí existe.
+ *   - La unidad de la compra no coincide, después de convertir a g/ml/u (aUnidadBase_), con la
+ *     unidad del último conteo físico de ese producto en esa sede: nunca se mezcla peso/volumen
+ *     con piezas, así que la compra entera se ignora.
+ *   - La fecha de la compra es igual o anterior a la del último conteo físico: se asume que ese
+ *     conteo ya la incluía.
+ * Pedido real: "todo lo que aparece en la compra no está sumando" — antes solo se sospechaba caso
+ * por caso (ej. Limón Tahití); esto lo revisa para TODAS las compras de una vez.
+ */
+function diagnosticarComprasNoSuman_() {
+  const indice = indiceCatalogo_();
+  const compras = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO).filter(function (a) { return a.tipo === 'Compra cruda'; });
+  const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
+
+  const ultimoConteoPorClaveSede = {};
+  conteos.forEach(function (c) {
+    const clave = claveProducto_(c.producto, indice);
+    const sede = c.sede || 'Sin sede';
+    const key = clave + '|' + sede;
+    const f = formatearFecha_(c.fecha);
+    const base = aUnidadBase_(c.cantidad, c.unidad);
+    if (!ultimoConteoPorClaveSede[key] || f > ultimoConteoPorClaveSede[key].fecha) {
+      ultimoConteoPorClaveSede[key] = { fecha: f, unidad: base.unidad };
+    }
+  });
+
+  const problemas = [];
+  compras.forEach(function (a) {
+    const enCatalogo = !!indice[normalizar_(a.producto)];
+    const clave = claveProducto_(a.producto, indice);
+    const sede = a.sede || 'Sin sede';
+    const ultimoConteo = ultimoConteoPorClaveSede[clave + '|' + sede];
+    const base = aUnidadBase_(a.cantidad, a.unidad);
+    const fechaCompra = formatearFecha_(a.fecha);
+
+    let motivo = '';
+    if (!enCatalogo) {
+      motivo = 'El nombre "' + a.producto + '" no existe en el Catálogo Maestro — se cuenta como un producto aparte, nunca suma al real.';
+    } else if (ultimoConteo && ultimoConteo.unidad && ultimoConteo.unidad !== base.unidad) {
+      motivo = 'La compra quedó en "' + a.unidad + '" pero el último conteo físico de este producto en ' + sede + ' fue en una unidad distinta — no se pueden combinar, la compra se ignora por completo.';
+    } else if (ultimoConteo && fechaCompra <= ultimoConteo.fecha) {
+      motivo = 'La fecha de la compra (' + fechaCompra + ') es igual o anterior al último conteo físico (' + ultimoConteo.fecha + ') — se asume que ese conteo ya la incluía.';
+    }
+
+    if (motivo) {
+      problemas.push({
+        fecha: fechaCompra, producto: a.producto, sede: sede, cantidad: a.cantidad, unidad: a.unidad,
+        proveedor: a.proveedor || '', numero_factura: a.numero_factura || '', motivo: motivo
+      });
+    }
+  });
+
+  problemas.sort(function (x, y) { return x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : 0; });
+  Logger.log('Compras: ' + compras.length + ' revisadas, ' + problemas.length + ' no se están sumando a Disponible Hoy.');
+  return { total_compras: compras.length, con_problema: problemas.length, problemas: problemas };
+}
+
+/**
+ * Compara cada par de nombres del Catálogo Maestro para encontrar posibles duplicados escritos
+ * distinto — típico de compras/conteos con texto libre que terminan creando un producto nuevo sin
+ * querer en vez de reusar el que ya existe (ver catalogoAsegurar_ en Catalogo.gs). Marca un par
+ * como sospechoso si uno es el otro con palabra(s) de más (ej. "Limón" vs "Limón Tahití") o si la
+ * distancia de edición entre los nombres normalizados es chica para su tamaño (typo, singular vs
+ * plural). Nunca fusiona ni borra nada — decides tú cuáles de verdad son el mismo producto.
+ */
+function diagnosticarCatalogoDuplicados_() {
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO).filter(function (c) { return c.nombre_estandar; });
+  const sospechosos = [];
+  for (let i = 0; i < catalogo.length; i++) {
+    for (let j = i + 1; j < catalogo.length; j++) {
+      const a = catalogo[i], b = catalogo[j];
+      const na = normalizar_(a.nombre_estandar), nb = normalizar_(b.nombre_estandar);
+      if (na === nb) continue; // ya se tratan como el mismo producto (claveProducto_), no es el problema aquí
+      const prefijo = na.indexOf(nb + ' ') === 0 || nb.indexOf(na + ' ') === 0;
+      const umbral = Math.min(na.length, nb.length) <= 4 ? 1 : 2;
+      const parecidos = distanciaEdicion_(na, nb) <= umbral;
+      if (prefijo || parecidos) {
+        sospechosos.push({
+          a: a.nombre_estandar, a_categoria: a.categoria || '',
+          b: b.nombre_estandar, b_categoria: b.categoria || '',
+          razon: prefijo ? 'uno es el otro con palabra(s) de más' : 'nombres muy parecidos (posible typo o singular/plural)'
+        });
+      }
+    }
+  }
+  Logger.log('Catálogo: ' + catalogo.length + ' productos revisados, ' + sospechosos.length + ' par(es) sospechoso(s) de ser el mismo producto.');
+  return { total_productos: catalogo.length, sospechosos: sospechosos };
+}
+
+/** Distancia de edición (Levenshtein) clásica entre dos strings — usada solo para sugerir posibles duplicados de catálogo. */
+function distanciaEdicion_(a, b) {
+  const m = a.length, n = b.length;
+  const fila = new Array(n + 1);
+  for (let j = 0; j <= n; j++) fila[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let anterior = fila[0];
+    fila[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const temp = fila[j];
+      fila[j] = a[i - 1] === b[j - 1] ? anterior : 1 + Math.min(anterior, fila[j], fila[j - 1]);
+      anterior = temp;
+    }
+  }
+  return fila[n];
+}
+
+/** Corre las revisiones de una sola vez (para el uso manual desde el editor). */
 function diagnosticoCompleto_() {
   Logger.log('========== DIAGNÓSTICO DE RECETAS ==========');
   diagnosticarRecetas_();
@@ -109,4 +220,10 @@ function diagnosticoCompleto_() {
   Logger.log('');
   Logger.log('========== DIAGNÓSTICO DE VENTAS FUDO ==========');
   diagnosticarVentasFudo_();
+  Logger.log('');
+  Logger.log('========== DIAGNÓSTICO DE COMPRAS QUE NO SUMAN ==========');
+  diagnosticarComprasNoSuman_();
+  Logger.log('');
+  Logger.log('========== DIAGNÓSTICO DE CATÁLOGO DUPLICADO ==========');
+  diagnosticarCatalogoDuplicados_();
 }
