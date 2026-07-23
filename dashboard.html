@@ -34,6 +34,11 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div class="card" id="card-pendientes" style="display:none; border-color:var(--red); background:#FEF4F3">
+      <h2 style="margin:0 0 4px; color:var(--red)">⏳ Pendientes antes de cerrar turno</h2>
+      <div id="pendientes-contenido"></div>
+    </div>
+
     <div class="card" id="card-alerta-frecuencia" style="display:none; border-color:var(--amber); background:#FFFBF0">
       <h2 style="margin:0 0 4px; color:var(--amber)">📋 Hoy también toca contar</h2>
       <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">
@@ -123,6 +128,7 @@ async function cargar() {
   pintarAlertaFrecuenciaHoy_(catalogoActual, fecha);
   pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual);
   pintarTilesPlatos_(data.data.platos);
+  pintarPendientes_();
 
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
   // nombre para mostrar/usar siempre es s.producto, no la llave del objeto. Incluye TODO lo
@@ -321,6 +327,87 @@ function pintarAlertaFrecuenciaHoy_(catalogo, fecha) {
     <p style="margin:0 0 4px"><strong>${escapeHtml(g.frecuencia)}</strong> (${g.productos.length} producto${g.productos.length === 1 ? '' : 's'}):</p>
     <p style="margin:0 0 12px">${g.productos.map(escapeHtml).join(', ')}</p>
   `).join('');
+}
+
+// Un usuario de una sola sede también puede recibir/enviar en Centro de Producción (misma
+// excepción que restringirSelectorSede_ del lado del servidor).
+function sedeAlcanzable_(sede) {
+  const u = Sesion.usuario();
+  if (!u) return false;
+  if (u.rol === 'Administrador' || u.sede === 'Ambas') return true;
+  return sede === u.sede || sede === 'Centro de Producción';
+}
+
+/**
+ * Pedido real: "en la primera pantalla le aparezca al usuario lo que tiene pendiente por ejemplo
+ * aceptar un traslado, registrar conteo, antes de cerrar turno". Junta tres cosas para el usuario
+ * que abre el dashboard: (1) traslados enviados hacia una sede que puede recibir y todavía no
+ * confirma, (2) si tiene más de un sector habilitado y no ha elegido el de hoy, y (3) para
+ * Encargado/Administrador, qué sectores de la sede seleccionada arriba siguen con conteo
+ * pendiente hoy, con el botón para cerrar el turno cuando ya no falte nada (ver Turnos.gs).
+ */
+async function pintarPendientes_() {
+  const card = document.getElementById('card-pendientes');
+  const cont = document.getElementById('pendientes-contenido');
+  const usuario = Sesion.usuario();
+  if (!usuario) { card.style.display = 'none'; return; }
+  const hoy = fechaLocalHoy_();
+  const bloques = [];
+
+  const dataTraslados = await llamar('traslados_listar', { filtro: { estado: 'Enviado' } });
+  if (dataTraslados.ok) {
+    const pendientes = dataTraslados.data.filter(t => sedeAlcanzable_(t.sede_destino));
+    if (pendientes.length) {
+      bloques.push(`<p style="margin:0 0 10px"><strong>${pendientes.length} traslado${pendientes.length === 1 ? '' : 's'} por aceptar:</strong> ` +
+        pendientes.map(t => `${escapeHtml(t.producto)} (${escapeHtml(t.cantidad_enviada)} ${escapeHtml(t.unidad)}) hacia ${escapeHtml(t.sede_destino)}`).join(', ') +
+        ` — ve a <a href="traslados.html">Traslados</a> para confirmarlos.</p>`);
+    }
+  }
+
+  const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (sectoresPermitidos.length) {
+    const dataSector = await llamar('turno_sector_hoy', { fecha: hoy });
+    if (dataSector.ok && !dataSector.sector) {
+      bloques.push('<p style="margin:0 0 10px"><strong>Todavía no elegiste tu sector de hoy</strong> — ve a ' +
+        '<a href="conteo.html">Registrar conteo</a> y elige cuál te toca (' + sectoresPermitidos.map(escapeHtml).join(', ') + ').</p>');
+    }
+  }
+
+  if (usuario.rol === 'Administrador' || usuario.rol === 'Encargado') {
+    const sede = document.getElementById('sede-corte').value;
+    if (sede && sede !== 'Ambas') {
+      const [dataFaltantes, dataCierre] = await Promise.all([
+        llamar('turno_faltantes_por_sector', { fecha: hoy, sede }),
+        llamar('turno_cierre_estado', { fecha: hoy, sede })
+      ]);
+      if (dataCierre.ok && dataCierre.cerrado) {
+        bloques.push(`<p style="margin:0 0 10px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>`);
+      } else if (dataFaltantes.ok) {
+        const pendientesSector = dataFaltantes.data.filter(s => s.faltantes.length);
+        if (pendientesSector.length) {
+          bloques.push('<p style="margin:0 0 6px"><strong>Sectores de hoy con conteo pendiente en ' + escapeHtml(sede) + ':</strong></p>' +
+            '<ul style="margin:0 0 10px">' + pendientesSector.map(s => `<li>${escapeHtml(s.sector)}: falta ${s.faltantes.map(escapeHtml).join(', ')}</li>`).join('') + '</ul>');
+        } else {
+          const detalle = dataFaltantes.data.length
+            ? `Todos los sectores de hoy en ${escapeHtml(sede)} ya contaron lo suyo.`
+            : `Nadie ha elegido sector hoy en ${escapeHtml(sede)} todavía (o el catálogo no tiene productos asignados por sector).`;
+          bloques.push(`<p style="margin:0 0 10px">${detalle} <button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`);
+        }
+      }
+    }
+  }
+
+  if (!bloques.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  cont.innerHTML = bloques.join('');
+
+  const btnCerrar = document.getElementById('btn-cerrar-turno');
+  if (btnCerrar) {
+    btnCerrar.addEventListener('click', conBotonProtegido(btnCerrar, async () => {
+      const data = await llamar('turno_cerrar', { fecha: hoy, sede: btnCerrar.dataset.sede });
+      if (data.ok) { avisarGuardado('Turno cerrado.'); pintarPendientes_(); } else { alert(data.error); }
+    }));
+  }
 }
 
 function pintarAlertaInsumos_(stockIngredientes, catalogo) {

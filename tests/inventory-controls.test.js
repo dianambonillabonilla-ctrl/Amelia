@@ -834,4 +834,111 @@ assert.equal(sinReceta[0].producto, 'Wafle de fresa con chocolate');
 assert.equal(sinReceta[0].cantidad_vendida, 5, 'debe sumar San Antonio + Capri y excluir la venta cancelada (3 + 2, no 99)');
 assert.deepEqual(sinReceta[0].sedes.sort(), ['Capri', 'San Antonio']);
 
+// --- Turnos y sectores del día ------------------------------------------------------------------
+// Pedido real: "yo debería manualmente definir las opciones de sub usuario de cada usuario y
+// cuando se marque esa opción qué sector le toca contar" + "que no pueda cerrar turno si ellos no
+// registran". sectores_permitidos (Usuarios) limita qué puede elegir cada quien; Turnos_Sector
+// guarda la elección del día; turnoFaltantesPorSector_/turnoCerrar_ bloquean el cierre si algún
+// sector elegido hoy dejó productos obligatorios de hoy sin contar.
+
+// turnoSectorElegir_: rechaza un sector fuera de sectores_permitidos, y una fila nueva no la deja
+// crear una segunda vez el mismo día (upsert) — se prueba por separado, con un mock de hoja vacía
+// para el caso "crea" y otro con una fila previa para el caso "actualiza".
+const turnosVacios = mockHojaAjustes_(['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'], []);
+const turnosGuardadosNuevo = [];
+const turnosModCrear = cargar('apps-script/Turnos.gs', {
+  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+  sheet_: () => turnosVacios,
+  leerTabla_: () => [],
+  appendRowFromObj_: (hoja, fila) => turnosGuardadosNuevo.push(fila),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  Utilities: { getUuid: () => 'turno-1' }
+});
+assert.equal(
+  turnosModCrear.turnoSectorElegir_('2026-07-21', 'Caja', { id: 'u1', nombre: 'Juan', sectores_permitidos: 'Cocina, Café' }).ok,
+  false,
+  'un sector fuera de sectores_permitidos debe rechazarse'
+);
+const resultadoCrearTurno = turnosModCrear.turnoSectorElegir_('2026-07-21', 'Cocina', { id: 'u1', nombre: 'Juan', sectores_permitidos: 'Cocina, Café' });
+assert.equal(resultadoCrearTurno.ok, true);
+assert.equal(turnosGuardadosNuevo.length, 1, 'sin fila previa ese día, debe crear una nueva');
+assert.equal(turnosGuardadosNuevo[0].sector, 'Cocina');
+
+const turnosConFilaPrevia = mockHojaAjustes_(
+  ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
+  [{ id: 't1', fecha: '2026-07-21', usuario_id: 'u1', usuario_nombre: 'Juan', sector: 'Cocina', timestamp: '' }]
+);
+const turnosModActualizar = cargar('apps-script/Turnos.gs', {
+  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+  sheet_: () => turnosConFilaPrevia,
+  leerTabla_: () => [],
+  appendRowFromObj_: () => { throw new Error('no debería crear una fila nueva, ya existe una de hoy'); },
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  Utilities: { getUuid: () => 'no-deberia-usarse' }
+});
+const resultadoActualizarTurno = turnosModActualizar.turnoSectorElegir_('2026-07-21', 'Café', { id: 'u1', nombre: 'Juan', sectores_permitidos: 'Cocina, Café' });
+assert.equal(resultadoActualizarTurno.ok, true);
+assert.equal(turnosConFilaPrevia._data[1][4], 'Café', 'debe actualizar el sector de la fila existente de hoy, no duplicarla');
+
+// turnoFaltantesPorSector_: Juan (San Antonio) eligió "Cocina" hoy. El catálogo tiene un producto
+// de Cocina (Diario, sin contar) y uno de Café (nadie de Café eligió sector hoy, no debe aparecer)
+// y uno sin sector (nunca bloquea el cierre).
+const usuariosTurno = [{ id: 'u1', nombre: 'Juan', sede: 'San Antonio' }];
+const turnosHoy = [{ fecha: '2026-07-21', usuario_id: 'u1', sector: 'Cocina' }];
+const catalogoTurno = [
+  { nombre_estandar: 'Sal Marina', sector: 'Cocina', frecuencia_conteo: 'Diario' },
+  { nombre_estandar: 'Leche', sector: 'Café', frecuencia_conteo: 'Diario' },
+  { nombre_estandar: 'Servilletas', sector: '', frecuencia_conteo: 'Diario' }
+];
+const conteosHoyHechos = [];
+const turnosModFaltantes = cargar('apps-script/Turnos.gs', {
+  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+  leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : catalogoTurno),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  conteoListar_: () => conteosHoyHechos
+});
+const faltantesInicial = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
+assert.equal(faltantesInicial.length, 1, 'solo debe aparecer el sector que alguien eligió hoy en esa sede (Cocina)');
+assert.equal(faltantesInicial[0].sector, 'Cocina');
+assert.deepEqual(faltantesInicial[0].faltantes, ['Sal Marina']);
+
+// Con Sal Marina ya contada hoy, Cocina queda completo.
+conteosHoyHechos.push({ producto: 'Sal Marina' });
+const faltantesCompleto = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
+assert.deepEqual(faltantesCompleto[0].faltantes, [], 'con Sal Marina contada, Cocina ya no debe tener faltantes');
+
+// turnoCerrar_: bloquea si falta algo, dejando el detalle; permite y registra el cierre si no falta nada.
+const cierresGuardados = [];
+const turnosModCerrarBloqueado = cargar('apps-script/Turnos.gs', {
+  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+  leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : catalogoTurno),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  conteoListar_: () => [],
+  appendRowFromObj_: () => { throw new Error('no debería cerrar el turno si falta algo'); }
+});
+const cierreBloqueado = turnosModCerrarBloqueado.turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
+assert.equal(cierreBloqueado.ok, false, 'debe bloquear el cierre si Cocina no ha contado Sal Marina');
+assert.ok(/Sal Marina/.test(cierreBloqueado.error));
+
+const turnosModCerrarOk = cargar('apps-script/Turnos.gs', {
+  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+  leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : catalogoTurno),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  conteoListar_: () => [{ producto: 'Sal Marina' }],
+  appendRowFromObj_: (hoja, fila) => cierresGuardados.push(fila),
+  Utilities: { getUuid: () => 'cierre-1' }
+});
+const cierreOk = turnosModCerrarOk.turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
+assert.equal(cierreOk.ok, true, 'con todo contado, debe permitir cerrar el turno');
+assert.equal(cierresGuardados.length, 1, 'debe dejar registro del cierre en Cierres_Turno');
+assert.equal(cierresGuardados[0].usuario, 'Diana');
+
 console.log('inventory-controls: OK');

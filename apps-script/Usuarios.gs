@@ -13,12 +13,17 @@
  * que necesite registrar traslados entre sedes (ej. mover algo de Centro de Producción a una
  * sede) debe tener sede = "Ambas"; si su sede es una sola, el backend rechaza registrar para
  * cualquier otra.
+ *
+ * `sectores_permitidos` (texto separado por comas, ej. "Cocina, Café") es aparte del rol: es qué
+ * sectores puede elegir esa persona como su responsabilidad del día (ver Turnos.gs) — alguien
+ * puede ser rol "Cocina" un día y elegir sector "Café" otro, sin cambiar de cuenta ni de rol.
+ * Vacío = no se le pide elegir sector (puede seguir contando cualquier cosa, como hoy).
  */
 
 function usuariosListar_(usuario) {
   requiereAdmin_(usuario);
   const rows = leerTabla_(SHEET_NAMES.USUARIOS);
-  return { ok: true, data: rows.map(function (r) { return { id: r.id, nombre: r.nombre, usuario: r.usuario, rol: r.rol, sede: r.sede, activo: r.activo, email: r.email }; }) };
+  return { ok: true, data: rows.map(function (r) { return { id: r.id, nombre: r.nombre, usuario: r.usuario, rol: r.rol, sede: r.sede, activo: r.activo, email: r.email, sectores_permitidos: r.sectores_permitidos || '' }; }) };
 }
 
 function usuarioGuardar_(item, usuarioSesion) {
