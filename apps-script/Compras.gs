@@ -104,6 +104,15 @@ function compraRegistrarFactura_(factura, usuario, opciones) {
   // validadas arriba, esta escritura es la única que puede fallar, y falla completa o no falla.
   appendRowsFromObjs_(SHEET_NAMES.AJUSTES_INVENTARIO, filasNuevas);
 
+  // Si había una gestión abierta (ver Gestiones.gs) para alguno de estos productos en la misma
+  // sede, esta compra la resuelve sola — así el que reportó el faltante no tiene que además ir a
+  // cerrar la gestión a mano cuando ya se sabe que llegó por factura.
+  gestionAutoResolverPorCompra_(
+    lineas.map(function (l) { return { producto: l.producto, sede: l.sede || factura.sede }; }),
+    facturaId,
+    usuario
+  );
+
   return { ok: true, factura_id: facturaId, lineas: lineas.length, total: Number(total.toFixed(2)) };
 }
 

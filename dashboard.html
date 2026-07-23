@@ -21,6 +21,7 @@
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
@@ -113,16 +114,18 @@ const LIMITE_STOCK_INICIAL = 40;
 async function cargar() {
   const fecha = document.getElementById('fecha-corte').value;
   const sede = document.getElementById('sede-corte').value;
-  const [data, catalogoData] = await Promise.all([
+  const [data, catalogoData, gestionesData] = await Promise.all([
     llamar('disponible_hoy', { fecha, sede }),
-    llamar('catalogo_listar')
+    llamar('catalogo_listar'),
+    llamar('gestiones_listar', { filtro: { estado: 'abiertas', sede: sede === 'Ambas' ? undefined : sede } })
   ]);
   if (!data.ok) { alert(data.error); return; }
 
   catalogoActual = catalogoData.ok ? catalogoData.data : [];
+  const gestionesAbiertas = gestionesData.ok ? gestionesData.data : [];
   disponibilidadRecetaActual = data.data.disponibilidad_receta || {};
   const nFrecuencia = pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
-  const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede);
+  const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede, gestionesAbiertas);
   const nPlatosBajos = pintarTilesPlatos_(data.data.platos);
   const nPendientes = await pintarPendientes_();
   actualizarResumenDia_({ pendientes: nPendientes, frecuencia: nFrecuencia, platosBajos: nPlatosBajos, insumos: nInsumos });
@@ -440,7 +443,7 @@ async function pintarPendientes_() {
   return pendientesReales;
 }
 
-function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
+function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede, gestionesAbiertas) {
   const card = document.getElementById('card-alerta-insumos');
   const cont = document.getElementById('alerta-insumos');
 
@@ -493,15 +496,38 @@ function pintarAlertaInsumos_(stockIngredientes, catalogoCompleto, sede) {
       <div class="tiles">
         ${porCategoria[cat]
           .sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar))
-          .map(p => `<div class="tile tile-compra">
-            <div class="tile-etiqueta">${escapeHtml(p.nombre_estandar)}</div>
-            <div class="tile-valor">${escapeHtml(p._actual)} ${escapeHtml(p._unidad || '')}</div>
-            <div class="tile-detalle">${p._tieneMinimo ? 'mínimo: ' + escapeHtml(p.stock_minimo) + ' ' + escapeHtml(p._unidad || '') : 'agotado (sin mínimo configurado)'}</div>
-          </div>`)
+          .map(p => {
+            // Si alguien (dueña o personal) ya abrió una gestión para este producto en esta sede,
+            // se muestra ese estado en vez del botón — así el que llega después no lo reporta de
+            // nuevo creyendo que nadie lo sabe (ver Gestiones.gs).
+            const gestion = (gestionesAbiertas || []).find(g =>
+              normalizarTexto(g.producto) === normalizarTexto(p.nombre_estandar) && (sede === 'Ambas' || g.sede === sede));
+            const accionGestion = gestion
+              ? `<div class="tile-gestion">📋 ${escapeHtml(gestion.estado)}${gestion.nota ? ' — ' + escapeHtml(gestion.nota) : ''}
+                  <span style="color:var(--grey)">(${escapeHtml(gestion.creado_por)})</span></div>`
+              : (sede && sede !== 'Ambas'
+                  ? `<button class="btn fantasma btn-abrir-gestion" data-producto="${escapeHtml(p.nombre_estandar)}" data-sede="${escapeHtml(sede)}" type="button" style="padding:4px 10px; font-size:.76rem; margin-top:6px">Marcar gestión</button>`
+                  : `<a href="gestiones.html" style="font-size:.76rem; display:inline-block; margin-top:6px">Abrir gestión →</a>`);
+            return `<div class="tile tile-compra">
+              <div class="tile-etiqueta">${escapeHtml(p.nombre_estandar)}</div>
+              <div class="tile-valor">${escapeHtml(p._actual)} ${escapeHtml(p._unidad || '')}</div>
+              <div class="tile-detalle">${p._tieneMinimo ? 'mínimo: ' + escapeHtml(p.stock_minimo) + ' ' + escapeHtml(p._unidad || '') : 'agotado (sin mínimo configurado)'}</div>
+              ${accionGestion}
+            </div>`;
+          })
           .join('')}
       </div>
     </div>`).join('');
   card.style.display = 'block';
+
+  cont.querySelectorAll('.btn-abrir-gestion').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const nota = prompt(`¿Qué está pasando con "${btn.dataset.producto}"? (ej. "ya se pidió, llega el viernes"). Puedes dejarlo vacío.`) || '';
+      const data = await llamar('gestion_crear', { item: { producto: btn.dataset.producto, sede: btn.dataset.sede, nota } });
+      if (data.ok) { avisarGuardado('Gestión abierta.'); cargar(); } else { alert(data.error); }
+    }));
+  });
+
   return bajos.length;
 }
 
