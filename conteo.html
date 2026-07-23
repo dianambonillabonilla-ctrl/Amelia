@@ -32,6 +32,19 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div class="card" id="card-sector-hoy" style="display:none; border-color:var(--amber); background:#FFFBF0">
+      <h2 style="margin:0 0 4px; color:var(--amber)">¿Qué sector te toca hoy?</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin:0 0 14px">
+        Tienes más de un sector habilitado — elige cuál te toca hoy para que el Encargado sepa qué
+        falta por contar antes de cerrar el turno.
+      </p>
+      <div style="display:flex; gap:10px; align-items:center">
+        <select id="sector-hoy-select"></select>
+        <button class="btn dorado" id="btn-confirmar-sector">Confirmar</button>
+      </div>
+      <p id="sector-hoy-actual" style="margin:10px 0 0; font-size:.85rem"></p>
+    </div>
+
     <div class="card">
       <div class="grid grid-3" style="margin-bottom:18px">
         <div class="campo">
@@ -227,6 +240,43 @@ async function cargarConteoAnterior_() {
     : '. Actualiza la cantidad, quita lo que no aplique o agrega productos nuevos.');
   productos.forEach(r => nuevaFila(r.producto, r.unidad, r.anterior, r.obligatorio));
 }
+
+// Sector del día: alguien con más de un sector habilitado (ver Usuarios) debe elegir hoy cuál le
+// toca, para que el Encargado sepa qué falta antes de cerrar el turno (turno_cerrar en Turnos.gs).
+// No bloquea "Guardar conteo" — solo el cierre de turno se bloquea si falta elegir/contar.
+async function inicializarSectorHoy_() {
+  const usuario = Sesion.usuario();
+  const sectores = String((usuario && usuario.sectores_permitidos) || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!sectores.length) return;
+
+  const card = document.getElementById('card-sector-hoy');
+  const select = document.getElementById('sector-hoy-select');
+  select.innerHTML = sectores.map(s => `<option>${escapeHtml(s)}</option>`).join('');
+  card.style.display = 'block';
+
+  const hoy = fechaLocalHoy_();
+  const data = await llamar('turno_sector_hoy', { fecha: hoy });
+  const actual = document.getElementById('sector-hoy-actual');
+  if (data.ok && data.sector) {
+    select.value = data.sector;
+    actual.textContent = `Hoy elegiste: ${data.sector}. Si necesitas cambiarlo, elige otro y presiona Confirmar de nuevo.`;
+  } else {
+    actual.textContent = 'Todavía no has elegido tu sector de hoy.';
+  }
+}
+
+document.getElementById('btn-confirmar-sector').addEventListener('click', conBotonProtegido(document.getElementById('btn-confirmar-sector'), async () => {
+  const hoy = fechaLocalHoy_();
+  const sector = document.getElementById('sector-hoy-select').value;
+  const data = await llamar('turno_sector_elegir', { fecha: hoy, sector });
+  if (data.ok) {
+    avisarGuardado(`Sector de hoy: ${sector}.`);
+    document.getElementById('sector-hoy-actual').textContent = `Hoy elegiste: ${sector}.`;
+  } else {
+    alert(data.error);
+  }
+}));
+inicializarSectorHoy_();
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
 document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); });

@@ -26,7 +26,9 @@ const SHEET_NAMES = {
   PRODUCCIONES: 'Producciones',
   ALERTAS_ENVIADAS: 'AlertasEnviadas',
   TRASLADOS: 'Traslados',
-  AJUSTES_INVENTARIO: 'Ajustes_Inventario'
+  AJUSTES_INVENTARIO: 'Ajustes_Inventario',
+  TURNOS_SECTOR: 'Turnos_Sector',
+  CIERRES_TURNO: 'Cierres_Turno'
 };
 
 function ss_() {
@@ -50,8 +52,8 @@ function sheet_(name) {
  */
 function configurarHojas() {
   const spec = {
-    Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'],
-    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion'],
+    Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email', 'sectores_permitidos'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion', 'sector'],
     Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
       'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
       'controla_disponibilidad', 'notas'],
@@ -67,7 +69,9 @@ function configurarHojas() {
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
     Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
-      'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado']
+      'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado'],
+    Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
+    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -207,6 +211,22 @@ function handleRequest_(e, method) {
       case 'conteos_historial':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: conteosHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'turno_sector_elegir':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(turnoSectorElegir_(params.fecha, params.sector, sesion.usuario));
+      case 'turno_sector_hoy':
+        return jsonOut_(turnoSectorDeHoy_(sesion.usuario, params.fecha));
+      case 'turnos_sector_del_dia':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_({ ok: true, data: turnosSectorDelDia_(params.fecha) });
+      case 'turno_faltantes_por_sector':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_({ ok: true, data: turnoFaltantesPorSector_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'turno_cerrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
+      case 'turno_cierre_estado':
+        return jsonOut_(turnoCierreEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
@@ -414,7 +434,7 @@ function login_(usuario, password) {
   return {
     ok: true,
     token: token,
-    usuario: { id: match.id, nombre: match.nombre, rol: match.rol, sede: match.sede }
+    usuario: { id: match.id, nombre: match.nombre, rol: match.rol, sede: match.sede, sectores_permitidos: match.sectores_permitidos || '' }
   };
 }
 
@@ -461,7 +481,7 @@ function validarToken_(token) {
   const u = usuarios.find(function (r) { return r.id === s.usuario_id; });
   if (!u || !u.activo) return { ok: false, error: 'Usuario inactivo', codigo: 'SESION_INVALIDA' };
 
-  return { ok: true, usuario: { id: u.id, nombre: u.nombre, rol: u.rol, sede: u.sede } };
+  return { ok: true, usuario: { id: u.id, nombre: u.nombre, rol: u.rol, sede: u.sede, sectores_permitidos: u.sectores_permitidos || '' } };
 }
 
 function requiereRol_(usuario, rolesPermitidos) {

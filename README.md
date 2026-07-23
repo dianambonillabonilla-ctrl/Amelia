@@ -86,6 +86,8 @@ El backend crea o actualiza estas hojas:
 - `AlertasEnviadas`
 - `Traslados`
 - `Ajustes_Inventario`
+- `Turnos_Sector`
+- `Cierres_Turno`
 
 ## Desarrollo
 
