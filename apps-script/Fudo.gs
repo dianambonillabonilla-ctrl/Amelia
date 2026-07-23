@@ -36,6 +36,7 @@ function importarFudo_(tipo, filas, usuario, opciones) {
   if (tipo === 'movimientos') {
     const contador = contadorClaves_();
     leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO).forEach(function (m) { contador.marcarPrevio(claveMovimiento_(m)); });
+    const nuevasFilas = [];
     let importados = 0;
     let omitidos = 0;
     let sinFecha = 0;
@@ -65,9 +66,10 @@ function importarFudo_(tipo, filas, usuario, opciones) {
       if (!obj.nombre) { sinNombre++; return; }
       const clave = claveMovimiento_(obj);
       if (contador.esDuplicadaPrevia(clave)) { omitidos++; return; }
-      appendRowFromObj_(SHEET_NAMES.MOVIMIENTOS_FUDO, obj);
+      nuevasFilas.push(obj);
       importados++;
     });
+    appendRowsFromObjs_(SHEET_NAMES.MOVIMIENTOS_FUDO, nuevasFilas);
     return {
       ok: true,
       importados: importados,
@@ -87,6 +89,7 @@ function importarFudo_(tipo, filas, usuario, opciones) {
     const contador = contadorClaves_();
     leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) { contador.marcarPrevio(claveVenta_(v)); });
     const sinIdentificar = {};
+    const nuevasFilas = [];
     let importados = 0;
     let omitidos = 0;
     let sinFecha = 0;
@@ -137,9 +140,10 @@ function importarFudo_(tipo, filas, usuario, opciones) {
       }
       const clave = claveVenta_(obj);
       if (contador.esDuplicadaPrevia(clave)) { omitidos++; return; }
-      appendRowFromObj_(SHEET_NAMES.VENTAS_FUDO, obj);
+      nuevasFilas.push(obj);
       importados++;
     });
+    appendRowsFromObjs_(SHEET_NAMES.VENTAS_FUDO, nuevasFilas);
 
     const valores = Object.keys(sinIdentificar);
     return {
@@ -203,7 +207,13 @@ function claveVenta_(v) {
   if (v.formato_origen === 'reporte_productos_resumido') {
     return ['resumen', formatearFecha_(v.creacion), normalizar_(v.producto), normalizar_(v.sede)].join('|');
   }
-  return ['detalle', String(v.id_venta || ''), normalizar_(v.producto), normalizar_(v.sede)].join('|');
+  // La fecha/hora de creación va en la llave además de id_venta (no en su lugar): antes, si el
+  // archivo de FUDO no traía la columna "Id. Venta" con ese nombre exacto (o venía vacía), TODAS
+  // las ventas de un mismo producto en la misma sede colapsaban en la misma llave sin importar el
+  // día — la venta de hoy se descartaba como "duplicada" de la de ayer, aunque fuera un día y hora
+  // distintos. Con id_venta presente y confiable esto no cambia nada (sigue siendo único); es una
+  // protección para cuando no lo es.
+  return ['detalle', formatearFechaHoraFudo_(v.creacion), String(v.id_venta || ''), normalizar_(v.producto), normalizar_(v.sede)].join('|');
 }
 
 function formatearFechaHoraFudo_(valor) {
