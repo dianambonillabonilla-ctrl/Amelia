@@ -4,7 +4,8 @@
  * Cada fila es UN producto contado, en UNA sede, en UN cierre de turno.
  */
 
-function conteoRegistrar_(items, usuario) {
+function conteoRegistrar_(items, usuario, opciones) {
+  opciones = opciones || {};
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
   for (let i = 0; i < items.length; i++) {
     const it = items[i] || {};
@@ -21,9 +22,17 @@ function conteoRegistrar_(items, usuario) {
     return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
 
-  const faltantes = productosObligatoriosFaltantes_(items);
-  if (faltantes.length) {
-    return { ok: false, error: 'Faltan productos obligatorios de hoy: ' + faltantes.join(', ') };
+  // productosObligatoriosFaltantes_ asume que este envío ES la sesión completa de conteo de ese
+  // (fecha, sede, punto) — exige TODOS los productos Diario/Miércoles/Viernes/Mensual de hoy ahí
+  // mismo. producir.html reutiliza esta misma acción para guardar los insumos obligatorios de
+  // cocina (vinagre balsámico, salsa de soya, sal marina...) como un envío APARTE, no como el
+  // cierre del día — exigirle también el resto de la lista diaria ahí bloquearía guardar
+  // producción sin motivo.
+  if (!opciones.omitir_obligatorios_del_dia) {
+    const faltantes = productosObligatoriosFaltantes_(items);
+    if (faltantes.length) {
+      return { ok: false, error: 'Faltan productos obligatorios de hoy: ' + faltantes.join(', ') };
+    }
   }
 
   const ahora = new Date();

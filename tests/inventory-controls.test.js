@@ -243,6 +243,27 @@ assert.equal(
   'crear un producto nuevo (sin id) SÍ debe seguir exigiendo nombre_estandar'
 );
 
+// --- Catálogo: obligatorio_produccion (insumos obligatorios al registrar producción) se guarda --
+// (pedido real: "en registrar producto yo debería de tener la posibilidad de señalarlos también"
+// — vinagre balsámico, salsa de soya, sal marina, etc. catalogoGuardar_ ya copia cualquier campo
+// del item que coincida con una columna de la hoja, así que solo hace falta que la columna exista).
+const filasCatalogoObligatorioProduccion = [
+  ['id', 'nombre_estandar', 'obligatorio_produccion'],
+  ['id-vinagre', 'Vinagre balsámico', false]
+];
+const catalogoObligatorioProduccionMod = cargar('apps-script/Catalogo.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo' },
+  sheet_: () => ({
+    getDataRange: () => ({ getValues: () => filasCatalogoObligatorioProduccion }),
+    getRange: (fila, columna) => ({
+      setValue: (valor) => { filasCatalogoObligatorioProduccion[fila - 1][columna - 1] = valor; }
+    })
+  })
+});
+const resultadoObligatorioProduccion = catalogoObligatorioProduccionMod.catalogoGuardar_({ id: 'id-vinagre', obligatorio_produccion: true });
+assert.equal(resultadoObligatorioProduccion.ok, true);
+assert.equal(filasCatalogoObligatorioProduccion[1][2], true, 'obligatorio_produccion debe quedar marcado en la hoja');
+
 // --- Extremo a extremo: compra sube el stock Y "para cuántos platos alcanza" (ejemplo del banano) ---
 const conteoBanano = [
   { fecha: '2026-07-01', sede: 'San Antonio', producto: 'Banano', unidad: 'u', cantidad: 2 }
@@ -547,6 +568,39 @@ const itemsCentro = [{ fecha: '2026-07-21', sede: 'Centro de Producción', punto
 assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCentro, encargadaSA).ok, true, 'San Antonio debe poder registrar un conteo para Centro de Producción');
 const itemsCapriConteo = [{ fecha: '2026-07-21', sede: 'Capri', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
 assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCapriConteo, encargadaSA).ok, false, 'San Antonio NO debe poder registrar un conteo para Capri');
+
+// --- conteoRegistrar_: omitir_obligatorios_del_dia para los insumos obligatorios de producción --
+// (pedido real: "el día que se registra producción debe de tener todos esos items obligatorios"
+// — vinagre balsámico, salsa de soya, sal marina... producir.html guarda esto vía conteo_registrar,
+// PERO como un envío aparte del cierre de conteo del día. Sin omitir_obligatorios_del_dia, el
+// backend exigiría también los productos Diario de esa fecha/sede/punto en la MISMA llamada y
+// bloquearía guardar producción aunque los insumos obligatorios sí estuvieran completos).
+const catalogoConDiario = [{ nombre_estandar: 'Lavaloza', frecuencia_conteo: 'Diario' }];
+const conteosGuardadosProduccion = [];
+const conteosProduccionMod = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
+  leerTabla_: (hoja) => hoja === 'catalogo' ? catalogoConDiario : conteosGuardadosProduccion,
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  catalogoAsegurar_: () => {},
+  appendRowFromObj_: (hoja, fila) => { if (hoja === 'conteos') conteosGuardadosProduccion.push(fila); },
+  Utilities: { getUuid: () => 'conteo-id-produccion' },
+  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
+  revisarAlertas_: () => {},
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
+});
+const itemsInsumoObligatorio = [{ fecha: '2026-07-21', sede: 'San Antonio', punto_conteo: 'Cocina terraza', producto: 'Vinagre balsámico', unidad: 'ml', cantidad: 500 }];
+assert.equal(
+  conteosProduccionMod.conteoRegistrar_(itemsInsumoObligatorio, encargadaSA).ok,
+  false,
+  'sin omitir_obligatorios_del_dia, debe bloquear porque falta Lavaloza (Diario) en esa misma sesión'
+);
+assert.equal(
+  conteosProduccionMod.conteoRegistrar_(itemsInsumoObligatorio, encargadaSA, { omitir_obligatorios_del_dia: true }).ok,
+  true,
+  'con omitir_obligatorios_del_dia, debe guardar el insumo obligatorio de producción sin exigir el resto de la lista diaria'
+);
 
 // --- Auditoría de sedes: traslados_listar solo debe mostrar traslados relacionados con tu sede --
 // (bug de seguridad real encontrado en esta auditoría: Code.gs nunca pasaba `sesion.usuario` como

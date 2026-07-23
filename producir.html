@@ -64,6 +64,20 @@
       </datalist>
       <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar ítem</button>
 
+      <div id="bloque-obligatorios-produccion" style="display:none; margin-top:24px">
+        <h3>Insumos obligatorios de cocina</h3>
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Vinagre balsámico, salsa de soya, sal marina y otros insumos marcados como "Obligatorio
+          al registrar producción" en <a href="catalogo.html">Registrar producto</a> — hay que
+          poner cuánto queda cada vez que se registra producción, para no descubrirlo cuando ya se
+          acabaron. Se guarda como un conteo de stock, no como algo producido.
+        </p>
+        <table>
+          <thead><tr><th>Insumo</th><th>Unidad</th><th>Cuánto queda</th></tr></thead>
+          <tbody id="filas-obligatorios-produccion"></tbody>
+        </table>
+      </div>
+
       <div style="margin-top:20px">
         <button class="btn dorado" id="btn-guardar">Guardar producción</button>
       </div>
@@ -88,14 +102,36 @@ restringirSelectorSede_(document.getElementById('sede'));
 document.getElementById('fecha').value = fechaLocalHoy_();
 
 // Sugiere nombres ya existentes en el catálogo maestro (vía <datalist>) para que la producción no
-// dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo.
+// dependa de que cada quien teclee el nombre exacto — reduce productos "duplicados" por typo. De
+// paso arma la lista de insumos obligatorios de cocina (ver pintarObligatoriosProduccion_).
 async function cargarSugerenciasProductos_() {
   const data = await llamar('catalogo_listar');
   if (!data.ok) return;
   document.getElementById('lista-productos').innerHTML = data.data
     .map(p => `<option value="${escapeHtml(p.nombre_estandar)}">`).join('');
+  pintarObligatoriosProduccion_(data.data);
 }
 cargarSugerenciasProductos_();
+
+// Pedido real: "hay algunas cosas que son de obligatoriedad cuando se registra producción como
+// vinagre balsámico, salsa de soya, sal marina... el día que se registra producción debe de tener
+// todos esos items obligatorios". Se marcan en Registrar producto (obligatorio_produccion) y acá
+// se exigen cada vez que se guarda esta pantalla — sin importar qué se esté produciendo ese día.
+// Se registran como CONTEO (cuánto queda), no como producción (nada se "produce" del vinagre).
+function pintarObligatoriosProduccion_(catalogo) {
+  const obligatorios = catalogo.filter(p => p.obligatorio_produccion === true);
+  const bloque = document.getElementById('bloque-obligatorios-produccion');
+  const cuerpo = document.getElementById('filas-obligatorios-produccion');
+  if (!obligatorios.length) { bloque.style.display = 'none'; cuerpo.innerHTML = ''; return; }
+
+  bloque.style.display = 'block';
+  cuerpo.innerHTML = obligatorios.map(p => `
+    <tr data-producto="${escapeHtml(p.nombre_estandar)}" data-unidad="${escapeHtml(p.unidad_base || 'g')}">
+      <td>${escapeHtml(p.nombre_estandar)} <span title="Obligatorio" style="color:var(--red); font-weight:700">*</span></td>
+      <td>${escapeHtml(p.unidad_base || 'g')}</td>
+      <td><input type="number" step="0.01" class="in-cantidad-obligatoria" placeholder="ej. 2"></td>
+    </tr>`).join('');
+}
 
 function nuevaFila(item = '', unidad = 'g', cantidad = '') {
   const tr = document.createElement('tr');
@@ -125,15 +161,46 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
     }))
     .filter(it => it.item && !isNaN(it.cantidad));
 
-  if (!items.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
-
-  const data = await llamar('produccion_registrar', { items });
-  if (data.ok) {
-    avisarGuardado(`Guardado: ${data.registrados} ítems.`);
-    cargarHistorial();
-  } else {
-    alert(data.error);
+  // Los insumos obligatorios de cocina (vinagre balsámico, salsa de soya, sal marina...) bloquean
+  // el guardado igual que los productos obligatorios del día bloquean Registrar conteo — sin
+  // importar si esta vez hay algo en la tabla de producción o no.
+  const filasObligatorias = Array.from(document.getElementById('filas-obligatorios-produccion').children);
+  const faltantesObligatorios = filasObligatorias.filter(tr => {
+    const valor = tr.querySelector('.in-cantidad-obligatoria').value.trim();
+    return valor === '' || isNaN(parseFloat(valor.replace(',', '.')));
+  });
+  if (faltantesObligatorios.length) {
+    alert('Antes de guardar, pon cuánto queda de estos insumos obligatorios:\n\n' +
+      faltantesObligatorios.map(tr => tr.dataset.producto).join('\n'));
+    return;
   }
+
+  if (!items.length && !filasObligatorias.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
+
+  // Los insumos obligatorios se registran como CONTEO (cuánto queda), no como producción — nada
+  // se "produce" del vinagre balsámico. El punto de conteo usa el primero de PUNTOS_POR_SEDE de
+  // la sede elegida (el más relacionado con cocina en cada sede); si prefieres otro punto, dilo.
+  const puntoConteo = (PUNTOS_POR_SEDE[sede] || [])[0] || 'Café';
+  const itemsObligatorios = filasObligatorias.map(tr => ({
+    fecha, sede, punto_conteo: puntoConteo,
+    producto: tr.dataset.producto,
+    unidad: tr.dataset.unidad,
+    cantidad: parseFloat(tr.querySelector('.in-cantidad-obligatoria').value.replace(',', '.'))
+  }));
+
+  const llamadas = [];
+  if (items.length) llamadas.push(llamar('produccion_registrar', { items }));
+  // omitir_obligatorios_del_dia: este envío es SOLO los insumos obligatorios de cocina, no el
+  // cierre de conteo del día — sin esto, el backend exigiría también los productos Diario/
+  // Miércoles/Viernes de esa fecha/sede/punto en esta misma llamada y bloquearía guardar.
+  if (itemsObligatorios.length) llamadas.push(llamar('conteo_registrar', { items: itemsObligatorios, opciones: { omitir_obligatorios_del_dia: true } }));
+
+  const resultados = await Promise.all(llamadas);
+  const conError = resultados.find(r => !r.ok);
+  if (conError) { alert(conError.error); return; }
+
+  avisarGuardado(`Guardado: ${items.length} ítem(s) de producción, ${itemsObligatorios.length} insumo(s) obligatorio(s).`);
+  cargarHistorial();
 }));
 
 async function cargarHistorial() {
