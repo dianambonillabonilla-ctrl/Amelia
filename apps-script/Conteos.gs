@@ -75,11 +75,22 @@ function conteoRegistrar_(items, usuario, opciones) {
       catalogoAsegurar_(it.producto, it.unidad);
       const existente = conteoBuscarFila_(Object.assign({}, it, { turno: turnoItem }));
       if (existente) {
+        // Antes de sobrescribir, se guarda qué había — sin esto, corregir un conteo borraba todo
+        // rastro del valor original: no quedaba forma de saber si se contó mal desde el principio
+        // o si alguien lo "corrigió" después (auditoría de seguridad, jul 2026).
+        const filaAnterior = existente.sh.getRange(existente.fila, 1, 1, existente.headers.length).getValues()[0];
+        const valorAnterior = {};
+        existente.headers.forEach(function (h, c) { valorAnterior[h] = filaAnterior[c]; });
+
         existente.headers.forEach(function (h, c) {
           if (h === 'id') return;
           if (datos[h] !== undefined) existente.sh.getRange(existente.fila, c + 1).setValue(datos[h]);
         });
         actualizados++;
+        auditoriaRegistrar_(usuario, 'conteo_corregido', 'Conteo', valorAnterior.id,
+          { cantidad: valorAnterior.cantidad, usuario: valorAnterior.usuario, timestamp: valorAnterior.timestamp },
+          { cantidad: datos.cantidad, usuario: datos.usuario, timestamp: datos.timestamp },
+          it.sede);
       } else {
         appendRowFromObj_(SHEET_NAMES.CONTEOS, datos);
       }

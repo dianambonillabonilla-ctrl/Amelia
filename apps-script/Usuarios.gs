@@ -54,10 +54,30 @@ function usuarioGuardar_(item, usuarioSesion) {
           });
           if (enUsoPorOtro) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
         }
+        const filaAnterior = {};
+        headers.forEach(function (h, c) { filaAnterior[h] = data[r][c]; });
+
         headers.forEach(function (h, c) {
           if (h === 'password_hash' || h === 'salt') return; // la contraseña se cambia con cambiarPassword_
           if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(item[h]);
         });
+
+        // Bitácora: solo los campos sensibles que de verdad cambiaron (rol/sede/nombre/activo) —
+        // sin esto, editar un usuario sobrescribía en silencio quién tenía qué rol o sede antes,
+        // sin dejar rastro de cuándo ni quién lo cambió (auditoría de seguridad, jul 2026).
+        const camposAuditados = ['nombre', 'rol', 'sede', 'activo'];
+        const anterior = {};
+        const nuevo = {};
+        camposAuditados.forEach(function (h) {
+          if (item[h] !== undefined && item[h] !== filaAnterior[h]) {
+            anterior[h] = filaAnterior[h];
+            nuevo[h] = item[h];
+          }
+        });
+        if (Object.keys(nuevo).length) {
+          auditoriaRegistrar_(usuarioSesion, 'usuario_editado', 'Usuario', item.id, anterior, nuevo, filaAnterior.sede);
+        }
+
         return { ok: true, actualizado: true };
       }
     }

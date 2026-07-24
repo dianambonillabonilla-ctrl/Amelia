@@ -861,6 +861,7 @@ function mockHojaUsuarios_(headers, filas) {
 }
 const headersUsuarios = ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email'];
 let hojaUsuarios;
+let auditoriaLlamadas = [];
 const usuariosMod = cargar('apps-script/Usuarios.gs', {
   SHEET_NAMES: { USUARIOS: 'usuarios' },
   requiereAdmin_: () => {},
@@ -870,17 +871,37 @@ const usuariosMod = cargar('apps-script/Usuarios.gs', {
   generarSalt_: () => 'salt',
   hashPasswordSalted_: () => 'hash',
   Utilities: { getUuid: () => 'nuevo-id' },
-  PASSWORD_LARGO_MINIMO: 8
+  PASSWORD_LARGO_MINIMO: 8,
+  auditoriaRegistrar_: (usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede) => {
+    auditoriaLlamadas.push({ usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede });
+  }
 });
 const admin = { rol: 'Administrador' };
 
 hojaUsuarios = mockHojaUsuarios_(headersUsuarios, [
   { id: 'u1', nombre: 'Ana', usuario: 'ana', rol: 'Encargado', sede: 'San Antonio', activo: true, email: '' }
 ]);
+auditoriaLlamadas = [];
 const resultadoToggle = usuariosMod.usuarioGuardar_({ id: 'u1', activo: false }, admin);
 assert.equal(resultadoToggle.ok, true, 'togglear activo de un usuario existente debe funcionar sin mandar nombre/usuario/rol');
 const activoCol = headersUsuarios.indexOf('activo');
 assert.equal(hojaUsuarios._data[1][activoCol], false, 'la hoja debe quedar con activo en false tras el toggle');
+
+// --- Bitácora de auditoría: editar un usuario debe dejar rastro de qué cambió --------------------
+// (auditoría de seguridad, jul 2026: antes esto se sobrescribía en silencio, sin quedar ningún
+// registro de quién tenía qué rol/sede/estado antes del cambio).
+assert.equal(auditoriaLlamadas.length, 1, 'togglear activo SÍ debe dejar un registro en la bitácora (activo cambió)');
+assert.equal(auditoriaLlamadas[0].entidadTipo, 'Usuario');
+assert.equal(auditoriaLlamadas[0].entidadId, 'u1');
+assert.deepEqual(auditoriaLlamadas[0].anterior, { activo: true }, 'solo debe registrar los campos que de verdad cambiaron');
+assert.deepEqual(auditoriaLlamadas[0].nuevo, { activo: false });
+
+hojaUsuarios = mockHojaUsuarios_(headersUsuarios, [
+  { id: 'u1', nombre: 'Ana', usuario: 'ana', rol: 'Encargado', sede: 'San Antonio', activo: true, email: '' }
+]);
+auditoriaLlamadas = [];
+usuariosMod.usuarioGuardar_({ id: 'u1', email: 'ana@nueva.com' }, admin);
+assert.equal(auditoriaLlamadas.length, 0, 'cambiar un campo NO sensible (email) no debe generar registro de auditoría');
 
 assert.equal(
   usuariosMod.usuarioGuardar_({ nombre: '', usuario: '', rol: '' }, admin).ok,
@@ -1004,6 +1025,63 @@ const conteosBloqueadoMod = cargar('apps-script/Conteos.gs', {
 const resultadoConteoBloqueado = conteosBloqueadoMod.conteoRegistrar_(itemsCentro, encargadaSA);
 assert.equal(resultadoConteoBloqueado.ok, false, 'con el lock ocupado, conteoRegistrar_ no debe registrar nada');
 assert.match(resultadoConteoBloqueado.error, /espera un momento/);
+
+// --- Bitácora de auditoría: corregir un conteo existente debe dejar rastro del valor anterior ----
+// (auditoría de seguridad, jul 2026: antes esto se sobrescribía en silencio, sin quedar ningún
+// registro de cuál era la cantidad/usuario/hora antes de la corrección).
+const headersConteoCorregido = ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'];
+let filasConteoCorregido = [
+  headersConteoCorregido,
+  ['c-viejo', '2026-07-24', 'San Antonio', 'Bodega', 'Cierre de turno', 'Sal', 'g', 500, 'Ana', '2026-07-24T09:00:00Z']
+];
+const hojaConteoCorregido = {
+  getDataRange: () => ({ getValues: () => filasConteoCorregido }),
+  getRange: (r, c, numRows, numCols) => {
+    if (numRows !== undefined) {
+      return { getValues: () => [filasConteoCorregido[r - 1].slice(c - 1, c - 1 + numCols)] };
+    }
+    return { setValue: (v) => { filasConteoCorregido[r - 1][c - 1] = v; } };
+  }
+};
+let auditoriaConteoLlamadas = [];
+const conteosCorregirMod = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
+  leerTabla_: () => [],
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  frecuenciasObligatoriasDelDia_: () => [],
+  catalogoAsegurar_: () => {},
+  appendRowFromObj_: () => { throw new Error('no debía insertar — debía corregir la fila existente'); },
+  // Conteos.gs define su propio formatearFecha_ (usa Utilities/Session reales de Apps Script) — no
+  // se puede sobreescribir esa función desde afuera, así que se mockean sus dependencias.
+  Utilities: {
+    getUuid: () => 'no-deberia-usarse',
+    formatDate: (d) => ((d instanceof Date) ? d : new Date(d)).toISOString().slice(0, 10)
+  },
+  Session: { getScriptTimeZone: () => 'UTC' },
+  sheet_: () => hojaConteoCorregido,
+  revisarAlertas_: () => {},
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_,
+  turnoOportuno_: () => 'Cierre de turno',
+  LockService: lockServiceMock_(),
+  auditoriaRegistrar_: (usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede) => {
+    auditoriaConteoLlamadas.push({ usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede });
+  }
+});
+const itemCorregido = [{ fecha: '2026-07-24', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Sal', unidad: 'g', cantidad: 800 }];
+const resultadoCorregido = conteosCorregirMod.conteoRegistrar_(itemCorregido, { nombre: 'Diana', sede: 'San Antonio' });
+assert.equal(resultadoCorregido.ok, true);
+assert.equal(resultadoCorregido.actualizados, 1, 'debe reconocer que es una corrección, no un registro nuevo');
+assert.equal(auditoriaConteoLlamadas.length, 1, 'corregir un conteo debe dejar un registro en la bitácora');
+assert.equal(auditoriaConteoLlamadas[0].accion, 'conteo_corregido');
+assert.equal(auditoriaConteoLlamadas[0].entidadTipo, 'Conteo');
+assert.deepEqual(auditoriaConteoLlamadas[0].anterior, { cantidad: 500, usuario: 'Ana', timestamp: '2026-07-24T09:00:00Z' },
+  'debe guardar el valor ANTERIOR (el de Ana, 500) antes de sobrescribirlo');
+assert.equal(auditoriaConteoLlamadas[0].nuevo.cantidad, 800);
+assert.equal(auditoriaConteoLlamadas[0].nuevo.usuario, 'Diana');
+assert.equal(filasConteoCorregido[1][7], 800, 'la hoja sí debe quedar con la cantidad nueva (la bitácora no reemplaza la corrección real)');
 
 // --- conteoRegistrar_: omitir_obligatorios_del_dia para los insumos obligatorios de producción --
 // (pedido real: "el día que se registra producción debe de tener todos esos items obligatorios"
