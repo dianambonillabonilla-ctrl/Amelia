@@ -95,11 +95,12 @@
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
         Para cada compra registrada, revisa si de verdad quedó contando en "Disponible Hoy" o si se
         ignoró en silencio (nombre que no existe en el catálogo, unidad que no combina con el último
-        conteo físico, o fecha ya cubierta por ese conteo).
+        conteo físico, o fecha ya cubierta por ese conteo). La última columna dice exactamente qué
+        hacer en cada caso — el diagnóstico nunca corrige nada solo, decides tú.
       </p>
       <table>
-        <thead><tr><th>Fecha</th><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Proveedor / Factura</th><th>Por qué no suma</th></tr></thead>
-        <tbody id="tabla-compras-no-suman"><tr><td colspan="6" class="vacio">Sin correr todavía.</td></tr></tbody>
+        <thead><tr><th>Fecha</th><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Proveedor / Factura</th><th>Por qué no suma</th><th>Cómo solucionarlo</th></tr></thead>
+        <tbody id="tabla-compras-no-suman"><tr><td colspan="7" class="vacio">Sin correr todavía.</td></tr></tbody>
       </table>
     </div>
 
@@ -130,7 +131,7 @@ async function correrDiagnostico() {
   document.getElementById('tabla-recetas').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-duplicados').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-ventas').innerHTML = '<tr><td colspan="2" class="vacio">Cargando…</td></tr>';
-  document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="6" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="3" class="vacio">Cargando…</td></tr>';
 
   const [recetas, duplicados, ventas, comprasNoSuman, catalogoDuplicados] = await Promise.all([
@@ -206,11 +207,11 @@ function pintarVentas_(data) {
 function pintarComprasNoSuman_(data) {
   const body = document.getElementById('tabla-compras-no-suman');
   if (!data.total_compras) {
-    body.innerHTML = '<tr><td colspan="6" class="vacio">No hay compras registradas todavía.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="vacio">No hay compras registradas todavía.</td></tr>';
     return;
   }
   if (!data.problemas.length) {
-    body.innerHTML = `<tr><td colspan="6" class="vacio">Las ${data.total_compras} compras revisadas están sumando correctamente.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="vacio">Las ${data.total_compras} compras revisadas están sumando correctamente.</td></tr>`;
     return;
   }
   body.innerHTML = data.problemas.map(p => `
@@ -221,8 +222,9 @@ function pintarComprasNoSuman_(data) {
       <td>${escapeHtml(p.cantidad)} ${escapeHtml(p.unidad)}</td>
       <td>${escapeHtml(p.proveedor)}${p.numero_factura ? ' — ' + escapeHtml(p.numero_factura) : ''}</td>
       <td><span class="badge alerta">${escapeHtml(p.motivo)}</span></td>
+      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}</td>
     </tr>`).join('') +
-    `<tr><td colspan="6" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
+    `<tr><td colspan="7" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
 }
 
 function pintarCatalogoDuplicados_(data) {

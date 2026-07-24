@@ -80,6 +80,32 @@ assert.match(porFactura['F-3'].motivo, /no existe en el Catálogo Maestro/);
 assert.ok(porFactura['F-4'], 'F-4 (fecha igual a la del último conteo) debe marcarse');
 assert.match(porFactura['F-4'].motivo, /ese conteo ya la incluía/);
 
+// Cada problema debe traer también una solución concreta, no solo el diagnóstico del motivo.
+assert.match(porFactura['F-1'].solucion, /conteo físico/i, 'F-1 debe sugerir resolver la unidad con un conteo físico');
+assert.match(porFactura['F-3'].solucion, /ningún producto parecido/, 'F-3 ("Limones sueltos", sin parecido real en el catálogo) debe sugerir crearlo');
+assert.match(porFactura['F-3'].solucion, /Registrar producto/, 'F-3 debe apuntar a dónde crearlo');
+assert.match(porFactura['F-4'].solucion, /fecha/i, 'F-4 debe explicar qué hacer con la fecha del conteo');
+
+// Con un nombre realmente parecido a uno del catálogo, la solución debe sugerir vincularlo como alias.
+const comprasConAlias = compras.concat([
+  { tipo: 'Compra cruda', fecha: '2026-07-22', sede: 'Capri', producto: 'Costilla curda', cantidad: 1, unidad: 'g', proveedor: 'Mercamío', numero_factura: 'F-5' }
+]);
+const diagnosticoAlias = cargar('apps-script/Diagnostico.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes', CONTEOS: 'conteos', RECETAS: 'recetas', VENTAS_FUDO: 'ventas', CATALOGO: 'catalogo' },
+  Logger: { log: () => {} },
+  leerTabla_: (hoja) => hoja === 'ajustes' ? comprasConAlias : hoja === 'conteos' ? conteos : hoja === 'catalogo' ? catalogo : [],
+  indiceCatalogo_: () => indiceMock_(catalogo),
+  claveProducto_: claveProductoMock_,
+  normalizar_: normalizarMock_,
+  aUnidadBase_: aUnidadBaseMock_,
+  formatearFecha_: (v) => String(v).slice(0, 10)
+});
+const resultadoAlias = diagnosticoAlias.diagnosticarComprasNoSuman_();
+const f5 = resultadoAlias.problemas.find((p) => p.numero_factura === 'F-5');
+assert.ok(f5, 'F-5 ("Costilla curda", typo de "Costilla cruda") debe marcarse como fuera de catálogo');
+assert.match(f5.solucion, /Costilla cruda/, 'F-5 debe sugerir el parecido real "Costilla cruda" del catálogo');
+assert.match(f5.solucion, /nombre_fudo/, 'F-5 debe sugerir vincularlo como alias en vez de crear uno nuevo');
+
 console.log('diagnosticarComprasNoSuman_: OK');
 
 // --- diagnosticarCatalogoDuplicados_ -------------------------------------------------------------
