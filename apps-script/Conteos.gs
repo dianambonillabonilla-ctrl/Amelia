@@ -45,36 +45,49 @@ function conteoRegistrar_(items, usuario, opciones) {
     ? 'Cierre de turno'
     : turnoOportuno_(items[0].fecha, items[0].sede, usuario);
 
-  const ahora = new Date();
+  // Busca-o-inserta por fila (conteoBuscarFila_ lee, después se decide actualizar o appendRowFromObj_)
+  // bajo un lock de todo el script: sin esto, dos solicitudes simultáneas para la MISMA combinación
+  // de fecha/sede/punto/turno/producto (ej. doble clic, o dos personas guardando el mismo cierre a
+  // la vez) podían no encontrarse la una a la otra todavía y ambas insertar una fila nueva, en vez
+  // de que la segunda corrija la primera (auditoría de seguridad, jul 2026).
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Otro conteo se está guardando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
   let n = 0;
   let actualizados = 0;
-  items.forEach(function (it) {
-    const turnoItem = it.turno || turnoPorDefecto;
-    const datos = {
-      id: Utilities.getUuid(),
-      fecha: it.fecha,
-      sede: it.sede,
-      punto_conteo: it.punto_conteo || 'Café',
-      turno: turnoItem,
-      producto: it.producto,
-      unidad: it.unidad,
-      cantidad: it.cantidad,
-      usuario: usuario.nombre,
-      timestamp: ahora
-    };
-    catalogoAsegurar_(it.producto, it.unidad);
-    const existente = conteoBuscarFila_(Object.assign({}, it, { turno: turnoItem }));
-    if (existente) {
-      existente.headers.forEach(function (h, c) {
-        if (h === 'id') return;
-        if (datos[h] !== undefined) existente.sh.getRange(existente.fila, c + 1).setValue(datos[h]);
-      });
-      actualizados++;
-    } else {
-      appendRowFromObj_(SHEET_NAMES.CONTEOS, datos);
-    }
-    n++;
-  });
+  try {
+    const ahora = new Date();
+    items.forEach(function (it) {
+      const turnoItem = it.turno || turnoPorDefecto;
+      const datos = {
+        id: Utilities.getUuid(),
+        fecha: it.fecha,
+        sede: it.sede,
+        punto_conteo: it.punto_conteo || 'Café',
+        turno: turnoItem,
+        producto: it.producto,
+        unidad: it.unidad,
+        cantidad: it.cantidad,
+        usuario: usuario.nombre,
+        timestamp: ahora
+      };
+      catalogoAsegurar_(it.producto, it.unidad);
+      const existente = conteoBuscarFila_(Object.assign({}, it, { turno: turnoItem }));
+      if (existente) {
+        existente.headers.forEach(function (h, c) {
+          if (h === 'id') return;
+          if (datos[h] !== undefined) existente.sh.getRange(existente.fila, c + 1).setValue(datos[h]);
+        });
+        actualizados++;
+      } else {
+        appendRowFromObj_(SHEET_NAMES.CONTEOS, datos);
+      }
+      n++;
+    });
+  } finally {
+    lock.releaseLock();
+  }
 
   try {
     revisarAlertas_(items[0].fecha);
