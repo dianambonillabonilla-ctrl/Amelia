@@ -375,14 +375,24 @@ const HASH_ITERACIONES = 1000;
 const PASSWORD_LARGO_MINIMO = 8;
 
 // Protección contra fuerza bruta en login_: tras LOGIN_INTENTOS_MAXIMOS fallos consecutivos
-// para un mismo nombre de usuario, se bloquean intentos nuevos durante LOGIN_BLOQUEO_SEGUNDOS,
-// sin importar si la contraseña es correcta. Usa CacheService en vez de una hoja porque es un
-// contador efímero de alta frecuencia que no necesita persistir ni ser auditado.
+// para un mismo nombre de usuario, se bloquean intentos nuevos — sin importar si la contraseña es
+// correcta — durante un tiempo que va DOBLANDO cada vez que ese mismo usuario vuelve a agotar los
+// intentos después de un bloqueo anterior (15min, 30min, 1h, 2h... tope 6h, el máximo real que
+// permite CacheService.put). Antes el bloqueo era siempre 15 minutos fijos: cualquiera que solo
+// SUPIERA el nombre de usuario de un Administrador (sin saber la contraseña) podía mandarle 8
+// contraseñas incorrectas cada 15 minutos indefinidamente y dejarlo bloqueado de forma sostenida —
+// auditoría de seguridad, jul 2026. Usa CacheService en vez de una hoja porque es un contador
+// efímero de alta frecuencia que no necesita persistir ni ser auditado.
 const LOGIN_INTENTOS_MAXIMOS = 8;
-const LOGIN_BLOQUEO_SEGUNDOS = 15 * 60;
+const LOGIN_BLOQUEO_BASE_SEGUNDOS = 15 * 60;
+const LOGIN_BLOQUEO_MAXIMO_SEGUNDOS = 6 * 60 * 60; // tope real de CacheService.put (21600s)
 
 function loginIntentosClave_(usuario) {
   return 'login_intentos_' + normalizar_(usuario);
+}
+
+function loginBloqueosClave_(usuario) {
+  return 'login_bloqueos_' + normalizar_(usuario);
 }
 
 function loginBloqueado_(usuario) {
@@ -392,13 +402,29 @@ function loginBloqueado_(usuario) {
 
 function loginRegistrarIntentoFallido_(usuario) {
   const cache = CacheService.getScriptCache();
-  const clave = loginIntentosClave_(usuario);
-  const intentos = (Number(cache.get(clave)) || 0) + 1;
-  cache.put(clave, String(intentos), LOGIN_BLOQUEO_SEGUNDOS);
+  const claveIntentos = loginIntentosClave_(usuario);
+  const intentos = (Number(cache.get(claveIntentos)) || 0) + 1;
+
+  if (intentos < LOGIN_INTENTOS_MAXIMOS) {
+    // Todavía no llega al máximo — una racha de intentos sueltos (no un ataque sostenido) expira
+    // sola si no se completa, sin tocar el contador de bloqueos.
+    cache.put(claveIntentos, String(intentos), LOGIN_BLOQUEO_BASE_SEGUNDOS);
+    return;
+  }
+
+  const claveBloqueos = loginBloqueosClave_(usuario);
+  const bloqueosPrevios = Number(cache.get(claveBloqueos)) || 0;
+  const segundos = Math.min(LOGIN_BLOQUEO_BASE_SEGUNDOS * Math.pow(2, bloqueosPrevios), LOGIN_BLOQUEO_MAXIMO_SEGUNDOS);
+  cache.put(claveIntentos, String(intentos), segundos);
+  // El contador de bloqueos vive el DOBLE que el bloqueo mismo — así quien repita el patrón
+  // "esperar a que se abra y volver a bloquear" sigue escalando en vez de resetear a cero.
+  cache.put(claveBloqueos, String(bloqueosPrevios + 1), Math.min(segundos * 2, LOGIN_BLOQUEO_MAXIMO_SEGUNDOS));
 }
 
 function loginLimpiarIntentos_(usuario) {
-  CacheService.getScriptCache().remove(loginIntentosClave_(usuario));
+  const cache = CacheService.getScriptCache();
+  cache.remove(loginIntentosClave_(usuario));
+  cache.remove(loginBloqueosClave_(usuario));
 }
 
 function generarSalt_() {
