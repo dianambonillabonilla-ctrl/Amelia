@@ -309,6 +309,9 @@ function handleRequest_(e, method) {
       case 'diagnostico_recetas':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarRecetas_(params.umbral) });
+      case 'diagnostico_recetas_sin_catalogo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarRecetasSinCatalogo_() });
       case 'diagnostico_conteos_duplicados':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarConteosDuplicados_() });

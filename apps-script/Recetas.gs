@@ -37,16 +37,23 @@ function recetasListar_(filtros) {
   return filas;
 }
 
+// Estados de receta que NO participan en Disponible Hoy ni Conciliación. 'pendiente' = dato sin
+// confirmar (no automatizar). 'referencia' = dato confirmado pero el motor no puede automatizarlo
+// hoy (ej. requiere saber qué opción eligió el cliente y FUDO no registra ese detalle) — se guarda
+// para consulta/costeo pero tampoco participa en el cálculo. 'revisar' SÍ participa (a diferencia
+// de estas), solo lleva advertencia visible en la interfaz. Factorizado aquí para que
+// recetasVigentes_, platosFudoSinReceta_ y los diagnósticos de Recetas (Diagnostico.gs) usen
+// exactamente la misma regla — antes cada uno repetía su propia lista de estados por separado, que
+// fue justo la causa de un bug real cuando se desincronizaron.
+const ESTADOS_RECETA_NO_VIGENTE_ = ['borrador', 'inactivo', 'archivado', 'pendiente', 'referencia'];
+function recetaEstadoVigente_(estado) {
+  return ESTADOS_RECETA_NO_VIGENTE_.indexOf(normalizar_(estado || 'activo')) === -1;
+}
+
 function recetasVigentes_(fecha, sede, filas) {
   fecha = fecha || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   return (filas || leerTabla_(SHEET_NAMES.RECETAS)).filter(function (r) {
-    const estado = normalizar_(r.estado || 'activo');
-    // 'pendiente' = dato sin confirmar (no automatizar). 'referencia' = dato confirmado pero el
-    // motor no puede automatizarlo hoy (ej. requiere saber qué opción eligió el cliente y FUDO no
-    // registra ese detalle) — se guarda para consulta/costeo pero tampoco participa en el cálculo.
-    // 'revisar' SÍ participa (a diferencia de estas), solo lleva advertencia visible en la interfaz.
-    if (estado === 'borrador' || estado === 'inactivo' || estado === 'archivado' ||
-      estado === 'pendiente' || estado === 'referencia') return false;
+    if (!recetaEstadoVigente_(r.estado)) return false;
     const sedeReceta = normalizar_(r.sede || 'Ambas');
     if (sede && sede !== 'Ambas' && sedeReceta && sedeReceta !== 'ambas' && sedeReceta !== normalizar_(sede)) return false;
     const desde = r.vigente_desde ? formatearFecha_(r.vigente_desde) : '';
@@ -128,9 +135,7 @@ function platosFudoSinReceta_() {
   // fila para él en la hoja. Antes cualquier fila (sin importar el estado) marcaba el plato como
   // resuelto, escondiendo el hueco real.
   leerTabla_(SHEET_NAMES.RECETAS).forEach(function (r) {
-    const estado = normalizar_(r.estado || 'activo');
-    if (estado === 'borrador' || estado === 'inactivo' || estado === 'archivado' ||
-      estado === 'pendiente' || estado === 'referencia') return;
+    if (!recetaEstadoVigente_(r.estado)) return;
     productosConReceta[claveProducto_(r.producto, indice)] = true;
   });
   const bebidas = {};
