@@ -1180,6 +1180,7 @@ const trasladosFilas = [
   { id: 't4', sede_origen: 'Capri', sede_destino: 'Capri', producto: 'Servilletas', estado: 'Enviado', timestamp_envio: '2026-07-18' }
 ];
 const trasladosMod = cargar('apps-script/Traslados.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { TRASLADOS: 'traslados' },
@@ -1208,6 +1209,7 @@ function filaTraslado_(campos) { return trasladoHeaders.map(function (h) { retur
 function mockTrasladoResolver_(campos) {
   const data = [trasladoHeaders, filaTraslado_(campos)];
   return cargar('apps-script/Traslados.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { TRASLADOS: 'traslados' },
@@ -1236,6 +1238,7 @@ function filaObservar_(campos) { return observarHeaders.map(function (h) { retur
 function mockTrasladoObservar_(campos) {
   const data = [observarHeaders, filaObservar_(campos)];
   return cargar('apps-script/Traslados.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { TRASLADOS: 'traslados' },
@@ -1263,6 +1266,7 @@ assert.throws(() => observarAjeno.trasladoObservar_('ob2', 3, 'llegó menos de l
 function mockTrasladoBloqueado_(campos) {
   const data = [observarHeaders, filaObservar_(campos)];
   return cargar('apps-script/Traslados.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { TRASLADOS: 'traslados' },
@@ -1288,6 +1292,39 @@ const trasladoBloqueadoObs = Object.assign({}, trasladoBloqueado, { estado: 'Con
 const resolverBloqueado = mockTrasladoBloqueado_(trasladoBloqueadoObs).trasladoResolver_('lb1', 'listo', encargadaSA);
 assert.equal(resolverBloqueado.ok, false, 'con el lock ocupado, trasladoResolver_ no debe actualizar nada');
 assert.match(resolverBloqueado.error, /espera un momento/);
+
+// --- Bitácora de auditoría: confirmar un traslado debe dejar rastro del cambio de estado --------
+// (auditoría de seguridad, jul 2026: antes esto se sobrescribía en silencio, sin quedar ningún
+// registro de cuándo pasó de "Enviado" a "Confirmado" ni quién lo hizo).
+let auditoriaTrasladoLlamadas = [];
+function mockTrasladoConAuditoria_(campos) {
+  const data = [observarHeaders, filaObservar_(campos)];
+  return cargar('apps-script/Traslados.gs', {
+    SHEET_NAMES: { TRASLADOS: 'traslados' },
+    leerTabla_: () => [],
+    requiereRol_: () => {},
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    destinatariosAlerta_: () => [],
+    LockService: lockServiceMock_(),
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
+    auditoriaRegistrar_: (usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede) => {
+      auditoriaTrasladoLlamadas.push({ usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede });
+    },
+    sheet_: () => ({
+      getDataRange: () => ({ getValues: () => data }),
+      getRange: (r, c) => ({ setValue: (v) => { data[r - 1][c - 1] = v; } })
+    })
+  });
+}
+auditoriaTrasladoLlamadas = [];
+const trasladoParaConfirmar = { id: 'tc1', sede_origen: 'San Antonio', sede_destino: 'San Antonio', estado: 'Enviado', cantidad_enviada: 5 };
+const confirmarConAuditoria = mockTrasladoConAuditoria_(trasladoParaConfirmar).trasladoConfirmar_('tc1', 5, encargadaSA);
+assert.equal(confirmarConAuditoria.ok, true);
+assert.equal(auditoriaTrasladoLlamadas.length, 1, 'confirmar un traslado debe dejar un registro en la bitácora');
+assert.equal(auditoriaTrasladoLlamadas[0].accion, 'traslado_estado_cambiado');
+assert.equal(auditoriaTrasladoLlamadas[0].entidadTipo, 'Traslado');
+assert.deepEqual(auditoriaTrasladoLlamadas[0].anterior, { estado: 'Enviado' });
+assert.equal(auditoriaTrasladoLlamadas[0].nuevo.estado, 'Confirmado');
 
 // --- Auditoría de sedes: Conciliación solo debe mostrar la parte de la sede del usuario ---------
 // (pedido explícito: "si es conciliacion solo sepa que cuadra su parte" — antes calcularConciliacion_
@@ -1367,6 +1404,7 @@ function mockHojaAjustes_(headers, filas) {
 }
 const ajustesGuardadosMermas = [];
 const ajustesMod = cargar('apps-script/AjustesInventario.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -1409,7 +1447,11 @@ assert.equal(historialPorProducto[0].id, 'a2');
 // ajusteInventarioAvalar_: solo mermas, marca avalado/avalado_por/timestamp_avalado.
 const headersAjustes = ['id', 'tipo', 'avalado', 'avalado_por', 'timestamp_avalado'];
 const hojaMermaPendiente = mockHojaAjustes_(headersAjustes, [{ id: 'm1', tipo: 'Merma / desperdicio', avalado: false }]);
+let auditoriaAjustesLlamadas = [];
 const avalarMod = cargar('apps-script/AjustesInventario.gs', {
+    auditoriaRegistrar_: (usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede) => {
+      auditoriaAjustesLlamadas.push({ usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede });
+    },
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -1423,8 +1465,16 @@ const avaladoPorCol = headersAjustes.indexOf('avalado_por');
 assert.equal(hojaMermaPendiente._data[1][avaladoCol], true, 'debe quedar marcada avalado=true en la hoja');
 assert.equal(hojaMermaPendiente._data[1][avaladoPorCol], 'Diana', 'debe quedar registrado quién la avaló');
 
+// --- Bitácora de auditoría: avalar una merma debe dejar rastro (auditoría de seguridad, jul 2026) --
+assert.equal(auditoriaAjustesLlamadas.length, 1, 'avalar una merma debe dejar un registro en la bitácora');
+assert.equal(auditoriaAjustesLlamadas[0].accion, 'merma_avalada');
+assert.equal(auditoriaAjustesLlamadas[0].entidadTipo, 'Ajuste');
+assert.deepEqual(auditoriaAjustesLlamadas[0].anterior, { avalado: false });
+assert.deepEqual(auditoriaAjustesLlamadas[0].nuevo, { avalado: true });
+
 const hojaCompra = mockHojaAjustes_(headersAjustes, [{ id: 'c1', tipo: 'Compra cruda', avalado: false }]);
 const avalarModCompra = cargar('apps-script/AjustesInventario.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -1439,6 +1489,7 @@ assert.equal(avalarMod.ajusteInventarioAvalar_('no-existe', adminDiana).ok, fals
 const headersSinAvalar = ['id', 'tipo'];
 const hojaSinColumnasAvalar = mockHojaAjustes_(headersSinAvalar, [{ id: 'm2', tipo: 'Merma / desperdicio' }]);
 const avalarModSinColumnas = cargar('apps-script/AjustesInventario.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -1456,6 +1507,7 @@ const hojaCompraCorregir = mockHojaAjustes_(headersCorregir, [
   { id: 'c1', tipo: 'Compra cruda', producto: 'Limón Tahití', unidad: 'kg', cantidad: 50, motivo: '' }
 ]);
 const corregirMod = cargar('apps-script/AjustesInventario.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -1473,6 +1525,7 @@ assert.match(hojaCompraCorregir._data[1][motivoColCorregir], /50 kg/, 'debe qued
 
 const hojaMermaNoCorregir = mockHojaAjustes_(headersCorregir, [{ id: 'm10', tipo: 'Merma / desperdicio', unidad: 'kg', cantidad: 2 }]);
 const corregirModMerma = cargar('apps-script/AjustesInventario.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },

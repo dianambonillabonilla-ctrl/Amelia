@@ -128,6 +128,7 @@ function ajusteInventarioAvalar_(id, usuario) {
       sh.getRange(r + 1, avaladoCol + 1).setValue(true);
       sh.getRange(r + 1, avaladoPorCol + 1).setValue(usuario.nombre);
       sh.getRange(r + 1, timestampAvaladoCol + 1).setValue(new Date());
+      auditoriaRegistrar_(usuario, 'merma_avalada', 'Ajuste', id, { avalado: false }, { avalado: true }, data[r][headers.indexOf('sede')]);
       return { ok: true };
     }
   }
@@ -176,6 +177,10 @@ function ajusteInventarioCorregirUnidad_(id, unidadNueva, cantidadNueva, usuario
         const nota = 'Unidad corregida desde Diagnóstico por ' + usuario.nombre + ' (antes: ' + cantidadVieja + ' ' + unidadVieja + ').';
         sh.getRange(r + 1, motivoCol + 1).setValue(neutralizarFormula_(notaAnterior ? notaAnterior + ' | ' + nota : nota));
       }
+      auditoriaRegistrar_(usuario, 'ajuste_unidad_corregida', 'Ajuste', id,
+        { cantidad: cantidadVieja, unidad: unidadVieja },
+        { cantidad: Number(cantidadNueva), unidad: unidadNueva },
+        data[r][headers.indexOf('sede')]);
       return { ok: true };
     }
   }

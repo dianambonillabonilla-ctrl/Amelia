@@ -6,10 +6,12 @@
  * forma de saber si un conteo se registró mal desde el principio o si alguien lo "corrigió" después,
  * ni qué rol/sede tenía un usuario antes de un cambio (auditoría de seguridad, jul 2026).
  *
- * Cubre por ahora solo los dos casos concretos que señaló la auditoría: corregir un conteo
- * (conteoRegistrar_ en Conteos.gs) y editar un usuario existente (usuarioGuardar_ en Usuarios.gs).
- * No registra todavía traslados/compras/ajustes/gestiones — se puede extender el mismo patrón ahí
- * si hace falta más adelante.
+ * Cubre: corregir un conteo (Conteos.gs), editar un usuario (Usuarios.gs), cambios de estado de un
+ * traslado — confirmar/observar/resolver (Traslados.gs), avalar una merma y corregir la unidad de
+ * una compra (AjustesInventario.gs), y cambiar el estado de una gestión (Gestiones.gs). No registra
+ * la CREACIÓN de estas entidades (compras, traslados nuevos, gestiones nuevas) — esa ya queda
+ * completa en su propia fila desde el principio; la bitácora existe para lo que se pierde al
+ * corregir/actualizar algo ya guardado.
  */
 function auditoriaRegistrar_(usuario, accion, entidadTipo, entidadId, valorAnterior, valorNuevo, sede, motivo) {
   try {

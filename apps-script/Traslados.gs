@@ -80,7 +80,7 @@ function trasladoBuscarFila_(id) {
   return null;
 }
 
-function trasladoActualizar_(id, cambios) {
+function trasladoActualizar_(id, cambios, usuario) {
   const encontrado = trasladoBuscarFila_(id);
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado ' + id };
   // neutralizarObjetoFormulas_ (Code.gs): 'observacion' y 'nota_resolucion' son texto libre que
@@ -90,11 +90,25 @@ function trasladoActualizar_(id, cambios) {
   // CREACIÓN del traslado; esto protege la actualización (confirmar/observar/resolver), que escribe
   // directo con setValue y no pasa por esos helpers.
   const cambiosLimpios = neutralizarObjetoFormulas_(cambios);
+  const idCol = encontrado.headers.indexOf('estado');
+  const estadoAnterior = encontrado.valores[idCol];
   encontrado.headers.forEach(function (h, c) {
     if (cambiosLimpios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambiosLimpios[h]);
   });
-  const idCol = encontrado.headers.indexOf('estado');
-  return { ok: true, estado: cambiosLimpios.estado || encontrado.valores[idCol] };
+  const estadoNuevo = cambiosLimpios.estado || estadoAnterior;
+
+  // Bitácora: confirmar/observar/resolver son justo los cambios de estado que la auditoría señaló
+  // sin rastro — sin esto, no quedaba forma de saber cuándo pasó un traslado de "Enviado" a
+  // "Confirmado"/"Con observación", ni quién lo hizo, más allá del último valor guardado
+  // (auditoría de seguridad, jul 2026).
+  if (cambiosLimpios.estado && cambiosLimpios.estado !== estadoAnterior) {
+    auditoriaRegistrar_(usuario, 'traslado_estado_cambiado', 'Traslado', id,
+      { estado: estadoAnterior },
+      { estado: estadoNuevo, cantidad_recibida: cambiosLimpios.cantidad_recibida, observacion: cambiosLimpios.observacion, nota_resolucion: cambiosLimpios.nota_resolucion },
+      encontrado.valores[encontrado.headers.indexOf('sede_destino')]);
+  }
+
+  return { ok: true, estado: estadoNuevo };
 }
 
 function trasladoConfirmar_(id, cantidadRecibida, usuario) {
@@ -124,7 +138,7 @@ function trasladoConfirmar_(id, cantidadRecibida, usuario) {
       usuario_recibe: usuario.nombre,
       timestamp_recibe: new Date(),
       cantidad_recibida: recibida
-    });
+    }, usuario);
   } finally {
     lock.releaseLock();
   }
@@ -162,7 +176,7 @@ function trasladoObservar_(id, cantidadRecibida, observacion, usuario) {
       timestamp_recibe: new Date(),
       cantidad_recibida: recibida,
       observacion: String(observacion).trim()
-    });
+    }, usuario);
   } finally {
     lock.releaseLock();
   }
@@ -206,7 +220,7 @@ function trasladoResolver_(id, notaResolucion, usuario) {
       resuelto_por: usuario.nombre,
       timestamp_resuelto: new Date(),
       nota_resolucion: notaResolucion || ''
-    });
+    }, usuario);
   } finally {
     lock.releaseLock();
   }
