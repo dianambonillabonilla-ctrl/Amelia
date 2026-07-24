@@ -9,11 +9,13 @@
  * a mano desde el editor de Apps Script (mismo patrón que crearAdministradorInicial_ en Code.gs).
  *
  * Estado actual: autenticación, paginación y el helper genérico de consulta ya están listos y
- * probados. El mapeo de /sales hacia Ventas_FUDO todavía NO está conectado — antes de escribir esa
- * parte hace falta confirmar los nombres de campo reales que devuelve la cuenta (la documentación
- * pegada por Diana cubre auth/paginación/filtros/orden, no el detalle del cuerpo de cada recurso).
- * Para eso existe fudoApiProbarConexion_ (acción 'fudo_api_probar_conexion', ver Code.gs e
- * importar.html): trae una muestra cruda de /sales tal cual la devuelve FUDO, sin transformar nada.
+ * probados, y fudoApiProbarConexion_ ya confirmó conexión real contra la cuenta (jul 2026).
+ * /sales responde en formato JSON:API: { data: [{ id, type, attributes: {...}, relationships: {...} }] }
+ * — los campos reales (total, saleType, createdAt, items, payments, etc.) van dentro de "attributes"
+ * y "relationships" (ver dev.fu.do/api, sección "Get sales" > schema de respuesta), no sueltos en la
+ * raíz. El mapeo de /sales hacia Ventas_FUDO todavía NO está conectado — falta decidir qué campos
+ * usar (¿incluir items con ?include=items para tener el detalle por producto, o quedarnos con el
+ * total de la venta como hace hoy el import resumido?) antes de escribir esa parte.
  */
 
 const FUDO_API_PROP_KEY_ = 'FUDO_API_KEY';
@@ -22,11 +24,9 @@ const FUDO_API_PROP_BASE_URL_ = 'FUDO_API_BASE_URL';
 const FUDO_API_PROP_TOKEN_ = 'FUDO_API_TOKEN';
 const FUDO_API_PROP_TOKEN_EXP_ = 'FUDO_API_TOKEN_EXP';
 const FUDO_API_AUTH_URL_ = 'https://auth.fu.do/api';
-// La documentación de Diana solo confirma el host de autenticación (auth.fu.do). Este es el mejor
-// supuesto para el host de los recursos (sibling subdomain) — si fudoApiProbarConexion_ devuelve
-// 404/otro error de host, corregirlo con fudoApiConfigurarCredenciales_(apiKey, apiSecret, baseUrl)
-// pasando el baseUrl correcto, sin tocar código.
-const FUDO_API_BASE_URL_POR_DEFECTO_ = 'https://api.fu.do';
+// Confirmado contra la documentación real de dev.fu.do/api (sección "Get sales" > "API Server"):
+// no es el mismo host de autenticación (auth.fu.do), lleva el prefijo de versión /v1alpha1.
+const FUDO_API_BASE_URL_POR_DEFECTO_ = 'https://api.fu.do/v1alpha1';
 
 /** Correr UNA vez desde el editor de Apps Script (Extensiones > Apps Script) — nunca desde la app web. */
 function fudoApiConfigurarCredenciales_(apiKey, apiSecret, baseUrl) {

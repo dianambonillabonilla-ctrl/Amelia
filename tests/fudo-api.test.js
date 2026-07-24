@@ -151,7 +151,7 @@ function ctxAutenticadoConDatos_(paginas) {
   const pagina = ctx.fudoApiObtenerPagina_('sales', { pageSize: 5, pagina: 1, filtros: { estado: 'eq.abierta' }, orden: '-fecha' });
   assert.deepEqual(pagina, [{ id: 1 }, { id: 2 }]);
   const url = llamadas[0].url;
-  assert.ok(url.startsWith('https://api.fu.do/sales?'));
+  assert.ok(url.startsWith('https://api.fu.do/v1alpha1/sales?'));
   assert.ok(url.includes('page[size]=5'));
   assert.ok(url.includes('page[number]=1'));
   assert.ok(url.includes('filter[estado]=' + encodeURIComponent('eq.abierta')));
