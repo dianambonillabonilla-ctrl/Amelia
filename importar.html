@@ -45,6 +45,21 @@
       </p>
       <button class="btn" id="btn-probar-fudo-api">Probar conexión</button>
       <pre id="resultado-fudo-api" style="display:none; margin-top:12px; max-height:320px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
+
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid #E5E5E5">
+        <h3 style="margin:0 0 8px">Sincronizar ventas directo desde la API</h3>
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Reemplaza la subida manual del reporte de ventas para un rango de fechas. Usa rangos cortos
+          (un día o pocos días) — rangos muy grandes pueden tardar demasiado y fallar por el límite de
+          ejecución de Apps Script (6 minutos).
+        </p>
+        <div class="grid grid-3">
+          <label>Desde <input type="date" id="fudo-api-fecha-desde"></label>
+          <label>Hasta <input type="date" id="fudo-api-fecha-hasta"></label>
+          <button class="btn dorado" id="btn-sincronizar-fudo-api" style="align-self:end">Sincronizar ventas</button>
+        </div>
+        <pre id="resultado-sincronizar-fudo-api" style="display:none; margin-top:12px; max-height:260px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
+      </div>
     </div>
 
     <div class="card">
@@ -126,6 +141,21 @@ document.getElementById('btn-probar-fudo-api').addEventListener('click', conBoto
       : `Error: ${data.error}`;
   } catch (err) {
     pre.textContent = `No se pudo conectar: ${err.message}`;
+  }
+}));
+
+document.getElementById('btn-sincronizar-fudo-api').addEventListener('click', conBotonProtegido(document.getElementById('btn-sincronizar-fudo-api'), async () => {
+  const fechaDesde = document.getElementById('fudo-api-fecha-desde').value;
+  const fechaHasta = document.getElementById('fudo-api-fecha-hasta').value;
+  const pre = document.getElementById('resultado-sincronizar-fudo-api');
+  pre.style.display = 'block';
+  if (!fechaDesde || !fechaHasta) { pre.textContent = 'Elige fecha desde y hasta.'; return; }
+  pre.textContent = 'Sincronizando…';
+  try {
+    const data = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+    pre.textContent = data.ok ? JSON.stringify(data, null, 2) : `Error: ${data.error}`;
+  } catch (err) {
+    pre.textContent = `No se pudo sincronizar: ${err.message}`;
   }
 }));
 

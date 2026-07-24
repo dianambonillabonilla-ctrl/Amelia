@@ -205,4 +205,156 @@ function ctxAutenticadoConDatos_(paginas) {
   console.log('fudoApiProbarConexion_: OK');
 })();
 
+// --- fudoApiObtenerTodoCompleto_ ------------------------------------------------------------------
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  let i = 0;
+  const paginas = [
+    { data: [{ type: 'Sale', id: '1' }, { type: 'Sale', id: '2' }], included: [{ type: 'Item', id: '1' }] },
+    { data: [{ type: 'Sale', id: '3' }], included: [{ type: 'Product', id: '9' }] }
+  ];
+  fetchImpl = () => { const body = paginas[Math.min(i, paginas.length - 1)]; i++; return respuesta_(200, body); };
+  const ctx = cargarFudoApi_();
+  const resultado = ctx.fudoApiObtenerTodoCompleto_('sales', { pageSize: 2, include: 'items.product' });
+  assert.deepEqual(resultado.registros.map((r) => r.id), ['1', '2', '3']);
+  assert.deepEqual(Object.keys(resultado.incluidos).sort(), ['Item:1', 'Product:9']);
+  assert.ok(llamadas[0].url.includes('include=' + encodeURIComponent('items.product')));
+  console.log('fudoApiObtenerTodoCompleto_ acumula incluidos entre páginas: OK');
+})();
+
+// --- fudoApiFilasVentaDesdeSale_ ------------------------------------------------------------------
+
+(function () {
+  const ctx = cargarFudoApi_();
+  const incluidos = {
+    'Item:1': { type: 'Item', id: '1', attributes: { createdAt: '2026-07-20T12:00:00Z', quantity: 2, price: 15000, canceled: false }, relationships: { product: { data: { type: 'Product', id: '10' } } } },
+    'Item:2': { type: 'Item', id: '2', attributes: { createdAt: '2026-07-20T12:01:00Z', quantity: 1, price: 8000, canceled: true }, relationships: { product: { data: { type: 'Product', id: '11' } } } },
+    'Product:10': { type: 'Product', id: '10', attributes: { name: 'Waffle Bonitos' } },
+    'Product:11': { type: 'Product', id: '11', attributes: { name: 'Limonada' } },
+    'CashRegister:5': { type: 'CashRegister', id: '5', attributes: { name: 'Caja Capri' } }
+  };
+  const sale = {
+    id: '100',
+    attributes: { createdAt: '2026-07-20T11:55:00Z' },
+    relationships: {
+      items: { data: [{ type: 'Item', id: '1' }, { type: 'Item', id: '2' }] },
+      cashRegister: { data: { type: 'CashRegister', id: '5' } }
+    }
+  };
+  const filas = ctx.fudoApiFilasVentaDesdeSale_(sale, incluidos);
+  assert.equal(filas.length, 2);
+  assert.equal(filas[0]['Id. Venta'], '100');
+  assert.equal(filas[0]['Producto'], 'Waffle Bonitos');
+  assert.equal(filas[0]['Cantidad'], 2);
+  assert.equal(filas[0]['Precio'], 15000);
+  assert.equal(filas[0]['Cancelada'], false);
+  assert.equal(filas[0]['Creada por'], 'Caja Capri');
+  // instanceof Date falla entre contextos de vm distintos (el Date de FudoApi.gs no es el mismo
+  // constructor que el de este archivo de test) — se verifica por forma en vez de por instancia.
+  assert.equal(Object.prototype.toString.call(filas[0]['Creación']), '[object Date]');
+  assert.equal(filas[1]['Producto'], 'Limonada');
+  assert.equal(filas[1]['Cancelada'], true);
+  console.log('fudoApiFilasVentaDesdeSale_ mapea ítems con producto/caja resueltos: OK');
+})();
+
+(function () {
+  // Ítem sin producto resuelto en "incluidos" (no debería pasar con include=items.product, pero por
+  // seguridad no debe colarse con el nombre vacío) se omite en vez de generar una fila inválida.
+  const ctx = cargarFudoApi_();
+  const incluidos = {
+    'Item:1': { type: 'Item', id: '1', attributes: { createdAt: '2026-07-20T12:00:00Z', quantity: 1, price: 5000, canceled: false }, relationships: { product: { data: { type: 'Product', id: '99' } } } }
+  };
+  const sale = { id: '200', attributes: {}, relationships: { items: { data: [{ type: 'Item', id: '1' }] } } };
+  const filas = ctx.fudoApiFilasVentaDesdeSale_(sale, incluidos);
+  assert.equal(filas.length, 0);
+  console.log('fudoApiFilasVentaDesdeSale_ omite ítems sin producto resuelto: OK');
+})();
+
+// --- fudoApiSincronizarVentas_ --------------------------------------------------------------------
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, {
+    data: [{
+      id: '1',
+      attributes: { createdAt: '2026-07-20T11:55:00Z' },
+      relationships: { items: { data: [{ type: 'Item', id: '1' }] } }
+    }],
+    included: [
+      { type: 'Item', id: '1', attributes: { createdAt: '2026-07-20T12:00:00Z', quantity: 2, price: 15000, canceled: false }, relationships: { product: { data: { type: 'Product', id: '10' } } } },
+      { type: 'Product', id: '10', attributes: { name: 'Waffle Bonitos' } }
+    ]
+  });
+
+  let llamadaImportarFudo = null;
+  const importarFudoMock_ = (tipo, filas, usuario, opciones) => {
+    llamadaImportarFudo = { tipo, filas, usuario, opciones };
+    return { ok: true, importados: filas.length, omitidos_duplicados: 0, tipo: tipo };
+  };
+
+  const ctx = cargar('apps-script/FudoApi.gs', {
+    PropertiesService: fakePropertiesService,
+    UrlFetchApp: fakeUrlFetchApp,
+    importarFudo_: importarFudoMock_
+  });
+
+  const usuario = { nombre: 'Admin' };
+  const resultado = ctx.fudoApiSincronizarVentas_('2026-07-20', '2026-07-20', usuario, {});
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.importados, 1);
+  assert.ok(llamadaImportarFudo);
+  assert.equal(llamadaImportarFudo.tipo, 'ventas');
+  assert.equal(llamadaImportarFudo.filas.length, 1);
+  assert.equal(llamadaImportarFudo.filas[0]['Producto'], 'Waffle Bonitos');
+  assert.equal(llamadaImportarFudo.usuario, usuario);
+  assert.ok(/API FUDO 2026-07-20 a 2026-07-20/.test(llamadaImportarFudo.opciones.archivo));
+
+  const url = llamadas[0].url;
+  assert.ok(url.includes('filter[createdAt]=' + encodeURIComponent('and(gte.2026-07-20T00:00:00,lte.2026-07-20T23:59:59)')));
+  assert.ok(url.includes('filter[saleState]=' + encodeURIComponent('eq.CLOSED')));
+  console.log('fudoApiSincronizarVentas_ arma filtros y delega en importarFudo_: OK');
+})();
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, { data: [], included: [] });
+
+  let seLlamoImportarFudo = false;
+  const ctx = cargar('apps-script/FudoApi.gs', {
+    PropertiesService: fakePropertiesService,
+    UrlFetchApp: fakeUrlFetchApp,
+    importarFudo_: () => { seLlamoImportarFudo = true; }
+  });
+
+  const resultado = ctx.fudoApiSincronizarVentas_('2026-07-20', '2026-07-20', { nombre: 'Admin' }, {});
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.importados, 0);
+  assert.equal(resultado.ventas_encontradas, 0);
+  assert.equal(seLlamoImportarFudo, false);
+  console.log('fudoApiSincronizarVentas_ sin ventas no llama a importarFudo_: OK');
+})();
+
+(function () {
+  const ctx = cargarFudoApi_();
+  const resultado = ctx.fudoApiSincronizarVentas_('', '2026-07-20', { nombre: 'Admin' }, {});
+  assert.equal(resultado.ok, false);
+  console.log('fudoApiSincronizarVentas_ exige fecha_desde/fecha_hasta: OK');
+})();
+
 console.log('fudo-api: OK');

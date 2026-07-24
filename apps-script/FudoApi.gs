@@ -8,14 +8,15 @@
  * sola vez como Propiedades del Script, corriendo fudoApiConfigurarCredenciales_(apiKey, apiSecret)
  * a mano desde el editor de Apps Script (mismo patrón que crearAdministradorInicial_ en Code.gs).
  *
- * Estado actual: autenticación, paginación y el helper genérico de consulta ya están listos y
- * probados, y fudoApiProbarConexion_ ya confirmó conexión real contra la cuenta (jul 2026).
- * /sales responde en formato JSON:API: { data: [{ id, type, attributes: {...}, relationships: {...} }] }
- * — los campos reales (total, saleType, createdAt, items, payments, etc.) van dentro de "attributes"
- * y "relationships" (ver dev.fu.do/api, sección "Get sales" > schema de respuesta), no sueltos en la
- * raíz. El mapeo de /sales hacia Ventas_FUDO todavía NO está conectado — falta decidir qué campos
- * usar (¿incluir items con ?include=items para tener el detalle por producto, o quedarnos con el
- * total de la venta como hace hoy el import resumido?) antes de escribir esa parte.
+ * Estado actual: autenticación, paginación, consulta genérica y la sincronización real de ventas
+ * (fudoApiSincronizarVentas_) ya están listas y probadas — conexión confirmada contra la cuenta real
+ * (jul 2026). /sales y /items responden en formato JSON:API: { data: [...], included: [...] } — cada
+ * venta trae en "attributes" sus datos propios (createdAt, total, saleState...) y en "relationships"
+ * solo punteros {type,id} a sus ítems/pagos/mesa/caja — el detalle real de esos punteros (incluido
+ * el nombre del producto) llega en el arreglo "included" de la MISMA respuesta cuando se pide con
+ * ?include=items.product,cashRegister (ver dev.fu.do/api, secciones "Get sales" y "Get items").
+ * fudoApiSincronizarVentas_ arma con eso las mismas columnas que produce el export CSV "detallado"
+ * y reutiliza toda la validación/dedupe/diagnóstico de importarFudo_ (Fudo.gs) sin duplicarla.
  */
 
 const FUDO_API_PROP_KEY_ = 'FUDO_API_KEY';
@@ -88,11 +89,12 @@ function fudoApiObtenerToken_() {
 }
 
 /**
- * Una sola página de un recurso, según la documentación oficial: filtros = { columna: 'operador.valor' }
- * (ej. { fecha: 'gte.2026-07-01' }), orden = 'col,-col2'. Sin transformar la respuesta más allá de
- * desenvolver .data si el recurso viene envuelto así.
+ * Una sola página, sin desenvolver — devuelve el JSON tal cual (con .data y, si se pidió con
+ * `include`, también .included) para que cada llamador decida qué necesita. filtros = { columna:
+ * 'operador.valor' } (ej. { createdAt: 'gte.2026-07-01T00:00:00' }), orden = 'col,-col2', include =
+ * 'items.product,cashRegister' (comas, según la documentación oficial).
  */
-function fudoApiObtenerPagina_(recurso, opciones) {
+function fudoApiPeticionPagina_(recurso, opciones) {
   opciones = opciones || {};
   const token = fudoApiObtenerToken_();
   const params = [];
@@ -102,6 +104,7 @@ function fudoApiObtenerPagina_(recurso, opciones) {
     params.push('filter[' + encodeURIComponent(col) + ']=' + encodeURIComponent(opciones.filtros[col]));
   });
   if (opciones.orden) params.push('sort=' + encodeURIComponent(opciones.orden));
+  if (opciones.include) params.push('include=' + encodeURIComponent(opciones.include));
 
   const url = fudoApiBaseUrl_().replace(/\/$/, '') + '/' + String(recurso).replace(/^\//, '') + '?' + params.join('&');
   const resp = UrlFetchApp.fetch(url, {
@@ -112,15 +115,20 @@ function fudoApiObtenerPagina_(recurso, opciones) {
   if (resp.getResponseCode() !== 200) {
     throw new Error('GET ' + recurso + ' falló (' + resp.getResponseCode() + '): ' + resp.getContentText());
   }
-  const data = JSON.parse(resp.getContentText());
+  return JSON.parse(resp.getContentText());
+}
+
+/** Una sola página, ya desenvuelta a solo el arreglo de registros (sin .included). */
+function fudoApiObtenerPagina_(recurso, opciones) {
+  const data = fudoApiPeticionPagina_(recurso, opciones);
   if (Array.isArray(data)) return data;
   if (Array.isArray(data.data)) return data.data;
-  throw new Error('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data — revisa el formato real: ' + resp.getContentText().slice(0, 300));
+  throw new Error('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data — revisa el formato real: ' + JSON.stringify(data).slice(0, 300));
 }
 
 /**
- * Todas las páginas de un recurso. Sin total de páginas en la respuesta (según la documentación):
- * se avanza hasta que una página trae menos filas que pageSize (máximo 500 por la doc).
+ * Todas las páginas de un recurso, ya desenvuelto. Sin total de páginas en la respuesta (según la
+ * documentación): se avanza hasta que una página trae menos filas que pageSize (máximo 500 por la doc).
  */
 function fudoApiObtenerTodo_(recurso, opciones) {
   opciones = opciones || {};
@@ -137,6 +145,105 @@ function fudoApiObtenerTodo_(recurso, opciones) {
     }
   }
   return resultados;
+}
+
+/**
+ * Todas las páginas de un recurso, CONSERVANDO también los "incluidos" (.included) de cada página —
+ * necesario para /sales?include=items.product,cashRegister, donde el detalle real (nombre del
+ * producto, nombre de la caja) no viene en .data sino en .included, indexado por "type:id" para
+ * resolverlo desde cualquier puntero {type,id} de una relationship.
+ */
+function fudoApiObtenerTodoCompleto_(recurso, opciones) {
+  opciones = opciones || {};
+  const pageSize = opciones.pageSize || 500;
+  const registros = [];
+  const incluidosPorClave = {};
+  let pagina = 1;
+  while (true) {
+    const cruda = fudoApiPeticionPagina_(recurso, Object.assign({}, opciones, { pageSize: pageSize, pagina: pagina }));
+    const pageData = Array.isArray(cruda) ? cruda : (Array.isArray(cruda.data) ? cruda.data : null);
+    if (!pageData) {
+      throw new Error('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data — revisa el formato real: ' + JSON.stringify(cruda).slice(0, 300));
+    }
+    registros.push.apply(registros, pageData);
+    (cruda.included || []).forEach(function (inc) {
+      incluidosPorClave[inc.type + ':' + inc.id] = inc;
+    });
+    if (pageData.length < pageSize) break;
+    pagina++;
+    if (pagina > 200) {
+      throw new Error('fudoApiObtenerTodoCompleto_(' + recurso + '): más de 200 páginas sin terminar — revisa los filtros antes de seguir.');
+    }
+  }
+  return { registros: registros, incluidos: incluidosPorClave };
+}
+
+/**
+ * Una venta (con sus relationships.items ya resueltos vía "incluidos") → una fila por ítem vendido,
+ * con las MISMAS columnas que trae el export CSV "detallado" de FUDO (ver importarFudoConLock_ en
+ * Fudo.gs) — así el resto de la importación (validación, dedupe, diagnóstico) no necesita saber si
+ * el dato vino de un archivo o de la API. Ítems sin producto resuelto en "incluidos" (no debería
+ * pasar si se pidió con include=items.product, pero por seguridad) se omiten en vez de guardarse
+ * con el nombre vacío.
+ */
+function fudoApiFilasVentaDesdeSale_(sale, incluidos) {
+  const itemsPtr = (sale.relationships && sale.relationships.items && sale.relationships.items.data) || [];
+  const cashRegisterPtr = sale.relationships && sale.relationships.cashRegister && sale.relationships.cashRegister.data;
+  const cashRegister = cashRegisterPtr ? incluidos[cashRegisterPtr.type + ':' + cashRegisterPtr.id] : null;
+  const creadaPor = (cashRegister && cashRegister.attributes && cashRegister.attributes.name) || '';
+
+  const filas = [];
+  itemsPtr.forEach(function (ptr) {
+    const item = incluidos[ptr.type + ':' + ptr.id];
+    if (!item || !item.attributes) return;
+    const productoPtr = item.relationships && item.relationships.product && item.relationships.product.data;
+    const producto = productoPtr ? incluidos[productoPtr.type + ':' + productoPtr.id] : null;
+    if (!producto || !producto.attributes || !producto.attributes.name) return;
+    const creacion = item.attributes.createdAt || (sale.attributes && sale.attributes.createdAt);
+    filas.push({
+      'Id. Venta': String(sale.id),
+      'Creación': creacion ? new Date(creacion) : '',
+      'Producto': producto.attributes.name,
+      'Categoría': '',
+      'Cantidad': item.attributes.quantity,
+      'Precio': item.attributes.price,
+      'Cancelada': !!item.attributes.canceled,
+      'Creada por': creadaPor
+    });
+  });
+  return filas;
+}
+
+/**
+ * Sincroniza ventas CERRADAS de FUDO (filter[saleState]=eq.CLOSED — no interesan pendientes ni
+ * canceladas) para un rango de fechas hacia Ventas_FUDO, reutilizando importarFudo_ (Fudo.gs) para
+ * la validación/dedupe/diagnóstico — mismo destino y mismas reglas que la subida manual del CSV
+ * "detallado", solo que la fuente es la API. fechaDesde/fechaHasta en formato 'yyyy-MM-dd'.
+ * Acción admin desde la app: 'fudo_api_sincronizar_ventas' (ver Code.gs, importar.html).
+ */
+function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
+  opciones = opciones || {};
+  if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
+
+  const resultado = fudoApiObtenerTodoCompleto_('sales', {
+    filtros: {
+      createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
+      saleState: 'eq.CLOSED'
+    },
+    include: 'items.product,cashRegister',
+    orden: 'createdAt'
+  });
+
+  const filas = [];
+  resultado.registros.forEach(function (sale) {
+    filas.push.apply(filas, fudoApiFilasVentaDesdeSale_(sale, resultado.incluidos));
+  });
+
+  if (!filas.length) {
+    return { ok: true, importados: 0, omitidos_duplicados: 0, tipo: 'ventas', ventas_encontradas: resultado.registros.length };
+  }
+
+  return importarFudo_('ventas', filas, usuario, Object.assign({ archivo: 'API FUDO ' + fechaDesde + ' a ' + fechaHasta }, opciones));
 }
 
 /**
