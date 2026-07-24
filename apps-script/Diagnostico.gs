@@ -111,10 +111,13 @@ function diagnosticarVentasFudo_() {
  *   - La fecha de la compra es igual o anterior a la del último conteo físico: se asume que ese
  *     conteo ya la incluía.
  * Pedido real: "todo lo que aparece en la compra no está sumando" — antes solo se sospechaba caso
- * por caso (ej. Limón Tahití); esto lo revisa para TODAS las compras de una vez.
+ * por caso (ej. Limón Tahití); esto lo revisa para TODAS las compras de una vez. Cada problema
+ * trae también una "solución" concreta (qué hacer, no solo qué está mal) — ver
+ * solucionNombreNoEnCatalogo_ para el caso de nombre fuera de catálogo, e inline para los otros dos.
  */
 function diagnosticarComprasNoSuman_() {
   const indice = indiceCatalogo_();
+  const nombresCatalogo = Array.from(new Set(Object.keys(indice).map(function (k) { return indice[k]; })));
   const compras = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO).filter(function (a) { return a.tipo === 'Compra cruda'; });
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
 
@@ -140,18 +143,22 @@ function diagnosticarComprasNoSuman_() {
     const fechaCompra = formatearFecha_(a.fecha);
 
     let motivo = '';
+    let solucion = '';
     if (!enCatalogo) {
       motivo = 'El nombre "' + a.producto + '" no existe en el Catálogo Maestro — se cuenta como un producto aparte, nunca suma al real.';
+      solucion = solucionNombreNoEnCatalogo_(a.producto, nombresCatalogo);
     } else if (ultimoConteo && ultimoConteo.unidad && ultimoConteo.unidad !== base.unidad) {
       motivo = 'La compra quedó en "' + a.unidad + '" pero el último conteo físico de este producto en ' + sede + ' fue en una unidad distinta — no se pueden combinar, la compra se ignora por completo.';
+      solucion = 'Revisa cuál unidad es la correcta para "' + a.producto + '" en ' + sede + ': si "' + a.unidad + '" es la buena, registra ya un conteo físico en esa unidad (Registrar conteo) para que quede como la vigente y las próximas compras sumen; si fue un error al capturar la compra, usa la unidad del último conteo físico la próxima vez.';
     } else if (ultimoConteo && fechaCompra <= ultimoConteo.fecha) {
       motivo = 'La fecha de la compra (' + fechaCompra + ') es igual o anterior al último conteo físico (' + ultimoConteo.fecha + ') — se asume que ese conteo ya la incluía.';
+      solucion = 'No requiere acción si el conteo del ' + ultimoConteo.fecha + ' en ' + sede + ' ya se hizo con la mercancía de esta compra ya recibida y contada. Si el conteo se hizo ANTES de recibirla, corrige la fecha de ese conteo o registra uno nuevo (Registrar conteo) después del ' + fechaCompra + ' para que la compra quede reflejada.';
     }
 
     if (motivo) {
       problemas.push({
         fecha: fechaCompra, producto: a.producto, sede: sede, cantidad: a.cantidad, unidad: a.unidad,
-        proveedor: a.proveedor || '', numero_factura: a.numero_factura || '', motivo: motivo
+        proveedor: a.proveedor || '', numero_factura: a.numero_factura || '', motivo: motivo, solucion: solucion
       });
     }
   });
@@ -159,6 +166,40 @@ function diagnosticarComprasNoSuman_() {
   problemas.sort(function (x, y) { return x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : 0; });
   Logger.log('Compras: ' + compras.length + ' revisadas, ' + problemas.length + ' no se están sumando a Disponible Hoy.');
   return { total_compras: compras.length, con_problema: problemas.length, problemas: problemas };
+}
+
+/**
+ * Sugerencia concreta para una compra cuyo nombre de producto no existe en el Catálogo Maestro:
+ * si hay un producto del catálogo con nombre muy parecido (misma heurística que
+ * diagnosticarCatalogoDuplicados_, ver sonNombresParecidos_), probablemente es un alias/typo del
+ * mismo producto — se sugiere vincularlo como nombre_fudo en vez de crear uno nuevo. Si no hay
+ * nada parecido, se sugiere crearlo.
+ */
+function solucionNombreNoEnCatalogo_(nombreCompra, nombresCatalogo) {
+  const norm = normalizar_(nombreCompra);
+  const parecido = nombresCatalogo.find(function (n) { return sonNombresParecidos_(norm, normalizar_(n)); });
+  if (parecido) {
+    return 'Probablemente es el mismo producto que "' + parecido + '" escrito distinto — entra a Catálogo Maestro ' +
+      '(Registrar producto), busca "' + parecido + '" y agrega "' + nombreCompra + '" como su nombre alterno ' +
+      '(nombre_fudo) para que esta y las próximas compras con este nombre sí sumen.';
+  }
+  return 'No hay ningún producto parecido en el catálogo — entra a Catálogo Maestro (Registrar producto) y créalo ' +
+    'con nombre_estandar "' + nombreCompra + '" (corrígelo antes si fue un error de tipeo) para que las próximas ' +
+    'compras con este nombre sumen.';
+}
+
+/**
+ * Heurística compartida para decidir si dos nombres normalizados probablemente son el mismo
+ * producto escrito distinto: uno es el otro con palabra(s) de más, o la distancia de edición
+ * entre ellos es chica para su tamaño (typo, singular vs plural). Usada tanto por
+ * diagnosticarCatalogoDuplicados_ (catálogo contra sí mismo) como por solucionNombreNoEnCatalogo_
+ * (nombre de una compra contra el catálogo).
+ */
+function sonNombresParecidos_(na, nb) {
+  if (na === nb) return true;
+  const prefijo = na.indexOf(nb + ' ') === 0 || nb.indexOf(na + ' ') === 0;
+  const umbral = Math.min(na.length, nb.length) <= 4 ? 1 : 2;
+  return prefijo || distanciaEdicion_(na, nb) <= umbral;
 }
 
 /**
@@ -178,9 +219,7 @@ function diagnosticarCatalogoDuplicados_() {
       const na = normalizar_(a.nombre_estandar), nb = normalizar_(b.nombre_estandar);
       if (na === nb) continue; // ya se tratan como el mismo producto (claveProducto_), no es el problema aquí
       const prefijo = na.indexOf(nb + ' ') === 0 || nb.indexOf(na + ' ') === 0;
-      const umbral = Math.min(na.length, nb.length) <= 4 ? 1 : 2;
-      const parecidos = distanciaEdicion_(na, nb) <= umbral;
-      if (prefijo || parecidos) {
+      if (sonNombresParecidos_(na, nb)) {
         sospechosos.push({
           a: a.nombre_estandar, a_categoria: a.categoria || '',
           b: b.nombre_estandar, b_categoria: b.categoria || '',
@@ -193,7 +232,7 @@ function diagnosticarCatalogoDuplicados_() {
   return { total_productos: catalogo.length, sospechosos: sospechosos };
 }
 
-/** Distancia de edición (Levenshtein) clásica entre dos strings — usada solo para sugerir posibles duplicados de catálogo. */
+/** Distancia de edición (Levenshtein) clásica entre dos strings — usada por sonNombresParecidos_ para sugerir posibles duplicados de catálogo o alias de compras. */
 function distanciaEdicion_(a, b) {
   const m = a.length, n = b.length;
   const fila = new Array(n + 1);
