@@ -57,9 +57,13 @@ function usuarioGuardar_(item, usuarioSesion) {
         const filaAnterior = {};
         headers.forEach(function (h, c) { filaAnterior[h] = data[r][c]; });
 
+        // neutralizarFormula_ (Code.gs): 'nombre'/'email'/'usuario' son texto libre — sin esto,
+        // algo como "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al
+        // abrir la hoja (auditoría de seguridad, jul 2026). Solo se limpia lo que se ESCRIBE; la
+        // bitácora de más abajo sigue registrando el valor tal como lo mandó el Administrador.
         headers.forEach(function (h, c) {
           if (h === 'password_hash' || h === 'salt') return; // la contraseña se cambia con cambiarPassword_
-          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(item[h]);
+          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(neutralizarFormula_(item[h]));
         });
 
         // Bitácora: solo los campos sensibles que de verdad cambiaron (rol/sede/nombre/activo) —

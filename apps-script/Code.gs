@@ -628,10 +628,31 @@ function leerTabla_(nombreHoja) {
     });
 }
 
+/**
+ * Antepone una comilla simple a cualquier texto que empiece con =, +, - o @ — esos son los
+ * caracteres que Google Sheets interpreta como el inicio de una fórmula, sin importar si el valor
+ * llegó por un campo libre (proveedor, producto, motivo, observaciones, notas...) escrito por
+ * cualquier usuario autenticado o importado de FUDO. Con la comilla adelante, Sheets guarda el
+ * texto tal cual (la comilla no se ve en la celda) en vez de intentar calcularlo como fórmula —
+ * auditoría de seguridad, jul 2026. Solo toca strings; números, booleanos, fechas y demás tipos se
+ * guardan igual que siempre.
+ */
+function neutralizarFormula_(valor) {
+  if (typeof valor !== 'string') return valor;
+  return /^[=+\-@]/.test(valor) ? "'" + valor : valor;
+}
+
+/** Igual que neutralizarFormula_ pero para un objeto completo, campo por campo. */
+function neutralizarObjetoFormulas_(obj) {
+  const limpio = {};
+  Object.keys(obj || {}).forEach(function (k) { limpio[k] = neutralizarFormula_(obj[k]); });
+  return limpio;
+}
+
 function appendRowFromObj_(nombreHoja, obj) {
   const sh = sheet_(nombreHoja);
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const row = headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+  const row = headers.map(function (h) { return neutralizarFormula_(obj[h] !== undefined ? obj[h] : ''); });
   sh.appendRow(row);
 }
 
@@ -649,7 +670,7 @@ function appendRowsFromObjs_(nombreHoja, objs) {
   const sh = sheet_(nombreHoja);
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   const filas = objs.map(function (obj) {
-    return headers.map(function (h) { return obj[h] !== undefined ? obj[h] : ''; });
+    return headers.map(function (h) { return neutralizarFormula_(obj[h] !== undefined ? obj[h] : ''); });
   });
   sh.getRange(sh.getLastRow() + 1, 1, filas.length, headers.length).setValues(filas);
 }

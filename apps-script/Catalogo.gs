@@ -18,10 +18,16 @@ function catalogoGuardar_(item, usuario) {
   const idCol = headers.indexOf('id');
 
   if (item.id) {
+    // neutralizarObjetoFormulas_ (Code.gs): nombre_estandar/nombre_fudo/notas son texto libre (el
+    // segundo además llega tal cual de FUDO al importar) — sin esto, algo como
+    // "=HYPERLINK(...)" ahí se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir la
+    // hoja (auditoría de seguridad, jul 2026). La creación (appendRowFromObj_ más abajo) ya está
+    // protegida; esto protege editar un producto ya existente, que escribe directo con setValue.
+    const itemLimpio = neutralizarObjetoFormulas_(item);
     for (let r = 1; r < data.length; r++) {
       if (data[r][idCol] === item.id) {
         headers.forEach(function (h, c) {
-          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(item[h]);
+          if (itemLimpio[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(itemLimpio[h]);
         });
         return { ok: true, actualizado: true };
       }

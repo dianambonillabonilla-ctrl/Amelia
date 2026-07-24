@@ -92,8 +92,12 @@ function gestionActualizarEstado_(id, nuevoEstado, nota, usuario) {
   };
   if (nota !== undefined && nota !== null) cambios.nota = nota;
 
+  // neutralizarObjetoFormulas_ (Code.gs): 'nota' es texto libre — sin esto, algo como
+  // "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir la hoja
+  // (auditoría de seguridad, jul 2026).
+  const cambiosLimpios = neutralizarObjetoFormulas_(cambios);
   encontrado.headers.forEach(function (h, c) {
-    if (cambios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambios[h]);
+    if (cambiosLimpios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambiosLimpios[h]);
   });
   return { ok: true };
 }

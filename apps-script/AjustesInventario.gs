@@ -166,12 +166,15 @@ function ajusteInventarioCorregirUnidad_(id, unidadNueva, cantidadNueva, usuario
       }
       const unidadVieja = data[r][unidadCol];
       const cantidadVieja = data[r][cantidadCol];
-      sh.getRange(r + 1, unidadCol + 1).setValue(unidadNueva);
+      // neutralizarFormula_ (Code.gs): 'unidad' y 'motivo' son texto libre — sin esto, algo como
+      // "=HYPERLINK(...)" ahí se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir
+      // la hoja (auditoría de seguridad, jul 2026).
+      sh.getRange(r + 1, unidadCol + 1).setValue(neutralizarFormula_(unidadNueva));
       sh.getRange(r + 1, cantidadCol + 1).setValue(Number(cantidadNueva));
       if (motivoCol !== -1) {
         const notaAnterior = data[r][motivoCol] || '';
         const nota = 'Unidad corregida desde Diagnóstico por ' + usuario.nombre + ' (antes: ' + cantidadVieja + ' ' + unidadVieja + ').';
-        sh.getRange(r + 1, motivoCol + 1).setValue(notaAnterior ? notaAnterior + ' | ' + nota : nota);
+        sh.getRange(r + 1, motivoCol + 1).setValue(neutralizarFormula_(notaAnterior ? notaAnterior + ' | ' + nota : nota));
       }
       return { ok: true };
     }

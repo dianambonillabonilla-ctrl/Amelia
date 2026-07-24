@@ -33,6 +33,18 @@ function indiceCatalogoVacioMock_() { return {}; }
 // Turnos.gs/Gestiones.gs reconocen el mismo producto contado/comprado bajo su alias de FUDO.
 const indiceConAliasFudo = { 'coca cola 350': 'Coca-Cola Original 350 ml' };
 
+// Espejo de neutralizarFormula_/neutralizarObjetoFormulas_ en Code.gs — anteponen una comilla
+// simple a cualquier texto que empiece con =, +, - o @ antes de guardarlo en una hoja, para que
+// Sheets no lo interprete como fórmula (auditoría de seguridad, jul 2026).
+function neutralizarFormulaMock_(v) {
+  return (typeof v === 'string' && /^[=+\-@]/.test(v)) ? "'" + v : v;
+}
+function neutralizarObjetoFormulasMock_(obj) {
+  const limpio = {};
+  Object.keys(obj || {}).forEach((k) => { limpio[k] = neutralizarFormulaMock_(obj[k]); });
+  return limpio;
+}
+
 // LockService.getScriptLock() ahora envuelve conteoRegistrar_/trasladoConfirmar_/trasladoObservar_/
 // compraRegistrarFactura_ (auditoría de seguridad, jul 2026: sin esto, dos solicitudes simultáneas
 // podían leer el mismo estado antes de que ninguna escribiera — duplicados/confirmaciones perdidas).
@@ -337,6 +349,8 @@ assert.equal(stockSinConteo.banano.unidad, 'u');
 // --- Catálogo: crear producto automáticamente si no existe todavía ---------------------------
 const catalogoGuardado = [];
 const catalogoMod = cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   Utilities: { getUuid: () => 'id-' + (catalogoGuardado.length + 1) },
   Logger: { log: () => {} },
@@ -364,6 +378,8 @@ const filasCatalogoSheet = [
 const escritos = [];
 let contadorUuid = 0;
 const catalogoReparar = cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   Utilities: { getUuid: () => 'id-nuevo-' + (++contadorUuid) },
   sheet_: () => ({
@@ -390,6 +406,8 @@ const filasCatalogoParcial = [
   ['id-costilla', 'Costilla Preparada', 'Elaborados', '']
 ];
 const catalogoParcial = cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   sheet_: () => ({
     getDataRange: () => ({ getValues: () => filasCatalogoParcial }),
@@ -418,6 +436,8 @@ const filasCatalogoObligatorioProduccion = [
   ['id-vinagre', 'Vinagre balsámico', false]
 ];
 const catalogoObligatorioProduccionMod = cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   sheet_: () => ({
     getDataRange: () => ({ getValues: () => filasCatalogoObligatorioProduccion }),
@@ -464,6 +484,8 @@ function leerTablaFusionMock_(hoja) {
   });
 }
 const catalogoFusion = cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: {
     CATALOGO: 'catalogo', CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes',
     RECETAS: 'recetas', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados'
@@ -536,8 +558,12 @@ const catalogoObligatorios = [
   { nombre_estandar: 'Tenedores', frecuencia_conteo: 'Mensual' },
   { nombre_estandar: 'Servilletas', frecuencia_conteo: '' }
 ];
-const catalogoMod2 = cargar('apps-script/Catalogo.gs', { normalizar_: (v) => String(v || '').trim().toLowerCase() });
+const catalogoMod2 = cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_, normalizar_: (v) => String(v || '').trim().toLowerCase() });
 const conteosMod = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   leerTabla_: () => catalogoObligatorios,
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
@@ -578,6 +604,8 @@ const catalogoConSedeUnica = catalogoObligatorios.concat([
   { nombre_estandar: 'Salsa de mora', frecuencia_conteo: 'Diario', sede: 'Capri' }
 ]);
 const conteosModSedeUnica = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   leerTabla_: () => catalogoConSedeUnica,
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
@@ -610,6 +638,8 @@ assert.deepEqual(
 // corregir el mismo cierre con el alias creaba una fila duplicada en vez de corregir la existente).
 const catalogoConAliasObligatorio = [{ nombre_estandar: 'Coca-Cola Original 350 ml', frecuencia_conteo: 'Diario' }];
 const conteosModAlias = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   leerTabla_: () => catalogoConAliasObligatorio,
   normalizar_: normalizarClaveMock_,
@@ -631,6 +661,8 @@ const filasConteoAlias = [
   ['c1', '2026-07-24', 'Capri', 'Cocina terraza', 'Cierre de turno', 'Coca-Cola Original 350 ml', 'u', 24, 'Juan', '2026-07-24T09:00:00Z']
 ];
 const conteoBuscarMod = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CONTEOS: 'conteos' },
   sheet_: () => ({ getDataRange: () => ({ getValues: () => filasConteoAlias }) }),
   // Conteos.gs define su propio formatearFecha_ (usa Utilities/Session reales de Apps Script) —
@@ -863,6 +895,8 @@ const headersUsuarios = ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'ro
 let hojaUsuarios;
 let auditoriaLlamadas = [];
 const usuariosMod = cargar('apps-script/Usuarios.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { USUARIOS: 'usuarios' },
   requiereAdmin_: () => {},
   sheet_: () => hojaUsuarios,
@@ -923,6 +957,8 @@ assert.equal(
 // seguía funcionando hasta sus 12h de vida aunque la víctima ya hubiera cambiado la contraseña).
 let sesionesEliminadasDe = [];
 const usuariosPasswordMod = cargar('apps-script/Usuarios.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { USUARIOS: 'usuarios' },
   requiereAdmin_: () => {},
   leerTabla_: () => [{ id: 'u1', password_hash: 'hash-actual', salt: 'salt1' }],
@@ -980,6 +1016,8 @@ assert.equal(codeMod.sedeEscrituraPermitida_({ rol: 'Encargado', sede: 'Ambas' }
 // conteoRegistrar_ (Conteos.gs) debe aplicar la misma excepción al guardar de verdad.
 const conteosGuardados = [];
 const conteosRegistrarMod = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
   leerTabla_: (hoja) => hoja === 'conteos' ? conteosGuardados : [],
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
@@ -1006,6 +1044,8 @@ assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCapriConteo, encargadaSA)
 // insertar dos filas en vez de que el segundo corrija al primero).
 const libero = { valor: false };
 const conteosBloqueadoMod = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
   leerTabla_: () => [],
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
@@ -1045,6 +1085,8 @@ const hojaConteoCorregido = {
 };
 let auditoriaConteoLlamadas = [];
 const conteosCorregirMod = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
   leerTabla_: () => [],
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
@@ -1092,6 +1134,8 @@ assert.equal(filasConteoCorregido[1][7], 800, 'la hoja sí debe quedar con la ca
 const catalogoConDiario = [{ nombre_estandar: 'Lavaloza', frecuencia_conteo: 'Diario' }];
 const conteosGuardadosProduccion = [];
 const conteosProduccionMod = cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
   leerTabla_: (hoja) => hoja === 'catalogo' ? catalogoConDiario : conteosGuardadosProduccion,
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
@@ -1136,6 +1180,8 @@ const trasladosFilas = [
   { id: 't4', sede_origen: 'Capri', sede_destino: 'Capri', producto: 'Servilletas', estado: 'Enviado', timestamp_envio: '2026-07-18' }
 ];
 const trasladosMod = cargar('apps-script/Traslados.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { TRASLADOS: 'traslados' },
   leerTabla_: () => trasladosFilas,
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
@@ -1162,6 +1208,8 @@ function filaTraslado_(campos) { return trasladoHeaders.map(function (h) { retur
 function mockTrasladoResolver_(campos) {
   const data = [trasladoHeaders, filaTraslado_(campos)];
   return cargar('apps-script/Traslados.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { TRASLADOS: 'traslados' },
     leerTabla_: () => [],
     requiereRol_: () => {},
@@ -1188,6 +1236,8 @@ function filaObservar_(campos) { return observarHeaders.map(function (h) { retur
 function mockTrasladoObservar_(campos) {
   const data = [observarHeaders, filaObservar_(campos)];
   return cargar('apps-script/Traslados.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { TRASLADOS: 'traslados' },
     leerTabla_: () => [],
     requiereRol_: () => {},
@@ -1213,6 +1263,8 @@ assert.throws(() => observarAjeno.trasladoObservar_('ob2', 3, 'llegó menos de l
 function mockTrasladoBloqueado_(campos) {
   const data = [observarHeaders, filaObservar_(campos)];
   return cargar('apps-script/Traslados.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { TRASLADOS: 'traslados' },
     leerTabla_: () => [],
     requiereRol_: () => {},
@@ -1315,6 +1367,8 @@ function mockHojaAjustes_(headers, filas) {
 }
 const ajustesGuardadosMermas = [];
 const ajustesMod = cargar('apps-script/AjustesInventario.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   Utilities: { getUuid: function () { return 'ajuste-' + (ajustesGuardadosMermas.length + 1); } },
   formatearFecha_: function (v) { return String(v).slice(0, 10); },
@@ -1356,6 +1410,8 @@ assert.equal(historialPorProducto[0].id, 'a2');
 const headersAjustes = ['id', 'tipo', 'avalado', 'avalado_por', 'timestamp_avalado'];
 const hojaMermaPendiente = mockHojaAjustes_(headersAjustes, [{ id: 'm1', tipo: 'Merma / desperdicio', avalado: false }]);
 const avalarMod = cargar('apps-script/AjustesInventario.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   sheet_: function () { return hojaMermaPendiente; }
 });
@@ -1369,6 +1425,8 @@ assert.equal(hojaMermaPendiente._data[1][avaladoPorCol], 'Diana', 'debe quedar r
 
 const hojaCompra = mockHojaAjustes_(headersAjustes, [{ id: 'c1', tipo: 'Compra cruda', avalado: false }]);
 const avalarModCompra = cargar('apps-script/AjustesInventario.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   sheet_: function () { return hojaCompra; }
 });
@@ -1381,6 +1439,8 @@ assert.equal(avalarMod.ajusteInventarioAvalar_('no-existe', adminDiana).ok, fals
 const headersSinAvalar = ['id', 'tipo'];
 const hojaSinColumnasAvalar = mockHojaAjustes_(headersSinAvalar, [{ id: 'm2', tipo: 'Merma / desperdicio' }]);
 const avalarModSinColumnas = cargar('apps-script/AjustesInventario.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   sheet_: function () { return hojaSinColumnasAvalar; }
 });
@@ -1396,6 +1456,8 @@ const hojaCompraCorregir = mockHojaAjustes_(headersCorregir, [
   { id: 'c1', tipo: 'Compra cruda', producto: 'Limón Tahití', unidad: 'kg', cantidad: 50, motivo: '' }
 ]);
 const corregirMod = cargar('apps-script/AjustesInventario.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   sheet_: function () { return hojaCompraCorregir; }
 });
@@ -1411,6 +1473,8 @@ assert.match(hojaCompraCorregir._data[1][motivoColCorregir], /50 kg/, 'debe qued
 
 const hojaMermaNoCorregir = mockHojaAjustes_(headersCorregir, [{ id: 'm10', tipo: 'Merma / desperdicio', unidad: 'kg', cantidad: 2 }]);
 const corregirModMerma = cargar('apps-script/AjustesInventario.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
   sheet_: function () { return hojaMermaNoCorregir; }
 });
@@ -1445,6 +1509,8 @@ const recetasParaRecetas = [
 ];
 const catalogoParaRecetas = [{ nombre_estandar: 'Agua', categoria: 'Bebidas/Sin gas' }];
 const recetasMod = cargar('apps-script/Recetas.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { RECETAS: 'recetas', CATALOGO: 'catalogo', VENTAS_FUDO: 'ventas' },
   leerTabla_: (hoja) => hoja === 'recetas' ? recetasParaRecetas : (hoja === 'catalogo' ? catalogoParaRecetas : ventasParaRecetas),
   normalizar_: normalizarSimple_,
@@ -1468,6 +1534,8 @@ assert.ok(sinReceta.some(function (s) { return s.producto === 'Chancostilla'; })
 // apuntando a los nombres viejos ya archivados — una venta de FUDO llamada "Wafflebonitos" caía en
 // "sin receta" y dejaba de descontar ingredientes en silencio, sin ningún aviso).
 const recetasModAlias = cargar('apps-script/Recetas.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   normalizar_: normalizarSimple_,
   claveProducto_: (texto, indice) => {
     const n = normalizarSimple_(texto);
@@ -1714,6 +1782,8 @@ assert.equal(
 const conteosGuardadosTurno = [];
 function cargarConteosConTurno_(turnoDevuelto) {
   return cargar('apps-script/Conteos.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
     SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
     leerTabla_: (hoja) => hoja === 'conteos' ? conteosGuardadosTurno : [],
     normalizar_: normalizarSimple_,
