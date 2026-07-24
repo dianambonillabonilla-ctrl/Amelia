@@ -1747,4 +1747,60 @@ const produccionBloqueada = produccionBloqueadaMod.produccionRegistrar_(itemsPro
 assert.equal(produccionBloqueada.ok, false, 'con el lock ocupado, produccionRegistrar_ no debe registrar nada');
 assert.match(produccionBloqueada.error, /espera un momento/);
 
+// --- Bloqueo progresivo de login: cada ciclo de bloqueo dobla el anterior --------------------------
+// (auditoría de seguridad, jul 2026: antes el bloqueo era siempre 15 minutos fijos — cualquiera que
+// solo supiera el nombre de usuario de un Administrador, sin saber la contraseña, podía dejarlo
+// bloqueado de forma sostenida repitiendo el patrón cada 15 minutos indefinidamente).
+function cacheServiceMock_() {
+  const store = {};
+  const puestos = [];
+  return {
+    store: store,
+    puestos: puestos,
+    getScriptCache: () => ({
+      get: (k) => (store[k] !== undefined ? store[k] : null),
+      put: (k, v, ttl) => { store[k] = v; puestos.push({ clave: k, valor: v, ttl: ttl }); },
+      remove: (k) => { delete store[k]; }
+    })
+  };
+}
+const cacheLogin = cacheServiceMock_();
+const codeLoginMod = cargar('apps-script/Code.gs', {
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  CacheService: cacheLogin
+});
+
+for (let i = 0; i < 7; i++) codeLoginMod.loginRegistrarIntentoFallido_('diana');
+assert.equal(codeLoginMod.loginBloqueado_('diana'), false, 'con 7 fallos todavía no debe bloquear (el máximo es 8)');
+
+codeLoginMod.loginRegistrarIntentoFallido_('diana'); // 8vo fallo -> primer bloqueo
+assert.equal(codeLoginMod.loginBloqueado_('diana'), true, 'con 8 fallos sí debe bloquear');
+const primerBloqueo = cacheLogin.puestos.filter((p) => p.clave === 'login_intentos_diana').pop();
+assert.equal(primerBloqueo.ttl, 15 * 60, 'el primer bloqueo debe durar los 15 minutos base');
+
+// Simula que el bloqueo de intentos ya expiró (se borra esa clave) pero el contador de bloqueos
+// (que vive el doble) sigue vivo — así se ve si la persona vuelve a intentar después de esperar.
+delete cacheLogin.store['login_intentos_diana'];
+for (let i = 0; i < 8; i++) codeLoginMod.loginRegistrarIntentoFallido_('diana');
+const segundoBloqueo = cacheLogin.puestos.filter((p) => p.clave === 'login_intentos_diana').pop();
+assert.equal(segundoBloqueo.ttl, 30 * 60, 'el segundo ciclo de bloqueo seguido debe durar el DOBLE (30 minutos)');
+
+delete cacheLogin.store['login_intentos_diana'];
+for (let i = 0; i < 8; i++) codeLoginMod.loginRegistrarIntentoFallido_('diana');
+const tercerBloqueo = cacheLogin.puestos.filter((p) => p.clave === 'login_intentos_diana').pop();
+assert.equal(tercerBloqueo.ttl, 60 * 60, 'el tercer ciclo seguido debe volver a doblar (1 hora)');
+
+// Un nombre de usuario DISTINTO no debe verse afectado por los bloqueos acumulados de "diana".
+assert.equal(codeLoginMod.loginBloqueado_('ana'), false, 'el bloqueo progresivo es por usuario, no global');
+
+// Iniciar sesión con éxito (loginLimpiarIntentos_) debe resetear TANTO los intentos como la
+// escalada — la próxima racha de fallos, si la hay, vuelve a empezar en 15 minutos, no seguir
+// doblando desde donde iba.
+codeLoginMod.loginLimpiarIntentos_('diana');
+assert.equal(cacheLogin.store['login_intentos_diana'], undefined);
+assert.equal(cacheLogin.store['login_bloqueos_diana'], undefined, 'un login exitoso debe resetear también el contador de escalada');
+for (let i = 0; i < 8; i++) codeLoginMod.loginRegistrarIntentoFallido_('diana');
+const bloqueoTrasReset = cacheLogin.puestos.filter((p) => p.clave === 'login_intentos_diana').pop();
+assert.equal(bloqueoTrasReset.ttl, 15 * 60, 'tras un login exitoso, el siguiente bloqueo debe volver a empezar en 15 minutos');
+
 console.log('inventory-controls: OK');
