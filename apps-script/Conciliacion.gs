@@ -1,7 +1,13 @@
 /**
  * CONCILIACIÓN
  * Reproduce, para cualquier fecha, el mismo análisis que hicimos manualmente día por día:
- *  - Bebidas: se comparan contra Movimientos_FUDO (ahí sí cuadra, es 1 unidad = 1 unidad).
+ *  - Bebidas: se comparan contra el consumo de FUDO — Movimientos_FUDO si ese día se subió el
+ *    archivo manual (más preciso: trae el cierre de stock), o si no, Ventas_FUDO (API o manual,
+ *    lo que ya tengamos sincronizado). Comparado contra ambos archivos reales (14-22 jul 2026):
+ *    el 96%+ de los movimientos de una bebida son 1:1 con sus ventas (Adición Creada/Cancelada
+ *    = vender/cancelar esa bebida), así que Ventas_FUDO solo no reproduce el cierre de stock que
+ *    FUDO reporta (eso sí requeriría el archivo manual o /productos por API), pero SÍ reproduce
+ *    el consumo esperado igual de bien.
  *  - Comida: NO se compara contra el stock de FUDO (sabemos que no cuadra). Se compara
  *    "cambio de peso físico (ayer -> hoy)" contra "ventas del día x tu receta (Recetas)",
  *    separado por sede, porque ya vimos que los problemas suelen ser específicos de una sede.
@@ -63,6 +69,12 @@ function conciliarBebidas_(fecha, sedeRestringida) {
   const indice = indiceCatalogo_();
   const movimientos = leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO)
     .filter(function (m) { return formatearFecha_(m.fecha) === fecha; });
+  // Fuente de respaldo cuando ese día no se subió el archivo manual de movimientos (o ya se dejó
+  // de subir porque la sincronización de ventas es por API): cada línea vendida de una bebida
+  // consume exactamente 1 unidad de esa bebida (no tiene receta, "sellAlone" en FUDO) — mismo
+  // supuesto que ya usa conciliarComidaPorSede_ para productos sin receta encontrada.
+  const ventasDelDia = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
+    .filter(function (v) { return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v); });
 
   // Una bebida de una sola sede (ej. algo que solo se vende en Capri, marcado con "Sede donde se
   // vende/usa" en Registrar producto) no debe aparecer en la conciliación de la otra — mismo
@@ -87,13 +99,22 @@ function conciliarBebidas_(fecha, sedeRestringida) {
     const cierre = movsItem.length ? movsItem[movsItem.length - 1].stock_actual : null;
 
     const eventosVenta = ['Adición Creada', 'Adición Cancelada'];
-    const consumoVenta = movsItem
-      .filter(function (m) { return eventosVenta.indexOf(m.evento) !== -1; })
-      .reduce(function (acc, m) { return acc - Number(m.diferencia || 0); }, 0);
-    function consumoSede_(sede) {
-      return movsItem.filter(function (m) { return m.sede === sede && eventosVenta.indexOf(m.evento) !== -1; })
+    function consumoMovimientos_(sede) {
+      return movsItem.filter(function (m) { return (!sede || m.sede === sede) && eventosVenta.indexOf(m.evento) !== -1; })
         .reduce(function (acc, m) { return acc - Number(m.diferencia || 0); }, 0);
     }
+    // Sin movimientos ese día (no se subió el archivo manual, o ya se dejó de subir): cada línea
+    // vendida de la bebida cuenta como 1 unidad consumida — ver comentario arriba de ventasDelDia.
+    const ventasItem = nombreFudoItem
+      ? ventasDelDia.filter(function (v) { return normalizar_(v.producto) === nombreFudoItem; })
+      : [];
+    function consumoVentasApi_(sede) {
+      return ventasItem.filter(function (v) { return !sede || v.sede === sede; })
+        .reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
+    }
+    const usarVentasApi = movsItem.length === 0;
+    const consumoSede_ = usarVentasApi ? consumoVentasApi_ : consumoMovimientos_;
+    const consumoVenta = consumoSede_(null);
 
     const claveItem = claveProducto_(item.nombre_estandar, indice);
     const sa = conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'San Antonio'; });
@@ -110,6 +131,11 @@ function conciliarBebidas_(fecha, sedeRestringida) {
       consumo_fudo_total: consumoVenta,
       consumo_fudo_sa: consumoSede_('San Antonio'),
       consumo_fudo_capri: consumoSede_('Capri'),
+      // Transparencia sobre de dónde salió el consumo — 'movimientos_manual' es más preciso
+      // (trae también fudo_cierre), 'ventas_api' es el respaldo cuando ese día no hay archivo de
+      // movimientos subido (comparado contra datos reales, jul 2026: coinciden en el 96%+ de los
+      // casos — la diferencia son entradas de mercancía, que no son "consumo" sino compras).
+      consumo_fudo_fuente: usarVentasApi ? 'ventas_api' : 'movimientos_manual',
       n_movimientos_fudo: movsItem.length
     };
     return sedeRestringida ? filaBebidaRestringida_(fila, sedeRestringida) : fila;
@@ -129,7 +155,7 @@ function filaBebidaRestringida_(fila, sede) {
   return Object.assign({
     producto: fila.producto, sa: null, capri: null, suma_manual: null, fudo_cierre: null,
     diferencia_vs_suma: null, consumo_fudo_total: null, consumo_fudo_sa: null, consumo_fudo_capri: null,
-    n_movimientos_fudo: null
+    consumo_fudo_fuente: fila.consumo_fudo_fuente, n_movimientos_fudo: null
   }, propio);
 }
 
