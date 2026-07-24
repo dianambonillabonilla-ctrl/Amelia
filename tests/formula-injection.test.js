@@ -109,6 +109,7 @@ function fakeSheetParaAppend_(headers) {
   const fila = ['t1', 'San Antonio', 'San Antonio', 'Enviado', 5, '', '', '', ''];
   const data = [headers, fila];
   const ctx = cargar('apps-script/Traslados.gs', {
+    auditoriaRegistrar_: () => {},
     SHEET_NAMES: { TRASLADOS: 'traslados' },
     leerTabla_: () => [],
     requiereRol_: () => {},

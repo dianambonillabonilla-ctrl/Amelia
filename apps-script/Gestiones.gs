@@ -95,10 +95,14 @@ function gestionActualizarEstado_(id, nuevoEstado, nota, usuario) {
   // neutralizarObjetoFormulas_ (Code.gs): 'nota' es texto libre — sin esto, algo como
   // "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir la hoja
   // (auditoría de seguridad, jul 2026).
+  const estadoAnterior = encontrado.valores[encontrado.headers.indexOf('estado')];
   const cambiosLimpios = neutralizarObjetoFormulas_(cambios);
   encontrado.headers.forEach(function (h, c) {
     if (cambiosLimpios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambiosLimpios[h]);
   });
+  if (nuevoEstado !== estadoAnterior) {
+    auditoriaRegistrar_(usuario, 'gestion_estado_cambiado', 'Gestion', id, { estado: estadoAnterior }, { estado: nuevoEstado, nota: cambiosLimpios.nota }, sede);
+  }
   return { ok: true };
 }
 

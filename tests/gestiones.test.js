@@ -63,7 +63,11 @@ function claveProductoGestionesMock_(texto, indice) {
   return canonico ? normalizarGestionesMock_(canonico) : n;
 }
 
+let auditoriaGestionesLlamadas = [];
 const gestiones = cargar('apps-script/Gestiones.gs', {
+    auditoriaRegistrar_: (usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede) => {
+      auditoriaGestionesLlamadas.push({ usuario, accion, entidadTipo, entidadId, anterior, nuevo, sede });
+    },
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { GESTIONES: 'Gestiones' },
@@ -132,12 +136,20 @@ assert.equal(
 );
 
 // --- gestionActualizarEstado_: flujo completo ------------------------------------------------
+auditoriaGestionesLlamadas = [];
 const pasoPedido = gestiones.gestionActualizarEstado_(creado.id, 'Pedido realizado', 'pedido a Mercamío', capri);
 assert.equal(pasoPedido.ok, true);
 let actualizada = gestiones.gestionesListar_({}, admin).find(g => g.id === creado.id);
 assert.equal(actualizada.estado, 'Pedido realizado');
 assert.equal(actualizada.nota, 'pedido a Mercamío');
 assert.equal(actualizada.actualizado_por, 'Juan');
+
+// --- Bitácora de auditoría: cambiar el estado de una gestión debe dejar rastro ------------------
+// (auditoría de seguridad, jul 2026).
+assert.equal(auditoriaGestionesLlamadas.length, 1, 'cambiar de estado debe dejar un registro en la bitácora');
+assert.equal(auditoriaGestionesLlamadas[0].accion, 'gestion_estado_cambiado');
+assert.deepEqual(auditoriaGestionesLlamadas[0].anterior, { estado: 'Pendiente' });
+assert.equal(auditoriaGestionesLlamadas[0].nuevo.estado, 'Pedido realizado');
 
 const pasoResuelto = gestiones.gestionActualizarEstado_(creado.id, 'Resuelto', '', capri);
 assert.equal(pasoResuelto.ok, true);
@@ -174,6 +186,7 @@ assert.doesNotThrow(() => gestiones.gestionAutoResolverPorCompra_([{ producto: '
 reiniciar_();
 const indiceConAliasFudoGestiones = { 'coca cola 350': 'Coca-Cola Original 350 ml' };
 const gestionesConAlias = cargar('apps-script/Gestiones.gs', {
+    auditoriaRegistrar_: () => {},
     neutralizarFormula_: neutralizarFormulaMock_,
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { GESTIONES: 'Gestiones' },
