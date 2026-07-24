@@ -464,21 +464,35 @@ async function pintarPendientes_() {
       if (dataCierre.ok && dataCierre.cerrado) {
         bloques.push(`<p style="margin:0 0 10px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>`);
       } else if (dataFaltantes.ok) {
+        const requiereInicio = dataFaltantes.data.length && dataFaltantes.data[0].requiere_inicio;
+        const pendientesInicio = requiereInicio ? dataFaltantes.data.filter(s => (s.faltantes_inicio || []).length) : [];
         const pendientesSector = dataFaltantes.data.filter(s => s.faltantes.length);
         // Por sector: quién ya contó (nombres) y qué falta — pedido real: "le debe de salir que si
         // ya registró, el que registró y quién lo hizo", incluyendo compañeros que no registraron.
+        // Si ayer no se cerró el turno, se muestra también el conteo de INICIO por separado — pedido
+        // real: "debe de pedir conteo de inicio de turno y después el conteo de cierre de turno".
         const listaSectores = dataFaltantes.data.map(s => {
           const quien = s.usuarios.length ? ` — contado por ${s.usuarios.map(escapeHtml).join(', ')}` : ' — nadie ha contado nada de este sector todavía';
-          return s.faltantes.length
-            ? `<li><strong>${escapeHtml(s.sector)}</strong>: falta ${s.faltantes.map(escapeHtml).join(', ')}${quien}</li>`
-            : `<li><strong>${escapeHtml(s.sector)}</strong>: completo${quien}</li>`;
+          const lineaCierre = s.faltantes.length
+            ? `<strong>${escapeHtml(s.sector)}</strong>: falta ${s.faltantes.map(escapeHtml).join(', ')}${quien}`
+            : `<strong>${escapeHtml(s.sector)}</strong>: completo${quien}`;
+          if (!requiereInicio) return `<li>${lineaCierre}</li>`;
+          const quienInicio = (s.usuarios_inicio || []).length ? ` — contado por ${s.usuarios_inicio.map(escapeHtml).join(', ')}` : ' — nadie ha contado nada todavía';
+          const lineaInicio = (s.faltantes_inicio || []).length
+            ? `INICIO: falta ${s.faltantes_inicio.map(escapeHtml).join(', ')}${quienInicio}`
+            : `INICIO: completo${quienInicio}`;
+          return `<li>${lineaInicio}<br>${lineaCierre}</li>`;
         }).join('');
-        if (pendientesSector.length) pendientesReales += pendientesSector.length;
+        if (pendientesInicio.length || pendientesSector.length) pendientesReales += pendientesInicio.length + pendientesSector.length;
+        const avisoInicio = requiereInicio
+          ? `<p style="margin:0 0 6px; color:var(--red)"><strong>Ayer no se cerró el turno de ${escapeHtml(sede)}</strong> — hoy hace falta completar el conteo de INICIO antes que el de cierre cuente para cerrar.</p>`
+          : '';
         bloques.push(
+          avisoInicio +
           (dataFaltantes.data.length
             ? '<p style="margin:0 0 6px"><strong>Sectores de hoy en ' + escapeHtml(sede) + ':</strong></p><ul style="margin:0 0 10px">' + listaSectores + '</ul>'
             : `<p style="margin:0 0 10px">Nadie ha elegido sector hoy en ${escapeHtml(sede)} (o el catálogo no tiene productos asignados por sector).</p>`) +
-          (pendientesSector.length ? '' : `<p style="margin:0 0 10px"><button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`)
+          ((pendientesInicio.length || pendientesSector.length) ? '' : `<p style="margin:0 0 10px"><button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`)
         );
       }
     }

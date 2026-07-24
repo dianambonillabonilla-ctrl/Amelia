@@ -907,7 +907,8 @@ const conteosRegistrarMod = cargar('apps-script/Conteos.gs', {
   revisarAlertas_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
-  claveProducto_: claveProductoMock_
+  claveProducto_: claveProductoMock_,
+  turnoOportuno_: () => 'Cierre de turno'
 });
 const itemsCentro = [{ fecha: '2026-07-21', sede: 'Centro de Producción', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
 assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCentro, encargadaSA).ok, true, 'San Antonio debe poder registrar un conteo para Centro de Producción');
@@ -935,7 +936,8 @@ const conteosProduccionMod = cargar('apps-script/Conteos.gs', {
   revisarAlertas_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
-  claveProducto_: claveProductoMock_
+  claveProducto_: claveProductoMock_,
+  turnoOportuno_: () => 'Cierre de turno'
 });
 const itemsInsumoObligatorio = [{ fecha: '2026-07-21', sede: 'San Antonio', punto_conteo: 'Cocina terraza', producto: 'Vinagre balsámico', unidad: 'ml', cantidad: 500 }];
 assert.equal(
@@ -1403,7 +1405,10 @@ function cargarTurnosCerrar_(conteosHoy) {
   });
 }
 
-cierresExistentes = [];
+// Ayer (20 jul) sí se cerró bien — estos casos prueban solo la validación de faltantes de HOY, no
+// el requisito nuevo de "conteo de inicio" (que se prueba aparte, más abajo).
+const ayerCerrado = { fecha: '2026-07-20', sede: 'San Antonio', usuario: 'Diana', timestamp: '2026-07-20T20:00:00' };
+cierresExistentes = [ayerCerrado];
 const cierreBloqueado = cargarTurnosCerrar_([]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' });
 assert.equal(cierreBloqueado.ok, false, 'debe bloquear el cierre si Cocina no ha contado Sal Marina');
 assert.ok(/Sal Marina/.test(cierreBloqueado.error));
@@ -1423,7 +1428,7 @@ assert.equal(cierresGuardados.length, 1, 'no debe crear una segunda fila de cier
 
 // --- turnoCerrar_: "caja es el responsable final" — solo Caja (o Admin/Encargado) puede cerrar ---
 // (pedido real, auditoría 24 jul 2026: "caja es el responsable final de que todo quede bien").
-cierresExistentes = [];
+cierresExistentes = [ayerCerrado];
 const juanCocina = { id: 'u1', nombre: 'Juan', rol: 'Cocina' };
 const cierresGuardadosAntes = cierresGuardados.length;
 // Juan tiene el sector "Cocina" hoy (no "Caja") — aunque todo esté contado, no debe poder cerrar.
@@ -1439,6 +1444,111 @@ const cierreComoCaja = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCe
 assert.equal(cierreComoCaja.ok, true, 'con el sector "Caja" elegido hoy, sí debe poder cerrar el turno');
 assert.equal(cierresGuardados[cierresGuardados.length - 1].usuario, 'Juan');
 turnosHoy[0].sector = sectorOriginalJuan;
+
+// --- turnoCerrar_/turnoFaltantesPorSector_/turnoOportuno_: conteo de INICIO de turno -------------
+// Pedido real, auditoría 24 jul 2026: "cuando no se registre conteo de cierre para el turno[,] del
+// próximo día debe de pedir conteo de inicio de turno y después el conteo de cierre de turno, sin
+// esto no le deja cerrar el turno". Ayer (20 jul) NO se cerró San Antonio (cierresExistentes vacío)
+// — hoy (21 jul) debe exigir el conteo de inicio ANTES de que el de cierre cuente para cerrar.
+cierresExistentes = [];
+const turnosInicioMod = cargarTurnosCerrar_([]);
+assert.equal(turnosInicioMod.requiereConteoInicioTurno_('2026-07-21', 'San Antonio'), true, 'sin cierre de ayer, hoy debe exigir el conteo de inicio');
+cierresExistentes = [ayerCerrado];
+assert.equal(cargarTurnosCerrar_([]).requiereConteoInicioTurno_('2026-07-21', 'San Antonio'), false, 'con ayer cerrado, hoy NO debe exigir conteo de inicio');
+
+cierresExistentes = [];
+// Nada contado todavía hoy: faltan los dos turnos completos.
+const faltantesSinNada = cargarTurnosCerrar_([]).turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
+assert.equal(faltantesSinNada[0].requiere_inicio, true);
+assert.deepEqual(faltantesSinNada[0].faltantes_inicio, ['Sal Marina'], 'sin nada contado, debe faltar Sal Marina también en el turno de inicio');
+assert.deepEqual(faltantesSinNada[0].faltantes, ['Sal Marina'], 'y seguir faltando en el turno de cierre (son conteos separados)');
+
+// Solo se hizo el conteo de INICIO — el de cierre (el que de verdad bloquea) sigue pendiente aparte.
+const conteosSoloInicio = [{ producto: 'Sal Marina', turno: 'Inicio de turno', usuario: 'Ana' }];
+const faltantesSoloInicio = cargarTurnosCerrar_(conteosSoloInicio).turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
+assert.deepEqual(faltantesSoloInicio[0].faltantes_inicio, [], 'el turno de inicio ya quedó completo');
+assert.deepEqual(faltantesSoloInicio[0].usuarios_inicio, ['Ana']);
+assert.deepEqual(faltantesSoloInicio[0].faltantes, ['Sal Marina'], 'el de cierre sigue pendiente: son conteos independientes, no el mismo');
+
+const cierreSoloInicioHecho = cargarTurnosCerrar_(conteosSoloInicio).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' });
+assert.equal(cierreSoloInicioHecho.ok, false, 'con solo el conteo de inicio hecho, todavía no debe dejar cerrar (falta el de cierre)');
+assert.match(cierreSoloInicioHecho.error, /falta contar/i);
+
+// Nada de inicio hecho todavía: debe bloquear pidiendo el de INICIO primero, aunque el de cierre si
+// esté completo (ej. alguien guardó marcándolo como cierre a mano).
+const conteosSoloCierre = [{ producto: 'Sal Marina', turno: 'Cierre de turno', usuario: 'Diana' }];
+const cierreSinInicio = cargarTurnosCerrar_(conteosSoloCierre).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' });
+assert.equal(cierreSinInicio.ok, false, 'sin el conteo de inicio, no debe dejar cerrar aunque el de cierre esté completo');
+assert.match(cierreSinInicio.error, /INICIO/);
+
+// Con los dos turnos completos, sí debe dejar cerrar.
+const conteosLosDos = [
+  { producto: 'Sal Marina', turno: 'Inicio de turno', usuario: 'Ana' },
+  { producto: 'Sal Marina', turno: 'Cierre de turno', usuario: 'Ana' }
+];
+const cierreConLosDos = cargarTurnosCerrar_(conteosLosDos).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' });
+assert.equal(cierreConLosDos.ok, true, 'con inicio y cierre completos, sí debe dejar cerrar el turno');
+
+// turnoOportuno_: sin conteo de inicio hecho todavía, debe autoetiquetar 'Inicio de turno'; una vez
+// completo para ese sector, pasa a autoetiquetar 'Cierre de turno' — sin que el personal tenga que
+// elegir nada a mano.
+const anaCocina = { id: 'u1', nombre: 'Ana' };
+assert.equal(
+  cargarTurnosCerrar_([]).turnoOportuno_('2026-07-21', 'San Antonio', anaCocina), 'Inicio de turno',
+  'sin nada contado hoy y sin cierre de ayer, el próximo conteo debe autoetiquetarse "Inicio de turno"'
+);
+assert.equal(
+  cargarTurnosCerrar_(conteosSoloInicio).turnoOportuno_('2026-07-21', 'San Antonio', anaCocina), 'Cierre de turno',
+  'con el conteo de inicio ya completo para el sector de Ana, el siguiente debe autoetiquetarse "Cierre de turno"'
+);
+cierresExistentes = [ayerCerrado];
+assert.equal(
+  cargarTurnosCerrar_([]).turnoOportuno_('2026-07-21', 'San Antonio', anaCocina), 'Cierre de turno',
+  'con ayer cerrado, no hace falta conteo de inicio: debe autoetiquetarse "Cierre de turno" directo'
+);
+
+// --- conteoRegistrar_: usa turnoOportuno_ para autoetiquetar, y lo respeta al buscar/corregir -----
+// (la fila de "Inicio de turno" y la de "Cierre de turno" del mismo producto/día deben quedar
+// SEPARADAS — conteoBuscarFila_ ya compara por turno, ver arriba).
+const conteosGuardadosTurno = [];
+function cargarConteosConTurno_(turnoDevuelto) {
+  return cargar('apps-script/Conteos.gs', {
+    SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
+    leerTabla_: (hoja) => hoja === 'conteos' ? conteosGuardadosTurno : [],
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    frecuenciasObligatoriasDelDia_: () => [],
+    catalogoAsegurar_: () => {},
+    appendRowFromObj_: (hoja, fila) => { if (hoja === 'conteos') conteosGuardadosTurno.push(fila); },
+    // Conteos.gs define su propio formatearFecha_ (usa Utilities/Session reales de Apps Script) —
+    // no se puede sobreescribir esa función desde afuera, así que se mockean sus dependencias.
+    Utilities: {
+      getUuid: () => 'conteo-turno-' + (conteosGuardadosTurno.length + 1),
+      formatDate: (d) => ((d instanceof Date) ? d : new Date(d)).toISOString().slice(0, 10)
+    },
+    Session: { getScriptTimeZone: () => 'UTC' },
+    sheet_: () => ({
+      getDataRange: () => ({
+        getValues: () => [['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto']].concat(
+          conteosGuardadosTurno.map(r => [r.id, r.fecha, r.sede, r.punto_conteo, r.turno, r.producto])
+        )
+      })
+    }),
+    revisarAlertas_: () => {},
+    sedeEscrituraPermitida_: () => true,
+    indiceCatalogo_: indiceCatalogoVacioMock_,
+    claveProducto_: claveProductoMock_,
+    turnoOportuno_: () => turnoDevuelto
+  });
+}
+const itemInicio = [{ fecha: '2026-07-22', sede: 'Capri', punto_conteo: 'Bodega', producto: 'Sal Marina', unidad: 'g', cantidad: 200 }];
+cargarConteosConTurno_('Inicio de turno').conteoRegistrar_(itemInicio, { nombre: 'Ana' });
+assert.equal(conteosGuardadosTurno.length, 1);
+assert.equal(conteosGuardadosTurno[0].turno, 'Inicio de turno', 'debe guardar con el turno que diga turnoOportuno_');
+
+cargarConteosConTurno_('Cierre de turno').conteoRegistrar_(itemInicio, { nombre: 'Ana' });
+assert.equal(conteosGuardadosTurno.length, 2, 'el conteo de cierre del mismo producto/día debe quedar en una fila APARTE, no sobreescribir la de inicio');
+assert.equal(conteosGuardadosTurno[1].turno, 'Cierre de turno');
 
 // --- Tendencia de días restantes: debe respetar la sede del usuario ------------------------------
 // BUG DE SEGURIDAD REAL: a diferencia de disponible_hoy (que sí aplica sedeConsultaPermitida_),
