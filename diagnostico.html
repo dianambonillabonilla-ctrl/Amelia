@@ -108,12 +108,14 @@
       <h2>Catálogo — posibles nombres duplicados</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
         Pares de productos con nombres muy parecidos entre sí — revisa si en realidad son el mismo
-        producto escrito distinto (ej. "Limón" vs "Limón Tahití") y fusiónalos a mano desde
-        <a href="catalogo.html">Registrar producto</a> si corresponde.
+        producto escrito distinto (ej. "Limón" vs "Limón Tahití") y usa el botón para decidir con
+        cuál te quedas: fusiona TODO el historial (conteos, compras, recetas, producción,
+        traslados) del que elimines hacia el que conserves. Esto no se puede deshacer solo, así que
+        confirma bien cuál es el nombre correcto antes de fusionar.
       </p>
       <table>
-        <thead><tr><th>Producto A</th><th>Producto B</th><th>Motivo</th></tr></thead>
-        <tbody id="tabla-catalogo-duplicados"><tr><td colspan="3" class="vacio">Sin correr todavía.</td></tr></tbody>
+        <thead><tr><th>Producto A</th><th>Producto B</th><th>Motivo</th><th>Con cuál quedarme</th></tr></thead>
+        <tbody id="tabla-catalogo-duplicados"><tr><td colspan="4" class="vacio">Sin correr todavía.</td></tr></tbody>
       </table>
     </div>
   </main>
@@ -132,7 +134,7 @@ async function correrDiagnostico() {
   document.getElementById('tabla-duplicados').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-ventas').innerHTML = '<tr><td colspan="2" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
-  document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="3" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
 
   const [recetas, duplicados, ventas, comprasNoSuman, catalogoDuplicados] = await Promise.all([
     llamar('diagnostico_recetas'),
@@ -204,6 +206,28 @@ function pintarVentas_(data) {
   `).join('');
 }
 
+// Botón accionable para el caso "nombre no existe en el catálogo" — o crea el producto y lo
+// vincula de una, o lo une como alias de un parecido que ya existe, en vez de solo explicar qué
+// hacer a mano (pedido real: "si aceite de freidora no está creado pues debió crearlo y unirlo al
+// disponible hoy"). Para unidad distinta / fecha ya cubierta no hay botón: cuál valor es el
+// correcto (la unidad, o si el conteo de verdad ya incluía la compra) es una decisión humana, no
+// algo que se pueda adivinar y aplicar solo.
+function botonAccionCompra_(p) {
+  const accion = p.accion || { tipo: 'ninguna' };
+  if (accion.tipo === 'crear_producto') {
+    return `<button class="btn fantasma btn-crear-producto" type="button"
+      data-nombre="${escapeHtml(accion.nombre)}" data-unidad="${escapeHtml(accion.unidad_base || '')}">
+      Crear y vincular "${escapeHtml(accion.nombre)}"</button>`;
+  }
+  if (accion.tipo === 'vincular_alias') {
+    return `<button class="btn fantasma btn-vincular-alias" type="button"
+      data-id="${escapeHtml(accion.catalogo_id)}" data-catalogo-nombre="${escapeHtml(accion.catalogo_nombre)}"
+      data-alias="${escapeHtml(accion.alias)}" data-nombre-fudo-actual="${escapeHtml(accion.nombre_fudo_actual || '')}">
+      Vincular a "${escapeHtml(accion.catalogo_nombre)}"</button>`;
+  }
+  return '';
+}
+
 function pintarComprasNoSuman_(data) {
   const body = document.getElementById('tabla-compras-no-suman');
   if (!data.total_compras) {
@@ -222,24 +246,107 @@ function pintarComprasNoSuman_(data) {
       <td>${escapeHtml(p.cantidad)} ${escapeHtml(p.unidad)}</td>
       <td>${escapeHtml(p.proveedor)}${p.numero_factura ? ' — ' + escapeHtml(p.numero_factura) : ''}</td>
       <td><span class="badge alerta">${escapeHtml(p.motivo)}</span></td>
-      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}</td>
+      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}<br>${botonAccionCompra_(p)}</td>
     </tr>`).join('') +
     `<tr><td colspan="7" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
 }
 
+document.getElementById('tabla-compras-no-suman').addEventListener('click', async (ev) => {
+  const btnCrear = ev.target.closest('.btn-crear-producto');
+  if (btnCrear) {
+    if (btnCrear.disabled) return;
+    const nombre = btnCrear.dataset.nombre;
+    const categoria = prompt(`Crear "${nombre}" en el Catálogo Maestro y vincularlo a Disponible Hoy.\n\nCategoría (opcional, ej. "Materia Prima/Fruver"):`, '');
+    if (categoria === null) return;
+    btnCrear.disabled = true;
+    try {
+      const data = await llamar('catalogo_guardar', { item: { nombre_estandar: nombre, unidad_base: btnCrear.dataset.unidad, categoria: categoria.trim() } });
+      if (!data.ok) { alert(data.error); return; }
+      avisarGuardado(`"${nombre}" creado y vinculado al catálogo.`);
+      correrDiagnostico();
+    } catch (err) {
+      alert('Algo salió mal y no se pudo crear el producto. Vuelve a intentarlo.');
+    } finally {
+      btnCrear.disabled = false;
+    }
+    return;
+  }
+  const btnAlias = ev.target.closest('.btn-vincular-alias');
+  if (btnAlias) {
+    if (btnAlias.disabled) return;
+    const catalogoNombre = btnAlias.dataset.catalogoNombre;
+    const alias = btnAlias.dataset.alias;
+    const nombreFudoActual = btnAlias.dataset.nombreFudoActual;
+    let mensaje = `Vincular "${alias}" como nombre alterno de "${catalogoNombre}".`;
+    if (nombreFudoActual) mensaje += `\n\n⚠️ "${catalogoNombre}" ya tenía otro nombre alterno ("${nombreFudoActual}") — quedará reemplazado por "${alias}".`;
+    if (!confirm(mensaje + '\n\n¿Continuar?')) return;
+    btnAlias.disabled = true;
+    try {
+      const data = await llamar('catalogo_guardar', { item: { id: btnAlias.dataset.id, nombre_fudo: alias } });
+      if (!data.ok) { alert(data.error); return; }
+      avisarGuardado(`"${alias}" vinculado a "${catalogoNombre}".`);
+      correrDiagnostico();
+    } catch (err) {
+      alert('Algo salió mal y no se pudo vincular. Vuelve a intentarlo.');
+    } finally {
+      btnAlias.disabled = false;
+    }
+  }
+});
+
 function pintarCatalogoDuplicados_(data) {
   const body = document.getElementById('tabla-catalogo-duplicados');
   if (!data.sospechosos.length) {
-    body.innerHTML = `<tr><td colspan="3" class="vacio">Sin pares sospechosos en ${data.total_productos} productos revisados.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="4" class="vacio">Sin pares sospechosos en ${data.total_productos} productos revisados.</td></tr>`;
     return;
   }
-  body.innerHTML = data.sospechosos.map(s => `
+  body.innerHTML = data.sospechosos.map(s => {
+    // Filas del catálogo pegadas directo en el Sheet (sin pasar por Registrar producto) pueden no
+    // tener id todavía — ver catalogoRepararIds_. Sin id no hay con qué fusionar, así que se avisa
+    // en vez de ofrecer un botón que fallaría.
+    const sinId = !s.a_id || !s.b_id;
+    const botones = sinId
+      ? `<span style="color:var(--grey); font-size:.78rem">Falta id — repáralo desde <a href="catalogo.html">Registrar producto</a> primero.</span>`
+      : `<button class="btn fantasma btn-fusionar" type="button"
+          data-conservar="${escapeHtml(s.a_id)}" data-eliminar="${escapeHtml(s.b_id)}"
+          data-conservar-nombre="${escapeHtml(s.a)}" data-eliminar-nombre="${escapeHtml(s.b)}">Quedarme con "${escapeHtml(s.a)}"</button>
+         <button class="btn fantasma btn-fusionar" type="button"
+          data-conservar="${escapeHtml(s.b_id)}" data-eliminar="${escapeHtml(s.a_id)}"
+          data-conservar-nombre="${escapeHtml(s.b)}" data-eliminar-nombre="${escapeHtml(s.a)}">Quedarme con "${escapeHtml(s.b)}"</button>`;
+    return `
     <tr>
       <td>${escapeHtml(s.a)}${s.a_categoria ? ` <span style="color:var(--grey); font-size:.78rem">(${escapeHtml(s.a_categoria)})</span>` : ''}</td>
       <td>${escapeHtml(s.b)}${s.b_categoria ? ` <span style="color:var(--grey); font-size:.78rem">(${escapeHtml(s.b_categoria)})</span>` : ''}</td>
       <td>${escapeHtml(s.razon)}</td>
-    </tr>`).join('');
+      <td style="white-space:nowrap">${botones}</td>
+    </tr>`;
+  }).join('');
 }
+
+document.getElementById('tabla-catalogo-duplicados').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.btn-fusionar');
+  if (!btn || btn.disabled) return;
+  const idConservar = btn.dataset.conservar;
+  const idEliminar = btn.dataset.eliminar;
+  const nombreConservar = btn.dataset.conservarNombre;
+  const nombreEliminar = btn.dataset.eliminarNombre;
+  const mensaje = `Fusionar "${nombreEliminar}" dentro de "${nombreConservar}".\n\n` +
+    `Todo el historial (conteos, compras, recetas, producción, traslados) que decía "${nombreEliminar}" ` +
+    `va a quedar como "${nombreConservar}", y "${nombreEliminar}" se borra del catálogo.\n\n` +
+    `Esto no se puede deshacer automáticamente. ¿Continuar?`;
+  if (!confirm(mensaje)) return;
+  btn.disabled = true;
+  try {
+    const data = await llamar('catalogo_fusionar', { id_conservar: idConservar, id_eliminar: idEliminar });
+    if (!data.ok) { alert(data.error); return; }
+    avisarGuardado(`"${nombreEliminar}" fusionado en "${nombreConservar}" (${data.filas_actualizadas} fila(s) de historial actualizadas).`);
+    correrDiagnostico();
+  } catch (err) {
+    alert('Algo salió mal y no se pudo fusionar. Vuelve a intentarlo.');
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 document.getElementById('btn-actualizar').addEventListener('click', correrDiagnostico);
 correrDiagnostico();

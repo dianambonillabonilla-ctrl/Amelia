@@ -290,6 +290,75 @@ const resultadoObligatorioProduccion = catalogoObligatorioProduccionMod.catalogo
 assert.equal(resultadoObligatorioProduccion.ok, true);
 assert.equal(filasCatalogoObligatorioProduccion[1][2], true, 'obligatorio_produccion debe quedar marcado en la hoja');
 
+// --- Catálogo: fusionar dos duplicados reescribe TODO el historial y borra el que sobra ---------
+// (pedido real: "si helado está duplicado me debe de dar la opcion de con cual quedar y cual
+// eliminar" — antes diagnosticarCatalogoDuplicados_ solo detectaba el par, nunca los fusionaba;
+// catalogoFusionar_ es la acción real detrás del botón "Con cuál quedarme" en Diagnóstico).
+const sheetsFusion = {
+  catalogo: [
+    ['id', 'nombre_estandar', 'nombre_fudo', 'categoria'],
+    ['id-helado-a', 'Helado Vainilla', '', 'Materia Prima'],
+    ['id-helado-b', 'Helado de Vainilla', 'HELADO VAINILLA FUDO', 'Materia Prima']
+  ],
+  conteos: [['id', 'producto'], ['c1', 'Helado de Vainilla'], ['c2', 'Costilla cruda']],
+  ajustes: [['id', 'producto'], ['a1', 'Helado de Vainilla']],
+  recetas: [['id', 'producto', 'ingrediente'], ['r1', 'Combo', 'Helado de Vainilla'], ['r2', 'Combo', 'Costilla']],
+  producciones: [['id', 'item'], ['p1', 'Helado de Vainilla']],
+  traslados: [['id', 'producto'], ['t1', 'Helado de Vainilla']]
+};
+function sheetFusionMock_(nombre) {
+  const data = sheetsFusion[nombre];
+  return {
+    getDataRange: () => ({ getValues: () => data }),
+    getRange: (fila, columna) => ({ setValue: (valor) => { data[fila - 1][columna - 1] = valor; } }),
+    deleteRow: (fila) => { data.splice(fila - 1, 1); }
+  };
+}
+function leerTablaFusionMock_(hoja) {
+  const data = sheetsFusion[hoja];
+  const headers = data[0];
+  return data.slice(1).map((fila) => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = fila[i]; });
+    return obj;
+  });
+}
+const catalogoFusion = cargar('apps-script/Catalogo.gs', {
+  SHEET_NAMES: {
+    CATALOGO: 'catalogo', CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes',
+    RECETAS: 'recetas', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados'
+  },
+  Logger: { log: () => {} },
+  leerTabla_: leerTablaFusionMock_,
+  sheet_: sheetFusionMock_,
+  normalizar_: (v) => String(v || '').trim().toLowerCase()
+});
+
+const resultadoFusion = catalogoFusion.catalogoFusionar_('id-helado-a', 'id-helado-b');
+assert.equal(resultadoFusion.ok, true);
+assert.equal(resultadoFusion.conservado, 'Helado Vainilla');
+assert.equal(resultadoFusion.eliminado, 'Helado de Vainilla');
+assert.equal(resultadoFusion.filas_actualizadas, 5, 'debe reescribir las 5 filas de historial que decían "Helado de Vainilla" (conteo, compra, receta-ingrediente, producción, traslado)');
+
+assert.equal(sheetsFusion.conteos[1][1], 'Helado Vainilla', 'el conteo debe quedar con el nombre conservado');
+assert.equal(sheetsFusion.conteos[2][1], 'Costilla cruda', 'una fila que no coincidía no debe tocarse');
+assert.equal(sheetsFusion.ajustes[1][1], 'Helado Vainilla', 'la compra/ajuste debe quedar con el nombre conservado');
+assert.equal(sheetsFusion.recetas[1][2], 'Helado Vainilla', 'el ingrediente de la receta debe quedar con el nombre conservado');
+assert.equal(sheetsFusion.recetas[1][1], 'Combo', 'el producto (plato) de esa misma receta no debía cambiar');
+assert.equal(sheetsFusion.recetas[2][2], 'Costilla', 'una receta que no coincidía no debe tocarse');
+assert.equal(sheetsFusion.producciones[1][1], 'Helado Vainilla', 'la producción debe quedar con el nombre conservado');
+assert.equal(sheetsFusion.traslados[1][1], 'Helado Vainilla', 'el traslado debe quedar con el nombre conservado');
+
+assert.equal(sheetsFusion.catalogo.length, 2, 'debe quedar solo el encabezado y el producto conservado, el eliminado se borra');
+assert.equal(sheetsFusion.catalogo[1][0], 'id-helado-a');
+assert.equal(sheetsFusion.catalogo[1][2], 'HELADO VAINILLA FUDO', 'el nombre_fudo del eliminado debe heredarse porque el conservado no tenía uno propio');
+
+assert.equal(catalogoFusion.catalogoFusionar_(null, 'id-helado-a').ok, false, 'debe exigir los dos ids');
+assert.equal(catalogoFusion.catalogoFusionar_('id-helado-a', 'id-helado-a').ok, false, 'no debe dejar fusionar un producto consigo mismo');
+assert.equal(catalogoFusion.catalogoFusionar_('id-no-existe', 'id-helado-a').ok, false, 'debe fallar si alguno de los dos ids no existe en el catálogo');
+
+console.log('catalogoFusionar_: OK');
+
 // --- Extremo a extremo: compra sube el stock Y "para cuántos platos alcanza" (ejemplo del banano) ---
 const conteoBanano = [
   { fecha: '2026-07-01', sede: 'San Antonio', producto: 'Banano', unidad: 'u', cantidad: 2 }

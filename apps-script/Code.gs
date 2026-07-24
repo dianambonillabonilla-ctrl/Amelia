@@ -193,6 +193,9 @@ function handleRequest_(e, method) {
       case 'catalogo_reparar_ids':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoRepararIds_());
+      case 'catalogo_fusionar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoFusionar_(params.id_conservar, params.id_eliminar));
       case 'fudo_nombres_vistos':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoNombresVistos_() });
