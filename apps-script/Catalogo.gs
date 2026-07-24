@@ -99,6 +99,77 @@ function catalogoAsegurar_(nombre, unidad) {
   }
 }
 
+/**
+ * Fusiona dos productos del catálogo en uno solo — la acción real detrás de "posibles nombres
+ * duplicados" en Diagnóstico (diagnosticarCatalogoDuplicados_): decides cuál de los dos productos
+ * se conserva y cuál se elimina, y esta función deja TODO el historial apuntando al que se
+ * conserva, no solo lo que se cuente/compre de aquí en adelante.
+ *
+ * Reescribe, en cada hoja que guarda el producto como texto libre (Conteos_Manuales,
+ * Ajustes_Inventario, Recetas —como producto o ingrediente—, Producciones, Traslados), cualquier
+ * fila cuyo valor coincida (normalizado, sin tildes/mayúsculas) con el nombre_estandar o el
+ * nombre_fudo del producto que se elimina, dejando el nombre_estandar del que se conserva. Si el
+ * que se elimina tenía un nombre_fudo (mapeo a FUDO) y el que se conserva no tiene uno propio
+ * todavía, se lo hereda para no perder ese vínculo con las ventas de FUDO. Termina borrando la
+ * fila del catálogo del producto eliminado (catalogoEliminar_).
+ *
+ * Deliberadamente NO toca Ventas_FUDO: esa hoja es un historial de ventas importado tal cual del
+ * POS, no una referencia editable — el vínculo hacia el producto correcto ya queda cubierto por
+ * nombre_fudo en el catálogo, sin necesidad de reescribir ventas ya registradas.
+ *
+ * No hay forma de deshacer esto automáticamente — por eso diagnosticarCatalogoDuplicados_ solo
+ * sugiere pares sospechosos, nunca fusiona nada por su cuenta.
+ */
+function catalogoFusionar_(idConservar, idEliminar) {
+  if (!idConservar || !idEliminar) return { ok: false, error: 'Faltan los dos productos a fusionar' };
+  if (idConservar === idEliminar) return { ok: false, error: 'Selecciona dos productos distintos' };
+
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
+  const conservar = catalogo.find(function (c) { return c.id === idConservar; });
+  const eliminar = catalogo.find(function (c) { return c.id === idEliminar; });
+  if (!conservar) return { ok: false, error: 'No se encontró el producto a conservar' };
+  if (!eliminar) return { ok: false, error: 'No se encontró el producto a eliminar' };
+
+  const nombresAReemplazar = [normalizar_(eliminar.nombre_estandar)];
+  if (eliminar.nombre_fudo) nombresAReemplazar.push(normalizar_(eliminar.nombre_fudo));
+
+  const hojasConColumnas = [
+    { hoja: SHEET_NAMES.CONTEOS, columnas: ['producto'] },
+    { hoja: SHEET_NAMES.AJUSTES_INVENTARIO, columnas: ['producto'] },
+    { hoja: SHEET_NAMES.RECETAS, columnas: ['producto', 'ingrediente'] },
+    { hoja: SHEET_NAMES.PRODUCCIONES, columnas: ['item'] },
+    { hoja: SHEET_NAMES.TRASLADOS, columnas: ['producto'] }
+  ];
+
+  let filasActualizadas = 0;
+  hojasConColumnas.forEach(function (spec) {
+    const sh = sheet_(spec.hoja);
+    const data = sh.getDataRange().getValues();
+    const headers = data[0];
+    const columnas = spec.columnas.map(function (c) { return headers.indexOf(c); }).filter(function (i) { return i !== -1; });
+    if (!columnas.length) return;
+    for (let r = 1; r < data.length; r++) {
+      columnas.forEach(function (c) {
+        if (nombresAReemplazar.indexOf(normalizar_(data[r][c])) !== -1) {
+          sh.getRange(r + 1, c + 1).setValue(conservar.nombre_estandar);
+          filasActualizadas++;
+        }
+      });
+    }
+  });
+
+  if (eliminar.nombre_fudo && !conservar.nombre_fudo) {
+    catalogoGuardar_({ id: conservar.id, nombre_fudo: eliminar.nombre_fudo });
+  }
+
+  catalogoEliminar_(idEliminar);
+
+  return {
+    ok: true, conservado: conservar.nombre_estandar, eliminado: eliminar.nombre_estandar,
+    filas_actualizadas: filasActualizadas
+  };
+}
+
 function catalogoBuscar_(nombre) {
   const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
   const directo = catalogo.find(function (c) {

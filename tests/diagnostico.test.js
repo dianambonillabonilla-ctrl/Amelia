@@ -35,9 +35,13 @@ function claveProductoMock_(texto, indice) {
   return canonico ? normalizarMock_(canonico) : norm;
 }
 
+function normalizarUnidadMock_(u) {
+  return normalizarMock_(u).replace(/\./g, '');
+}
+
 // --- diagnosticarComprasNoSuman_ ----------------------------------------------------------------
 
-const catalogo = [{ nombre_estandar: 'Limón Tahití' }, { nombre_estandar: 'Costilla cruda' }];
+const catalogo = [{ id: 'id-limon', nombre_estandar: 'Limón Tahití' }, { id: 'id-costilla', nombre_estandar: 'Costilla cruda' }];
 const conteos = [
   // Limón Tahití en San Antonio: último conteo del 2026-07-10, en unidades ("u").
   { fecha: '2026-07-10', sede: 'San Antonio', producto: 'Limón Tahití', cantidad: 30, unidad: 'u' },
@@ -62,6 +66,7 @@ const diagnostico = cargar('apps-script/Diagnostico.gs', {
   indiceCatalogo_: () => indiceMock_(catalogo),
   claveProducto_: claveProductoMock_,
   normalizar_: normalizarMock_,
+  normalizarUnidad_: normalizarUnidadMock_,
   aUnidadBase_: aUnidadBaseMock_,
   formatearFecha_: (v) => String(v).slice(0, 10)
 });
@@ -82,9 +87,13 @@ assert.match(porFactura['F-4'].motivo, /ese conteo ya la incluía/);
 
 // Cada problema debe traer también una solución concreta, no solo el diagnóstico del motivo.
 assert.match(porFactura['F-1'].solucion, /conteo físico/i, 'F-1 debe sugerir resolver la unidad con un conteo físico');
+assert.equal(porFactura['F-1'].accion.tipo, 'ninguna', 'F-1 (unidad distinta) no tiene una acción de un clic — es una decisión humana');
 assert.match(porFactura['F-3'].solucion, /ningún producto parecido/, 'F-3 ("Limones sueltos", sin parecido real en el catálogo) debe sugerir crearlo');
-assert.match(porFactura['F-3'].solucion, /Registrar producto/, 'F-3 debe apuntar a dónde crearlo');
+assert.match(porFactura['F-3'].solucion, /Catálogo Maestro/, 'F-3 debe apuntar a dónde crearlo a mano si no se usa el botón');
+assert.equal(porFactura['F-3'].accion.tipo, 'crear_producto', 'F-3 debe traer una acción "crear_producto" accionable, no solo texto');
+assert.equal(porFactura['F-3'].accion.nombre, 'Limones sueltos');
 assert.match(porFactura['F-4'].solucion, /fecha/i, 'F-4 debe explicar qué hacer con la fecha del conteo');
+assert.equal(porFactura['F-4'].accion.tipo, 'ninguna', 'F-4 (fecha ya cubierta) no tiene una acción de un clic — es una decisión humana');
 
 // Con un nombre realmente parecido a uno del catálogo, la solución debe sugerir vincularlo como alias.
 const comprasConAlias = compras.concat([
@@ -97,6 +106,7 @@ const diagnosticoAlias = cargar('apps-script/Diagnostico.gs', {
   indiceCatalogo_: () => indiceMock_(catalogo),
   claveProducto_: claveProductoMock_,
   normalizar_: normalizarMock_,
+  normalizarUnidad_: normalizarUnidadMock_,
   aUnidadBase_: aUnidadBaseMock_,
   formatearFecha_: (v) => String(v).slice(0, 10)
 });
@@ -105,15 +115,18 @@ const f5 = resultadoAlias.problemas.find((p) => p.numero_factura === 'F-5');
 assert.ok(f5, 'F-5 ("Costilla curda", typo de "Costilla cruda") debe marcarse como fuera de catálogo');
 assert.match(f5.solucion, /Costilla cruda/, 'F-5 debe sugerir el parecido real "Costilla cruda" del catálogo');
 assert.match(f5.solucion, /nombre_fudo/, 'F-5 debe sugerir vincularlo como alias en vez de crear uno nuevo');
+assert.equal(f5.accion.tipo, 'vincular_alias', 'F-5 debe traer una acción "vincular_alias" accionable con un clic');
+assert.equal(f5.accion.catalogo_id, 'id-costilla', 'F-5 debe apuntar al id real de "Costilla cruda" en el catálogo');
+assert.equal(f5.accion.alias, 'Costilla curda');
 
 console.log('diagnosticarComprasNoSuman_: OK');
 
 // --- diagnosticarCatalogoDuplicados_ -------------------------------------------------------------
 
 const catalogoConDuplicados = [
-  { nombre_estandar: 'Limón' }, { nombre_estandar: 'Limón Tahití' }, // una es la otra con palabra de más
-  { nombre_estandar: 'Costilla cruda' }, { nombre_estandar: 'Costilla curda' }, // typo, distancia de edición 1
-  { nombre_estandar: 'Papa' }, { nombre_estandar: 'Queso' } // no relacionados, no deben marcarse
+  { id: 'id-limon', nombre_estandar: 'Limón' }, { id: 'id-limon-tahiti', nombre_estandar: 'Limón Tahití' }, // una es la otra con palabra de más
+  { id: 'id-costilla-cruda', nombre_estandar: 'Costilla cruda' }, { id: 'id-costilla-curda', nombre_estandar: 'Costilla curda' }, // typo, distancia de edición 1
+  { id: 'id-papa', nombre_estandar: 'Papa' }, { id: 'id-queso', nombre_estandar: 'Queso' } // no relacionados, no deben marcarse
 ];
 const diagnosticoCatalogo = cargar('apps-script/Diagnostico.gs', {
   SHEET_NAMES: { CATALOGO: 'catalogo' },
@@ -127,5 +140,10 @@ const pares = dupResultado.sospechosos.map((s) => [s.a, s.b].sort().join(' / '))
 assert.ok(pares.includes('Limón / Limón Tahití'), 'debe sugerir Limón / Limón Tahití como posible duplicado');
 assert.ok(pares.includes('Costilla cruda / Costilla curda'), 'debe sugerir el typo Costilla cruda / Costilla curda');
 assert.ok(!pares.some((p) => p.includes('Papa') || p.includes('Queso')), 'no debe marcar productos sin relación');
+
+// Cada par sospechoso debe traer el id de los dos productos — sin eso diagnostico.html no puede
+// ofrecer el botón "con cuál me quedo" para fusionarlos (catalogoFusionar_ en Catalogo.gs).
+const parLimon = dupResultado.sospechosos.find((s) => [s.a, s.b].sort().join(' / ') === 'Limón / Limón Tahití');
+assert.ok(parLimon.a_id && parLimon.b_id, 'el par Limón / Limón Tahití debe traer los ids de los dos productos');
 
 console.log('diagnosticarCatalogoDuplicados_: OK');
