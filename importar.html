@@ -136,9 +136,10 @@ document.getElementById('btn-probar-fudo-api').addEventListener('click', conBoto
   pre.textContent = 'Conectando…';
   try {
     const data = await llamar('fudo_api_probar_conexion', {});
-    pre.textContent = data.ok
-      ? `Campos detectados en cada venta:\n${data.campos_detectados.join(', ')}\n\nMuestra (${data.registros_recibidos} registro(s)):\n${JSON.stringify(data.muestra, null, 2)}`
-      : `Error: ${data.error}`;
+    // JSON.stringify de TODA la respuesta (no una plantilla armada a mano con solo algunos campos)
+    // — así cualquier campo nuevo que se agregue después en fudoApiProbarConexion_ (FudoApi.gs)
+    // aparece automáticamente aquí, sin tener que acordarse de tocar este archivo cada vez.
+    pre.textContent = JSON.stringify(data, null, 2);
   } catch (err) {
     pre.textContent = `No se pudo conectar: ${err.message}`;
   }
