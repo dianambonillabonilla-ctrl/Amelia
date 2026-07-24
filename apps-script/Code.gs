@@ -242,6 +242,9 @@ function handleRequest_(e, method) {
       case 'ajuste_inventario_avalar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(ajusteInventarioAvalar_(params.id, sesion.usuario));
+      case 'ajuste_inventario_corregir_unidad':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ajusteInventarioCorregirUnidad_(params.id, params.unidad, params.cantidad, sesion.usuario));
       case 'compra_registrar_factura':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario, params.opciones));

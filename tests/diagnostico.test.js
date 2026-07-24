@@ -50,7 +50,7 @@ const conteos = [
 ];
 const compras = [
   // Compra de Limón Tahití en kg (masa) mientras el conteo fue en unidades (piezas): unidad no combina, debe marcarse.
-  { tipo: 'Compra cruda', fecha: '2026-07-15', sede: 'San Antonio', producto: 'Limón Tahití', cantidad: 50, unidad: 'kg', proveedor: 'Mercamío', numero_factura: 'F-1' },
+  { id: 'ajuste-f1', tipo: 'Compra cruda', fecha: '2026-07-15', sede: 'San Antonio', producto: 'Limón Tahití', cantidad: 50, unidad: 'kg', proveedor: 'Mercamío', numero_factura: 'F-1' },
   // Compra de Costilla cruda DESPUÉS del último conteo y en la misma unidad: sí debe sumar (sin problema).
   { tipo: 'Compra cruda', fecha: '2026-07-20', sede: 'Capri', producto: 'Costilla cruda', cantidad: 1, unidad: 'kg', proveedor: 'Mercamío', numero_factura: 'F-2' },
   // Compra con nombre que no existe en el catálogo: debe marcarse.
@@ -85,15 +85,27 @@ assert.match(porFactura['F-3'].motivo, /no existe en el Catálogo Maestro/);
 assert.ok(porFactura['F-4'], 'F-4 (fecha igual a la del último conteo) debe marcarse');
 assert.match(porFactura['F-4'].motivo, /ese conteo ya la incluía/);
 
-// Cada problema debe traer también una solución concreta, no solo el diagnóstico del motivo.
-assert.match(porFactura['F-1'].solucion, /conteo físico/i, 'F-1 debe sugerir resolver la unidad con un conteo físico');
-assert.equal(porFactura['F-1'].accion.tipo, 'ninguna', 'F-1 (unidad distinta) no tiene una acción de un clic — es una decisión humana');
+// Cada problema debe traer también una solución concreta Y opciones de un clic — pedido real:
+// "necesito que me dé las opciones y finalmente yo decido qué hacer". Ningún caso se queda sin
+// nada para elegir, ni siquiera unidad distinta / fecha ya cubierta (antes solo tenían texto).
+assert.match(porFactura['F-1'].solucion, /elige abajo/i, 'F-1 debe remitir a las opciones, no solo explicar en texto');
+assert.equal(porFactura['F-1'].accion.tipo, 'opciones');
+assert.equal(porFactura['F-1'].accion.opciones.length, 2, 'F-1 (unidad distinta) debe traer las 2 opciones: corregir la compra, o ir a registrar el conteo');
+assert.equal(porFactura['F-1'].accion.opciones[0].id, 'corregir_unidad');
+assert.equal(porFactura['F-1'].accion.opciones[0].ajuste_id, 'ajuste-f1', 'la opción de corregir debe apuntar al id real de la compra');
+assert.equal(porFactura['F-1'].accion.opciones[0].unidad_sugerida, 'u', 'debe sugerir la unidad del último conteo (base "u")');
+assert.equal(porFactura['F-1'].accion.opciones[1].id, 'ir_a_conteo');
+
 assert.match(porFactura['F-3'].solucion, /ningún producto parecido/, 'F-3 ("Limones sueltos", sin parecido real en el catálogo) debe sugerir crearlo');
 assert.match(porFactura['F-3'].solucion, /Catálogo Maestro/, 'F-3 debe apuntar a dónde crearlo a mano si no se usa el botón');
-assert.equal(porFactura['F-3'].accion.tipo, 'crear_producto', 'F-3 debe traer una acción "crear_producto" accionable, no solo texto');
-assert.equal(porFactura['F-3'].accion.nombre, 'Limones sueltos');
-assert.match(porFactura['F-4'].solucion, /fecha/i, 'F-4 debe explicar qué hacer con la fecha del conteo');
-assert.equal(porFactura['F-4'].accion.tipo, 'ninguna', 'F-4 (fecha ya cubierta) no tiene una acción de un clic — es una decisión humana');
+assert.equal(porFactura['F-3'].accion.opciones.length, 1, 'F-3 sin parecido real solo debe traer la opción de crear');
+assert.equal(porFactura['F-3'].accion.opciones[0].id, 'crear_producto');
+assert.equal(porFactura['F-3'].accion.opciones[0].nombre, 'Limones sueltos');
+
+assert.match(porFactura['F-4'].solucion, /2026-07-05/, 'F-4 debe mencionar la fecha del último conteo en la solución');
+assert.equal(porFactura['F-4'].accion.opciones.length, 2, 'F-4 (fecha ya cubierta) debe traer las 2 opciones: confirmar, o ir a registrar el conteo');
+assert.equal(porFactura['F-4'].accion.opciones[0].id, 'confirmar_incluida');
+assert.equal(porFactura['F-4'].accion.opciones[1].id, 'ir_a_conteo');
 
 // Con un nombre realmente parecido a uno del catálogo, la solución debe sugerir vincularlo como alias.
 const comprasConAlias = compras.concat([
@@ -114,10 +126,14 @@ const resultadoAlias = diagnosticoAlias.diagnosticarComprasNoSuman_();
 const f5 = resultadoAlias.problemas.find((p) => p.numero_factura === 'F-5');
 assert.ok(f5, 'F-5 ("Costilla curda", typo de "Costilla cruda") debe marcarse como fuera de catálogo');
 assert.match(f5.solucion, /Costilla cruda/, 'F-5 debe sugerir el parecido real "Costilla cruda" del catálogo');
-assert.match(f5.solucion, /nombre_fudo/, 'F-5 debe sugerir vincularlo como alias en vez de crear uno nuevo');
-assert.equal(f5.accion.tipo, 'vincular_alias', 'F-5 debe traer una acción "vincular_alias" accionable con un clic');
-assert.equal(f5.accion.catalogo_id, 'id-costilla', 'F-5 debe apuntar al id real de "Costilla cruda" en el catálogo');
-assert.equal(f5.accion.alias, 'Costilla curda');
+// Con un parecido encontrado, deben ofrecerse LAS DOS opciones (vincular Y crear aparte) — pedido
+// real: "yo decido qué hacer", no que el diagnóstico elija solo cuál de las dos aplica.
+assert.equal(f5.accion.opciones.length, 2, 'F-5 con un parecido encontrado debe traer las 2 opciones: vincular o crear aparte');
+assert.equal(f5.accion.opciones[0].id, 'vincular_alias');
+assert.equal(f5.accion.opciones[0].catalogo_id, 'id-costilla', 'la opción de vincular debe apuntar al id real de "Costilla cruda" en el catálogo');
+assert.equal(f5.accion.opciones[0].alias, 'Costilla curda');
+assert.equal(f5.accion.opciones[1].id, 'crear_producto');
+assert.equal(f5.accion.opciones[1].nombre, 'Costilla curda');
 
 console.log('diagnosticarComprasNoSuman_: OK');
 
@@ -147,3 +163,15 @@ const parLimon = dupResultado.sospechosos.find((s) => [s.a, s.b].sort().join(' /
 assert.ok(parLimon.a_id && parLimon.b_id, 'el par Limón / Limón Tahití debe traer los ids de los dos productos');
 
 console.log('diagnosticarCatalogoDuplicados_: OK');
+
+// --- sonNombresParecidos_: pedido real "que busque bien nombres similares porque sí los tiene" ---
+// (antes solo agarraba palabra de más AL FINAL o una distancia de edición muy corta — se perdía
+// casos reales como un conector "de" de más EN MEDIO del nombre, o palabras en otro orden).
+const parecidos_ = diagnosticoCatalogo.sonNombresParecidos_;
+assert.ok(parecidos_('aceite girasol', 'aceite de girasol'), 'debe reconocer un conector "de" de más en medio del nombre');
+assert.ok(parecidos_('aceite de girasol', 'aceite girasol'), 'debe funcionar sin importar el orden de los argumentos');
+assert.ok(parecidos_('panela organica', 'panela'), 'debe seguir agarrando una palabra de más al final (caso que ya funcionaba)');
+assert.ok(parecidos_('bolsas negras grandes', 'bolsas grandes negras'), 'debe reconocer las mismas palabras en otro orden');
+assert.ok(!parecidos_('papa', 'queso'), 'productos sin ninguna relación real no deben marcarse parecidos');
+
+console.log('sonNombresParecidos_: OK');

@@ -112,10 +112,12 @@ function diagnosticarVentasFudo_() {
  *     conteo ya la incluía.
  * Pedido real: "todo lo que aparece en la compra no está sumando" — antes solo se sospechaba caso
  * por caso (ej. Limón Tahití); esto lo revisa para TODAS las compras de una vez. Cada problema
- * trae también una "solución" concreta: `solucion` en texto para leer, y `accion` estructurada
- * (ver resolverNombreNoEnCatalogo_) para que diagnostico.html pueda ofrecer un botón que de
- * verdad arregle el caso — crear el producto y vincularlo (pedido real: "si aceite de freidora no
- * está creado pues debió crearlo y unirlo al disponible hoy") — en vez de solo explicar qué hacer.
+ * trae también `solucion` (texto para leer) y `accion.opciones` (lista de decisiones concretas
+ * que diagnostico.html convierte en botones — ver resolverOpcionesNombreNoEnCatalogo_ para el caso
+ * de nombre fuera de catálogo, e inline para unidad distinta / fecha ya cubierta). Pedido real:
+ * "necesito que me dé las opciones y finalmente yo decido qué hacer" — ningún caso se deja solo
+ * con texto explicando qué hacer a mano; SIEMPRE hay algo para elegir con un clic, aunque la
+ * decisión final (cuál valor es el correcto) siga siendo humana.
  */
 function diagnosticarComprasNoSuman_() {
   const indice = indiceCatalogo_();
@@ -146,24 +148,39 @@ function diagnosticarComprasNoSuman_() {
 
     let motivo = '';
     let solucion = '';
-    let accion = { tipo: 'ninguna' };
+    let opciones = [];
     if (!enCatalogo) {
       motivo = 'El nombre "' + a.producto + '" no existe en el Catálogo Maestro — se cuenta como un producto aparte, nunca suma al real.';
-      const resuelto = resolverNombreNoEnCatalogo_(a.producto, a.unidad, catalogo);
+      const resuelto = resolverOpcionesNombreNoEnCatalogo_(a.producto, a.unidad, catalogo);
       solucion = resuelto.texto;
-      accion = resuelto.accion;
+      opciones = resuelto.opciones;
     } else if (ultimoConteo && ultimoConteo.unidad && ultimoConteo.unidad !== base.unidad) {
       motivo = 'La compra quedó en "' + a.unidad + '" pero el último conteo físico de este producto en ' + sede + ' fue en una unidad distinta — no se pueden combinar, la compra se ignora por completo.';
-      solucion = 'Revisa cuál unidad es la correcta para "' + a.producto + '" en ' + sede + ': si "' + a.unidad + '" es la buena, registra ya un conteo físico en esa unidad (Registrar conteo) para que quede como la vigente y las próximas compras sumen; si fue un error al capturar la compra, usa la unidad del último conteo físico la próxima vez.';
+      solucion = 'Decide cuál unidad es la correcta para "' + a.producto + '" en ' + sede + ' y elige abajo — el diagnóstico no lo adivina solo.';
+      opciones = [
+        {
+          id: 'corregir_unidad', etiqueta: 'La unidad del último conteo ("' + ultimoConteo.unidad + '") es la correcta — corregir esta compra',
+          ajuste_id: a.id, unidad_sugerida: ultimoConteo.unidad, unidad_actual: a.unidad, cantidad_actual: a.cantidad, producto: a.producto
+        },
+        {
+          id: 'ir_a_conteo', etiqueta: 'La unidad de la compra ("' + a.unidad + '") es la correcta — voy a registrar un conteo físico nuevo en esa unidad',
+          info: true
+        }
+      ];
     } else if (ultimoConteo && fechaCompra <= ultimoConteo.fecha) {
       motivo = 'La fecha de la compra (' + fechaCompra + ') es igual o anterior al último conteo físico (' + ultimoConteo.fecha + ') — se asume que ese conteo ya la incluía.';
-      solucion = 'No requiere acción si el conteo del ' + ultimoConteo.fecha + ' en ' + sede + ' ya se hizo con la mercancía de esta compra ya recibida y contada. Si el conteo se hizo ANTES de recibirla, corrige la fecha de ese conteo o registra uno nuevo (Registrar conteo) después del ' + fechaCompra + ' para que la compra quede reflejada.';
+      solucion = 'Decide si el conteo del ' + ultimoConteo.fecha + ' en ' + sede + ' de verdad ya incluía esta compra y elige abajo.';
+      opciones = [
+        { id: 'confirmar_incluida', etiqueta: 'Sí, el conteo del ' + ultimoConteo.fecha + ' ya incluía esta compra — no hacer nada', info: true },
+        { id: 'ir_a_conteo', etiqueta: 'No, el conteo se hizo ANTES de recibir esta compra (' + fechaCompra + ') — voy a registrar uno nuevo', info: true }
+      ];
     }
 
     if (motivo) {
       problemas.push({
         fecha: fechaCompra, producto: a.producto, sede: sede, cantidad: a.cantidad, unidad: a.unidad,
-        proveedor: a.proveedor || '', numero_factura: a.numero_factura || '', motivo: motivo, solucion: solucion, accion: accion
+        proveedor: a.proveedor || '', numero_factura: a.numero_factura || '', motivo: motivo, solucion: solucion,
+        accion: { tipo: 'opciones', opciones: opciones }
       });
     }
   });
@@ -174,47 +191,70 @@ function diagnosticarComprasNoSuman_() {
 }
 
 /**
- * Sugerencia concreta y ACCIONABLE para una compra cuyo nombre de producto no existe en el
- * Catálogo Maestro: si hay un producto del catálogo con nombre muy parecido (misma heurística que
- * diagnosticarCatalogoDuplicados_, ver sonNombresParecidos_), probablemente es un alias/typo del
- * mismo producto — la acción es vincularlo como nombre_fudo del que ya existe (catalogo_guardar).
- * Si no hay nada parecido, la acción es crearlo (catalogo_guardar sin id). En los dos casos
- * `accion` trae ya todos los datos que necesita el botón de diagnostico.html para hacerlo con un
- * clic — no es solo texto explicando qué hacer a mano.
+ * Opciones concretas y ACCIONABLES para una compra cuyo nombre de producto no existe en el
+ * Catálogo Maestro. SIEMPRE incluye "crear como producto nuevo" (catalogo_guardar sin id); si
+ * además hay un producto del catálogo con nombre muy parecido (ver sonNombresParecidos_), se
+ * agrega también "vincular como alias" del que ya existe (catalogo_guardar con nombre_fudo) — las
+ * dos se muestran juntas para que decidas tú cuál aplica, en vez de que el diagnóstico elija solo.
  */
-function resolverNombreNoEnCatalogo_(nombreCompra, unidadCompra, catalogo) {
+function resolverOpcionesNombreNoEnCatalogo_(nombreCompra, unidadCompra, catalogo) {
   const norm = normalizar_(nombreCompra);
   const parecido = catalogo.find(function (c) { return sonNombresParecidos_(norm, normalizar_(c.nombre_estandar)); });
+  const opciones = [];
+  let texto;
   if (parecido) {
-    return {
-      texto: 'Probablemente es el mismo producto que "' + parecido.nombre_estandar + '" escrito distinto — ' +
-        'vincúlalo con el botón de abajo (o a mano desde Catálogo Maestro agregando "' + nombreCompra + '" como ' +
-        'su nombre alterno/nombre_fudo).',
-      accion: {
-        tipo: 'vincular_alias', catalogo_id: parecido.id, catalogo_nombre: parecido.nombre_estandar,
-        alias: nombreCompra, nombre_fudo_actual: parecido.nombre_fudo || ''
-      }
-    };
+    texto = 'Probablemente es el mismo producto que "' + parecido.nombre_estandar + '" escrito distinto — elige abajo ' +
+      'si quieres vincularlo a ese producto o crearlo como uno nuevo aparte.';
+    opciones.push({
+      id: 'vincular_alias', etiqueta: 'Vincular a "' + parecido.nombre_estandar + '" (ya existe, escrito distinto)',
+      catalogo_id: parecido.id, catalogo_nombre: parecido.nombre_estandar, alias: nombreCompra,
+      nombre_fudo_actual: parecido.nombre_fudo || ''
+    });
+  } else {
+    texto = 'No hay ningún producto parecido en el catálogo — créalo con el botón de abajo (o a mano desde Catálogo ' +
+      'Maestro) con nombre_estandar "' + nombreCompra + '" (corrígelo antes si fue un error de tipeo).';
   }
-  return {
-    texto: 'No hay ningún producto parecido en el catálogo — créalo con el botón de abajo (o a mano desde ' +
-      'Catálogo Maestro) con nombre_estandar "' + nombreCompra + '" (corrígelo antes si fue un error de tipeo).',
-    accion: { tipo: 'crear_producto', nombre: nombreCompra, unidad_base: normalizarUnidad_(unidadCompra) || '' }
-  };
+  opciones.push({
+    id: 'crear_producto', etiqueta: 'Crear "' + nombreCompra + '" como producto nuevo',
+    nombre: nombreCompra, unidad_base: normalizarUnidad_(unidadCompra) || ''
+  });
+  return { texto: texto, opciones: opciones };
+}
+
+// Conectores que no aportan nada al comparar nombres de producto — "Aceite Girasol" y "Aceite de
+// Girasol" deben tratarse como el mismo producto, no como dos nombres distintos solo porque uno
+// tiene un "de" de más en medio.
+const CONECTORES_NOMBRE_PRODUCTO_ = ['de', 'del', 'la', 'las', 'el', 'los', 'y', 'con', 'sin', 'para'];
+
+function palabrasSignificativas_(nombreNormalizado) {
+  return nombreNormalizado.split(' ').filter(function (p) { return p && CONECTORES_NOMBRE_PRODUCTO_.indexOf(p) === -1; });
 }
 
 /**
  * Heurística compartida para decidir si dos nombres normalizados probablemente son el mismo
- * producto escrito distinto: uno es el otro con palabra(s) de más, o la distancia de edición
- * entre ellos es chica para su tamaño (typo, singular vs plural). Usada tanto por
- * diagnosticarCatalogoDuplicados_ (catálogo contra sí mismo) como por solucionNombreNoEnCatalogo_
- * (nombre de una compra contra el catálogo).
+ * producto escrito distinto. Compara por PALABRAS (ignorando conectores como "de"/"la"), no solo
+ * letra por letra, para agarrar casos reales que un simple prefijo o una distancia de edición
+ * corta se pierden: "Aceite Girasol" vs "Aceite de Girasol" (conector de más en medio), nombres
+ * con las mismas palabras en otro orden, o una palabra de más/de menos en cualquier posición (no
+ * solo al final, como "Limón" vs "Limón Tahití"). Si por palabras no calzan, cae a distancia de
+ * edición proporcional al tamaño del nombre más corto (typos: "Costilla cruda"/"Costilla curda").
+ * Usada tanto por diagnosticarCatalogoDuplicados_ (catálogo contra sí mismo) como por
+ * resolverOpcionesNombreNoEnCatalogo_ (nombre de una compra contra el catálogo).
  */
 function sonNombresParecidos_(na, nb) {
   if (na === nb) return true;
-  const prefijo = na.indexOf(nb + ' ') === 0 || nb.indexOf(na + ' ') === 0;
-  const umbral = Math.min(na.length, nb.length) <= 4 ? 1 : 2;
-  return prefijo || distanciaEdicion_(na, nb) <= umbral;
+  const wa = palabrasSignificativas_(na);
+  const wb = palabrasSignificativas_(nb);
+  if (wa.length && wb.length) {
+    const masCorta = wa.length <= wb.length ? wa : wb;
+    const masLarga = wa.length <= wb.length ? wb : wa;
+    // Todas las palabras del nombre más corto están en el más largo, en cualquier posición: uno es
+    // el otro con palabra(s) de más/de menos (cubre también el caso de mismo largo, mismas palabras).
+    if (masCorta.every(function (p) { return masLarga.indexOf(p) !== -1; })) return true;
+  }
+  const distancia = distanciaEdicion_(na, nb);
+  const umbral = Math.max(1, Math.floor(Math.min(na.length, nb.length) * 0.25));
+  return distancia <= umbral;
 }
 
 /**
