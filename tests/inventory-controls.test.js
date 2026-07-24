@@ -33,6 +33,19 @@ function indiceCatalogoVacioMock_() { return {}; }
 // Turnos.gs/Gestiones.gs reconocen el mismo producto contado/comprado bajo su alias de FUDO.
 const indiceConAliasFudo = { 'coca cola 350': 'Coca-Cola Original 350 ml' };
 
+// LockService.getScriptLock() ahora envuelve conteoRegistrar_/trasladoConfirmar_/trasladoObservar_/
+// compraRegistrarFactura_ (auditoría de seguridad, jul 2026: sin esto, dos solicitudes simultáneas
+// podían leer el mismo estado antes de que ninguna escribiera — duplicados/confirmaciones perdidas).
+// Mock siempre "libre" (tryLock true) — la concurrencia real no es lo que prueban estos tests.
+function lockServiceMock_() {
+  return { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+}
+// Simula el lock ya tomado por otra solicitud (tryLock devuelve false) — para probar que la
+// función corta en seco con un error legible en vez de seguir y arriesgar un duplicado.
+function lockServiceBloqueadoMock_(seLibero) {
+  return { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => { if (seLibero) seLibero.valor = true; } }) };
+}
+
 const ajustesGuardados = [];
 const compras = cargar('apps-script/Compras.gs', {
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -52,7 +65,8 @@ const compras = cargar('apps-script/Compras.gs', {
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   // gestionAutoResolverPorCompra_ real vive en Gestiones.gs (ver tests/gestiones.test.js) — aquí
   // solo hace falta que exista para que compraRegistrarFactura_ no reviente al llamarla.
-  gestionAutoResolverPorCompra_: () => {}
+  gestionAutoResolverPorCompra_: () => {},
+  LockService: lockServiceMock_()
 });
 
 const usuario = { nombre: 'Diana', sede: 'Ambas' };
@@ -146,6 +160,27 @@ assert.equal(resultadoOtraSede.ok, true, 'la MISMA factura F-1 para una sede que
 
 const resultadoConfirmado = compras.compraRegistrarFactura_(factura, usuario, { confirmar_duplicado: true });
 assert.equal(resultadoConfirmado.ok, true, 'con confirmar_duplicado, si de verdad se quiere repetir, debe dejar guardar');
+
+// --- compraRegistrarFactura_ no debe seguir si el lock ya está tomado por otra solicitud --------
+// (auditoría de seguridad, jul 2026: sin esto, dos solicitudes iguales simultáneas podían pasar
+// ambas la comprobación de duplicado antes de que ninguna escribiera).
+const comprasBloqueadas = cargar('apps-script/Compras.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  Utilities: { getUuid: () => 'no-debe-usarse' },
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  leerTabla_: () => [],
+  appendRowsFromObjs_: () => { throw new Error('no debe llegar a escribir con el lock ocupado'); },
+  ajusteInventarioValidar_: () => ({ ok: true }),
+  ajusteInventarioFila_: (item) => item,
+  catalogoAsegurar_: () => {},
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  gestionAutoResolverPorCompra_: () => {},
+  LockService: lockServiceBloqueadoMock_()
+});
+const resultadoCompraBloqueada = comprasBloqueadas.compraRegistrarFactura_(factura, usuario);
+assert.equal(resultadoCompraBloqueada.ok, false, 'con el lock ocupado, compraRegistrarFactura_ no debe registrar nada');
+assert.match(resultadoCompraBloqueada.error, /espera un momento/);
 
 const traslados = [
   { fecha: '2026-07-20', timestamp_recibe: '2026-07-21', estado: 'Resuelto', producto: 'Costilla', unidad: 'kg', cantidad_enviada: 5, cantidad_recibida: 3, sede_origen: 'Centro de Producción', sede_destino: 'Capri' }
@@ -862,6 +897,35 @@ assert.equal(
   'un rol inválido debe seguir rechazándose incluso al actualizar'
 );
 
+// --- Cambiar/restablecer contraseña debe cerrar las sesiones existentes -------------------------
+// (auditoría de seguridad, jul 2026: antes ninguna de las dos tocaba Sesiones — un token robado
+// seguía funcionando hasta sus 12h de vida aunque la víctima ya hubiera cambiado la contraseña).
+let sesionesEliminadasDe = [];
+const usuariosPasswordMod = cargar('apps-script/Usuarios.gs', {
+  SHEET_NAMES: { USUARIOS: 'usuarios' },
+  requiereAdmin_: () => {},
+  leerTabla_: () => [{ id: 'u1', password_hash: 'hash-actual', salt: 'salt1' }],
+  verificarPassword_: (pw, fila) => ({ valido: pw === 'correcta', necesitaMigracion: false }),
+  establecerPassword_: () => {},
+  eliminarSesionesDeUsuario_: (id) => { sesionesEliminadasDe.push(id); },
+  PASSWORD_LARGO_MINIMO: 8
+});
+
+sesionesEliminadasDe = [];
+const resultadoCambio = usuariosPasswordMod.cambiarPassword_({ id: 'u1' }, 'correcta', 'unaNuevaBuena1');
+assert.equal(resultadoCambio.ok, true);
+assert.deepEqual(sesionesEliminadasDe, ['u1'], 'cambiarPassword_ debe cerrar todas las sesiones del usuario tras el cambio');
+
+sesionesEliminadasDe = [];
+const resultadoCambioMal = usuariosPasswordMod.cambiarPassword_({ id: 'u1' }, 'incorrecta', 'unaNuevaBuena1');
+assert.equal(resultadoCambioMal.ok, false);
+assert.deepEqual(sesionesEliminadasDe, [], 'si la contraseña actual no es correcta, no debe tocar sesiones');
+
+sesionesEliminadasDe = [];
+const resultadoReset = usuariosPasswordMod.usuarioResetearPassword_('u1', 'otraNuevaBuena1', admin);
+assert.equal(resultadoReset.ok, true);
+assert.deepEqual(sesionesEliminadasDe, ['u1'], 'usuarioResetearPassword_ (Administrador) también debe cerrar todas las sesiones del usuario');
+
 // --- Auditoría de sedes: sedeConsultaPermitida_ (Code.gs) no debe dejar consultar otra sede -----
 // (encontrado en esta auditoría: la función existía en Code.gs pero NUNCA se llamaba desde
 // ninguna acción del router — conteo_listar, ajustes_inventario_listar, compras_listar,
@@ -908,12 +972,38 @@ const conteosRegistrarMod = cargar('apps-script/Conteos.gs', {
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
   claveProducto_: claveProductoMock_,
-  turnoOportuno_: () => 'Cierre de turno'
+  turnoOportuno_: () => 'Cierre de turno',
+  LockService: lockServiceMock_()
 });
 const itemsCentro = [{ fecha: '2026-07-21', sede: 'Centro de Producción', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
 assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCentro, encargadaSA).ok, true, 'San Antonio debe poder registrar un conteo para Centro de Producción');
 const itemsCapriConteo = [{ fecha: '2026-07-21', sede: 'Capri', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
 assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCapriConteo, encargadaSA).ok, false, 'San Antonio NO debe poder registrar un conteo para Capri');
+
+// --- conteoRegistrar_ no debe seguir si el lock ya está tomado por otra solicitud ---------------
+// (auditoría de seguridad, jul 2026: sin esto, dos guardados simultáneos del mismo cierre podían
+// insertar dos filas en vez de que el segundo corrija al primero).
+const libero = { valor: false };
+const conteosBloqueadoMod = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo', CONTEOS: 'conteos' },
+  leerTabla_: () => [],
+  normalizar_: (v) => String(v || '').trim().toLowerCase(),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  catalogoAsegurar_: () => {},
+  appendRowFromObj_: () => { throw new Error('no debe llegar a escribir con el lock ocupado'); },
+  Utilities: { getUuid: () => 'conteo-id' },
+  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
+  revisarAlertas_: () => {},
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_,
+  turnoOportuno_: () => 'Cierre de turno',
+  LockService: lockServiceBloqueadoMock_(libero)
+});
+const resultadoConteoBloqueado = conteosBloqueadoMod.conteoRegistrar_(itemsCentro, encargadaSA);
+assert.equal(resultadoConteoBloqueado.ok, false, 'con el lock ocupado, conteoRegistrar_ no debe registrar nada');
+assert.match(resultadoConteoBloqueado.error, /espera un momento/);
 
 // --- conteoRegistrar_: omitir_obligatorios_del_dia para los insumos obligatorios de producción --
 // (pedido real: "el día que se registra producción debe de tener todos esos items obligatorios"
@@ -937,7 +1027,8 @@ const conteosProduccionMod = cargar('apps-script/Conteos.gs', {
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
   claveProducto_: claveProductoMock_,
-  turnoOportuno_: () => 'Cierre de turno'
+  turnoOportuno_: () => 'Cierre de turno',
+  LockService: lockServiceMock_()
 });
 const itemsInsumoObligatorio = [{ fecha: '2026-07-21', sede: 'San Antonio', punto_conteo: 'Cocina terraza', producto: 'Vinagre balsámico', unidad: 'ml', cantidad: 500 }];
 assert.equal(
@@ -1000,7 +1091,8 @@ function mockTrasladoResolver_(campos) {
     sheet_: () => ({
       getDataRange: () => ({ getValues: () => data }),
       getRange: (fila, columna) => ({ setValue: (v) => { data[fila - 1][columna - 1] = v; } })
-    })
+    }),
+    LockService: lockServiceMock_()
   });
 }
 const resolverCentro = mockTrasladoResolver_({ id: 'tr1', sede_origen: 'Centro de Producción', sede_destino: 'Capri', estado: 'Con observación' });
@@ -1023,6 +1115,7 @@ function mockTrasladoObservar_(campos) {
     requiereRol_: () => {},
     sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
     destinatariosAlerta_: () => [],
+    LockService: lockServiceMock_(),
     sheet_: () => ({
       getDataRange: () => ({ getValues: () => data }),
       getRange: (fila, columna) => ({ setValue: (v) => { data[fila - 1][columna - 1] = v; } })
@@ -1035,6 +1128,36 @@ assert.equal(observarPropio.trasladoObservar_('ob1', 3, 'llegó menos de lo envi
 const observarAjeno = mockTrasladoObservar_({ id: 'ob2', sede_origen: 'Capri', sede_destino: 'Capri', estado: 'Enviado', cantidad_enviada: 5 });
 assert.throws(() => observarAjeno.trasladoObservar_('ob2', 3, 'llegó menos de lo enviado', encargadaSA), /distinta a la tuya/,
   'San Antonio NO debe poder reportar un problema en un traslado puramente de Capri');
+
+// --- confirmar_/observar_/resolver_ de traslados no deben seguir si el lock ya está tomado -------
+// (auditoría de seguridad, jul 2026: sin esto, confirmar y observar el mismo traslado casi a la
+// vez podían leer ambos el mismo estado "Enviado" antes de que ninguno escribiera).
+function mockTrasladoBloqueado_(campos) {
+  const data = [observarHeaders, filaObservar_(campos)];
+  return cargar('apps-script/Traslados.gs', {
+    SHEET_NAMES: { TRASLADOS: 'traslados' },
+    leerTabla_: () => [],
+    requiereRol_: () => {},
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    destinatariosAlerta_: () => [],
+    LockService: lockServiceBloqueadoMock_(),
+    sheet_: () => ({
+      getDataRange: () => ({ getValues: () => data }),
+      getRange: () => { throw new Error('no debe llegar a escribir con el lock ocupado'); }
+    })
+  });
+}
+const trasladoBloqueado = { id: 'lb1', sede_origen: 'San Antonio', sede_destino: 'San Antonio', estado: 'Enviado', cantidad_enviada: 5 };
+const confirmarBloqueado = mockTrasladoBloqueado_(trasladoBloqueado).trasladoConfirmar_('lb1', 5, encargadaSA);
+assert.equal(confirmarBloqueado.ok, false, 'con el lock ocupado, trasladoConfirmar_ no debe actualizar nada');
+assert.match(confirmarBloqueado.error, /espera un momento/);
+const observarBloqueado = mockTrasladoBloqueado_(trasladoBloqueado).trasladoObservar_('lb1', 3, 'algo pasó', encargadaSA);
+assert.equal(observarBloqueado.ok, false, 'con el lock ocupado, trasladoObservar_ no debe actualizar nada');
+assert.match(observarBloqueado.error, /espera un momento/);
+const trasladoBloqueadoObs = Object.assign({}, trasladoBloqueado, { estado: 'Con observación' });
+const resolverBloqueado = mockTrasladoBloqueado_(trasladoBloqueadoObs).trasladoResolver_('lb1', 'listo', encargadaSA);
+assert.equal(resolverBloqueado.ok, false, 'con el lock ocupado, trasladoResolver_ no debe actualizar nada');
+assert.match(resolverBloqueado.error, /espera un momento/);
 
 // --- Auditoría de sedes: Conciliación solo debe mostrar la parte de la sede del usuario ---------
 // (pedido explícito: "si es conciliacion solo sepa que cuadra su parte" — antes calcularConciliacion_
@@ -1538,7 +1661,8 @@ function cargarConteosConTurno_(turnoDevuelto) {
     sedeEscrituraPermitida_: () => true,
     indiceCatalogo_: indiceCatalogoVacioMock_,
     claveProducto_: claveProductoMock_,
-    turnoOportuno_: () => turnoDevuelto
+    turnoOportuno_: () => turnoDevuelto,
+    LockService: lockServiceMock_()
   });
 }
 const itemInicio = [{ fecha: '2026-07-22', sede: 'Capri', punto_conteo: 'Bodega', producto: 'Sal Marina', unidad: 'g', cantidad: 200 }];

@@ -91,50 +91,74 @@ function trasladoActualizar_(id, cambios) {
 }
 
 function trasladoConfirmar_(id, cantidadRecibida, usuario) {
-  const encontrado = trasladoBuscarFila_(id);
-  if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
-  const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
-  if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
-  requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'recibir');
-
-  const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
-  const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
-  if (isNaN(recibida) || recibida <= 0 || recibida > enviada) {
-    return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
+  // Lee el estado actual y decide si puede confirmarse ANTES de escribir — bajo lock de todo el
+  // script, para que dos solicitudes simultáneas (ej. confirmar y observar el mismo traslado casi
+  // a la vez) no lean ambas "Enviado" antes de que ninguna escriba, dejando un resultado
+  // contradictorio según cuál terminó de escribir último (auditoría de seguridad, jul 2026).
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Este traslado se está actualizando ahora mismo — espera un momento y vuelve a intentarlo.' };
   }
+  try {
+    const encontrado = trasladoBuscarFila_(id);
+    if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
+    const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
+    if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+    requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'recibir');
 
-  return trasladoActualizar_(id, {
-    estado: 'Confirmado',
-    usuario_recibe: usuario.nombre,
-    timestamp_recibe: new Date(),
-    cantidad_recibida: recibida
-  });
+    const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+    const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
+    if (isNaN(recibida) || recibida <= 0 || recibida > enviada) {
+      return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
+    }
+
+    return trasladoActualizar_(id, {
+      estado: 'Confirmado',
+      usuario_recibe: usuario.nombre,
+      timestamp_recibe: new Date(),
+      cantidad_recibida: recibida
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function trasladoObservar_(id, cantidadRecibida, observacion, usuario) {
   if (!observacion || !String(observacion).trim()) return { ok: false, error: 'Escribe qué pasó con el traslado' };
-  const encontrado = trasladoBuscarFila_(id);
-  if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
-  const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
-  if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
-  // BUG DE SEGURIDAD REAL: a diferencia de trasladoConfirmar_, esto nunca validaba la sede — un
-  // usuario de una sola sede podía reportar una observación (cantidad recibida falsa/menor) sobre
-  // un traslado que ni siquiera es suyo (ni origen ni destino), algo que sí estaba bloqueado
-  // correctamente al confirmar un traslado normal.
-  requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'reportar un problema con');
-  const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
-  const recibida = Number(cantidadRecibida);
-  if (isNaN(recibida) || recibida < 0 || recibida >= enviada) {
-    return { ok: false, error: 'En una observación, la cantidad recibida debe estar entre cero y ser menor que la enviada' };
-  }
 
-  const resultado = trasladoActualizar_(id, {
-    estado: 'Con observación',
-    usuario_recibe: usuario.nombre,
-    timestamp_recibe: new Date(),
-    cantidad_recibida: recibida,
-    observacion: String(observacion).trim()
-  });
+  // Mismo lock que trasladoConfirmar_ — comprobar el estado y decidir si puede observarse debe
+  // quedar protegido contra una confirmación/observación simultánea del mismo traslado.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Este traslado se está actualizando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  let resultado;
+  try {
+    const encontrado = trasladoBuscarFila_(id);
+    if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
+    const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
+    if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+    // BUG DE SEGURIDAD REAL: a diferencia de trasladoConfirmar_, esto nunca validaba la sede — un
+    // usuario de una sola sede podía reportar una observación (cantidad recibida falsa/menor) sobre
+    // un traslado que ni siquiera es suyo (ni origen ni destino), algo que sí estaba bloqueado
+    // correctamente al confirmar un traslado normal.
+    requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'reportar un problema con');
+    const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+    const recibida = Number(cantidadRecibida);
+    if (isNaN(recibida) || recibida < 0 || recibida >= enviada) {
+      return { ok: false, error: 'En una observación, la cantidad recibida debe estar entre cero y ser menor que la enviada' };
+    }
+
+    resultado = trasladoActualizar_(id, {
+      estado: 'Con observación',
+      usuario_recibe: usuario.nombre,
+      timestamp_recibe: new Date(),
+      cantidad_recibida: recibida,
+      observacion: String(observacion).trim()
+    });
+  } finally {
+    lock.releaseLock();
+  }
 
   if (resultado.ok) {
     const traslado = leerTabla_(SHEET_NAMES.TRASLADOS).find(function (r) { return r.id === id; });
@@ -151,22 +175,34 @@ function trasladoObservar_(id, cantidadRecibida, observacion, usuario) {
 
 function trasladoResolver_(id, notaResolucion, usuario) {
   requiereRol_(usuario, ['Administrador', 'Encargado']);
-  const encontrado = trasladoBuscarFila_(id);
-  if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
-  const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
-  if (estadoActual !== 'Con observación') return { ok: false, error: 'Solo se pueden resolver traslados con una observación pendiente' };
-  const origen = encontrado.valores[encontrado.headers.indexOf('sede_origen')];
-  const destino = encontrado.valores[encontrado.headers.indexOf('sede_destino')];
-  if (!sedeEscrituraPermitida_(usuario, origen) && !sedeEscrituraPermitida_(usuario, destino)) {
-    throw new Error('Solo puedes resolver traslados relacionados con tu sede');
-  }
 
-  return trasladoActualizar_(id, {
-    estado: 'Resuelto',
-    resuelto_por: usuario.nombre,
-    timestamp_resuelto: new Date(),
-    nota_resolucion: notaResolucion || ''
-  });
+  // Mismo lock que confirmar_/observar_ — comprobar "Con observación" y resolver es el mismo
+  // patrón de lectura-modificación-escritura que necesita protección contra dos resoluciones (o
+  // una resolución y otra acción) simultáneas sobre el mismo traslado.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Este traslado se está actualizando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const encontrado = trasladoBuscarFila_(id);
+    if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
+    const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
+    if (estadoActual !== 'Con observación') return { ok: false, error: 'Solo se pueden resolver traslados con una observación pendiente' };
+    const origen = encontrado.valores[encontrado.headers.indexOf('sede_origen')];
+    const destino = encontrado.valores[encontrado.headers.indexOf('sede_destino')];
+    if (!sedeEscrituraPermitida_(usuario, origen) && !sedeEscrituraPermitida_(usuario, destino)) {
+      throw new Error('Solo puedes resolver traslados relacionados con tu sede');
+    }
+
+    return trasladoActualizar_(id, {
+      estado: 'Resuelto',
+      resuelto_por: usuario.nombre,
+      timestamp_resuelto: new Date(),
+      nota_resolucion: notaResolucion || ''
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function requiereSedeTraslado_(usuario, sede, accion) {

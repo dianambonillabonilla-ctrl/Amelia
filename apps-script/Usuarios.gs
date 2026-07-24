@@ -99,6 +99,9 @@ function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
   if (!resultado.valido) return { ok: false, error: 'La contraseña actual no es correcta' };
 
   establecerPassword_(fila.id, passwordNueva);
+  // Cierra todas las sesiones (incluida la actual) — un token robado no debe seguir sirviendo
+  // después de que la víctima cambió su contraseña pensando que eso bastaba (ver Code.gs).
+  eliminarSesionesDeUsuario_(fila.id);
   return { ok: true };
 }
 
@@ -118,6 +121,9 @@ function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
   if (!existe) return { ok: false, error: 'No se encontró el usuario' };
 
   establecerPassword_(id, passwordNueva);
+  // Mismo motivo que en cambiarPassword_: un restablecimiento por Administrador debe cerrar
+  // cualquier sesión ya abierta con la contraseña vieja (ej. una cuenta comprometida).
+  eliminarSesionesDeUsuario_(id);
   return { ok: true };
 }
 

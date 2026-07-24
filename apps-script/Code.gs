@@ -501,6 +501,24 @@ function eliminarSesion_(token) {
   }
 }
 
+/**
+ * Cierra TODAS las sesiones de un usuario (todos sus tokens activos, no solo el actual) — se llama
+ * después de cambiar/restablecer una contraseña (Usuarios.gs). Sin esto, un token robado seguía
+ * funcionando hasta sus 12 horas de vida aunque la víctima ya hubiera cambiado la contraseña
+ * pensando que eso bastaba para sacar a quien lo tuviera (auditoría de seguridad, jul 2026). Incluye
+ * a propósito la sesión desde la que se hizo el cambio: el frontend ya maneja bien que la próxima
+ * llamada devuelva SESION_INVALIDA (ver assets/config.js) y mande de vuelta a iniciar sesión.
+ */
+function eliminarSesionesDeUsuario_(usuarioId) {
+  const sh = sheet_(SHEET_NAMES.SESIONES);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const usuarioCol = headers.indexOf('usuario_id');
+  for (let r = data.length - 1; r >= 1; r--) {
+    if (data[r][usuarioCol] === usuarioId) sh.deleteRow(r + 1);
+  }
+}
+
 function limpiarSesionesVencidas_() {
   const sh = sheet_(SHEET_NAMES.SESIONES);
   const data = sh.getDataRange().getValues();
