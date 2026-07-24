@@ -36,6 +36,17 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <div class="card" style="border-color:var(--navy)">
+      <h2>API de FUDO (nuevo) — probar conexión</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Antes de automatizar la importación de ventas hace falta confirmar los nombres de campo
+        reales que devuelve la cuenta. Este botón no importa nada — solo trae una muestra cruda de
+        <code>/sales</code> para verla aquí.
+      </p>
+      <button class="btn" id="btn-probar-fudo-api">Probar conexión</button>
+      <pre id="resultado-fudo-api" style="display:none; margin-top:12px; max-height:320px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
+    </div>
+
     <div class="card">
       <h2>1. ¿Qué reporte vas a subir?</h2>
       <div class="grid grid-3">
@@ -103,6 +114,20 @@ montarBarraUsuario();
 
 let filasParaImportar = [];
 let archivoParaImportar = '';
+
+document.getElementById('btn-probar-fudo-api').addEventListener('click', conBotonProtegido(document.getElementById('btn-probar-fudo-api'), async () => {
+  const pre = document.getElementById('resultado-fudo-api');
+  pre.style.display = 'block';
+  pre.textContent = 'Conectando…';
+  try {
+    const data = await llamar('fudo_api_probar_conexion', {});
+    pre.textContent = data.ok
+      ? `Campos detectados en cada venta:\n${data.campos_detectados.join(', ')}\n\nMuestra (${data.registros_recibidos} registro(s)):\n${JSON.stringify(data.muestra, null, 2)}`
+      : `Error: ${data.error}`;
+  } catch (err) {
+    pre.textContent = `No se pudo conectar: ${err.message}`;
+  }
+}));
 
 document.getElementById('dropzone').addEventListener('click', () => document.getElementById('input-archivo').click());
 document.getElementById('input-archivo').addEventListener('change', (e) => manejarArchivo(e.target.files[0]));

@@ -271,6 +271,9 @@ function handleRequest_(e, method) {
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
+      case 'fudo_api_probar_conexion':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiProbarConexion_());
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
