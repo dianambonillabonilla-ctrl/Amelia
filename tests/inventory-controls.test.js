@@ -1895,6 +1895,100 @@ const produccionBloqueada = produccionBloqueadaMod.produccionRegistrar_(itemsPro
 assert.equal(produccionBloqueada.ok, false, 'con el lock ocupado, produccionRegistrar_ no debe registrar nada');
 assert.match(produccionBloqueada.error, /espera un momento/);
 
+// --- produccionConObligatoriosRegistrar_: una sola operación, valida TODO antes de escribir nada -
+// (auditoría de seguridad, jul 2026: antes producir.html mandaba dos llamadas independientes en
+// paralelo — si una pasaba y la otra fallaba, quedaba un estado a medias sin forma clara de saber
+// cuál sí se guardó).
+function cargarProduccionConObligatorios_(opciones) {
+  opciones = opciones || {};
+  const produccionEscrita = [];
+  const llamadasConteo = [];
+  const ctx = cargar('apps-script/Produccion.gs', {
+    SHEET_NAMES: { PRODUCCIONES: 'producciones' },
+    leerTabla_: () => [],
+    appendRowFromObj_: (hoja, fila) => { produccionEscrita.push(fila); },
+    Utilities: { getUuid: () => 'produccion-id' },
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    LockService: lockServiceMock_(),
+    validarItemsConteo_: (items, usuario, opts) => {
+      llamadasConteo.push({ tipo: 'validar', items, usuario, opts });
+      return opciones.errorValidarConteo || null;
+    },
+    conteoRegistrar_: (items, usuario, opts) => {
+      llamadasConteo.push({ tipo: 'registrar', items, usuario, opts });
+      return opciones.resultadoConteoRegistrar || { ok: true, registrados: items.length };
+    }
+  });
+  return { ctx, produccionEscrita, llamadasConteo };
+}
+
+const itemsObligatoriosPrueba = [{ fecha: '2026-07-24', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Vinagre balsámico', unidad: 'ml', cantidad: 500 }];
+
+(function () {
+  const { ctx, produccionEscrita, llamadasConteo } = cargarProduccionConObligatorios_();
+  const resultado = ctx.produccionConObligatoriosRegistrar_(itemsProduccion, itemsObligatoriosPrueba, usuarioProduccion, {});
+  assert.equal(resultado.ok, true);
+  assert.equal(produccionEscrita.length, 1, 'debe registrar la producción');
+  assert.equal(llamadasConteo.filter((l) => l.tipo === 'registrar').length, 1, 'debe registrar los obligatorios');
+  assert.ok(resultado.produccion.ok);
+  assert.ok(resultado.conteo.ok);
+  console.log('produccionConObligatoriosRegistrar_ con ambos válidos: OK');
+})();
+
+(function () {
+  // Producción inválida -> NUNCA debe llegar a tocar los conteos obligatorios (ni validarlos ni
+  // registrarlos) — se corta antes de escribir cualquiera de los dos.
+  const { ctx, produccionEscrita, llamadasConteo } = cargarProduccionConObligatorios_();
+  const itemsProduccionInvalidos = [{ fecha: '2026-07-24', sede: 'San Antonio', item: 'Costilla Preparada', unidad: 'kg', cantidad: -5 }];
+  const resultado = ctx.produccionConObligatoriosRegistrar_(itemsProduccionInvalidos, itemsObligatoriosPrueba, usuarioProduccion, {});
+  assert.equal(resultado.ok, false);
+  assert.equal(produccionEscrita.length, 0);
+  assert.equal(llamadasConteo.length, 0, 'ni siquiera debe intentar validar los obligatorios si la producción ya es inválida');
+  console.log('produccionConObligatoriosRegistrar_ con producción inválida no toca los obligatorios: OK');
+})();
+
+(function () {
+  // Insumos obligatorios inválidos (ej. falta uno) -> NUNCA debe escribir la producción, aunque
+  // esos items sean perfectamente válidos por su cuenta — este es el bug real que corrige: antes
+  // la producción SÍ quedaba guardada aunque los obligatorios fallaran, por ir en llamadas separadas.
+  const { ctx, produccionEscrita, llamadasConteo } = cargarProduccionConObligatorios_({ errorValidarConteo: 'Faltan productos obligatorios de hoy: Sal Marina' });
+  const resultado = ctx.produccionConObligatoriosRegistrar_(itemsProduccion, itemsObligatoriosPrueba, usuarioProduccion, {});
+  assert.equal(resultado.ok, false);
+  assert.match(resultado.error, /Faltan productos obligatorios/);
+  assert.equal(produccionEscrita.length, 0, 'la producción NO debe quedar guardada si los obligatorios no pasan validación');
+  assert.equal(llamadasConteo.filter((l) => l.tipo === 'registrar').length, 0);
+  console.log('produccionConObligatoriosRegistrar_ con obligatorios inválidos NO guarda la producción: OK');
+})();
+
+(function () {
+  // Solo producción (sin insumos obligatorios en este envío) -> no debe tocar conteoRegistrar_ para nada.
+  const { ctx, produccionEscrita, llamadasConteo } = cargarProduccionConObligatorios_();
+  const resultado = ctx.produccionConObligatoriosRegistrar_(itemsProduccion, [], usuarioProduccion, {});
+  assert.equal(resultado.ok, true);
+  assert.equal(produccionEscrita.length, 1);
+  assert.equal(llamadasConteo.length, 0);
+  assert.equal(resultado.conteo, undefined);
+  console.log('produccionConObligatoriosRegistrar_ solo con producción: OK');
+})();
+
+(function () {
+  // Solo insumos obligatorios (sin nada de producción, ej. un día sin producción) -> no debe tocar produccionRegistrar_.
+  const { ctx, produccionEscrita, llamadasConteo } = cargarProduccionConObligatorios_();
+  const resultado = ctx.produccionConObligatoriosRegistrar_([], itemsObligatoriosPrueba, usuarioProduccion, {});
+  assert.equal(resultado.ok, true);
+  assert.equal(produccionEscrita.length, 0);
+  assert.equal(llamadasConteo.filter((l) => l.tipo === 'registrar').length, 1);
+  assert.equal(resultado.produccion, undefined);
+  console.log('produccionConObligatoriosRegistrar_ solo con obligatorios: OK');
+})();
+
+(function () {
+  const { ctx } = cargarProduccionConObligatorios_();
+  const resultado = ctx.produccionConObligatoriosRegistrar_([], [], usuarioProduccion, {});
+  assert.equal(resultado.ok, false);
+  console.log('produccionConObligatoriosRegistrar_ con los dos vacíos exige algo para registrar: OK');
+})();
+
 // --- Bloqueo progresivo de login: cada ciclo de bloqueo dobla el anterior --------------------------
 // (auditoría de seguridad, jul 2026: antes el bloqueo era siempre 15 minutos fijos — cualquiera que
 // solo supiera el nombre de usuario de un Administrador, sin saber la contraseña, podía dejarlo

@@ -4,22 +4,27 @@
  * Cada fila es UN producto contado, en UNA sede, en UN cierre de turno.
  */
 
-function conteoRegistrar_(items, usuario, opciones) {
+/**
+ * Solo valida, no escribe nada — separado de conteoRegistrar_ para que
+ * produccionConObligatoriosRegistrar_ (Produccion.gs) pueda comprobar ESTO y también la
+ * producción ANTES de escribir cualquiera de los dos, sin duplicar las reglas de negocio.
+ */
+function validarItemsConteo_(items, usuario, opciones) {
   opciones = opciones || {};
-  if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+  if (!items || !items.length) return 'No se recibieron items para registrar';
   for (let i = 0; i < items.length; i++) {
     const it = items[i] || {};
     if (!it.fecha || !it.sede || !it.producto || !it.unidad) {
-      return { ok: false, error: 'Cada conteo debe tener fecha, sede, producto y unidad' };
+      return 'Cada conteo debe tener fecha, sede, producto y unidad';
     }
     if (isNaN(Number(it.cantidad)) || Number(it.cantidad) < 0) {
-      return { ok: false, error: 'La cantidad contada debe ser un número igual o mayor que cero' };
+      return 'La cantidad contada debe ser un número igual o mayor que cero';
     }
   }
   // sedeEscrituraPermitida_ (Code.gs) también deja registrar en Centro de Producción sin importar
   // la sede propia — San Antonio/Capri/Ambas cubren ese sitio en la práctica.
   if (items.some(function (it) { return !sedeEscrituraPermitida_(usuario, it.sede); })) {
-    return { ok: false, error: 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')' };
+    return 'No puedes registrar conteos para una sede distinta a la tuya (' + usuario.sede + ')';
   }
 
   // productosObligatoriosFaltantes_ asume que este envío ES la sesión completa de conteo de ese
@@ -31,9 +36,16 @@ function conteoRegistrar_(items, usuario, opciones) {
   if (!opciones.omitir_obligatorios_del_dia) {
     const faltantes = productosObligatoriosFaltantes_(items);
     if (faltantes.length) {
-      return { ok: false, error: 'Faltan productos obligatorios de hoy: ' + faltantes.join(', ') };
+      return 'Faltan productos obligatorios de hoy: ' + faltantes.join(', ');
     }
   }
+  return null;
+}
+
+function conteoRegistrar_(items, usuario, opciones) {
+  opciones = opciones || {};
+  const errorValidacion = validarItemsConteo_(items, usuario, opciones);
+  if (errorValidacion) return { ok: false, error: errorValidacion };
 
   // A qué 'turno' pertenece este envío si no lo trae explícito — 'Inicio de turno' si ayer no se
   // cerró el turno de esta sede y el sector de hoy de quien guarda todavía no completó su conteo

@@ -290,6 +290,9 @@ function handleRequest_(e, method) {
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
+      case 'produccion_con_obligatorios_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(produccionConObligatoriosRegistrar_(params.items_produccion, params.items_obligatorios, sesion.usuario, params.opciones));
       case 'produccion_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
