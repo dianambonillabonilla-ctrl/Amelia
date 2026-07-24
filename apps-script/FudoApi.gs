@@ -50,6 +50,21 @@ function fudoApiBaseUrl_() {
 }
 
 /**
+ * Registra el detalle completo (incluido el cuerpo crudo de la respuesta remota de FUDO) en el
+ * registro de ejecución bajo un código corto, y devuelve un Error con SOLO ese código — así lo que
+ * FUDO responda nunca llega tal cual al navegador de quien esté usando la app (auditoría de
+ * seguridad, jul 2026: antes el texto crudo de la respuesta remota se incluía directo en el mensaje
+ * de error que veía el Administrador). El código no depende de Utilities (no todos los archivos que
+ * cargan FudoApi.gs en pruebas la mockean) — timestamp + un componente aleatorio basta para no
+ * chocar entre dos errores casi simultáneos.
+ */
+function fudoApiErrorConIncidente_(resumen, detalle) {
+  const incidente = 'FUDO-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000);
+  Logger.log('[' + incidente + '] ' + resumen + ': ' + detalle);
+  return new Error(resumen + ' (código ' + incidente + ' — revisa el registro de ejecución de Apps Script para el detalle completo).');
+}
+
+/**
  * Pide un token nuevo solo si no hay uno guardado o le quedan menos de 5 minutos de vida — según la
  * documentación oficial el token dura 24h (campo "exp", segundos unix). Se cachea en Propiedades del
  * Script (no en CacheService, que se puede vaciar sin aviso) para que sobreviva entre ejecuciones
@@ -78,10 +93,10 @@ function fudoApiObtenerToken_() {
     muteHttpExceptions: true
   });
   if (resp.getResponseCode() !== 200) {
-    throw new Error('Autenticación con la API de FUDO falló (' + resp.getResponseCode() + '): ' + resp.getContentText());
+    throw fudoApiErrorConIncidente_('Autenticación con la API de FUDO falló (' + resp.getResponseCode() + ')', resp.getContentText());
   }
   const data = JSON.parse(resp.getContentText());
-  if (!data.token) throw new Error('La API de FUDO no devolvió token: ' + resp.getContentText());
+  if (!data.token) throw fudoApiErrorConIncidente_('La API de FUDO no devolvió token', resp.getContentText());
 
   props.setProperty(FUDO_API_PROP_TOKEN_, data.token);
   props.setProperty(FUDO_API_PROP_TOKEN_EXP_, String(data.exp || (Date.now() / 1000 + 24 * 3600)));
@@ -113,7 +128,7 @@ function fudoApiPeticionPagina_(recurso, opciones) {
     muteHttpExceptions: true
   });
   if (resp.getResponseCode() !== 200) {
-    throw new Error('GET ' + recurso + ' falló (' + resp.getResponseCode() + '): ' + resp.getContentText());
+    throw fudoApiErrorConIncidente_('GET ' + recurso + ' falló (' + resp.getResponseCode() + ')', resp.getContentText());
   }
   return JSON.parse(resp.getContentText());
 }
@@ -123,7 +138,7 @@ function fudoApiObtenerPagina_(recurso, opciones) {
   const data = fudoApiPeticionPagina_(recurso, opciones);
   if (Array.isArray(data)) return data;
   if (Array.isArray(data.data)) return data.data;
-  throw new Error('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data — revisa el formato real: ' + JSON.stringify(data).slice(0, 300));
+  throw fudoApiErrorConIncidente_('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data', JSON.stringify(data));
 }
 
 /**
@@ -163,7 +178,7 @@ function fudoApiObtenerTodoCompleto_(recurso, opciones) {
     const cruda = fudoApiPeticionPagina_(recurso, Object.assign({}, opciones, { pageSize: pageSize, pagina: pagina }));
     const pageData = Array.isArray(cruda) ? cruda : (Array.isArray(cruda.data) ? cruda.data : null);
     if (!pageData) {
-      throw new Error('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data — revisa el formato real: ' + JSON.stringify(cruda).slice(0, 300));
+      throw fudoApiErrorConIncidente_('La respuesta de ' + recurso + ' no fue un arreglo ni trajo .data', JSON.stringify(cruda));
     }
     registros.push.apply(registros, pageData);
     (cruda.included || []).forEach(function (inc) {

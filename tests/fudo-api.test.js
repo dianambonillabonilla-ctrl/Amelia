@@ -38,10 +38,18 @@ function respuesta_(code, bodyObj) {
   return { getResponseCode: () => code, getContentText: () => JSON.stringify(bodyObj) };
 }
 
+// fudoApiErrorConIncidente_ registra el detalle completo con Logger.log antes de lanzar un error
+// "limpio" (auditoría de seguridad, jul 2026: ya no se manda el cuerpo crudo de la respuesta remota
+// de FUDO directo al navegador) — se guarda lo logueado para poder comprobar que el detalle SÍ
+// quedó registrado en alguna parte, aunque no viaje al cliente.
+let logueado = [];
+const fakeLogger = { log: (msg) => { logueado.push(msg); } };
+
 function cargarFudoApi_() {
   return cargar('apps-script/FudoApi.gs', {
     PropertiesService: fakePropertiesService,
-    UrlFetchApp: fakeUrlFetchApp
+    UrlFetchApp: fakeUrlFetchApp,
+    Logger: fakeLogger
   });
 }
 
@@ -122,10 +130,32 @@ function cargarFudoApi_() {
   props.FUDO_API_KEY = 'key123';
   props.FUDO_API_SECRET = 'secret456';
   llamadas = [];
-  fetchImpl = () => respuesta_(401, { error: 'credenciales inválidas' });
+  fetchImpl = () => respuesta_(401, { error: 'credenciales inválidas', pista_secreta_del_proveedor: 'no debe llegar al navegador' });
   const ctx = cargarFudoApi_();
   assert.throws(() => ctx.fudoApiObtenerToken_(), /Autenticación con la API de FUDO falló \(401\)/);
   console.log('fudoApiObtenerToken_ error de auth: OK');
+})();
+
+// --- fudoApiErrorConIncidente_: el cuerpo crudo de la respuesta de FUDO nunca debe llegar al mensaje
+// que ve el usuario — solo un código de incidente, con el detalle completo en el registro (Logger).
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  llamadas = [];
+  logueado = [];
+  fetchImpl = () => respuesta_(401, { error: 'credenciales inválidas', pista_secreta_del_proveedor: 'no debe llegar al navegador' });
+  const ctx = cargarFudoApi_();
+  let mensaje = '';
+  try {
+    ctx.fudoApiObtenerToken_();
+  } catch (err) {
+    mensaje = err.message;
+  }
+  assert.ok(!mensaje.includes('pista_secreta_del_proveedor'), 'el mensaje visible NO debe incluir el cuerpo crudo de la respuesta de FUDO');
+  assert.match(mensaje, /código FUDO-/, 'el mensaje visible debe traer un código de incidente');
+  assert.ok(logueado.some((l) => l.includes('pista_secreta_del_proveedor')), 'el detalle completo SÍ debe quedar en el registro de ejecución');
+  console.log('fudoApiErrorConIncidente_ oculta el cuerpo crudo y deja código de incidente: OK');
 })();
 
 // --- fudoApiObtenerPagina_ / fudoApiObtenerTodo_ -------------------------------------------------
@@ -306,6 +336,7 @@ function ctxAutenticadoConDatos_(paginas) {
   const ctx = cargar('apps-script/FudoApi.gs', {
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
+    Logger: fakeLogger,
     importarFudo_: importarFudoMock_
   });
 
@@ -339,6 +370,7 @@ function ctxAutenticadoConDatos_(paginas) {
   const ctx = cargar('apps-script/FudoApi.gs', {
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
+    Logger: fakeLogger,
     importarFudo_: () => { seLlamoImportarFudo = true; }
   });
 
