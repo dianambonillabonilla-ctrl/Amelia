@@ -35,16 +35,27 @@ function conteoRegistrar_(items, usuario, opciones) {
     }
   }
 
+  // A qué 'turno' pertenece este envío si no lo trae explícito — 'Inicio de turno' si ayer no se
+  // cerró el turno de esta sede y el sector de hoy de quien guarda todavía no completó su conteo
+  // de inicio; 'Cierre de turno' en cualquier otro caso (el comportamiento de siempre). Se calcula
+  // UNA vez por envío (todos los items de un mismo "Guardar conteo" son la misma sesión: misma
+  // fecha/sede) — ver turnoOportuno_ en Turnos.gs. Pedido real: "cuando no se registre conteo de
+  // cierre... debe de pedir conteo de inicio de turno y después el conteo de cierre de turno".
+  const turnoPorDefecto = opciones.omitir_obligatorios_del_dia
+    ? 'Cierre de turno'
+    : turnoOportuno_(items[0].fecha, items[0].sede, usuario);
+
   const ahora = new Date();
   let n = 0;
   let actualizados = 0;
   items.forEach(function (it) {
+    const turnoItem = it.turno || turnoPorDefecto;
     const datos = {
       id: Utilities.getUuid(),
       fecha: it.fecha,
       sede: it.sede,
       punto_conteo: it.punto_conteo || 'Café',
-      turno: it.turno || 'Cierre de turno',
+      turno: turnoItem,
       producto: it.producto,
       unidad: it.unidad,
       cantidad: it.cantidad,
@@ -52,7 +63,7 @@ function conteoRegistrar_(items, usuario, opciones) {
       timestamp: ahora
     };
     catalogoAsegurar_(it.producto, it.unidad);
-    const existente = conteoBuscarFila_(it);
+    const existente = conteoBuscarFila_(Object.assign({}, it, { turno: turnoItem }));
     if (existente) {
       existente.headers.forEach(function (h, c) {
         if (h === 'id') return;

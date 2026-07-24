@@ -47,6 +47,11 @@
       <p id="sector-hoy-actual" style="margin:10px 0 0; font-size:.85rem"></p>
     </div>
 
+    <div class="card" id="card-turno-inicio" style="display:none; border-color:var(--red); background:#FEF4F3">
+      <h2 style="margin:0 0 4px; color:var(--red)">Ayer no se cerró el turno</h2>
+      <p id="turno-inicio-texto" style="color:var(--grey); font-size:.85rem; margin:0"></p>
+    </div>
+
     <div class="card">
       <div class="grid grid-3" style="margin-bottom:18px">
         <div class="campo">
@@ -277,15 +282,46 @@ document.getElementById('btn-confirmar-sector').addEventListener('click', conBot
   if (data.ok) {
     avisarGuardado(`Sector de hoy: ${sector}.`);
     document.getElementById('sector-hoy-actual').textContent = `Hoy elegiste: ${sector}.`;
+    mostrarEstadoTurnoInicio_();
   } else {
     alert(data.error);
   }
 }));
 inicializarSectorHoy_();
 
+// Si ayer no se cerró el turno de la sede elegida, hoy hace falta primero un conteo de INICIO de
+// turno (mismos productos obligatorios de siempre) antes de que el de cierre normal cuente para
+// poder cerrar — pedido real: "cuando no se registre conteo de cierre... debe de pedir conteo de
+// inicio de turno y después el conteo de cierre de turno". El sistema autoetiqueta cada "Guardar
+// conteo" solo (turnoOportuno_ en Turnos.gs) — este aviso es solo para que el personal entienda
+// por qué puede tocar contar dos veces el mismo día.
+async function mostrarEstadoTurnoInicio_() {
+  const card = document.getElementById('card-turno-inicio');
+  const sede = document.getElementById('sede').value;
+  if (!sede || sede === 'Ambas') { card.style.display = 'none'; return; }
+  const hoy = fechaLocalHoy_();
+  const [dataFaltantes, dataSector] = await Promise.all([
+    llamar('turno_faltantes_por_sector', { fecha: hoy, sede }),
+    llamar('turno_sector_hoy', { fecha: hoy })
+  ]);
+  if (!dataFaltantes.ok || !dataFaltantes.data.length || !dataFaltantes.data[0].requiere_inicio) {
+    card.style.display = 'none';
+    return;
+  }
+  const estadoMiSector = dataSector.ok && dataSector.sector
+    ? dataFaltantes.data.find(s => s.sector === dataSector.sector)
+    : null;
+  const yaHiceInicio = estadoMiSector && (!estadoMiSector.faltantes_inicio || !estadoMiSector.faltantes_inicio.length);
+  document.getElementById('turno-inicio-texto').textContent = yaHiceInicio
+    ? 'Ya completaste tu conteo de inicio de hoy — lo que guardes ahora cuenta como el conteo de cierre normal.'
+    : 'El turno de ayer en esta sede quedó sin cerrar. Antes de que Caja pueda cerrar hoy, hace falta completar un conteo de INICIO de turno con los mismos productos obligatorios de siempre — guarda este conteo normal y el sistema lo registra como el de inicio automáticamente.';
+  card.style.display = 'block';
+}
+mostrarEstadoTurnoInicio_();
+
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
-document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); });
-document.getElementById('fecha').addEventListener('change', () => { cargarConteoAnterior_(); cargarAjustes_(); });
+document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); mostrarEstadoTurnoInicio_(); });
+document.getElementById('fecha').addEventListener('change', () => { cargarConteoAnterior_(); cargarAjustes_(); mostrarEstadoTurnoInicio_(); });
 document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
 poblarPuntos_();
 cargarConteoAnterior_();

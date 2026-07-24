@@ -67,6 +67,29 @@ function turnosSectorDelDia_(fecha) {
   return leerTabla_(SHEET_NAMES.TURNOS_SECTOR).filter(function (r) { return formatearFecha_(r.fecha) === fecha; });
 }
 
+/** `fechaStr` (yyyy-MM-dd) menos un día — año/mes/día locales, no el string ISO directo, para que
+ * la zona horaria no corra el día (mismo patrón que frecuenciasObligatoriasDelDia_ en Catalogo.gs). */
+function diaAnterior_(fechaStr) {
+  const partes = String(fechaStr).slice(0, 10).split('-').map(Number);
+  const d = new Date(partes[0], partes[1] - 1, partes[2]);
+  d.setDate(d.getDate() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/**
+ * Si hoy hace falta un conteo de INICIO de turno en `sede` antes del de cierre — pedido real:
+ * "cuando no se registre conteo de cierre para el turno[,] del próximo día debe de pedir conteo
+ * de inicio de turno y después el conteo de cierre de turno". Se dispara solo: si el turno de
+ * AYER en esta sede nunca quedó cerrado (sin fila en Cierres_Turno), hoy hace falta primero
+ * establecer una base real con un conteo de inicio, antes de confiar en lo que se cuente al
+ * cierre. Una vez que el turno de hoy se cierre bien, mañana ya no lo pide (no se acumula "deuda"
+ * más allá de un día para atrás).
+ */
+function requiereConteoInicioTurno_(fecha, sede) {
+  if (!fecha || !sede) return false;
+  return !turnoCierreEstado_(diaAnterior_(fecha), sede).cerrado;
+}
+
 /**
  * Por cada sector que alguien de `sede` eligió hoy, qué productos del catálogo marcados con ese
  * `sector` (y que caen en la frecuencia de conteo obligatoria de hoy) todavía no tienen conteo
@@ -74,10 +97,13 @@ function turnosSectorDelDia_(fecha) {
  * `sector` asignado no aparecen aquí (siguen bajo la validación de frecuencia normal de Registrar
  * conteo, no bloquean el cierre de turno).
  *
- * También trae `usuarios`: los nombres de quienes ya contaron algo de ese sector hoy — pedido
- * real: "le debe de salir que si ya registró, el que registró y quién lo hizo" — para que Caja
- * (quien cierra el turno, ver turnoCerrar_) pueda ver de un vistazo quién sí cumplió y quién no,
- * en vez de solo un conteo de faltantes sin nombres.
+ * `usuarios` trae los nombres de quienes ya contaron algo de ese sector hoy (turno "Cierre de
+ * turno") — pedido real: "le debe de salir que si ya registró, el que registró y quién lo hizo" —
+ * para que Caja (quien cierra el turno, ver turnoCerrar_) vea de un vistazo quién sí cumplió.
+ *
+ * Si `requiereConteoInicioTurno_` es cierto (ayer no se cerró esta sede), cada sector trae TAMBIÉN
+ * `faltantes_inicio`/`usuarios_inicio`: lo mismo pero para el turno "Inicio de turno", que hoy hay
+ * que completar ANTES de que el de "Cierre de turno" cuente para poder cerrar — ver turnoCerrar_.
  */
 function turnoFaltantesPorSector_(fecha, sede) {
   if (!fecha || !sede) return [];
@@ -98,17 +124,31 @@ function turnoFaltantesPorSector_(fecha, sede) {
   // alias de FUDO (nombre_fudo) en vez de nombre_estandar exacto seguía apareciendo como "falta
   // contar" para el sector, aunque ya se hubiera contado — bloqueaba cerrar el turno sin motivo.
   const indice = indiceCatalogo_();
-  // contadoPorClave (booleano: "hay al menos una fila de conteo hoy para esto") va aparte de
-  // usuariosPorClave (nombres): una fila de conteo sin `usuario` registrado (dato viejo/incompleto)
-  // SÍ debe contar como "ya contado" aunque no se pueda decir quién lo hizo.
-  const contadoPorClave = {};
-  const usuariosPorClave = {};
+  const requiereInicio = requiereConteoInicioTurno_(fecha, sede);
+
+  // Separado por turno ('Inicio de turno' / 'Cierre de turno'): contadoPorClave (booleano) va
+  // aparte de usuariosPorClave (nombres) — una fila de conteo sin `usuario` registrado (dato
+  // viejo/incompleto) SÍ debe contar como "ya contado" aunque no se pueda decir quién lo hizo.
+  function turnoVacio_() { return { contado: {}, usuarios: {} }; }
+  const porTurno = { 'Inicio de turno': turnoVacio_(), 'Cierre de turno': turnoVacio_() };
   conteoListar_(fecha, sede).forEach(function (c) {
+    const turno = c.turno === 'Inicio de turno' ? 'Inicio de turno' : 'Cierre de turno';
     const clave = claveProducto_(c.producto, indice);
-    contadoPorClave[clave] = true;
-    if (!usuariosPorClave[clave]) usuariosPorClave[clave] = [];
-    if (c.usuario && usuariosPorClave[clave].indexOf(c.usuario) === -1) usuariosPorClave[clave].push(c.usuario);
+    porTurno[turno].contado[clave] = true;
+    if (!porTurno[turno].usuarios[clave]) porTurno[turno].usuarios[clave] = [];
+    if (c.usuario && porTurno[turno].usuarios[clave].indexOf(c.usuario) === -1) porTurno[turno].usuarios[clave].push(c.usuario);
   });
+
+  function faltantesYUsuarios_(items, turno) {
+    const faltantes = [];
+    const usuariosSector = {};
+    items.forEach(function (p) {
+      const clave = claveProducto_(p.nombre_estandar, indice);
+      if (!porTurno[turno].contado[clave]) { faltantes.push(p.nombre_estandar); return; }
+      (porTurno[turno].usuarios[clave] || []).forEach(function (u) { usuariosSector[u] = true; });
+    });
+    return { faltantes: faltantes, usuarios: Object.keys(usuariosSector).sort() };
+  }
 
   return Object.keys(sectoresHoy).sort().map(function (sector) {
     const items = catalogo.filter(function (p) {
@@ -117,22 +157,43 @@ function turnoFaltantesPorSector_(fecha, sede) {
       return p.sector === sector && p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1 &&
         (!p.sede || p.sede === 'Ambas' || p.sede === sede);
     });
-    const faltantes = [];
-    const usuariosSector = {};
-    items.forEach(function (p) {
-      const clave = claveProducto_(p.nombre_estandar, indice);
-      if (!contadoPorClave[clave]) { faltantes.push(p.nombre_estandar); return; }
-      const quienes = usuariosPorClave[clave] || [];
-      quienes.forEach(function (u) { usuariosSector[u] = true; });
-    });
-    return { sector: sector, total: items.length, faltantes: faltantes, usuarios: Object.keys(usuariosSector).sort() };
+    const cierre = faltantesYUsuarios_(items, 'Cierre de turno');
+    const resultado = {
+      sector: sector, total: items.length, faltantes: cierre.faltantes, usuarios: cierre.usuarios,
+      requiere_inicio: requiereInicio
+    };
+    if (requiereInicio) {
+      const inicio = faltantesYUsuarios_(items, 'Inicio de turno');
+      resultado.faltantes_inicio = inicio.faltantes;
+      resultado.usuarios_inicio = inicio.usuarios;
+    }
+    return resultado;
   });
 }
 
 /**
+ * A qué 'turno' pertenece un conteo que se está guardando AHORA, cuando quien lo guarda no lo
+ * especifica: 'Inicio de turno' si hoy hace falta (ayer no se cerró esta sede, ver
+ * requiereConteoInicioTurno_) y el sector de hoy de `usuario` todavía no completó su conteo de
+ * inicio; 'Cierre de turno' en cualquier otro caso (el comportamiento de siempre). Se autoetiqueta
+ * solo — el personal no necesita entender la diferencia entre los dos, solo sigue contando normal
+ * y el sistema decide a cuál turno pertenece cada envío. Usada por conteoRegistrar_ (Conteos.gs).
+ */
+function turnoOportuno_(fecha, sede, usuario) {
+  if (!requiereConteoInicioTurno_(fecha, sede)) return 'Cierre de turno';
+  const sectorHoy = turnoSectorDeHoy_(usuario, fecha).sector;
+  if (!sectorHoy) return 'Cierre de turno';
+  const estadoSector = turnoFaltantesPorSector_(fecha, sede).find(function (s) { return s.sector === sectorHoy; });
+  if (estadoSector && estadoSector.faltantes_inicio && estadoSector.faltantes_inicio.length) return 'Inicio de turno';
+  return 'Cierre de turno';
+}
+
+/**
  * Bloquea cerrar el turno si algún sector asignado hoy en `sede` todavía tiene productos
- * obligatorios de hoy sin contar. Si pasa, deja un registro en Cierres_Turno (auditoría de quién
- * cerró y cuándo) — no bloquea nada más del sistema, es la confirmación que pedía Diana.
+ * obligatorios de hoy sin contar — primero el de INICIO si hace falta (ver
+ * requiereConteoInicioTurno_/turnoFaltantesPorSector_), y solo después el de CIERRE. Si pasa, deja
+ * un registro en Cierres_Turno (auditoría de quién cerró y cuándo) — no bloquea nada más del
+ * sistema, es la confirmación que pedía Diana.
  *
  * Quién puede cerrar: Administrador/Encargado siempre (supervisión), o quien tenga el sector
  * "Caja" elegido hoy — pedido real: "caja es el responsable final de que todo quede bien". El
@@ -154,12 +215,21 @@ function turnoCerrar_(fecha, sede, usuario) {
   if (yaCerrado.cerrado) return { ok: true, ya_cerrado: true, usuario: yaCerrado.usuario, timestamp: yaCerrado.timestamp };
 
   const estado = turnoFaltantesPorSector_(fecha, sede);
-  const pendientes = estado.filter(function (s) { return s.faltantes.length; });
-  if (pendientes.length) {
+  const pendientesInicio = estado.filter(function (s) { return s.requiere_inicio && s.faltantes_inicio && s.faltantes_inicio.length; });
+  if (pendientesInicio.length) {
     return {
       ok: false,
-      error: 'Todavía falta contar: ' + pendientes.map(function (p) { return p.sector + ' (' + p.faltantes.join(', ') + ')'; }).join(' · '),
-      pendientes: pendientes
+      error: 'Ayer no se cerró el turno de ' + sede + ' — primero hay que completar el conteo de INICIO de hoy: ' +
+        pendientesInicio.map(function (p) { return p.sector + ' (' + p.faltantes_inicio.join(', ') + ')'; }).join(' · '),
+      pendientes_inicio: pendientesInicio
+    };
+  }
+  const pendientesCierre = estado.filter(function (s) { return s.faltantes.length; });
+  if (pendientesCierre.length) {
+    return {
+      ok: false,
+      error: 'Todavía falta contar: ' + pendientesCierre.map(function (p) { return p.sector + ' (' + p.faltantes.join(', ') + ')'; }).join(' · '),
+      pendientes: pendientesCierre
     };
   }
   appendRowFromObj_(SHEET_NAMES.CIERRES_TURNO, {
