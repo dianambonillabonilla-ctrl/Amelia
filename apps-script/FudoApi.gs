@@ -12,11 +12,18 @@
  * (fudoApiSincronizarVentas_) ya están listas y probadas — conexión confirmada contra la cuenta real
  * (jul 2026). /sales y /items responden en formato JSON:API: { data: [...], included: [...] } — cada
  * venta trae en "attributes" sus datos propios (createdAt, total, saleState...) y en "relationships"
- * solo punteros {type,id} a sus ítems/pagos/mesa/caja — el detalle real de esos punteros (incluido
- * el nombre del producto) llega en el arreglo "included" de la MISMA respuesta cuando se pide con
- * ?include=items.product,cashRegister (ver dev.fu.do/api, secciones "Get sales" y "Get items").
+ * solo punteros {type,id} a sus ítems/pagos/mesa/mesero (NO trae "cashRegister" — confirmado con una
+ * muestra real, jul 2026) — el detalle real de esos punteros (incluido el nombre del producto) llega
+ * en el arreglo "included" de la MISMA respuesta cuando se pide con ?include=items.product,table.room.
  * fudoApiSincronizarVentas_ arma con eso las mismas columnas que produce el export CSV "detallado"
  * y reutiliza toda la validación/dedupe/diagnóstico de importarFudo_ (Fudo.gs) sin duplicarla.
+ *
+ * Sede: FUDO no tiene ningún campo de sede/sucursal en ningún recurso (confirmado contra la
+ * especificación OpenAPI oficial completa, jul 2026) — se infiere por venta → mesa (table) → sala
+ * (room), porque en esta cuenta las salas están nombradas por sede ("Salón SA", "Terraza SA",
+ * "Terraza Capri", "La Waffleria - Capri" — confirmado con /rooms real, jul 2026). Ventas sin mesa
+ * (delivery/take away/menú online) quedan "Sin identificar" — no hay otro dato de sede disponible
+ * para esos casos.
  */
 
 const FUDO_API_PROP_KEY_ = 'FUDO_API_KEY';
@@ -107,7 +114,7 @@ function fudoApiObtenerToken_() {
  * Una sola página, sin desenvolver — devuelve el JSON tal cual (con .data y, si se pidió con
  * `include`, también .included) para que cada llamador decida qué necesita. filtros = { columna:
  * 'operador.valor' } (ej. { createdAt: 'gte.2026-07-01T00:00:00' }), orden = 'col,-col2', include =
- * 'items.product,cashRegister' (comas, según la documentación oficial).
+ * 'items.product,table.room' (comas, según la documentación oficial).
  */
 function fudoApiPeticionPagina_(recurso, opciones) {
   opciones = opciones || {};
@@ -164,8 +171,8 @@ function fudoApiObtenerTodo_(recurso, opciones) {
 
 /**
  * Todas las páginas de un recurso, CONSERVANDO también los "incluidos" (.included) de cada página —
- * necesario para /sales?include=items.product,cashRegister, donde el detalle real (nombre del
- * producto, nombre de la caja) no viene en .data sino en .included, indexado por "type:id" para
+ * necesario para /sales?include=items.product,table.room, donde el detalle real (nombre del
+ * producto, nombre de la sala) no viene en .data sino en .included, indexado por "type:id" para
  * resolverlo desde cualquier puntero {type,id} de una relationship.
  */
 function fudoApiObtenerTodoCompleto_(recurso, opciones) {
@@ -203,9 +210,13 @@ function fudoApiObtenerTodoCompleto_(recurso, opciones) {
  */
 function fudoApiFilasVentaDesdeSale_(sale, incluidos) {
   const itemsPtr = (sale.relationships && sale.relationships.items && sale.relationships.items.data) || [];
-  const cashRegisterPtr = sale.relationships && sale.relationships.cashRegister && sale.relationships.cashRegister.data;
-  const cashRegister = cashRegisterPtr ? incluidos[cashRegisterPtr.type + ':' + cashRegisterPtr.id] : null;
-  const creadaPor = (cashRegister && cashRegister.attributes && cashRegister.attributes.name) || '';
+  const tablePtr = sale.relationships && sale.relationships.table && sale.relationships.table.data;
+  const table = tablePtr ? incluidos[tablePtr.type + ':' + tablePtr.id] : null;
+  const roomPtr = table && table.relationships && table.relationships.room && table.relationships.room.data;
+  const room = roomPtr ? incluidos[roomPtr.type + ':' + roomPtr.id] : null;
+  // Ventas sin mesa (delivery/take away/menú online) no tienen sala — sedeDesdeCreadaPor_ (Fudo.gs)
+  // las deja "Sin identificar" igual que antes, no hay otro dato de sede disponible para esos casos.
+  const creadaPor = (room && room.attributes && room.attributes.name) || '';
 
   const filas = [];
   itemsPtr.forEach(function (ptr) {
@@ -246,7 +257,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
       // saleState no acepta eq. — su patrón real (según la documentación) solo permite in.(...).
       saleState: 'in.(CLOSED)'
     },
-    include: 'items.product,cashRegister',
+    include: 'items.product,table.room',
     orden: 'createdAt'
   });
 

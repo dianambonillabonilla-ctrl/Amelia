@@ -267,14 +267,15 @@ function ctxAutenticadoConDatos_(paginas) {
     'Item:2': { type: 'Item', id: '2', attributes: { createdAt: '2026-07-20T12:01:00Z', quantity: 1, price: 8000, canceled: true }, relationships: { product: { data: { type: 'Product', id: '11' } } } },
     'Product:10': { type: 'Product', id: '10', attributes: { name: 'Waffle Bonitos' } },
     'Product:11': { type: 'Product', id: '11', attributes: { name: 'Limonada' } },
-    'CashRegister:5': { type: 'CashRegister', id: '5', attributes: { name: 'Caja Capri' } }
+    'Table:13': { type: 'Table', id: '13', relationships: { room: { data: { type: 'Room', id: '3' } } } },
+    'Room:3': { type: 'Room', id: '3', attributes: { name: 'Terraza Capri' } }
   };
   const sale = {
     id: '100',
     attributes: { createdAt: '2026-07-20T11:55:00Z' },
     relationships: {
       items: { data: [{ type: 'Item', id: '1' }, { type: 'Item', id: '2' }] },
-      cashRegister: { data: { type: 'CashRegister', id: '5' } }
+      table: { data: { type: 'Table', id: '13' } }
     }
   };
   const filas = ctx.fudoApiFilasVentaDesdeSale_(sale, incluidos);
@@ -284,13 +285,13 @@ function ctxAutenticadoConDatos_(paginas) {
   assert.equal(filas[0]['Cantidad'], 2);
   assert.equal(filas[0]['Precio'], 15000);
   assert.equal(filas[0]['Cancelada'], false);
-  assert.equal(filas[0]['Creada por'], 'Caja Capri');
+  assert.equal(filas[0]['Creada por'], 'Terraza Capri');
   // instanceof Date falla entre contextos de vm distintos (el Date de FudoApi.gs no es el mismo
   // constructor que el de este archivo de test) — se verifica por forma en vez de por instancia.
   assert.equal(Object.prototype.toString.call(filas[0]['Creación']), '[object Date]');
   assert.equal(filas[1]['Producto'], 'Limonada');
   assert.equal(filas[1]['Cancelada'], true);
-  console.log('fudoApiFilasVentaDesdeSale_ mapea ítems con producto/caja resueltos: OK');
+  console.log('fudoApiFilasVentaDesdeSale_ mapea ítems con producto/sala resueltos: OK');
 })();
 
 (function () {
