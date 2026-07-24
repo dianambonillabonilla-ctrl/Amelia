@@ -6,7 +6,8 @@
  * registrada para esa fecha/sede/ítem.
  */
 
-function produccionRegistrar_(items, usuario) {
+function produccionRegistrar_(items, usuario, opciones) {
+  opciones = opciones || {};
   if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
   for (let i = 0; i < items.length; i++) {
     const it = items[i] || {};
@@ -23,20 +24,40 @@ function produccionRegistrar_(items, usuario) {
     return { ok: false, error: 'No puedes registrar producción para una sede distinta a la tuya (' + usuario.sede + ')' };
   }
 
-  const ahora = new Date();
-  items.forEach(function (it) {
-    appendRowFromObj_(SHEET_NAMES.PRODUCCIONES, {
-      id: Utilities.getUuid(),
-      fecha: it.fecha,
-      sede: it.sede,
-      item: it.item,
-      cantidad: Number(it.cantidad),
-      unidad: it.unidad,
-      usuario: usuario.nombre,
-      timestamp: ahora
+  // Idempotencia: producir.html manda un request_id nuevo por cada clic en "Guardar" (ver
+  // assets/idempotencia.js). Sin esto, cada llamada creaba filas nuevas sin importar si los datos
+  // eran idénticos — un reintento de red después de que el servidor ya había guardado, o un doble
+  // clic, duplicaba la producción registrada (auditoría de seguridad, jul 2026). Lectura+escritura
+  // van bajo lock para que dos solicitudes con el MISMO request_id casi simultáneas (dos pestañas)
+  // no pasen ambas la comprobación antes de que ninguna hubiera escrito todavía.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Ya se está guardando producción ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    if (opciones.request_id) {
+      const yaRegistrado = leerTabla_(SHEET_NAMES.PRODUCCIONES).some(function (r) { return r.request_id === opciones.request_id; });
+      if (yaRegistrado) return { ok: true, registrados: items.length, repetido: true };
+    }
+
+    const ahora = new Date();
+    items.forEach(function (it) {
+      appendRowFromObj_(SHEET_NAMES.PRODUCCIONES, {
+        id: Utilities.getUuid(),
+        fecha: it.fecha,
+        sede: it.sede,
+        item: it.item,
+        cantidad: Number(it.cantidad),
+        unidad: it.unidad,
+        usuario: usuario.nombre,
+        timestamp: ahora,
+        request_id: opciones.request_id || ''
+      });
     });
-  });
-  return { ok: true, registrados: items.length };
+    return { ok: true, registrados: items.length };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function produccionListar_(fecha, sede) {

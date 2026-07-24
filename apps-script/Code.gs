@@ -64,7 +64,7 @@ function configurarHojas() {
     Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por',
       'sede', 'formato_origen', 'archivo_origen', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
-    Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp'],
+    Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id'],
     AlertasEnviadas: ['fecha', 'plato'],
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
@@ -286,7 +286,7 @@ function handleRequest_(e, method) {
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha, sesion.usuario) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(produccionRegistrar_(params.items, sesion.usuario));
+        return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
       case 'produccion_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });

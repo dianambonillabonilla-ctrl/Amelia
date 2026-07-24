@@ -1693,4 +1693,58 @@ tendenciaMod.calcularTendenciaIngrediente_('Costilla', 3, 'San Antonio');
 assert.ok(sedesRecibidasTendencia.length > 0 && sedesRecibidasTendencia.every(function (s) { return s === 'San Antonio'; }),
   'debe pasar la sede del usuario a obtenerUltimoStockPorIngrediente_ en cada fecha del rango, no consultar sin sede (que agrega ambas)');
 
+// --- produccionRegistrar_: idempotencia por request_id --------------------------------------------
+// (auditoría de seguridad, jul 2026: antes cada llamada creaba filas nuevas sin importar si los
+// datos eran idénticos — un reintento de red después de que el servidor ya había guardado, o un
+// doble clic, duplicaba la producción registrada).
+let produccionGuardada;
+function cargarProduccion_() {
+  return cargar('apps-script/Produccion.gs', {
+    SHEET_NAMES: { PRODUCCIONES: 'producciones' },
+    leerTabla_: (hoja) => hoja === 'producciones' ? produccionGuardada : [],
+    appendRowFromObj_: (hoja, fila) => { if (hoja === 'producciones') produccionGuardada.push(fila); },
+    Utilities: { getUuid: () => 'produccion-id-' + (produccionGuardada.length + 1) },
+    sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+    LockService: lockServiceMock_()
+  });
+}
+produccionGuardada = [];
+const itemsProduccion = [{ fecha: '2026-07-24', sede: 'San Antonio', item: 'Costilla Preparada', unidad: 'kg', cantidad: 8 }];
+const usuarioProduccion = { nombre: 'Ana', sede: 'San Antonio' };
+
+const primerGuardado = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, { request_id: 'req-1' });
+assert.equal(primerGuardado.ok, true);
+assert.equal(produccionGuardada.length, 1, 'la primera vez sí debe registrar la fila');
+assert.equal(produccionGuardada[0].request_id, 'req-1');
+
+const reintentoMismoRequestId = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, { request_id: 'req-1' });
+assert.equal(reintentoMismoRequestId.ok, true);
+assert.equal(reintentoMismoRequestId.repetido, true, 'debe reconocer que este request_id ya se procesó');
+assert.equal(produccionGuardada.length, 1, 'un reintento con el MISMO request_id no debe duplicar la fila');
+
+const otroEnvio = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, { request_id: 'req-2' });
+assert.equal(otroEnvio.ok, true);
+assert.equal(otroEnvio.repetido, undefined, 'un request_id distinto es un envío nuevo de verdad, no un reintento');
+assert.equal(produccionGuardada.length, 2, 'un request_id NUEVO sí debe registrar otra fila');
+
+produccionGuardada = [];
+const sinRequestId1 = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, {});
+const sinRequestId2 = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, {});
+assert.equal(sinRequestId1.ok, true);
+assert.equal(sinRequestId2.ok, true);
+assert.equal(produccionGuardada.length, 2, 'sin request_id (llamada vieja/directa) se mantiene el comportamiento de siempre, sin bloquear por idempotencia');
+
+// --- produccionRegistrar_ no debe seguir si el lock ya está tomado por otra solicitud ------------
+const produccionBloqueadaMod = cargar('apps-script/Produccion.gs', {
+  SHEET_NAMES: { PRODUCCIONES: 'producciones' },
+  leerTabla_: () => [],
+  appendRowFromObj_: () => { throw new Error('no debe llegar a escribir con el lock ocupado'); },
+  Utilities: { getUuid: () => 'no-debe-usarse' },
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  LockService: lockServiceBloqueadoMock_()
+});
+const produccionBloqueada = produccionBloqueadaMod.produccionRegistrar_(itemsProduccion, usuarioProduccion, { request_id: 'req-3' });
+assert.equal(produccionBloqueada.ok, false, 'con el lock ocupado, produccionRegistrar_ no debe registrar nada');
+assert.match(produccionBloqueada.error, /espera un momento/);
+
 console.log('inventory-controls: OK');
