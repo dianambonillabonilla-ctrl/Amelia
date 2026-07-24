@@ -241,6 +241,46 @@ assert.equal(
   'sin timestamp en ninguno de los dos lados, una compra del mismo día del conteo se sigue asumiendo cubierta (comportamiento conservador de antes)'
 );
 
+// --- Disponible Hoy: registrar producción debe moverlo, igual que una compra -------------------
+// (pedido real, auditoría 24 jul 2026: "registrar producción o compras debe de mover el disponible
+// hoy" — antes Producciones ni siquiera se leía aquí; producir algo no se reflejaba hasta el
+// siguiente conteo físico de ese producto).
+const conteosProduccionStock = [
+  { fecha: '2026-07-01', sede: 'Capri', producto: 'Costilla Preparada', unidad: 'g', cantidad: 500 }
+];
+const produccionesStock = [
+  { fecha: '2026-07-05', sede: 'Capri', item: 'Costilla Preparada', unidad: 'g', cantidad: 3000 }
+];
+const disponibleHoyProduccion = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes', PRODUCCIONES: 'producciones' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosProduccionStock : (hoja === 'producciones' ? produccionesStock : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+assert.equal(
+  disponibleHoyProduccion.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'Capri')['costilla preparada'].cantidad,
+  3500,
+  'lo producido (3000 g) debe sumarse al contado (500 g) sin esperar al próximo conteo físico'
+);
+
+// Un producto que se produce por primera vez, sin ningún conteo físico previo, igual debe aparecer
+// (mismo criterio ya aplicado a compras — ver "producto comprado por primera vez" más abajo).
+const produccionesSinConteoPrevio = [
+  { fecha: '2026-07-05', sede: 'Capri', item: 'Aioli Preparado', unidad: 'g', cantidad: 1300 }
+];
+const disponibleHoyProduccionNueva = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes', PRODUCCIONES: 'producciones' },
+  leerTabla_: (hoja) => hoja === 'producciones' ? produccionesSinConteoPrevio : [],
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+const stockProduccionNueva = disponibleHoyProduccionNueva.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'Capri');
+assert.equal(stockProduccionNueva['aioli preparado'].cantidad, 1300, 'una producción sin conteo físico previo igual debe aparecer en Disponible Hoy');
+
 // --- Disponible Hoy: producto comprado por primera vez, SIN ningún conteo físico previo -------
 // (bug reportado: un banano recién comprado no aparecía en absoluto en Disponible Hoy porque el
 // cálculo solo miraba compras de productos que YA tenían al menos un conteo).
@@ -1318,11 +1358,14 @@ const faltantesInicial = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21
 assert.equal(faltantesInicial.length, 1, 'solo debe aparecer el sector que alguien eligió hoy en esa sede (Cocina)');
 assert.equal(faltantesInicial[0].sector, 'Cocina');
 assert.deepEqual(faltantesInicial[0].faltantes, ['Sal Marina'], 'Salsa de mora es solo de Capri, no debe bloquear el cierre de San Antonio');
+assert.deepEqual(faltantesInicial[0].usuarios, [], 'sin nada contado todavía, no debe haber ningún nombre');
 
-// Con Sal Marina ya contada hoy, Cocina queda completo.
-conteosHoyHechos.push({ producto: 'Sal Marina' });
+// Con Sal Marina ya contada hoy, Cocina queda completo — y debe decir quién la contó (pedido real:
+// "le debe de salir que si ya registró, el que registró y quién lo hizo").
+conteosHoyHechos.push({ producto: 'Sal Marina', usuario: 'Ana' });
 const faltantesCompleto = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
 assert.deepEqual(faltantesCompleto[0].faltantes, [], 'con Sal Marina contada, Cocina ya no debe tener faltantes');
+assert.deepEqual(faltantesCompleto[0].usuarios, ['Ana'], 'debe decir quién contó Sal Marina');
 
 // turnoFaltantesPorSector_: contar el obligatorio bajo su alias de FUDO también debe reconocerse
 // (mismo bug/fix que productosObligatoriosFaltantes_ arriba).
@@ -1361,22 +1404,41 @@ function cargarTurnosCerrar_(conteosHoy) {
 }
 
 cierresExistentes = [];
-const cierreBloqueado = cargarTurnosCerrar_([]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
+const cierreBloqueado = cargarTurnosCerrar_([]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' });
 assert.equal(cierreBloqueado.ok, false, 'debe bloquear el cierre si Cocina no ha contado Sal Marina');
 assert.ok(/Sal Marina/.test(cierreBloqueado.error));
 assert.equal(cierresGuardados.length, 0, 'un cierre bloqueado no debe dejar ningún registro');
 
-const cierreOk = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana' });
+const cierreOk = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' });
 assert.equal(cierreOk.ok, true, 'con todo contado, debe permitir cerrar el turno');
 assert.equal(cierresGuardados.length, 1, 'debe dejar registro del cierre en Cierres_Turno');
 assert.equal(cierresGuardados[0].usuario, 'Diana');
 
 // Dos Encargados cerrando casi al mismo tiempo (o un doble clic) no debe dejar dos filas de cierre.
 cierresExistentes = [{ fecha: '2026-07-21', sede: 'San Antonio', usuario: 'Diana', timestamp: '2026-07-21T20:00:00' }];
-const cierreRepetido = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Otro Encargado' });
+const cierreRepetido = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', { nombre: 'Otro Encargado', rol: 'Encargado' });
 assert.equal(cierreRepetido.ok, true, 'volver a cerrar un turno ya cerrado no debe fallar');
 assert.equal(cierreRepetido.ya_cerrado, true, 'debe avisar que ya estaba cerrado en vez de duplicarlo');
 assert.equal(cierresGuardados.length, 1, 'no debe crear una segunda fila de cierre para el mismo día/sede');
+
+// --- turnoCerrar_: "caja es el responsable final" — solo Caja (o Admin/Encargado) puede cerrar ---
+// (pedido real, auditoría 24 jul 2026: "caja es el responsable final de que todo quede bien").
+cierresExistentes = [];
+const juanCocina = { id: 'u1', nombre: 'Juan', rol: 'Cocina' };
+const cierresGuardadosAntes = cierresGuardados.length;
+// Juan tiene el sector "Cocina" hoy (no "Caja") — aunque todo esté contado, no debe poder cerrar.
+const cierreSectorEquivocado = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', juanCocina);
+assert.equal(cierreSectorEquivocado.ok, false, 'quien tiene un sector distinto a Caja hoy no debe poder cerrar, aunque no falte nada');
+assert.match(cierreSectorEquivocado.error, /Caja/);
+assert.equal(cierresGuardados.length, cierresGuardadosAntes, 'un cierre bloqueado por sector no debe dejar ningún registro nuevo');
+
+// Juan cambia a sector "Caja" hoy — mismo usuario, ahora sí debe poder cerrar (con todo contado).
+const sectorOriginalJuan = turnosHoy[0].sector;
+turnosHoy[0].sector = 'Caja';
+const cierreComoCaja = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_('2026-07-21', 'San Antonio', juanCocina);
+assert.equal(cierreComoCaja.ok, true, 'con el sector "Caja" elegido hoy, sí debe poder cerrar el turno');
+assert.equal(cierresGuardados[cierresGuardados.length - 1].usuario, 'Juan');
+turnosHoy[0].sector = sectorOriginalJuan;
 
 // --- Tendencia de días restantes: debe respetar la sede del usuario ------------------------------
 // BUG DE SEGURIDAD REAL: a diferencia de disponible_hoy (que sí aplica sedeConsultaPermitida_),

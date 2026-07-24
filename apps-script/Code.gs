@@ -223,10 +223,15 @@ function handleRequest_(e, method) {
       case 'turno_sector_hoy':
         return jsonOut_(turnoSectorDeHoy_(sesion.usuario, params.fecha));
       case 'turno_faltantes_por_sector':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        // Antes solo Administrador/Encargado — ahora también Cocina, porque quien tiene el sector
+        // "Caja" asignado hoy puede ser cualquier persona de planta, y necesita ver este detalle
+        // (quién ya contó qué) para poder cerrar el turno (ver turnoCerrar_ en Turnos.gs).
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: turnoFaltantesPorSector_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'turno_cerrar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        // Mismo motivo: el filtro fino de "solo Caja (o Admin/Encargado) puede cerrar" vive dentro
+        // de turnoCerrar_, no aquí — este solo exige que la sesión sea de un rol operativo válido.
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'turno_cierre_estado':
         return jsonOut_(turnoCierreEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));

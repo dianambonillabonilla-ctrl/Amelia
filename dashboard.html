@@ -438,8 +438,10 @@ async function pintarPendientes_() {
   }
 
   const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
+  let sectorHoyUsuario = '';
   if (sectoresPermitidos.length) {
     const dataSector = await llamar('turno_sector_hoy', { fecha: hoy });
+    if (dataSector.ok) sectorHoyUsuario = dataSector.sector || '';
     if (dataSector.ok && !dataSector.sector) {
       pendientesReales += 1;
       bloques.push('<p style="margin:0 0 10px"><strong>Todavía no elegiste tu sector de hoy</strong> — ve a ' +
@@ -447,7 +449,12 @@ async function pintarPendientes_() {
     }
   }
 
-  if (usuario.rol === 'Administrador' || usuario.rol === 'Encargado') {
+  // Quién ve el panel de cierre: Administrador/Encargado siempre (supervisión), o quien tenga el
+  // sector "Caja" asignado hoy — pedido real: "caja es el responsable final de que todo quede
+  // bien". turnoCerrar_ (Turnos.gs) exige exactamente lo mismo del lado del servidor; esto es solo
+  // para no mostrarle a Cocina/Café un botón que de todas formas les va a fallar.
+  const puedeCerrarTurno = usuario.rol === 'Administrador' || usuario.rol === 'Encargado' || sectorHoyUsuario === 'Caja';
+  if (puedeCerrarTurno) {
     const sede = document.getElementById('sede-corte').value;
     if (sede && sede !== 'Ambas') {
       const [dataFaltantes, dataCierre] = await Promise.all([
@@ -458,16 +465,21 @@ async function pintarPendientes_() {
         bloques.push(`<p style="margin:0 0 10px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>`);
       } else if (dataFaltantes.ok) {
         const pendientesSector = dataFaltantes.data.filter(s => s.faltantes.length);
-        if (pendientesSector.length) {
-          pendientesReales += pendientesSector.length;
-          bloques.push('<p style="margin:0 0 6px"><strong>Sectores de hoy con conteo pendiente en ' + escapeHtml(sede) + ':</strong></p>' +
-            '<ul style="margin:0 0 10px">' + pendientesSector.map(s => `<li>${escapeHtml(s.sector)}: falta ${s.faltantes.map(escapeHtml).join(', ')}</li>`).join('') + '</ul>');
-        } else {
-          const detalle = dataFaltantes.data.length
-            ? `Todos los sectores de hoy en ${escapeHtml(sede)} ya contaron lo suyo.`
-            : `Nadie ha elegido sector hoy en ${escapeHtml(sede)} (o el catálogo no tiene productos asignados por sector).`;
-          bloques.push(`<p style="margin:0 0 10px">${detalle} <button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`);
-        }
+        // Por sector: quién ya contó (nombres) y qué falta — pedido real: "le debe de salir que si
+        // ya registró, el que registró y quién lo hizo", incluyendo compañeros que no registraron.
+        const listaSectores = dataFaltantes.data.map(s => {
+          const quien = s.usuarios.length ? ` — contado por ${s.usuarios.map(escapeHtml).join(', ')}` : ' — nadie ha contado nada de este sector todavía';
+          return s.faltantes.length
+            ? `<li><strong>${escapeHtml(s.sector)}</strong>: falta ${s.faltantes.map(escapeHtml).join(', ')}${quien}</li>`
+            : `<li><strong>${escapeHtml(s.sector)}</strong>: completo${quien}</li>`;
+        }).join('');
+        if (pendientesSector.length) pendientesReales += pendientesSector.length;
+        bloques.push(
+          (dataFaltantes.data.length
+            ? '<p style="margin:0 0 6px"><strong>Sectores de hoy en ' + escapeHtml(sede) + ':</strong></p><ul style="margin:0 0 10px">' + listaSectores + '</ul>'
+            : `<p style="margin:0 0 10px">Nadie ha elegido sector hoy en ${escapeHtml(sede)} (o el catálogo no tiene productos asignados por sector).</p>`) +
+          (pendientesSector.length ? '' : `<p style="margin:0 0 10px"><button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`)
+        );
       }
     }
   }
