@@ -6,21 +6,29 @@
 // ============================================================================
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
+// sessionStorage (no localStorage): el token vive solo mientras la pestaña sigue abierta — se borra
+// solo al cerrar la pestaña o el navegador, en vez de quedar guardado indefinidamente. Con
+// localStorage, un token filtrado (ej. por una futura falla de XSS) seguía siendo válido y legible
+// días después sin que cerrar el navegador ayudara en nada; con sessionStorage, un token robado
+// deja de estar disponible ahí en cuanto se cierra esa pestaña, aunque el token en sí siga vivo en
+// el servidor hasta sus 12h (auditoría de seguridad, jul 2026). En el uso real (una pestaña abierta
+// todo el turno en la tablet de caja) esto no cambia nada del día a día — solo pide iniciar sesión
+// de nuevo si de verdad se cerró la pestaña/el navegador.
 const Sesion = {
   guardar(token, usuario) {
-    localStorage.setItem('dilana_token', token);
-    localStorage.setItem('dilana_usuario', JSON.stringify(usuario));
+    sessionStorage.setItem('dilana_token', token);
+    sessionStorage.setItem('dilana_usuario', JSON.stringify(usuario));
   },
   token() {
-    return localStorage.getItem('dilana_token');
+    return sessionStorage.getItem('dilana_token');
   },
   usuario() {
-    try { return JSON.parse(localStorage.getItem('dilana_usuario')); } catch (e) { return null; }
+    try { return JSON.parse(sessionStorage.getItem('dilana_usuario')); } catch (e) { return null; }
   },
   async cerrar() {
     try { await llamar('logout'); } catch (e) { /* si falla, igual cerramos localmente */ }
-    localStorage.removeItem('dilana_token');
-    localStorage.removeItem('dilana_usuario');
+    sessionStorage.removeItem('dilana_token');
+    sessionStorage.removeItem('dilana_usuario');
     window.location.href = 'index.html';
   },
   requerir() {
