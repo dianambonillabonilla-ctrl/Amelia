@@ -271,7 +271,22 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
  * discounts, items, payments, tips, shippingCosts, table, waiter, saleIdentifier) — el supuesto
  * original (caja registradora → sede) no aplica a esta cuenta. Se pide incluido table/waiter/payments
  * además de items.product para buscar ahí un dato de sede real, sin gastar otro ciclo de despliegue.
+ *
+ * jul 2026 (2): la especificación OpenAPI oficial confirma que NINGÚN recurso de FUDO tiene un campo
+ * de sede/sucursal — las dos pistas reales son 1) las cajas propias de cada User (tablesCashRegister/
+ * deliveryCashRegister/takeAwayCashRegister) y 2) el Room al que pertenece la Table de la venta. Se
+ * agrega una muestra de 'rooms' y 'users' (con sus cajas incluidas) para confirmar cuál de las dos
+ * trae el nombre real de sede — cada intento va en su propio try/catch porque el nombre exacto del
+ * recurso ('rooms') es un supuesto, no algo ya confirmado contra la cuenta real.
  */
+function fudoApiProbarConexionRecursoSeguro_(recurso, opciones) {
+  try {
+    return fudoApiPeticionPagina_(recurso, opciones);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 function fudoApiProbarConexion_() {
   const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: 'items.product,table,waiter,payments' });
   const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);
@@ -284,6 +299,11 @@ function fudoApiProbarConexion_() {
       return acc;
     }, {}),
     muestra: muestra,
-    incluidos: cruda.included || []
+    incluidos: cruda.included || [],
+    salas: fudoApiProbarConexionRecursoSeguro_('rooms', { pageSize: 10 }),
+    usuarios: fudoApiProbarConexionRecursoSeguro_('users', {
+      pageSize: 10,
+      include: 'role,tablesCashRegister,deliveryCashRegister,takeAwayCashRegister'
+    })
   };
 }
