@@ -95,8 +95,8 @@
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
         Para cada compra registrada, revisa si de verdad quedó contando en "Disponible Hoy" o si se
         ignoró en silencio (nombre que no existe en el catálogo, unidad que no combina con el último
-        conteo físico, o fecha ya cubierta por ese conteo). La última columna dice exactamente qué
-        hacer en cada caso — el diagnóstico nunca corrige nada solo, decides tú.
+        conteo físico, o fecha ya cubierta por ese conteo). La última columna siempre trae botones
+        con las opciones para resolverlo — el diagnóstico nunca decide solo cuál es la correcta, tú eliges.
       </p>
       <table>
         <thead><tr><th>Fecha</th><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Proveedor / Factura</th><th>Por qué no suma</th><th>Cómo solucionarlo</th></tr></thead>
@@ -206,26 +206,38 @@ function pintarVentas_(data) {
   `).join('');
 }
 
-// Botón accionable para el caso "nombre no existe en el catálogo" — o crea el producto y lo
-// vincula de una, o lo une como alias de un parecido que ya existe, en vez de solo explicar qué
-// hacer a mano (pedido real: "si aceite de freidora no está creado pues debió crearlo y unirlo al
-// disponible hoy"). Para unidad distinta / fecha ya cubierta no hay botón: cuál valor es el
-// correcto (la unidad, o si el conteo de verdad ya incluía la compra) es una decisión humana, no
-// algo que se pueda adivinar y aplicar solo.
-function botonAccionCompra_(p) {
-  const accion = p.accion || { tipo: 'ninguna' };
-  if (accion.tipo === 'crear_producto') {
-    return `<button class="btn fantasma btn-crear-producto" type="button"
-      data-nombre="${escapeHtml(accion.nombre)}" data-unidad="${escapeHtml(accion.unidad_base || '')}">
-      Crear y vincular "${escapeHtml(accion.nombre)}"</button>`;
-  }
-  if (accion.tipo === 'vincular_alias') {
-    return `<button class="btn fantasma btn-vincular-alias" type="button"
-      data-id="${escapeHtml(accion.catalogo_id)}" data-catalogo-nombre="${escapeHtml(accion.catalogo_nombre)}"
-      data-alias="${escapeHtml(accion.alias)}" data-nombre-fudo-actual="${escapeHtml(accion.nombre_fudo_actual || '')}">
-      Vincular a "${escapeHtml(accion.catalogo_nombre)}"</button>`;
-  }
-  return '';
+// Botones accionables por problema: cada `p.accion.opciones` es una decisión concreta que
+// diagnostico.html convierte en un botón — pedido real: "necesito que me dé las opciones y
+// finalmente yo decido qué hacer". Ningún caso se deja solo con texto: nombre fuera del catálogo
+// (crear / vincular alias), unidad distinta (corregir la compra / ir a registrar un conteo) y
+// fecha ya cubierta (confirmar / ir a registrar un conteo) SIEMPRE traen algo para elegir — la
+// decisión de cuál valor es el correcto sigue siendo tuya, el botón solo ejecuta la que elijas.
+function botonesAccionCompra_(p) {
+  const opciones = (p.accion && p.accion.opciones) || [];
+  return opciones.map(o => {
+    if (o.id === 'crear_producto') {
+      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="crear_producto"
+        data-nombre="${escapeHtml(o.nombre)}" data-unidad="${escapeHtml(o.unidad_base || '')}">${escapeHtml(o.etiqueta)}</button>`;
+    }
+    if (o.id === 'vincular_alias') {
+      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="vincular_alias"
+        data-id="${escapeHtml(o.catalogo_id)}" data-catalogo-nombre="${escapeHtml(o.catalogo_nombre)}"
+        data-alias="${escapeHtml(o.alias)}" data-nombre-fudo-actual="${escapeHtml(o.nombre_fudo_actual || '')}">${escapeHtml(o.etiqueta)}</button>`;
+    }
+    if (o.id === 'corregir_unidad') {
+      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="corregir_unidad"
+        data-ajuste-id="${escapeHtml(o.ajuste_id)}" data-unidad-sugerida="${escapeHtml(o.unidad_sugerida)}"
+        data-cantidad-actual="${escapeHtml(o.cantidad_actual)}" data-unidad-actual="${escapeHtml(o.unidad_actual)}"
+        data-producto="${escapeHtml(o.producto)}">${escapeHtml(o.etiqueta)}</button>`;
+    }
+    if (o.id === 'ir_a_conteo') {
+      return `<a class="btn fantasma" href="conteo.html" target="_blank" rel="noopener">${escapeHtml(o.etiqueta)}</a>`;
+    }
+    if (o.id === 'confirmar_incluida') {
+      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="confirmar_incluida">${escapeHtml(o.etiqueta)}</button>`;
+    }
+    return '';
+  }).join(' ');
 }
 
 function pintarComprasNoSuman_(data) {
@@ -246,51 +258,80 @@ function pintarComprasNoSuman_(data) {
       <td>${escapeHtml(p.cantidad)} ${escapeHtml(p.unidad)}</td>
       <td>${escapeHtml(p.proveedor)}${p.numero_factura ? ' — ' + escapeHtml(p.numero_factura) : ''}</td>
       <td><span class="badge alerta">${escapeHtml(p.motivo)}</span></td>
-      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}<br>${botonAccionCompra_(p)}</td>
+      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}<br><div style="margin-top:6px; display:flex; flex-direction:column; gap:4px; align-items:flex-start">${botonesAccionCompra_(p)}</div></td>
     </tr>`).join('') +
     `<tr><td colspan="7" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
 }
 
 document.getElementById('tabla-compras-no-suman').addEventListener('click', async (ev) => {
-  const btnCrear = ev.target.closest('.btn-crear-producto');
-  if (btnCrear) {
-    if (btnCrear.disabled) return;
-    const nombre = btnCrear.dataset.nombre;
+  const btn = ev.target.closest('.btn-opcion-compra');
+  if (!btn || btn.disabled) return;
+  const opcion = btn.dataset.opcion;
+
+  if (opcion === 'crear_producto') {
+    const nombre = btn.dataset.nombre;
     const categoria = prompt(`Crear "${nombre}" en el Catálogo Maestro y vincularlo a Disponible Hoy.\n\nCategoría (opcional, ej. "Materia Prima/Fruver"):`, '');
     if (categoria === null) return;
-    btnCrear.disabled = true;
+    btn.disabled = true;
     try {
-      const data = await llamar('catalogo_guardar', { item: { nombre_estandar: nombre, unidad_base: btnCrear.dataset.unidad, categoria: categoria.trim() } });
+      const data = await llamar('catalogo_guardar', { item: { nombre_estandar: nombre, unidad_base: btn.dataset.unidad, categoria: categoria.trim() } });
       if (!data.ok) { alert(data.error); return; }
       avisarGuardado(`"${nombre}" creado y vinculado al catálogo.`);
       correrDiagnostico();
     } catch (err) {
       alert('Algo salió mal y no se pudo crear el producto. Vuelve a intentarlo.');
     } finally {
-      btnCrear.disabled = false;
+      btn.disabled = false;
     }
     return;
   }
-  const btnAlias = ev.target.closest('.btn-vincular-alias');
-  if (btnAlias) {
-    if (btnAlias.disabled) return;
-    const catalogoNombre = btnAlias.dataset.catalogoNombre;
-    const alias = btnAlias.dataset.alias;
-    const nombreFudoActual = btnAlias.dataset.nombreFudoActual;
+
+  if (opcion === 'vincular_alias') {
+    const catalogoNombre = btn.dataset.catalogoNombre;
+    const alias = btn.dataset.alias;
+    const nombreFudoActual = btn.dataset.nombreFudoActual;
     let mensaje = `Vincular "${alias}" como nombre alterno de "${catalogoNombre}".`;
     if (nombreFudoActual) mensaje += `\n\n⚠️ "${catalogoNombre}" ya tenía otro nombre alterno ("${nombreFudoActual}") — quedará reemplazado por "${alias}".`;
     if (!confirm(mensaje + '\n\n¿Continuar?')) return;
-    btnAlias.disabled = true;
+    btn.disabled = true;
     try {
-      const data = await llamar('catalogo_guardar', { item: { id: btnAlias.dataset.id, nombre_fudo: alias } });
+      const data = await llamar('catalogo_guardar', { item: { id: btn.dataset.id, nombre_fudo: alias } });
       if (!data.ok) { alert(data.error); return; }
       avisarGuardado(`"${alias}" vinculado a "${catalogoNombre}".`);
       correrDiagnostico();
     } catch (err) {
       alert('Algo salió mal y no se pudo vincular. Vuelve a intentarlo.');
     } finally {
-      btnAlias.disabled = false;
+      btn.disabled = false;
     }
+    return;
+  }
+
+  if (opcion === 'corregir_unidad') {
+    const unidadSugerida = btn.dataset.unidadSugerida;
+    const cantidadNueva = prompt(
+      `Corregir "${btn.dataset.producto}" a la unidad del último conteo ("${unidadSugerida}").\n\n` +
+      `Estaba registrada como ${btn.dataset.cantidadActual} ${btn.dataset.unidadActual}.\n\n` +
+      `¿Cuánto fue en realidad, en "${unidadSugerida}"?`,
+      ''
+    );
+    if (cantidadNueva === null || cantidadNueva.trim() === '') return;
+    btn.disabled = true;
+    try {
+      const data = await llamar('ajuste_inventario_corregir_unidad', { id: btn.dataset.ajusteId, unidad: unidadSugerida, cantidad: cantidadNueva.trim() });
+      if (!data.ok) { alert(data.error); return; }
+      avisarGuardado(`Compra corregida a ${cantidadNueva.trim()} ${unidadSugerida}.`);
+      correrDiagnostico();
+    } catch (err) {
+      alert('Algo salió mal y no se pudo corregir la compra. Vuelve a intentarlo.');
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  if (opcion === 'confirmar_incluida') {
+    avisarGuardado('Entendido, no se necesita ningún cambio para esta compra.');
   }
 });
 

@@ -1006,6 +1006,41 @@ const resultadoSinColumnas = avalarModSinColumnas.ajusteInventarioAvalar_('m2', 
 assert.equal(resultadoSinColumnas.ok, false, 'sin las columnas de aval, debe fallar con mensaje claro en vez de reventar');
 assert.ok(/configurarHojas/.test(resultadoSinColumnas.error), 'el mensaje debe guiar a correr configurarHojas()');
 
+// --- ajusteInventarioCorregirUnidad_: corregir la unidad/cantidad de una compra ya registrada ---
+// (pedido real de Diagnóstico → "Compras que no están sumando": cuando la unidad de una compra no
+// combina con el último conteo, dar la opción real de corregirla, no solo texto explicando qué hacer).
+const headersCorregir = ['id', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo'];
+const hojaCompraCorregir = mockHojaAjustes_(headersCorregir, [
+  { id: 'c1', tipo: 'Compra cruda', producto: 'Limón Tahití', unidad: 'kg', cantidad: 50, motivo: '' }
+]);
+const corregirMod = cargar('apps-script/AjustesInventario.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  sheet_: function () { return hojaCompraCorregir; }
+});
+const resultadoCorregir = corregirMod.ajusteInventarioCorregirUnidad_('c1', 'u', '30', adminDiana);
+assert.equal(resultadoCorregir.ok, true);
+const unidadCol = headersCorregir.indexOf('unidad');
+const cantidadCol = headersCorregir.indexOf('cantidad');
+const motivoColCorregir = headersCorregir.indexOf('motivo');
+assert.equal(hojaCompraCorregir._data[1][unidadCol], 'u', 'la unidad debe quedar corregida en la hoja');
+assert.equal(hojaCompraCorregir._data[1][cantidadCol], 30, 'la cantidad nueva debe quedar guardada como número');
+assert.match(hojaCompraCorregir._data[1][motivoColCorregir], /Diana/, 'debe quedar rastro de quién corrigió la compra');
+assert.match(hojaCompraCorregir._data[1][motivoColCorregir], /50 kg/, 'debe quedar rastro de qué decía antes');
+
+const hojaMermaNoCorregir = mockHojaAjustes_(headersCorregir, [{ id: 'm10', tipo: 'Merma / desperdicio', unidad: 'kg', cantidad: 2 }]);
+const corregirModMerma = cargar('apps-script/AjustesInventario.gs', {
+  SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
+  sheet_: function () { return hojaMermaNoCorregir; }
+});
+assert.equal(corregirModMerma.ajusteInventarioCorregirUnidad_('m10', 'u', '1', adminDiana).ok, false, 'no debe dejar corregir una merma, solo compras');
+
+assert.equal(corregirMod.ajusteInventarioCorregirUnidad_(null, 'u', '1', adminDiana).ok, false, 'debe exigir el id');
+assert.equal(corregirMod.ajusteInventarioCorregirUnidad_('c1', '', '1', adminDiana).ok, false, 'debe exigir la unidad nueva');
+assert.equal(corregirMod.ajusteInventarioCorregirUnidad_('c1', 'u', '0', adminDiana).ok, false, 'la cantidad debe ser mayor que cero');
+assert.equal(corregirMod.ajusteInventarioCorregirUnidad_('no-existe', 'u', '1', adminDiana).ok, false, 'debe fallar si el id no existe');
+
+console.log('ajusteInventarioCorregirUnidad_: OK');
+
 // --- Recetas: platos vendidos en FUDO sin ninguna receta con ese nombre --------------------------
 // Pedido real: "si en FUDO saca un wafle de fresa con chocolate el sistema debe de guardar el
 // wafle, la fresa y el chocolate y si no lo guarda la conciliacion no funciona" — sin receta, esa

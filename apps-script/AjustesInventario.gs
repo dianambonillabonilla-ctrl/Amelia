@@ -134,6 +134,51 @@ function ajusteInventarioAvalar_(id, usuario) {
   return { ok: false, error: 'No se encontró el movimiento ' + id };
 }
 
+/**
+ * Corrige la unidad (y cantidad) de una compra YA registrada — la acción real detrás de la opción
+ * "la unidad del último conteo es la correcta" en Diagnóstico → "Compras que no están sumando",
+ * para el caso en que la unidad de la compra no combina con la del último conteo físico. Solo
+ * aplica a "Compra cruda": mermas y ajustes operativos no pasan por este flujo de corrección.
+ * Deja constancia en `motivo` de qué tenía antes — a diferencia de crear/vincular/fusionar
+ * productos del catálogo, esto sí reescribe un dato ya registrado, así que conviene que quede
+ * rastro de quién lo corrigió y qué decía originalmente.
+ */
+function ajusteInventarioCorregirUnidad_(id, unidadNueva, cantidadNueva, usuario) {
+  if (!id) return { ok: false, error: 'Falta el id de la compra a corregir' };
+  if (!unidadNueva) return { ok: false, error: 'Falta la unidad correcta' };
+  if (isNaN(Number(cantidadNueva)) || Number(cantidadNueva) <= 0) {
+    return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
+  }
+
+  const sh = sheet_(SHEET_NAMES.AJUSTES_INVENTARIO);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const tipoCol = headers.indexOf('tipo');
+  const unidadCol = headers.indexOf('unidad');
+  const cantidadCol = headers.indexOf('cantidad');
+  const motivoCol = headers.indexOf('motivo');
+
+  for (let r = 1; r < data.length; r++) {
+    if (data[r][idCol] === id) {
+      if (data[r][tipoCol] !== 'Compra cruda') {
+        return { ok: false, error: 'Solo se corrige la unidad de compras (Compra cruda)' };
+      }
+      const unidadVieja = data[r][unidadCol];
+      const cantidadVieja = data[r][cantidadCol];
+      sh.getRange(r + 1, unidadCol + 1).setValue(unidadNueva);
+      sh.getRange(r + 1, cantidadCol + 1).setValue(Number(cantidadNueva));
+      if (motivoCol !== -1) {
+        const notaAnterior = data[r][motivoCol] || '';
+        const nota = 'Unidad corregida desde Diagnóstico por ' + usuario.nombre + ' (antes: ' + cantidadVieja + ' ' + unidadVieja + ').';
+        sh.getRange(r + 1, motivoCol + 1).setValue(notaAnterior ? notaAnterior + ' | ' + nota : nota);
+      }
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'No se encontró la compra ' + id };
+}
+
 function ajustesNetosPorItem_(fecha, sede, indice) {
   const totales = {};
   ajustesInventarioListar_(fecha, sede).forEach(function (a) {
