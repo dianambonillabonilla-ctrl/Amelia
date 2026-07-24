@@ -60,7 +60,11 @@ function conteoRegistrar_(items, usuario, opciones) {
     const ahora = new Date();
     items.forEach(function (it) {
       const turnoItem = it.turno || turnoPorDefecto;
-      const datos = {
+      // neutralizarObjetoFormulas_ (Code.gs): 'producto'/'unidad' son texto libre — sin esto, algo
+      // como "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir
+      // la hoja (auditoría de seguridad, jul 2026). appendRowFromObj_ ya protege el conteo NUEVO;
+      // esto protege también corregir uno existente, que escribe directo con setValue más abajo.
+      const datos = neutralizarObjetoFormulas_({
         id: Utilities.getUuid(),
         fecha: it.fecha,
         sede: it.sede,
@@ -71,7 +75,7 @@ function conteoRegistrar_(items, usuario, opciones) {
         cantidad: it.cantidad,
         usuario: usuario.nombre,
         timestamp: ahora
-      };
+      });
       catalogoAsegurar_(it.producto, it.unidad);
       const existente = conteoBuscarFila_(Object.assign({}, it, { turno: turnoItem }));
       if (existente) {

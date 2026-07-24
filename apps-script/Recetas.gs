@@ -72,7 +72,12 @@ function recetaGuardar_(item) {
   const headers = data[0];
   const idCol = headers.indexOf('id');
   const id = item.id || Utilities.getUuid();
-  const valores = Object.assign({
+  // neutralizarObjetoFormulas_ (Code.gs): 'notas' (y en teoría cualquier otro campo de texto libre
+  // aquí) — sin esto, algo como "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba
+  // como fórmula al abrir la hoja (auditoría de seguridad, jul 2026). Se limpia una sola vez, antes
+  // de que el mismo objeto se use tanto para actualizar (más abajo) como para crear
+  // (appendRowFromObj_, que ya neutraliza por su cuenta — aplicarlo dos veces no hace daño).
+  const valores = neutralizarObjetoFormulas_(Object.assign({
     id: id,
     rendimiento_producto: '',
     unidad_rendimiento: '',
@@ -82,7 +87,7 @@ function recetaGuardar_(item) {
     sede: 'Ambas',
     estado: 'activo',
     controla_disponibilidad: true
-  }, item, { id: id });
+  }, item, { id: id }));
 
   if (item.id && idCol !== -1) {
     for (let r = 1; r < data.length; r++) {

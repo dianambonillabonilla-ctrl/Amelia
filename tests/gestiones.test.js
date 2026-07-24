@@ -15,6 +15,17 @@ function sedeEscrituraPermitidaMock_(usuario, sede) {
     sede === usuario.sede || sede === 'Centro de Producción';
 }
 
+// Espejo de neutralizarFormula_/neutralizarObjetoFormulas_ en Code.gs (ver mismo mock en
+// inventory-controls.test.js) — auditoría de seguridad, jul 2026.
+function neutralizarFormulaMock_(v) {
+  return (typeof v === 'string' && /^[=+\-@]/.test(v)) ? "'" + v : v;
+}
+function neutralizarObjetoFormulasMock_(obj) {
+  const limpio = {};
+  Object.keys(obj || {}).forEach((k) => { limpio[k] = neutralizarFormulaMock_(obj[k]); });
+  return limpio;
+}
+
 const HEADERS = ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
   'actualizado_por', 'timestamp_actualizado', 'factura_id'];
 
@@ -53,6 +64,8 @@ function claveProductoGestionesMock_(texto, indice) {
 }
 
 const gestiones = cargar('apps-script/Gestiones.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { GESTIONES: 'Gestiones' },
   Utilities: { getUuid: () => 'g-' + filas.length },
   formatearFecha_: () => '2026-07-23',
@@ -161,6 +174,8 @@ assert.doesNotThrow(() => gestiones.gestionAutoResolverPorCompra_([{ producto: '
 reiniciar_();
 const indiceConAliasFudoGestiones = { 'coca cola 350': 'Coca-Cola Original 350 ml' };
 const gestionesConAlias = cargar('apps-script/Gestiones.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: { GESTIONES: 'Gestiones' },
   Utilities: { getUuid: () => 'g-' + filas.length },
   formatearFecha_: () => '2026-07-24',

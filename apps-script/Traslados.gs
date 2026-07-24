@@ -83,11 +83,18 @@ function trasladoBuscarFila_(id) {
 function trasladoActualizar_(id, cambios) {
   const encontrado = trasladoBuscarFila_(id);
   if (!encontrado) return { ok: false, error: 'No se encontró el traslado ' + id };
+  // neutralizarObjetoFormulas_ (Code.gs): 'observacion' y 'nota_resolucion' son texto libre que
+  // cualquiera con acceso a un traslado puede escribir — sin esto, algo como
+  // =HYPERLINK("...") ahí se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir la
+  // hoja (auditoría de seguridad, jul 2026). appendRowFromObj_/appendRowsFromObjs_ ya protegen la
+  // CREACIÓN del traslado; esto protege la actualización (confirmar/observar/resolver), que escribe
+  // directo con setValue y no pasa por esos helpers.
+  const cambiosLimpios = neutralizarObjetoFormulas_(cambios);
   encontrado.headers.forEach(function (h, c) {
-    if (cambios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambios[h]);
+    if (cambiosLimpios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambiosLimpios[h]);
   });
   const idCol = encontrado.headers.indexOf('estado');
-  return { ok: true, estado: cambios.estado || encontrado.valores[idCol] };
+  return { ok: true, estado: cambiosLimpios.estado || encontrado.valores[idCol] };
 }
 
 function trasladoConfirmar_(id, cantidadRecibida, usuario) {
