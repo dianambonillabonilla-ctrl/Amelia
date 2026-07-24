@@ -10,11 +10,18 @@
  * Busca en Recetas cantidades sospechosamente grandes (indicio típico de un cero de más o de
  * mezclar gramos con kilos al capturar el dato) — esto es justo lo que hace que "Disponible Hoy"
  * calcule 0 preparaciones posibles aunque sí haya stock real.
+ *
+ * Solo mira filas VIGENTES (misma regla que usa el cálculo real — ver recetaEstadoVigente_ en
+ * Recetas.gs): una receta 'archivado', 'pendiente', 'referencia', 'borrador' o 'inactivo' nunca
+ * participa en Disponible Hoy, así que una cantidad rara ahí NO puede ser la causa de que
+ * "Disponible Hoy" dé 0 — antes se mostraban de todos modos, generando falsas alarmas con datos
+ * viejos ya reemplazados (ej. "Chanchostilla" archivada por la migración de julio 2026, que se
+ * conserva a propósito para no perder historial, nunca se borra).
  */
 function diagnosticarRecetas_(umbralSospechoso) {
   umbralSospechoso = Number(umbralSospechoso) || 20000; // más de 20kg/20000 unidades por receta es raro
-  const filas = leerTabla_(SHEET_NAMES.RECETAS);
-  const sospechosas = filas.filter(function (r) {
+  const vigentes = leerTabla_(SHEET_NAMES.RECETAS).filter(function (r) { return recetaEstadoVigente_(r.estado); });
+  const sospechosas = vigentes.filter(function (r) {
     const cantidad = Number(r.cantidad);
     return isNaN(cantidad) || cantidad <= 0 || cantidad > umbralSospechoso;
   });
@@ -22,13 +29,57 @@ function diagnosticarRecetas_(umbralSospechoso) {
   if (!sospechosas.length) {
     Logger.log('Recetas: no se encontraron cantidades sospechosas (umbral: ' + umbralSospechoso + ').');
   } else {
-    Logger.log('Recetas con cantidades sospechosas (' + sospechosas.length + ' de ' + filas.length + '):');
+    Logger.log('Recetas con cantidades sospechosas (' + sospechosas.length + ' de ' + vigentes.length + '):');
     sospechosas.forEach(function (r) {
       Logger.log('  - ' + r.producto + ' <- ' + r.ingrediente + ': ' + r.cantidad + ' ' + r.unidad);
     });
   }
 
-  return { total_filas: filas.length, umbral: umbralSospechoso, sospechosas: sospechosas };
+  return { total_filas: vigentes.length, umbral: umbralSospechoso, sospechosas: sospechosas };
+}
+
+/**
+ * Para cada línea de receta VIGENTE (misma regla que recetasVigentes_), revisa si el ingrediente
+ * existe en el Catálogo Maestro o si al menos es el producto de OTRA receta (una preparación
+ * intermedia como "Costilla Preparada": si tiene su propia receta, el cálculo funciona aunque no
+ * tenga fila de catálogo aparte). Si no es ninguna de las dos cosas, nadie puede contarlo de forma
+ * consistente en Registrar conteo ni comprarlo de forma que sume — pedido real: "en catálogo e
+ * inventario no podemos tener recetas con cosas que no tenemos creadas y si es así deberías decir
+ * para crearlas". Reutiliza resolverOpcionesNombreNoEnCatalogo_ (la misma lógica de sugerencia y
+ * botones de "Compras que no están sumando") para ofrecer crear el producto o vincularlo a uno
+ * parecido que ya exista.
+ */
+function diagnosticarRecetasSinCatalogo_() {
+  const indice = indiceCatalogo_();
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO).filter(function (c) { return c.nombre_estandar; });
+  const filas = leerTabla_(SHEET_NAMES.RECETAS).filter(function (r) { return recetaEstadoVigente_(r.estado); });
+
+  const productosConReceta = {};
+  filas.forEach(function (r) { productosConReceta[normalizar_(r.producto)] = true; });
+
+  const porIngrediente = {};
+  filas.forEach(function (r) {
+    const normIngrediente = normalizar_(r.ingrediente);
+    if (!normIngrediente) return;
+    if (indice[normIngrediente]) return; // existe en el catálogo (nombre_estandar o nombre_fudo)
+    if (productosConReceta[normIngrediente]) return; // preparación intermedia con receta propia
+
+    if (!porIngrediente[normIngrediente]) {
+      const resuelto = resolverOpcionesNombreNoEnCatalogo_(r.ingrediente, r.unidad, catalogo);
+      porIngrediente[normIngrediente] = {
+        ingrediente: r.ingrediente, recetas: [],
+        solucion: resuelto.texto, accion: { tipo: 'opciones', opciones: resuelto.opciones }
+      };
+    }
+    if (porIngrediente[normIngrediente].recetas.indexOf(r.producto) === -1) {
+      porIngrediente[normIngrediente].recetas.push(r.producto);
+    }
+  });
+
+  const problemas = Object.keys(porIngrediente).map(function (k) { return porIngrediente[k]; });
+  problemas.sort(function (a, b) { return a.ingrediente < b.ingrediente ? -1 : a.ingrediente > b.ingrediente ? 1 : 0; });
+  Logger.log('Recetas: ' + problemas.length + ' ingrediente(s) sin catálogo ni receta propia, de ' + filas.length + ' línea(s) vigentes revisadas.');
+  return { total_lineas: filas.length, con_problema: problemas.length, problemas: problemas };
 }
 
 /**
@@ -310,6 +361,9 @@ function distanciaEdicion_(a, b) {
 function diagnosticoCompleto_() {
   Logger.log('========== DIAGNÓSTICO DE RECETAS ==========');
   diagnosticarRecetas_();
+  Logger.log('');
+  Logger.log('========== DIAGNÓSTICO DE RECETAS SIN CATÁLOGO ==========');
+  diagnosticarRecetasSinCatalogo_();
   Logger.log('');
   Logger.log('========== DIAGNÓSTICO DE CONTEOS DUPLICADOS ==========');
   diagnosticarConteosDuplicados_();

@@ -137,6 +137,77 @@ assert.equal(f5.accion.opciones[1].nombre, 'Costilla curda');
 
 console.log('diagnosticarComprasNoSuman_: OK');
 
+// --- diagnosticarRecetas_ y diagnosticarRecetasSinCatalogo_ --------------------------------------
+
+function recetaEstadoVigenteMock_(estado) {
+  const excluidos = ['borrador', 'inactivo', 'archivado', 'pendiente', 'referencia'];
+  return excluidos.indexOf(normalizarMock_(estado || 'activo')) === -1;
+}
+
+const catalogoRecetas = [
+  { id: 'id-panceta', nombre_estandar: 'Panceta Pre-Ahumada' },
+  { id: 'id-costilla-limpia', nombre_estandar: 'Costilla Limpia Marinada' },
+  { id: 'id-sal-fina', nombre_estandar: 'Sal Marina Fina' }
+];
+const recetasMock = [
+  // Archivada por la migración de julio 2026 (número corrupto de antes: se conserva, nunca se
+  // borra) — NO debe contar como sospechosa ni escanearse para el chequeo de catálogo: un
+  // 'archivado' nunca participa en Disponible Hoy, así que no puede ser la causa de nada.
+  { producto: 'Chanchostilla', ingrediente: 'Costilla Preparada', cantidad: 1153846154, unidad: 'g', estado: 'archivado' },
+  { producto: 'Cono Supremo', ingrediente: 'Panceta Pre-Ahumada', cantidad: 60, unidad: 'g', estado: 'activo' },
+  // "Costilla Preparada" no está en el catálogo de prueba, pero SÍ es el producto de la receta de
+  // abajo (una preparación intermedia con receta propia) — no debe marcarse sin catálogo.
+  { producto: 'Cono Supremo', ingrediente: 'Costilla Preparada', cantidad: 70, unidad: 'g', estado: 'revisar' },
+  { producto: 'Costilla Preparada', ingrediente: 'Costilla Limpia Marinada', cantidad: 7250, unidad: 'g', estado: 'activo', tipo: 'produccion' },
+  // "Sal" no existe tal cual en el catálogo (solo "Sal Marina Fina") pero SÍ es parecido — debe
+  // sugerir vincularlo como alias, además de la opción de crear uno nuevo.
+  { producto: 'Aioli Preparado', ingrediente: 'Sal', cantidad: 10, unidad: 'g', estado: 'activo', tipo: 'produccion' },
+  // Sin ningún parecido real en el catálogo — solo debe ofrecer crear.
+  { producto: 'Aioli Preparado', ingrediente: 'Especias Secretas Amelia', cantidad: 5, unidad: 'g', estado: 'activo', tipo: 'produccion' },
+  // Vigente y con una cantidad claramente ilógica — SÍ debe marcarse sospechosa (a diferencia de la archivada de arriba).
+  { producto: 'Reducción Balsámica Preparada', ingrediente: 'Salsa de Costilla Nueva', cantidad: 99999999, unidad: 'g', estado: 'activo', tipo: 'produccion' },
+  // 'pendiente': tampoco participa en el cálculo, no debe escanearse aunque su ingrediente no exista en catálogo.
+  { producto: 'Waffle Bonitos', ingrediente: 'Salsa de mora', cantidad: 35, unidad: 'g', estado: 'pendiente' }
+];
+
+const diagnosticoRecetas = cargar('apps-script/Diagnostico.gs', {
+  SHEET_NAMES: { RECETAS: 'recetas', CATALOGO: 'catalogo' },
+  Logger: { log: () => {} },
+  leerTabla_: (hoja) => hoja === 'recetas' ? recetasMock : hoja === 'catalogo' ? catalogoRecetas : [],
+  indiceCatalogo_: () => indiceMock_(catalogoRecetas),
+  normalizar_: normalizarMock_,
+  normalizarUnidad_: normalizarUnidadMock_,
+  recetaEstadoVigente_: recetaEstadoVigenteMock_
+});
+
+const resultadoRecetas = diagnosticoRecetas.diagnosticarRecetas_();
+assert.equal(resultadoRecetas.total_filas, 6, 'total_filas debe contar solo las 6 líneas vigentes (activo/revisar), no las 2 archivada/pendiente');
+assert.equal(resultadoRecetas.sospechosas.length, 1, 'debe marcar solo la línea vigente con cantidad ilógica, no la archivada con el número corrupto');
+assert.equal(resultadoRecetas.sospechosas[0].producto, 'Reducción Balsámica Preparada');
+
+const resultadoRecetasCatalogo = diagnosticoRecetas.diagnosticarRecetasSinCatalogo_();
+assert.equal(resultadoRecetasCatalogo.total_lineas, 6);
+assert.equal(resultadoRecetasCatalogo.con_problema, 3, 'debe marcar exactamente 3 ingredientes: Sal, Especias Secretas Amelia, Salsa de Costilla Nueva');
+const porIngredienteReceta = {};
+resultadoRecetasCatalogo.problemas.forEach((p) => { porIngredienteReceta[p.ingrediente] = p; });
+assert.ok(!porIngredienteReceta['Panceta Pre-Ahumada'], 'un ingrediente que sí está en catálogo no debe marcarse');
+assert.ok(!porIngredienteReceta['Costilla Preparada'], 'una preparación intermedia con receta propia no debe marcarse aunque no esté en catálogo');
+assert.ok(!porIngredienteReceta['Salsa de mora'], 'un ingrediente de una receta \'pendiente\' (no vigente) no debe escanearse');
+
+assert.ok(porIngredienteReceta['Sal'], '"Sal" debe marcarse (no coincide exacto con "Sal Marina Fina")');
+assert.deepEqual(porIngredienteReceta['Sal'].recetas, ['Aioli Preparado']);
+assert.equal(porIngredienteReceta['Sal'].accion.opciones.length, 2, '"Sal" tiene un parecido real — debe ofrecer vincular Y crear');
+assert.equal(porIngredienteReceta['Sal'].accion.opciones[0].id, 'vincular_alias');
+assert.equal(porIngredienteReceta['Sal'].accion.opciones[0].catalogo_nombre, 'Sal Marina Fina');
+
+assert.ok(porIngredienteReceta['Especias Secretas Amelia'], 'un ingrediente sin parecido debe marcarse');
+assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones.length, 1, 'sin parecido, solo debe ofrecer crear');
+assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones[0].id, 'crear_producto');
+
+assert.ok(porIngredienteReceta['Salsa de Costilla Nueva'], 'un ingrediente de una subreceta (tipo producción) también debe revisarse');
+
+console.log('diagnosticarRecetas_ y diagnosticarRecetasSinCatalogo_: OK');
+
 // --- diagnosticarCatalogoDuplicados_ -------------------------------------------------------------
 
 const catalogoConDuplicados = [

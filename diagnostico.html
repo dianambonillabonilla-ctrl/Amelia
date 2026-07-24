@@ -66,11 +66,29 @@
     <div class="card">
       <h2>Recetas con cantidades sospechosas</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Estas son la causa más común de que "Disponible Hoy" muestre 0 preparaciones posibles aunque sí haya stock.
+        Estas son la causa más común de que "Disponible Hoy" muestre 0 preparaciones posibles aunque
+        sí haya stock. Solo mira recetas VIGENTES (estado activo/revisar) — una receta archivada,
+        pendiente o de referencia nunca participa en el cálculo, así que no puede ser la causa,
+        aunque su número se vea raro (ej. recetas viejas que ya quedaron reemplazadas por la
+        migración de julio 2026, conservadas a propósito para no perder historial).
       </p>
       <table>
         <thead><tr><th>Plato</th><th>Ingrediente</th><th>Cantidad</th><th>Unidad</th></tr></thead>
         <tbody id="tabla-recetas"><tr><td colspan="4" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Recetas — ingredientes que no existen en el catálogo</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Para cada receta vigente, revisa si el ingrediente existe en el Catálogo Maestro o es una
+        preparación con receta propia (ej. "Costilla Preparada"). Si no es ninguna de las dos cosas,
+        nadie puede contarlo en Registrar conteo de forma consistente ni comprarlo de forma que sume
+        — igual que en compras, hay botones para crearlo o vincularlo a uno parecido que ya exista.
+      </p>
+      <table>
+        <thead><tr><th>Ingrediente</th><th>Usado en estas recetas</th><th>Solución</th><th>Opciones</th></tr></thead>
+        <tbody id="tabla-recetas-sin-catalogo"><tr><td colspan="4" class="vacio">Sin correr todavía.</td></tr></tbody>
       </table>
     </div>
 
@@ -131,25 +149,28 @@ async function correrDiagnostico() {
   const msg = document.getElementById('msg-error');
   msg.textContent = '';
   document.getElementById('tabla-recetas').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-recetas-sin-catalogo').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-duplicados').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-ventas').innerHTML = '<tr><td colspan="2" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
 
-  const [recetas, duplicados, ventas, comprasNoSuman, catalogoDuplicados] = await Promise.all([
+  const [recetas, recetasSinCatalogo, duplicados, ventas, comprasNoSuman, catalogoDuplicados] = await Promise.all([
     llamar('diagnostico_recetas'),
+    llamar('diagnostico_recetas_sin_catalogo'),
     llamar('diagnostico_conteos_duplicados'),
     llamar('diagnostico_ventas_fudo'),
     llamar('diagnostico_compras_no_suman'),
     llamar('diagnostico_catalogo_duplicados')
   ]);
 
-  if (!recetas.ok || !duplicados.ok || !ventas.ok || !comprasNoSuman.ok || !catalogoDuplicados.ok) {
-    msg.textContent = (recetas.error || duplicados.error || ventas.error || comprasNoSuman.error || catalogoDuplicados.error || 'Error al correr el diagnóstico.');
+  if (!recetas.ok || !recetasSinCatalogo.ok || !duplicados.ok || !ventas.ok || !comprasNoSuman.ok || !catalogoDuplicados.ok) {
+    msg.textContent = (recetas.error || recetasSinCatalogo.error || duplicados.error || ventas.error || comprasNoSuman.error || catalogoDuplicados.error || 'Error al correr el diagnóstico.');
     return;
   }
 
   pintarRecetas_(recetas.data);
+  pintarRecetasSinCatalogo_(recetasSinCatalogo.data);
   pintarDuplicados_(duplicados.data);
   pintarVentas_(ventas.data);
   pintarComprasNoSuman_(comprasNoSuman.data);
@@ -170,6 +191,24 @@ function pintarRecetas_(data) {
       <td>${escapeHtml(r.unidad)}</td>
     </tr>`).join('');
 }
+
+function pintarRecetasSinCatalogo_(data) {
+  const body = document.getElementById('tabla-recetas-sin-catalogo');
+  if (!data.con_problema) {
+    body.innerHTML = `<tr><td colspan="4" class="vacio">Ningún ingrediente sin catálogo en ${data.total_lineas} línea(s) de receta vigentes revisadas.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.problemas.map(p => `
+    <tr>
+      <td>${escapeHtml(p.ingrediente)}</td>
+      <td style="font-size:.85rem">${p.recetas.map(escapeHtml).join(', ')}</td>
+      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}</td>
+      <td><div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start">${botonesDeOpciones_(p.accion && p.accion.opciones)}</div></td>
+    </tr>`).join('') +
+    `<tr><td colspan="4" style="font-weight:600">${data.con_problema} ingrediente(s) sin catálogo de ${data.total_lineas} línea(s) revisadas.</td></tr>`;
+}
+
+document.getElementById('tabla-recetas-sin-catalogo').addEventListener('click', manejarClicOpcionAccion_);
 
 function pintarDuplicados_(data) {
   const body = document.getElementById('tabla-duplicados');
@@ -206,26 +245,29 @@ function pintarVentas_(data) {
   `).join('');
 }
 
-// Botones accionables por problema: cada `p.accion.opciones` es una decisión concreta que
-// diagnostico.html convierte en un botón — pedido real: "necesito que me dé las opciones y
-// finalmente yo decido qué hacer". Ningún caso se deja solo con texto: nombre fuera del catálogo
-// (crear / vincular alias), unidad distinta (corregir la compra / ir a registrar un conteo) y
-// fecha ya cubierta (confirmar / ir a registrar un conteo) SIEMPRE traen algo para elegir — la
-// decisión de cuál valor es el correcto sigue siendo tuya, el botón solo ejecuta la que elijas.
-function botonesAccionCompra_(p) {
-  const opciones = (p.accion && p.accion.opciones) || [];
+// Botones accionables por problema: cada elemento de `opciones` (viene de `p.accion.opciones`,
+// tanto en "Compras que no están sumando" como en "Recetas — ingredientes que no existen en el
+// catálogo") es una decisión concreta que diagnostico.html convierte en un botón — pedido real:
+// "necesito que me dé las opciones y finalmente yo decido qué hacer". Ningún caso se deja solo con
+// texto: nombre fuera del catálogo (crear / vincular alias), unidad distinta (corregir la compra /
+// ir a registrar un conteo) y fecha ya cubierta (confirmar / ir a registrar un conteo) SIEMPRE
+// traen algo para elegir — la decisión de cuál valor es el correcto sigue siendo tuya, el botón
+// solo ejecuta la que elijas. manejarClicOpcionAccion_ (más abajo) es el manejador compartido de
+// clics para estos botones, enganchado tanto en la tabla de compras como en la de recetas.
+function botonesDeOpciones_(opciones) {
+  opciones = opciones || [];
   return opciones.map(o => {
     if (o.id === 'crear_producto') {
-      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="crear_producto"
+      return `<button class="btn fantasma btn-opcion-accion" type="button" data-opcion="crear_producto"
         data-nombre="${escapeHtml(o.nombre)}" data-unidad="${escapeHtml(o.unidad_base || '')}">${escapeHtml(o.etiqueta)}</button>`;
     }
     if (o.id === 'vincular_alias') {
-      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="vincular_alias"
+      return `<button class="btn fantasma btn-opcion-accion" type="button" data-opcion="vincular_alias"
         data-id="${escapeHtml(o.catalogo_id)}" data-catalogo-nombre="${escapeHtml(o.catalogo_nombre)}"
         data-alias="${escapeHtml(o.alias)}" data-nombre-fudo-actual="${escapeHtml(o.nombre_fudo_actual || '')}">${escapeHtml(o.etiqueta)}</button>`;
     }
     if (o.id === 'corregir_unidad') {
-      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="corregir_unidad"
+      return `<button class="btn fantasma btn-opcion-accion" type="button" data-opcion="corregir_unidad"
         data-ajuste-id="${escapeHtml(o.ajuste_id)}" data-unidad-sugerida="${escapeHtml(o.unidad_sugerida)}"
         data-cantidad-actual="${escapeHtml(o.cantidad_actual)}" data-unidad-actual="${escapeHtml(o.unidad_actual)}"
         data-producto="${escapeHtml(o.producto)}">${escapeHtml(o.etiqueta)}</button>`;
@@ -234,7 +276,7 @@ function botonesAccionCompra_(p) {
       return `<a class="btn fantasma" href="conteo.html" target="_blank" rel="noopener">${escapeHtml(o.etiqueta)}</a>`;
     }
     if (o.id === 'confirmar_incluida') {
-      return `<button class="btn fantasma btn-opcion-compra" type="button" data-opcion="confirmar_incluida">${escapeHtml(o.etiqueta)}</button>`;
+      return `<button class="btn fantasma btn-opcion-accion" type="button" data-opcion="confirmar_incluida">${escapeHtml(o.etiqueta)}</button>`;
     }
     return '';
   }).join(' ');
@@ -258,13 +300,15 @@ function pintarComprasNoSuman_(data) {
       <td>${escapeHtml(p.cantidad)} ${escapeHtml(p.unidad)}</td>
       <td>${escapeHtml(p.proveedor)}${p.numero_factura ? ' — ' + escapeHtml(p.numero_factura) : ''}</td>
       <td><span class="badge alerta">${escapeHtml(p.motivo)}</span></td>
-      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}<br><div style="margin-top:6px; display:flex; flex-direction:column; gap:4px; align-items:flex-start">${botonesAccionCompra_(p)}</div></td>
+      <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}<br><div style="margin-top:6px; display:flex; flex-direction:column; gap:4px; align-items:flex-start">${botonesDeOpciones_(p.accion && p.accion.opciones)}</div></td>
     </tr>`).join('') +
     `<tr><td colspan="7" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
 }
 
-document.getElementById('tabla-compras-no-suman').addEventListener('click', async (ev) => {
-  const btn = ev.target.closest('.btn-opcion-compra');
+document.getElementById('tabla-compras-no-suman').addEventListener('click', manejarClicOpcionAccion_);
+
+async function manejarClicOpcionAccion_(ev) {
+  const btn = ev.target.closest('.btn-opcion-accion');
   if (!btn || btn.disabled) return;
   const opcion = btn.dataset.opcion;
 
@@ -333,7 +377,7 @@ document.getElementById('tabla-compras-no-suman').addEventListener('click', asyn
   if (opcion === 'confirmar_incluida') {
     avisarGuardado('Entendido, no se necesita ningún cambio para esta compra.');
   }
-});
+}
 
 function pintarCatalogoDuplicados_(data) {
   const body = document.getElementById('tabla-catalogo-duplicados');
