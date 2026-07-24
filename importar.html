@@ -267,6 +267,7 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
     if (d.descartadas_sin_producto) motivos.push(`${d.descartadas_sin_producto} fila(s) sin producto reconocible`);
     if (d.descartadas_sin_nombre) motivos.push(`${d.descartadas_sin_nombre} fila(s) sin nombre reconocible`);
     if (d.descartadas_cantidad_invalida) motivos.push(`${d.descartadas_cantidad_invalida} fila(s) con cantidad inválida o en cero`);
+    if (d.descartadas_diferencia_invalida) motivos.push(`${d.descartadas_diferencia_invalida} fila(s) con "Diferencia" que no es un número`);
     document.getElementById('aviso-diagnostico-texto').textContent =
       `Se leyeron ${total} fila(s) del archivo, pero ninguna tenía las columnas que este sistema reconoce — se descartaron todas:\n` +
       (motivos.length ? '• ' + motivos.join('\n• ') + '\n\n' : '\n') +

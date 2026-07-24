@@ -118,11 +118,15 @@ function gestionAutoResolverPorCompra_(lineas, facturaId, usuario) {
     const timestampCol = headers.indexOf('timestamp_actualizado');
     const facturaCol = headers.indexOf('factura_id');
 
+    // claveProducto_/indiceCatalogo_ (no normalizar_ a secas): sin esto, una gestión abierta como
+    // "Banano" no se resolvía sola cuando la compra llegaba registrada con un alias distinto del
+    // mismo producto (ej. su nombre_fudo) — quedaba "abierta" para siempre aunque ya se hubiera comprado.
+    const indice = indiceCatalogo_();
     lineas.forEach(function (l) {
       const sedeLinea = l.sede;
-      const normProducto = normalizar_(l.producto);
+      const claveLinea = claveProducto_(l.producto, indice);
       abiertas
-        .filter(function (g) { return g.sede === sedeLinea && normalizar_(g.producto) === normProducto; })
+        .filter(function (g) { return g.sede === sedeLinea && claveProducto_(g.producto, indice) === claveLinea; })
         .forEach(function (g) {
           for (let r = 1; r < data.length; r++) {
             if (data[r][idCol] === g.id) {

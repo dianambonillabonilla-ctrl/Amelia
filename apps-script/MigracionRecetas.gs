@@ -30,12 +30,16 @@ function migrarRecetasProduccion_() {
   const resumen = { corregidas: 0, creadas: 0, actualizadas: 0, desactivadas: 0, borradores: 0, respaldo: true };
 
   function clave_(s) { return normalizar_(s).replace(/ã³/g, 'o'); }
+  // "producto + ingrediente + versión identifican una línea" — si se busca CON versión, solo debe
+  // calzar una fila que tenga EXACTAMENTE esa misma versión. Antes, `!v` (la fila existente sin
+  // versión) calzaba con CUALQUIER versión buscada, así que volver a correr esta migración podía
+  // sobreescribir en silencio una fila de otro origen que solo coincidía en producto+ingrediente.
   function buscar_(producto, ingrediente, version) {
     for (let r = 1; r < data.length; r++) {
       if (clave_(data[r][col.producto]) !== clave_(producto)) continue;
       if (clave_(data[r][col.ingrediente]) !== clave_(ingrediente)) continue;
       const v = data[r][col.version];
-      if (!version || !v || String(v) === String(version)) return r;
+      if (!version || String(v || '') === String(version)) return r;
     }
     return -1;
   }

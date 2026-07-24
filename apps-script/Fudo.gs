@@ -63,6 +63,7 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
     let omitidos = 0;
     let sinFecha = 0;
     let sinNombre = 0;
+    let diferenciaInvalida = 0;
     filas.forEach(function (f) {
       const creadaPor = valorFudo_(f, ['Usuario', 'Creada por', 'Creado por']);
       const obj = {
@@ -86,6 +87,11 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
       // por separado para poder explicarlo (ver diagnóstico más abajo).
       if (!obj.fecha) { sinFecha++; return; }
       if (!obj.nombre) { sinNombre++; return; }
+      // Un "Diferencia" que no parsea a número (export de FUDO corrupto/con texto) no se descartaba
+      // antes: se guardaba tal cual y luego Number(m.diferencia||0) daba NaN en conciliarBebidas_
+      // (Conciliacion.gs), contaminando en silencio TODO el consumo calculado de esa bebida ese día
+      // — auditoría real, 24 jul 2026.
+      if (obj.diferencia !== '' && isNaN(Number(obj.diferencia))) { diferenciaInvalida++; return; }
       const clave = claveMovimiento_(obj);
       if (contador.esDuplicadaPrevia(clave)) { omitidos++; return; }
       nuevasFilas.push(obj);
@@ -101,6 +107,7 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
         filas_recibidas: filas.length,
         descartadas_sin_fecha: sinFecha,
         descartadas_sin_nombre: sinNombre,
+        descartadas_diferencia_invalida: diferenciaInvalida,
         columnas_detectadas: filas.length ? Object.keys(filas[0]) : []
       } : null
     };

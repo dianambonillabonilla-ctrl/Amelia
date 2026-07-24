@@ -56,12 +56,18 @@ function migrarRecetasJulio2026_() {
     }
     return filas;
   }
+  // "producto + ingrediente + versión identifican una línea" (ver comentario del archivo) — si se
+  // busca CON versión (siempre el caso aquí: cada línea de este archivo trae version:'julio_2026'),
+  // solo debe calzar una fila que tenga EXACTAMENTE esa misma versión. Antes, `!v` (la fila
+  // existente sin versión — ej. una línea vieja cargada antes de que existiera esta columna)
+  // calzaba con CUALQUIER versión buscada, así que volver a correr esta migración podía
+  // sobreescribir en silencio una fila de otro origen que solo coincidía en producto+ingrediente.
   function buscar_(producto, ingrediente, version) {
     for (let r = 1; r < data.length; r++) {
       if (clave_(data[r][col.producto]) !== clave_(producto)) continue;
       if (clave_(data[r][col.ingrediente]) !== clave_(ingrediente)) continue;
       const v = data[r][col.version];
-      if (!version || !v || String(v) === String(version)) return r;
+      if (!version || String(v || '') === String(version)) return r;
     }
     return -1;
   }

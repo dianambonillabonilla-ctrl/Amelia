@@ -39,6 +39,22 @@ function normalizarUnidadMock_(u) {
   return normalizarMock_(u).replace(/\./g, '');
 }
 
+// Espejo de timestampOrdenable_/eventoCubiertoPorConteo_ (DisponibleHoy.gs) — diagnosticarComprasNoSuman_
+// ahora las usa para decidir "fecha ya cubierta por el conteo" con el MISMO criterio exacto que el
+// cálculo real de Disponible Hoy (antes cada uno comparaba solo por fecha, por separado).
+function timestampOrdenableMock_(valor) {
+  if (!valor) return '';
+  const d = (valor instanceof Date) ? valor : new Date(valor);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+function eventoCubiertoPorConteoMock_(fechaEvento, timestampEvento, fechaConteo, timestampConteo) {
+  if (!fechaConteo) return false;
+  if (fechaEvento < fechaConteo) return true;
+  if (fechaEvento > fechaConteo) return false;
+  if (!timestampConteo || !timestampEvento) return true;
+  return timestampEvento <= timestampConteo;
+}
+
 // --- diagnosticarComprasNoSuman_ ----------------------------------------------------------------
 
 const catalogo = [{ id: 'id-limon', nombre_estandar: 'Limón Tahití' }, { id: 'id-costilla', nombre_estandar: 'Costilla cruda' }];
@@ -67,6 +83,8 @@ const diagnostico = cargar('apps-script/Diagnostico.gs', {
   claveProducto_: claveProductoMock_,
   normalizar_: normalizarMock_,
   normalizarUnidad_: normalizarUnidadMock_,
+  timestampOrdenable_: timestampOrdenableMock_,
+  eventoCubiertoPorConteo_: eventoCubiertoPorConteoMock_,
   aUnidadBase_: aUnidadBaseMock_,
   formatearFecha_: (v) => String(v).slice(0, 10)
 });
@@ -119,6 +137,8 @@ const diagnosticoAlias = cargar('apps-script/Diagnostico.gs', {
   claveProducto_: claveProductoMock_,
   normalizar_: normalizarMock_,
   normalizarUnidad_: normalizarUnidadMock_,
+  timestampOrdenable_: timestampOrdenableMock_,
+  eventoCubiertoPorConteo_: eventoCubiertoPorConteoMock_,
   aUnidadBase_: aUnidadBaseMock_,
   formatearFecha_: (v) => String(v).slice(0, 10)
 });
@@ -177,6 +197,8 @@ const diagnosticoRecetas = cargar('apps-script/Diagnostico.gs', {
   indiceCatalogo_: () => indiceMock_(catalogoRecetas),
   normalizar_: normalizarMock_,
   normalizarUnidad_: normalizarUnidadMock_,
+  timestampOrdenable_: timestampOrdenableMock_,
+  eventoCubiertoPorConteo_: eventoCubiertoPorConteoMock_,
   recetaEstadoVigente_: recetaEstadoVigenteMock_
 });
 

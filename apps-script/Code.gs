@@ -283,10 +283,17 @@ function handleRequest_(e, method) {
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: produccionHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
       case 'usuarios_listar':
+        // usuariosListar_/usuarioGuardar_/usuarioResetearPassword_ ya exigen Administrador como su
+        // primera línea (Usuarios.gs) — este requiereAdmin_ es redundante hoy, pero mantiene el
+        // mismo patrón "todo case exige rol antes de ejecutar" que el resto del switch, para no
+        // depender solo de que la función interna nunca cambie (auditoría real, 24 jul 2026).
+        requiereAdmin_(sesion.usuario);
         return jsonOut_(usuariosListar_(sesion.usuario));
       case 'usuarios_guardar':
+        requiereAdmin_(sesion.usuario);
         return jsonOut_(usuarioGuardar_(params.item, sesion.usuario));
       case 'usuario_resetear_password':
+        requiereAdmin_(sesion.usuario);
         return jsonOut_(usuarioResetearPassword_(params.id, params.password_nueva, sesion.usuario));
       case 'traslado_crear':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
@@ -305,6 +312,9 @@ function handleRequest_(e, method) {
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(trasladoObservar_(params.id, params.cantidad_recibida, params.observacion, sesion.usuario));
       case 'traslado_resolver':
+        // Mismo motivo que usuarios_* arriba: trasladoResolver_ ya exige rol y sede como sus
+        // primeras líneas (Traslados.gs), esto es redundante pero mantiene el patrón consistente.
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
       case 'diagnostico_recetas':
         requiereAdmin_(sesion.usuario);
