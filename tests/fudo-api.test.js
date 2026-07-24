@@ -322,7 +322,7 @@ function ctxAutenticadoConDatos_(paginas) {
 
   const url = llamadas[0].url;
   assert.ok(url.includes('filter[createdAt]=' + encodeURIComponent('and(gte.2026-07-20T00:00:00,lte.2026-07-20T23:59:59)')));
-  assert.ok(url.includes('filter[saleState]=' + encodeURIComponent('eq.CLOSED')));
+  assert.ok(url.includes('filter[saleState]=' + encodeURIComponent('in.(CLOSED)')));
   console.log('fudoApiSincronizarVentas_ arma filtros y delega en importarFudo_: OK');
 })();
 

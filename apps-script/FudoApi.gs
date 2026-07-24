@@ -228,7 +228,8 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
   const resultado = fudoApiObtenerTodoCompleto_('sales', {
     filtros: {
       createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
-      saleState: 'eq.CLOSED'
+      // saleState no acepta eq. — su patrón real (según la documentación) solo permite in.(...).
+      saleState: 'in.(CLOSED)'
     },
     include: 'items.product,cashRegister',
     orden: 'createdAt'
