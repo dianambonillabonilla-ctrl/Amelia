@@ -201,16 +201,17 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
   // después de que el servidor ya guardó, doble clic, dos pestañas), produccionRegistrar_ (backend)
   // reconoce el mismo request_id y no vuelve a insertar filas — auditoría de seguridad, jul 2026.
   const requestId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const llamadas = [];
-  if (items.length) llamadas.push(llamar('produccion_registrar', { items, opciones: { request_id: requestId } }));
-  // omitir_obligatorios_del_dia: este envío es SOLO los insumos obligatorios de cocina, no el
-  // cierre de conteo del día — sin esto, el backend exigiría también los productos Diario/
-  // Miércoles/Viernes de esa fecha/sede/punto en esta misma llamada y bloquearía guardar.
-  if (itemsObligatorios.length) llamadas.push(llamar('conteo_registrar', { items: itemsObligatorios, opciones: { omitir_obligatorios_del_dia: true } }));
 
-  const resultados = await Promise.all(llamadas);
-  const conError = resultados.find(r => !r.ok);
-  if (conError) { alert(conError.error); return; }
+  // Una sola llamada al servidor para producción + insumos obligatorios (antes eran dos llamadas
+  // independientes en paralelo — si una pasaba y la otra fallaba, quedaba un estado a medias sin
+  // forma clara de saber cuál sí se guardó). produccion_con_obligatorios_registrar valida las dos
+  // cosas ANTES de escribir cualquiera — auditoría de seguridad, jul 2026.
+  const data = await llamar('produccion_con_obligatorios_registrar', {
+    items_produccion: items,
+    items_obligatorios: itemsObligatorios,
+    opciones: { produccion: { request_id: requestId } }
+  });
+  if (!data.ok) { alert(data.error); return; }
 
   avisarGuardado(`Guardado: ${items.length} ítem(s) de producción, ${itemsObligatorios.length} insumo(s) obligatorio(s).`);
   cargarHistorial();

@@ -6,23 +6,34 @@
  * registrada para esa fecha/sede/ítem.
  */
 
-function produccionRegistrar_(items, usuario, opciones) {
-  opciones = opciones || {};
-  if (!items || !items.length) return { ok: false, error: 'No se recibieron items para registrar' };
+/**
+ * Solo valida, no escribe nada — separado de produccionRegistrar_ para que
+ * produccionConObligatoriosRegistrar_ pueda comprobar ESTO y también los insumos obligatorios
+ * ANTES de escribir cualquiera de los dos, sin duplicar las reglas de negocio.
+ */
+function validarItemsProduccion_(items, usuario) {
+  if (!items || !items.length) return 'No se recibieron items para registrar';
   for (let i = 0; i < items.length; i++) {
     const it = items[i] || {};
     if (!it.fecha || !it.sede || !it.item || !it.unidad) {
-      return { ok: false, error: 'Cada producción debe tener fecha, sede, producto y unidad' };
+      return 'Cada producción debe tener fecha, sede, producto y unidad';
     }
     if (isNaN(Number(it.cantidad)) || Number(it.cantidad) <= 0) {
-      return { ok: false, error: 'La cantidad producida debe ser un número mayor que cero' };
+      return 'La cantidad producida debe ser un número mayor que cero';
     }
   }
   // sedeEscrituraPermitida_ (Code.gs) también deja registrar en Centro de Producción sin importar
   // la sede propia — San Antonio/Capri/Ambas cubren ese sitio en la práctica.
   if (items.some(function (it) { return !sedeEscrituraPermitida_(usuario, it.sede); })) {
-    return { ok: false, error: 'No puedes registrar producción para una sede distinta a la tuya (' + usuario.sede + ')' };
+    return 'No puedes registrar producción para una sede distinta a la tuya (' + usuario.sede + ')';
   }
+  return null;
+}
+
+function produccionRegistrar_(items, usuario, opciones) {
+  opciones = opciones || {};
+  const errorValidacion = validarItemsProduccion_(items, usuario);
+  if (errorValidacion) return { ok: false, error: errorValidacion };
 
   // Idempotencia: producir.html manda un request_id nuevo por cada clic en "Guardar" (ver
   // assets/idempotencia.js). Sin esto, cada llamada creaba filas nuevas sin importar si los datos
@@ -109,4 +120,44 @@ function producidoTotalIngrediente_(fecha, ingrediente, indice, sede) {
         (!sede || sede === 'Ambas' || r.sede === sede);
     })
     .reduce(function (acc, r) { return acc + (Number(r.cantidad) || 0); }, 0);
+}
+
+/**
+ * Une "guardar producción" + "guardar insumos obligatorios de cocina" en UNA sola operación de
+ * negocio: valida los DOS conjuntos de items ANTES de escribir cualquiera de los dos. Antes
+ * producir.html mandaba dos llamadas independientes en paralelo (Promise.all) — si la de
+ * producción pasaba pero la de conteos obligatorios fallaba (o al revés), quedaba un estado a
+ * medias: producción guardada sin sus insumos obligatorios, o viceversa, con el usuario viendo un
+ * solo mensaje de error sin saber cuál de las dos sí se guardó (auditoría de seguridad, jul 2026).
+ * `opciones.produccion`/`opciones.conteo` se reenvían tal cual a cada función (ej. request_id).
+ */
+function produccionConObligatoriosRegistrar_(itemsProduccion, itemsObligatorios, usuario, opciones) {
+  opciones = opciones || {};
+  itemsProduccion = itemsProduccion || [];
+  itemsObligatorios = itemsObligatorios || [];
+  if (!itemsProduccion.length && !itemsObligatorios.length) {
+    return { ok: false, error: 'No se recibió nada para registrar' };
+  }
+
+  if (itemsProduccion.length) {
+    const errorProduccion = validarItemsProduccion_(itemsProduccion, usuario);
+    if (errorProduccion) return { ok: false, error: errorProduccion };
+  }
+  // omitir_obligatorios_del_dia: este envío es SOLO los insumos obligatorios de cocina, no el
+  // cierre de conteo del día — ver el mismo comentario en Conteos.gs.
+  if (itemsObligatorios.length) {
+    const errorConteo = validarItemsConteo_(itemsObligatorios, usuario, { omitir_obligatorios_del_dia: true });
+    if (errorConteo) return { ok: false, error: errorConteo };
+  }
+
+  const resultado = { ok: true };
+  if (itemsProduccion.length) {
+    resultado.produccion = produccionRegistrar_(itemsProduccion, usuario, opciones.produccion);
+    if (!resultado.produccion.ok) return resultado.produccion;
+  }
+  if (itemsObligatorios.length) {
+    resultado.conteo = conteoRegistrar_(itemsObligatorios, usuario, Object.assign({ omitir_obligatorios_del_dia: true }, opciones.conteo));
+    if (!resultado.conteo.ok) return resultado.conteo;
+  }
+  return resultado;
 }
