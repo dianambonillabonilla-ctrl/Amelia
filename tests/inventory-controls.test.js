@@ -878,6 +878,40 @@ assert.ok(filaCostilla, 'debe aparecer el ingrediente explotado desde la receta 
 assert.equal(filaCostilla.sin_receta, false, 'un ingrediente que sí vino de una receta encontrada no debe marcarse sin_receta');
 assert.equal(filaCostilla.consumo_esperado, 100);
 
+// --- Conciliación de bebidas: sin archivo de movimientos ese día, usa Ventas_FUDO como respaldo ---
+// (comparado contra datos reales de FUDO, jul 2026: el 96%+ de los movimientos de una bebida son
+// 1:1 con sus ventas — Adición Creada/Cancelada = vender/cancelar esa bebida — así que Ventas_FUDO
+// solo, sin el archivo manual de movimientos, ya reproduce el mismo consumo esperado).
+const ventasBebidasRespaldo = [
+  { creacion: '2026-07-21', sede: 'San Antonio', categoria: 'Bebidas', producto: 'Poker', cantidad: 3, cancelada: false },
+  { creacion: '2026-07-21', sede: 'San Antonio', categoria: 'Bebidas', producto: 'Poker', cantidad: 1, cancelada: true },
+  { creacion: '2026-07-21', sede: 'Capri', categoria: 'Bebidas', producto: 'Poker', cantidad: 5, cancelada: false }
+];
+const catalogoBebidasRespaldo = [{ nombre_estandar: 'Poker', nombre_fudo: 'Poker', categoria: 'Bebidas/Cerveza' }];
+const conciliacionBebidasRespaldo = cargar('apps-script/Conciliacion.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+  leerTabla_: (hoja) => {
+    if (hoja === 'ventas') return ventasBebidasRespaldo;
+    if (hoja === 'movimientos') return []; // no se subió el archivo manual ese día
+    if (hoja === 'catalogo') return catalogoBebidasRespaldo;
+    return [];
+  },
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  claveProducto_: (texto) => normalizarSimple_(texto),
+  conteoListar_: () => [],
+  indiceCatalogo_: () => ({})
+});
+const bebidasRespaldo = conciliacionBebidasRespaldo.conciliarBebidas_('2026-07-21', null);
+const filaPokerRespaldo = bebidasRespaldo.find((b) => b.producto === 'Poker');
+assert.equal(filaPokerRespaldo.consumo_fudo_fuente, 'ventas_api', 'sin movimientos ese día, debe usar Ventas_FUDO');
+assert.equal(filaPokerRespaldo.consumo_fudo_total, 8, 'San Antonio (3) + Capri (5), sin contar la venta cancelada');
+assert.equal(filaPokerRespaldo.consumo_fudo_sa, 3, 'la venta cancelada (cantidad 1) no debe contarse');
+assert.equal(filaPokerRespaldo.consumo_fudo_capri, 5);
+assert.equal(filaPokerRespaldo.fudo_cierre, null, 'sin movimientos manuales no hay cierre de stock de FUDO');
+assert.equal(filaPokerRespaldo.n_movimientos_fudo, 0);
+console.log('conciliarBebidas_ usa Ventas_FUDO como respaldo cuando no hay movimientos ese día: OK');
+
 // --- Usuarios: activar/desactivar un usuario existente NO debe exigir nombre/usuario/rol --------
 // (bug real: usuarios.html manda solo { id, activo } al togglear Activar/Desactivar. La validación
 // exigía nombre/usuario/rol SIEMPRE, así que esa actualización fallaba en el 100% de los casos —
