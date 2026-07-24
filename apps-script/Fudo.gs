@@ -250,11 +250,19 @@ function formatearFechaHoraFudo_(valor) {
   return String(valor || '').trim();
 }
 
-/** FUDO no trae sede explícita: para exportes detallados se infiere de la caja/terminal. */
+/**
+ * FUDO no trae sede explícita en ningún recurso (confirmado contra la especificación OpenAPI
+ * oficial completa, jul 2026) — para el export CSV se infiere de la caja/terminal (columna "Creada
+ * por"), y para la API se infiere de la sala (Room) de la mesa de la venta (ver
+ * fudoApiFilasVentaDesdeSale_ en FudoApi.gs, que pasa el NOMBRE DE LA SALA en el mismo campo
+ * "Creada por" para reutilizar esta misma función). Las salas reales de la cuenta (confirmado
+ * contra /rooms, jul 2026) son "Salón SA"/"Terraza SA" (San Antonio) y "Terraza Capri"/
+ * "La Waffleria - Capri" (Capri).
+ */
 function sedeDesdeCreadaPor_(creadaPor) {
   const valor = normalizar_(creadaPor);
-  const capri = ['cajacapri', 'terrazacapri', 'caja capri'];
-  const sanAntonio = ['terraza', 'caja', 'caja san antonio', 'terraza san antonio'];
+  const capri = ['cajacapri', 'terrazacapri', 'caja capri', 'terraza capri', 'la waffleria - capri'];
+  const sanAntonio = ['terraza', 'caja', 'caja san antonio', 'terraza san antonio', 'salon sa', 'terraza sa'];
   if (capri.indexOf(valor) !== -1) return 'Capri';
   if (sanAntonio.indexOf(valor) !== -1) return 'San Antonio';
   return 'Sin identificar';
