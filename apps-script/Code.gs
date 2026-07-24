@@ -274,6 +274,9 @@ function handleRequest_(e, method) {
       case 'fudo_api_probar_conexion':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoApiProbarConexion_());
+      case 'fudo_api_sincronizar_ventas':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiSincronizarVentas_(params.fecha_desde, params.fecha_hasta, sesion.usuario, params.opciones));
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
