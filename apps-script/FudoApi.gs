@@ -266,13 +266,24 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
  * Trae una muestra cruda de /sales (3 registros, sin transformar) para confirmar contra la cuenta
  * real los nombres de campo exactos antes de conectar la sincronización automática a Ventas_FUDO.
  * Acción admin desde la app: 'fudo_api_probar_conexion' (ver Code.gs, botón en importar.html).
+ *
+ * jul 2026: una muestra real mostró que sale.relationships NO trae `cashRegister` (solo customer,
+ * discounts, items, payments, tips, shippingCosts, table, waiter, saleIdentifier) — el supuesto
+ * original (caja registradora → sede) no aplica a esta cuenta. Se pide incluido table/waiter/payments
+ * además de items.product para buscar ahí un dato de sede real, sin gastar otro ciclo de despliegue.
  */
 function fudoApiProbarConexion_() {
-  const muestra = fudoApiObtenerPagina_('sales', { pageSize: 3, pagina: 1 });
+  const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: 'items.product,table,waiter,payments' });
+  const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);
   return {
     ok: true,
     registros_recibidos: muestra.length,
     campos_detectados: muestra.length ? Object.keys(muestra[0]) : [],
-    muestra: muestra
+    tipos_incluidos: (cruda.included || []).reduce(function (acc, inc) {
+      acc[inc.type] = acc[inc.type] || Object.keys(inc.attributes || {});
+      return acc;
+    }, {}),
+    muestra: muestra,
+    incluidos: cruda.included || []
   };
 }
