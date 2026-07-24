@@ -70,9 +70,14 @@ function turnosSectorDelDia_(fecha) {
 /**
  * Por cada sector que alguien de `sede` eligió hoy, qué productos del catálogo marcados con ese
  * `sector` (y que caen en la frecuencia de conteo obligatoria de hoy) todavía no tienen conteo
- * registrado en `fecha`/`sede` — sin importar quién lo haya contado ni en qué punto exacto.
- * Productos del catálogo sin `sector` asignado no aparecen aquí (siguen bajo la validación de
- * frecuencia normal de conteo.html, no bloquean el cierre de turno).
+ * registrado en `fecha`/`sede` — sin importar en qué punto exacto. Productos del catálogo sin
+ * `sector` asignado no aparecen aquí (siguen bajo la validación de frecuencia normal de Registrar
+ * conteo, no bloquean el cierre de turno).
+ *
+ * También trae `usuarios`: los nombres de quienes ya contaron algo de ese sector hoy — pedido
+ * real: "le debe de salir que si ya registró, el que registró y quién lo hizo" — para que Caja
+ * (quien cierra el turno, ver turnoCerrar_) pueda ver de un vistazo quién sí cumplió y quién no,
+ * en vez de solo un conteo de faltantes sin nombres.
  */
 function turnoFaltantesPorSector_(fecha, sede) {
   if (!fecha || !sede) return [];
@@ -93,8 +98,17 @@ function turnoFaltantesPorSector_(fecha, sede) {
   // alias de FUDO (nombre_fudo) en vez de nombre_estandar exacto seguía apareciendo como "falta
   // contar" para el sector, aunque ya se hubiera contado — bloqueaba cerrar el turno sin motivo.
   const indice = indiceCatalogo_();
-  const contados = {};
-  conteoListar_(fecha, sede).forEach(function (c) { contados[claveProducto_(c.producto, indice)] = true; });
+  // contadoPorClave (booleano: "hay al menos una fila de conteo hoy para esto") va aparte de
+  // usuariosPorClave (nombres): una fila de conteo sin `usuario` registrado (dato viejo/incompleto)
+  // SÍ debe contar como "ya contado" aunque no se pueda decir quién lo hizo.
+  const contadoPorClave = {};
+  const usuariosPorClave = {};
+  conteoListar_(fecha, sede).forEach(function (c) {
+    const clave = claveProducto_(c.producto, indice);
+    contadoPorClave[clave] = true;
+    if (!usuariosPorClave[clave]) usuariosPorClave[clave] = [];
+    if (c.usuario && usuariosPorClave[clave].indexOf(c.usuario) === -1) usuariosPorClave[clave].push(c.usuario);
+  });
 
   return Object.keys(sectoresHoy).sort().map(function (sector) {
     const items = catalogo.filter(function (p) {
@@ -103,8 +117,15 @@ function turnoFaltantesPorSector_(fecha, sede) {
       return p.sector === sector && p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1 &&
         (!p.sede || p.sede === 'Ambas' || p.sede === sede);
     });
-    const faltantes = items.filter(function (p) { return !contados[claveProducto_(p.nombre_estandar, indice)]; }).map(function (p) { return p.nombre_estandar; });
-    return { sector: sector, total: items.length, faltantes: faltantes };
+    const faltantes = [];
+    const usuariosSector = {};
+    items.forEach(function (p) {
+      const clave = claveProducto_(p.nombre_estandar, indice);
+      if (!contadoPorClave[clave]) { faltantes.push(p.nombre_estandar); return; }
+      const quienes = usuariosPorClave[clave] || [];
+      quienes.forEach(function (u) { usuariosSector[u] = true; });
+    });
+    return { sector: sector, total: items.length, faltantes: faltantes, usuarios: Object.keys(usuariosSector).sort() };
   });
 }
 
@@ -112,10 +133,20 @@ function turnoFaltantesPorSector_(fecha, sede) {
  * Bloquea cerrar el turno si algún sector asignado hoy en `sede` todavía tiene productos
  * obligatorios de hoy sin contar. Si pasa, deja un registro en Cierres_Turno (auditoría de quién
  * cerró y cuándo) — no bloquea nada más del sistema, es la confirmación que pedía Diana.
+ *
+ * Quién puede cerrar: Administrador/Encargado siempre (supervisión), o quien tenga el sector
+ * "Caja" elegido hoy — pedido real: "caja es el responsable final de que todo quede bien". El
+ * resto del personal (Cocina/Café ese día) no puede cerrar el turno aunque tenga acceso a la app.
  */
 function turnoCerrar_(fecha, sede, usuario) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
-  // Sin este chequeo, dos Encargados cerrando casi al mismo tiempo (o un doble clic) dejaban dos
+  if (usuario.rol !== 'Administrador' && usuario.rol !== 'Encargado') {
+    const sectorHoy = turnoSectorDeHoy_(usuario, fecha).sector;
+    if (sectorHoy !== 'Caja') {
+      return { ok: false, error: 'Solo quien tiene el sector "Caja" asignado hoy (o un Administrador/Encargado) puede cerrar el turno.' };
+    }
+  }
+  // Sin este chequeo, dos personas cerrando casi al mismo tiempo (o un doble clic) dejaban dos
   // filas de cierre para el mismo día/sede en Cierres_Turno — no rompía nada más, pero ensuciaba
   // la auditoría de quién cerró. Cerrar de nuevo un turno ya cerrado simplemente confirma el
   // cierre existente en vez de duplicarlo.

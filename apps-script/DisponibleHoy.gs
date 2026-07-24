@@ -293,26 +293,36 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  *
  * A partir del último conteo físico de CADA sede, se suman las compras ('Compra cruda') y
  * ajustes operativos, se suman los traslados recibidos y confirmados (o resueltos) desde otra
- * sede, y se restan las mermas/desperdicio (Ajustes_Inventario, ver AjustesInventario.gs;
- * Traslados, ver Traslados.gs), todo registrado en esa misma sede después de ese conteo y hasta
- * la fecha de corte — así una compra o un traslado recibido en Capri aumenta de inmediato el
+ * sede, se suma lo producido (Producciones, ver Produccion.gs / netoProduccionDesdeConteo_), y se
+ * restan las mermas/desperdicio (Ajustes_Inventario, ver AjustesInventario.gs; Traslados, ver
+ * Traslados.gs), todo registrado en esa misma sede después de ese conteo y hasta la fecha de corte
+ * — así una compra, una producción o un traslado recibido en Capri aumenta de inmediato el
  * disponible de Capri sin esperar al próximo conteo físico, y no afecta el número de San Antonio.
  * El conteo físico sigue siendo la referencia real; esto solo cubre el tiempo entre conteos.
  *
  * Los traslados solo suman al llegar (sede_destino) — a propósito NO se restan de la sede de
- * origen al enviarlos: ver la nota de la auditoría sobre por qué "Disponible Hoy" no intenta
- * modelar salidas (producción, ventas) más allá de lo que ya cubre el conteo físico siguiente.
+ * origen al enviarlos. Y aunque producir SÍ suma el producto terminado (ej. Costilla Preparada),
+ * NO resta la materia prima que se usó para prepararlo (ej. Costilla San Luis Entera) — eso sigue
+ * sin modelarse como salida, igual que las ventas: solo el próximo conteo físico de esa materia
+ * prima lo reflejará. Mismo límite ya aceptado para compras/mermas, no es nuevo de este cambio.
  *
- * IMPORTANTE: un producto que TODAVÍA no se ha contado nunca en una sede, pero ya se compró o se
- * recibió por traslado allí, igual debe aparecer (con "conteo" = 0 de base) — si no, una compra
- * de algo nuevo (ej. la primera vez que se compra banano) quedaría invisible en Disponible Hoy
- * hasta el primer conteo físico de ese producto, que es justo lo contrario de lo que se pidió.
+ * IMPORTANTE: un producto que TODAVÍA no se ha contado nunca en una sede, pero ya se compró, se
+ * produjo o se recibió por traslado allí, igual debe aparecer (con "conteo" = 0 de base) — si no,
+ * una compra de algo nuevo (ej. la primera vez que se compra banano) quedaría invisible en
+ * Disponible Hoy hasta el primer conteo físico de ese producto, que es justo lo contrario de lo
+ * que se pidió.
  */
 function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   indice = indice || indiceCatalogo_();
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
   const ajustes = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
   const traslados = leerTabla_(SHEET_NAMES.TRASLADOS);
+  // Producción registrada (Producir.gs/producir.html) suma al stock contado igual que una compra
+  // — pedido real: "registrar producción o compras debe de mover el disponible hoy". Antes solo
+  // quedaba como historial (Conciliacion.gs/Tendencia.gs la usaban, pero Disponible Hoy nunca la
+  // leía): producir 5000g de Costilla Preparada no se reflejaba hasta el próximo conteo físico,
+  // aunque esa costilla ya estuviera lista y disponible de verdad.
+  const producciones = leerTabla_(SHEET_NAMES.PRODUCCIONES);
   const porProducto = {};
 
   function entradaProducto_(clave, nombre) {
@@ -350,6 +360,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   traslados.forEach(function (t) {
     if (['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1) asegurarSinConteo_(t.producto, t.sede_destino);
   });
+  producciones.forEach(function (p) { asegurarSinConteo_(p.item, p.sede || 'Sin sede'); });
 
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
@@ -364,13 +375,14 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
       const base = hayConteo ? entrada.porSede[sedeItem].fechas[ultimaFecha] : { cantidad: 0, unidad: '', timestamp: '' };
       const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
       const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
-      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad;
+      const resProduccion = netoProduccionDesdeConteo_(producciones, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
+      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
-      total += base.cantidad + resAjustes.neto + resTraslados.total;
+      total += base.cantidad + resAjustes.neto + resTraslados.total + resProduccion.neto;
       if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
     });
-    if (!unidadFinal) return; // sin conteo, compra ni traslado con unidad reconocible en ninguna sede
+    if (!unidadFinal) return; // sin conteo, compra, traslado ni producción con unidad reconocible en ninguna sede
     resultado[clave] = { producto: entrada.nombre, cantidad: total, unidad: unidadFinal, fecha_conteo: fechaMasReciente || 'sin conteo aún' };
   });
   return resultado;
@@ -456,4 +468,27 @@ function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclu
     total += base.cantidad;
   });
   return { total: total, unidad: unidad };
+}
+
+/** Suma lo producido (Producciones, ver Produccion.gs) de `sede` para `clave`, después del conteo
+ * marcado por `fechaConteoExclusive`/`timestampConteoExclusive` y hasta `fechaCorteInclusive` —
+ * mismo criterio exacto que netoAjustesDesdeConteo_ para una compra, siempre suma (nunca resta:
+ * producir no tiene equivalente a una merma). Pedido real: "registrar producción... debe de mover
+ * el disponible hoy" — un lote recién preparado (ej. Costilla Preparada) queda disponible de
+ * inmediato, sin esperar al próximo conteo físico de ese producto. */
+function netoProduccionDesdeConteo_(producciones, clave, sede, fechaConteoExclusive, timestampConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+  let neto = 0;
+  let unidad = unidadEsperada || '';
+  producciones.forEach(function (p) {
+    if ((p.sede || 'Sin sede') !== sede) return;
+    if (claveProducto_(p.item, indice) !== clave) return;
+    const f = formatearFecha_(p.fecha);
+    if (eventoCubiertoPorConteo_(f, timestampOrdenable_(p.timestamp), fechaConteoExclusive, timestampConteoExclusive)) return;
+    if (fechaCorteInclusive && f > fechaCorteInclusive) return;
+    const base = aUnidadBase_(p.cantidad, p.unidad);
+    if (!unidad) unidad = base.unidad;
+    if (base.unidad !== unidad) return;
+    neto += base.cantidad;
+  });
+  return { neto: neto, unidad: unidad };
 }
