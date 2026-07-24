@@ -159,8 +159,9 @@ function diagnosticarVentasFudo_() {
  *   - La unidad de la compra no coincide, después de convertir a g/ml/u (aUnidadBase_), con la
  *     unidad del último conteo físico de ese producto en esa sede: nunca se mezcla peso/volumen
  *     con piezas, así que la compra entera se ignora.
- *   - La fecha de la compra es igual o anterior a la del último conteo físico: se asume que ese
- *     conteo ya la incluía.
+ *   - La fecha de la compra queda cubierta por el último conteo físico (mismo criterio exacto que
+ *     eventoCubiertoPorConteo_ en DisponibleHoy.gs: antes de esa fecha, o el mismo día pero a una
+ *     hora igual o anterior si ambos tienen timestamp): se asume que ese conteo ya la incluía.
  * Pedido real: "todo lo que aparece en la compra no está sumando" — antes solo se sospechaba caso
  * por caso (ej. Limón Tahití); esto lo revisa para TODAS las compras de una vez. Cada problema
  * trae también `solucion` (texto para leer) y `accion.opciones` (lista de decisiones concretas
@@ -183,8 +184,12 @@ function diagnosticarComprasNoSuman_() {
     const key = clave + '|' + sede;
     const f = formatearFecha_(c.fecha);
     const base = aUnidadBase_(c.cantidad, c.unidad);
-    if (!ultimoConteoPorClaveSede[key] || f > ultimoConteoPorClaveSede[key].fecha) {
-      ultimoConteoPorClaveSede[key] = { fecha: f, unidad: base.unidad };
+    const ts = timestampOrdenable_(c.timestamp);
+    const actual = ultimoConteoPorClaveSede[key];
+    // En empate de fecha (varios puntos de conteo el mismo día), gana el de timestamp más tardío —
+    // mismo criterio que obtenerUltimoStockPorIngrediente_ en DisponibleHoy.gs.
+    if (!actual || f > actual.fecha || (f === actual.fecha && ts > actual.timestamp)) {
+      ultimoConteoPorClaveSede[key] = { fecha: f, unidad: base.unidad, timestamp: ts };
     }
   });
 
@@ -218,7 +223,7 @@ function diagnosticarComprasNoSuman_() {
           info: true
         }
       ];
-    } else if (ultimoConteo && fechaCompra <= ultimoConteo.fecha) {
+    } else if (ultimoConteo && eventoCubiertoPorConteo_(fechaCompra, timestampOrdenable_(a.timestamp), ultimoConteo.fecha, ultimoConteo.timestamp)) {
       motivo = 'La fecha de la compra (' + fechaCompra + ') es igual o anterior al último conteo físico (' + ultimoConteo.fecha + ') — se asume que ese conteo ya la incluía.';
       solucion = 'Decide si el conteo del ' + ultimoConteo.fecha + ' en ' + sede + ' de verdad ya incluía esta compra y elige abajo.';
       opciones = [

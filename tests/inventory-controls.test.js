@@ -17,6 +17,22 @@ function sedeEscrituraPermitidaMock_(usuario, sede) {
     sede === usuario.sede || sede === 'Centro de Producción';
 }
 
+// Espejo simple de claveProducto_/indiceCatalogo_ (Catalogo.gs) para los módulos que ahora las
+// usan (Conteos.gs, Turnos.gs, Gestiones.gs) en vez de comparar con normalizar_ a secas — mismo
+// motivo que sedeEscrituraPermitidaMock_: cada .gs se carga aislado en estas pruebas.
+function normalizarClaveMock_(s) {
+  return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+}
+function claveProductoMock_(texto, indice) {
+  const n = normalizarClaveMock_(texto);
+  const canonico = indice && indice[n];
+  return canonico ? normalizarClaveMock_(canonico) : n;
+}
+function indiceCatalogoVacioMock_() { return {}; }
+// Un catálogo con un alias real (nombre_fudo -> nombre_estandar) para probar que Conteos.gs/
+// Turnos.gs/Gestiones.gs reconocen el mismo producto contado/comprado bajo su alias de FUDO.
+const indiceConAliasFudo = { 'coca cola 350': 'Coca-Cola Original 350 ml' };
+
 const ajustesGuardados = [];
 const compras = cargar('apps-script/Compras.gs', {
   SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes' },
@@ -174,6 +190,55 @@ assert.equal(
 assert.equal(
   disponibleHoy.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'San Antonio').costilla, undefined,
   'una compra en Capri no debe afectar el stock de San Antonio'
+);
+
+// --- Disponible Hoy: compra registrada el MISMO día que el último conteo, después de esa hora ---
+// (auditoría real, 24 jul 2026: "lo que tengo disponible para hoy no me cuadra" — antes CUALQUIER
+// compra/merma/traslado del mismo día calendario del último conteo se descartaba siempre, sin
+// importar si había pasado antes o después del cierre; ahora se compara por hora real cuando los
+// dos lados traen timestamp).
+const conteosMismoDia = [
+  { fecha: '2026-07-24', sede: 'Capri', producto: 'Costilla San Luis', unidad: 'g', cantidad: 2000, timestamp: '2026-07-24T09:00:00Z' }
+];
+const ajustesMismoDia = [
+  // Compra registrada DESPUÉS del conteo de la mañana (mismo día): SÍ debe sumar.
+  { fecha: '2026-07-24', sede: 'Capri', producto: 'Costilla San Luis', unidad: 'g', cantidad: 5000, tipo: 'Compra cruda', timestamp: '2026-07-24T15:00:00Z' },
+  // Compra registrada ANTES del conteo de la mañana (mismo día): el conteo ya la incluía, NO debe sumar aparte.
+  { fecha: '2026-07-24', sede: 'Capri', producto: 'Costilla San Luis', unidad: 'g', cantidad: 1000, tipo: 'Compra cruda', timestamp: '2026-07-24T08:00:00Z' }
+];
+const disponibleHoyMismoDia = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosMismoDia : (hoja === 'ajustes' ? ajustesMismoDia : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+assert.equal(
+  disponibleHoyMismoDia.obtenerUltimoStockPorIngrediente_('2026-07-24', {}, 'Capri')['costilla san luis'].cantidad,
+  7000,
+  'la compra registrada DESPUÉS del conteo del mismo día debe sumar (2000 + 5000 = 7000), la de antes del conteo no (no 8000)'
+);
+
+// Sin timestamp en ninguno de los dos lados, se mantiene el comportamiento anterior (conservador: se excluye).
+const conteosMismoDiaSinHora = [
+  { fecha: '2026-07-24', sede: 'Capri', producto: 'Panceta', unidad: 'g', cantidad: 1000 }
+];
+const ajustesMismoDiaSinHora = [
+  { fecha: '2026-07-24', sede: 'Capri', producto: 'Panceta', unidad: 'g', cantidad: 3000, tipo: 'Compra cruda' }
+];
+const disponibleHoyMismoDiaSinHora = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosMismoDiaSinHora : (hoja === 'ajustes' ? ajustesMismoDiaSinHora : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+assert.equal(
+  disponibleHoyMismoDiaSinHora.obtenerUltimoStockPorIngrediente_('2026-07-24', {}, 'Capri').panceta.cantidad,
+  1000,
+  'sin timestamp en ninguno de los dos lados, una compra del mismo día del conteo se sigue asumiendo cubierta (comportamiento conservador de antes)'
 );
 
 // --- Disponible Hoy: producto comprado por primera vez, SIN ningún conteo físico previo -------
@@ -401,7 +466,9 @@ const conteosMod = cargar('apps-script/Conteos.gs', {
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   leerTabla_: () => catalogoObligatorios,
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
-  frecuenciasObligatoriasDelDia_: catalogoMod2.frecuenciasObligatoriasDelDia_
+  frecuenciasObligatoriasDelDia_: catalogoMod2.frecuenciasObligatoriasDelDia_,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_
 });
 
 assert.deepEqual(
@@ -439,7 +506,9 @@ const conteosModSedeUnica = cargar('apps-script/Conteos.gs', {
   SHEET_NAMES: { CATALOGO: 'catalogo' },
   leerTabla_: () => catalogoConSedeUnica,
   normalizar_: (v) => String(v || '').trim().toLowerCase(),
-  frecuenciasObligatoriasDelDia_: catalogoMod2.frecuenciasObligatoriasDelDia_
+  frecuenciasObligatoriasDelDia_: catalogoMod2.frecuenciasObligatoriasDelDia_,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_
 });
 assert.deepEqual(
   conteosModSedeUnica.productosObligatoriosFaltantes_([
@@ -458,6 +527,49 @@ assert.deepEqual(
   ['Salsa de mora'],
   'Salsa de mora sí debe exigirse al cerrar Capri'
 );
+
+// --- productosObligatoriosFaltantes_/conteoBuscarFila_: reconocer el producto por su alias de FUDO ---
+// (auditoría real, 24 jul 2026: antes las dos funciones comparaban el producto con normalizar_ a
+// secas, sin pasar por claveProducto_/el catálogo — contar un obligatorio bajo su nombre_fudo en
+// vez de su nombre_estandar exacto lo dejaba marcado "faltante" aunque sí se hubiera contado, y
+// corregir el mismo cierre con el alias creaba una fila duplicada en vez de corregir la existente).
+const catalogoConAliasObligatorio = [{ nombre_estandar: 'Coca-Cola Original 350 ml', frecuencia_conteo: 'Diario' }];
+const conteosModAlias = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CATALOGO: 'catalogo' },
+  leerTabla_: () => catalogoConAliasObligatorio,
+  normalizar_: normalizarClaveMock_,
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  indiceCatalogo_: () => indiceConAliasFudo,
+  claveProducto_: claveProductoMock_
+});
+assert.deepEqual(
+  conteosModAlias.productosObligatoriosFaltantes_([
+    { fecha: '2026-07-24', sede: 'San Antonio', punto_conteo: 'Bodega', producto: 'Coca Cola 350', unidad: 'u', cantidad: 24 }
+  ]),
+  [],
+  'contar el producto bajo su alias de FUDO ("Coca Cola 350") debe reconocerse como el obligatorio "Coca-Cola Original 350 ml"'
+);
+
+const headersConteoAlias = ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'];
+const filasConteoAlias = [
+  headersConteoAlias,
+  ['c1', '2026-07-24', 'Capri', 'Cocina terraza', 'Cierre de turno', 'Coca-Cola Original 350 ml', 'u', 24, 'Juan', '2026-07-24T09:00:00Z']
+];
+const conteoBuscarMod = cargar('apps-script/Conteos.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos' },
+  sheet_: () => ({ getDataRange: () => ({ getValues: () => filasConteoAlias }) }),
+  // Conteos.gs define su propio formatearFecha_ (usa Utilities/Session reales de Apps Script) —
+  // no se puede sobreescribir esa función desde afuera, así que se mockean sus dependencias.
+  Utilities: { formatDate: (d) => ((d instanceof Date) ? d : new Date(d)).toISOString().slice(0, 10) },
+  Session: { getScriptTimeZone: () => 'UTC' },
+  indiceCatalogo_: () => indiceConAliasFudo,
+  claveProducto_: claveProductoMock_
+});
+const filaEncontradaPorAlias = conteoBuscarMod.conteoBuscarFila_({
+  fecha: '2026-07-24', sede: 'Capri', punto_conteo: 'Cocina terraza', turno: 'Cierre de turno', producto: 'Coca Cola 350'
+});
+assert.ok(filaEncontradaPorAlias, 'debe encontrar la fila existente al corregir el cierre con el alias de FUDO ("Coca Cola 350"), no crear una duplicada');
+assert.equal(filaEncontradaPorAlias.fila, 2);
 
 // --- Disponible Hoy: traslado recibido y confirmado suma al stock de la sede que lo recibe -----
 const conteosTraslado = [
@@ -587,6 +699,29 @@ const fudoBloqueado = cargar('apps-script/Fudo.gs', {
 const resultadoBloqueadoLock = fudoBloqueado.importarFudo_('ventas', filasPoker, usuarioFudo, { sede: 'San Antonio' });
 assert.equal(resultadoBloqueadoLock.ok, false, 'sin conseguir el lock, debe avisar en vez de importar');
 assert.ok(/otra importación/i.test(resultadoBloqueadoLock.error));
+
+// --- Importar FUDO (movimientos): una "Diferencia" que no es un número no debe guardarse -----------
+// (auditoría real, 24 jul 2026: antes se guardaba tal cual, y conciliarBebidas_ hacía
+// Number(m.diferencia||0) → NaN, contaminando en silencio TODO el consumo calculado de esa bebida
+// ese día — sin ningún aviso de que el dato de origen estaba corrupto).
+let movimientosGuardados = [];
+const fudoMovimientos = cargar('apps-script/Fudo.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos' },
+  normalizar_: normalizarSimple_,
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  leerTabla_: (hoja) => hoja === 'movimientos' ? movimientosGuardados : [],
+  appendRowsFromObjs_: (hoja, filas) => { if (hoja === 'movimientos') movimientosGuardados.push.apply(movimientosGuardados, filas); },
+  LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) }
+});
+const filasMovimientos = [
+  { Fecha: '2026-07-20 10:00:00', Evento: 'Adición Creada', Nombre: 'Aguila Light', 'Stock Anterior': 10, 'Stock Actual': 9, Diferencia: -1, Usuario: 'Juan' },
+  // Export corrupto: "Diferencia" con texto en vez de número.
+  { Fecha: '2026-07-20 11:00:00', Evento: 'Adición Creada', Nombre: 'Poker', 'Stock Anterior': 5, 'Stock Actual': '#N/A', Diferencia: '#N/A', Usuario: 'Juan' }
+];
+const resultadoMovimientos = fudoMovimientos.importarFudo_('movimientos', filasMovimientos, usuarioFudo, {});
+assert.equal(resultadoMovimientos.importados, 1, 'la fila con Diferencia inválida no debe guardarse, solo la de Aguila Light');
+assert.equal(movimientosGuardados.length, 1);
+assert.equal(movimientosGuardados[0].nombre, 'Aguila Light');
 
 // --- Conciliación: una venta sin receta encontrada debe marcarse sin_receta, no compararse -----
 // como si fuera correcta. Antes, un plato vendido con un nombre que no coincidía con ningún
@@ -730,7 +865,9 @@ const conteosRegistrarMod = cargar('apps-script/Conteos.gs', {
   Utilities: { getUuid: () => 'conteo-id' },
   sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
   revisarAlertas_: () => {},
-  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_
 });
 const itemsCentro = [{ fecha: '2026-07-21', sede: 'Centro de Producción', punto_conteo: 'General', producto: 'Costilla', unidad: 'kg', cantidad: 5 }];
 assert.equal(conteosRegistrarMod.conteoRegistrar_(itemsCentro, encargadaSA).ok, true, 'San Antonio debe poder registrar un conteo para Centro de Producción');
@@ -756,7 +893,9 @@ const conteosProduccionMod = cargar('apps-script/Conteos.gs', {
   Utilities: { getUuid: () => 'conteo-id-produccion' },
   sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
   revisarAlertas_: () => {},
-  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_
 });
 const itemsInsumoObligatorio = [{ fecha: '2026-07-21', sede: 'San Antonio', punto_conteo: 'Cocina terraza', producto: 'Vinagre balsámico', unidad: 'ml', cantidad: 500 }];
 assert.equal(
@@ -1080,6 +1219,30 @@ assert.deepEqual(filaWafle.sedes.sort(), ['Capri', 'San Antonio']);
 assert.ok(sinReceta.some(function (s) { return s.producto === 'Chancostilla'; }),
   'una receta en borrador no debe "resolver" el plato — todavía no explota nada de verdad en la conciliación');
 
+// --- claveRecetaVenta_: el alias de venta de FUDO debe apuntar al nombre VIGENTE de la receta ----
+// (auditoría real, 24 jul 2026: tras la migración de julio 2026, que archivó 'Falafel (plato)' ->
+// 'Falafel' y 'Wafflebonitos' -> 'Waffle Bonitos', el alias interno de claveRecetaVenta_ seguía
+// apuntando a los nombres viejos ya archivados — una venta de FUDO llamada "Wafflebonitos" caía en
+// "sin receta" y dejaba de descontar ingredientes en silencio, sin ningún aviso).
+const recetasModAlias = cargar('apps-script/Recetas.gs', {
+  normalizar_: normalizarSimple_,
+  claveProducto_: (texto, indice) => {
+    const n = normalizarSimple_(texto);
+    return (indice && indice[n]) ? normalizarSimple_(indice[n]) : n;
+  }
+});
+const recetaMapVigente = { 'waffle bonitos': { tipo: 'plato' }, 'falafel': { tipo: 'plato' } };
+assert.equal(
+  recetasModAlias.claveRecetaVenta_('Wafflebonitos', recetaMapVigente, {}),
+  'waffle bonitos',
+  'la venta de FUDO "Wafflebonitos" debe resolver a la receta VIGENTE "Waffle Bonitos", no a la archivada'
+);
+assert.equal(
+  recetasModAlias.claveRecetaVenta_('Falafel', recetaMapVigente, {}),
+  'falafel',
+  'la venta "Falafel" debe resolver a la receta vigente "Falafel"'
+);
+
 // --- Turnos y sectores del día ------------------------------------------------------------------
 // Pedido real: "yo debería manualmente definir las opciones de sub usuario de cada usuario y
 // cuando se marque esa opción qué sector le toca contar" + "que no pueda cerrar turno si ellos no
@@ -1147,7 +1310,9 @@ const turnosModFaltantes = cargar('apps-script/Turnos.gs', {
   formatearFecha_: (v) => String(v).slice(0, 10),
   normalizar_: normalizarSimple_,
   frecuenciasObligatoriasDelDia_: () => ['Diario'],
-  conteoListar_: () => conteosHoyHechos
+  conteoListar_: () => conteosHoyHechos,
+  indiceCatalogo_: indiceCatalogoVacioMock_,
+  claveProducto_: claveProductoMock_
 });
 const faltantesInicial = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
 assert.equal(faltantesInicial.length, 1, 'solo debe aparecer el sector que alguien eligió hoy en esa sede (Cocina)');
@@ -1158,6 +1323,24 @@ assert.deepEqual(faltantesInicial[0].faltantes, ['Sal Marina'], 'Salsa de mora e
 conteosHoyHechos.push({ producto: 'Sal Marina' });
 const faltantesCompleto = turnosModFaltantes.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
 assert.deepEqual(faltantesCompleto[0].faltantes, [], 'con Sal Marina contada, Cocina ya no debe tener faltantes');
+
+// turnoFaltantesPorSector_: contar el obligatorio bajo su alias de FUDO también debe reconocerse
+// (mismo bug/fix que productosObligatoriosFaltantes_ arriba).
+const catalogoTurnoAlias = [{ nombre_estandar: 'Coca-Cola Original 350 ml', sector: 'Café', frecuencia_conteo: 'Diario' }];
+const turnosCafeHoy = [{ fecha: '2026-07-21', usuario_id: 'u2', sector: 'Café' }];
+const usuariosCafe = [{ id: 'u2', nombre: 'Ana', sede: 'San Antonio' }];
+const turnosModFaltantesAlias = cargar('apps-script/Turnos.gs', {
+  SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
+  leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosCafe : (hoja === 'turnos' ? turnosCafeHoy : catalogoTurnoAlias),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  frecuenciasObligatoriasDelDia_: () => ['Diario'],
+  conteoListar_: () => [{ producto: 'Coca Cola 350' }],
+  indiceCatalogo_: () => indiceConAliasFudo,
+  claveProducto_: claveProductoMock_
+});
+const faltantesAlias = turnosModFaltantesAlias.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
+assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO ("Coca Cola 350"), no debe seguir marcado como "falta contar"');
 
 // turnoCerrar_: bloquea si falta algo, dejando el detalle; permite y registra el cierre si no falta nada.
 let cierresExistentes = [];
@@ -1171,7 +1354,9 @@ function cargarTurnosCerrar_(conteosHoy) {
     frecuenciasObligatoriasDelDia_: () => ['Diario'],
     conteoListar_: () => conteosHoy,
     appendRowFromObj_: (hoja, fila) => cierresGuardados.push(fila),
-    Utilities: { getUuid: () => 'cierre-1' }
+    Utilities: { getUuid: () => 'cierre-1' },
+    indiceCatalogo_: indiceCatalogoVacioMock_,
+    claveProducto_: claveProductoMock_
   });
 }
 

@@ -83,11 +83,15 @@ function conteoRegistrar_(items, usuario, opciones) {
  * directo (sin pasar por la pantalla), no solo como ayuda visual en el navegador.
  */
 function productosObligatoriosFaltantes_(items) {
+  // claveProducto_/indiceCatalogo_ (no normalizar_ a secas): sin esto, contar un producto obligatorio
+  // bajo su alias de FUDO (nombre_fudo) en vez de su nombre_estandar exacto lo dejaba marcado como
+  // "faltante" aunque sí se hubiera contado — bloqueaba guardar el cierre por un falso positivo.
+  const indice = indiceCatalogo_();
   const sesiones = {};
   items.forEach(function (it) {
     const clave = [it.fecha, it.sede, it.punto_conteo || ''].join('|');
     if (!sesiones[clave]) sesiones[clave] = { fecha: it.fecha, sede: it.sede, productos: {} };
-    sesiones[clave].productos[normalizar_(it.producto)] = true;
+    sesiones[clave].productos[claveProducto_(it.producto, indice)] = true;
   });
 
   const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
@@ -101,26 +105,33 @@ function productosObligatoriosFaltantes_(items) {
       // exigirse en la otra — pedido real: "que no me aparezca en San Antonio que me falta salsa
       // de mora cuando allá no se usa". Vacío o 'Ambas' = aplica a cualquier sede, como antes.
       .filter(function (p) { return !p.sede || p.sede === 'Ambas' || p.sede === sesion.sede; })
-      .filter(function (p) { return !sesion.productos[normalizar_(p.nombre_estandar)]; })
+      .filter(function (p) { return !sesion.productos[claveProducto_(p.nombre_estandar, indice)]; })
       .forEach(function (p) { faltantes[p.nombre_estandar] = true; });
   });
   return Object.keys(faltantes);
 }
 
-/** Un nuevo conteo del mismo cierre corrige el anterior, no se suma a él. */
+/**
+ * Un nuevo conteo del mismo cierre corrige el anterior, no se suma a él. Compara el producto por
+ * claveProducto_ (no normalizar_ a secas): si el cierre se corrige usando el alias de FUDO del
+ * mismo producto (nombre_fudo en vez de nombre_estandar), antes no lo reconocía como "el mismo" y
+ * creaba una fila duplicada en vez de corregir la existente.
+ */
 function conteoBuscarFila_(item) {
   const sh = sheet_(SHEET_NAMES.CONTEOS);
   const data = sh.getDataRange().getValues();
   if (data.length < 2) return null;
   const headers = data[0];
   const col = function (nombre) { return headers.indexOf(nombre); };
+  const indice = indiceCatalogo_();
+  const claveItem = claveProducto_(item.producto, indice);
   for (let r = data.length - 1; r >= 1; r--) {
     const fila = data[r];
     if (formatearFecha_(fila[col('fecha')]) === item.fecha &&
       fila[col('sede')] === item.sede &&
       fila[col('punto_conteo')] === (item.punto_conteo || 'Café') &&
       fila[col('turno')] === (item.turno || 'Cierre de turno') &&
-      normalizar_(fila[col('producto')]) === normalizar_(item.producto)) {
+      claveProducto_(fila[col('producto')], indice) === claveItem) {
       return { sh: sh, headers: headers, fila: r + 1 };
     }
   }

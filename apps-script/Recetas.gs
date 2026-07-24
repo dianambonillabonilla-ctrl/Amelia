@@ -101,13 +101,20 @@ function recetaGuardar_(item) {
 /**
  * Algunos nombres de venta de FUDO chocan con el nombre del preparado contado. La traducción se
  * aplica solo al buscar una receta de venta; el catálogo de inventario conserva su nombre real.
+ *
+ * Los dos destinos deben apuntar SIEMPRE al nombre_estandar VIGENTE de la receta, no al histórico:
+ * la migración de julio 2026 (MigracionRecetasJulio2026.gs) archivó 'Falafel (plato)' -> 'Falafel'
+ * y 'Wafflebonitos' -> 'Waffle Bonitos'. Un alias apuntando al nombre viejo ya archivado no
+ * encuentra nada en recetaMap (recetasVigentes_ excluye 'archivado'), así que la venta cae en
+ * "sin receta" y deja de descontar ingredientes en silencio — auditoría real, 24 jul 2026: se
+ * encontró que este mismo alias había quedado desactualizado tras esa migración.
  */
 function claveRecetaVenta_(producto, recetaMap, indice) {
   const directa = claveProducto_(producto, indice);
   if (recetaMap[directa]) return directa;
   const alias = {
-    'falafel': 'Falafel (plato)',
-    'wafflebonitos': 'Wafflebonitos'
+    'falafel': 'Falafel',
+    'wafflebonitos': 'Waffle Bonitos'
   };
   const destino = alias[normalizar_(producto)];
   return destino ? claveProducto_(destino, indice) : directa;

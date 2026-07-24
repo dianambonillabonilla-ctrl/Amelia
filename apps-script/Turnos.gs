@@ -89,8 +89,12 @@ function turnoFaltantesPorSector_(fecha, sede) {
 
   const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
   const frecuencias = frecuenciasObligatoriasDelDia_(fecha);
+  // claveProducto_/indiceCatalogo_ (no normalizar_ a secas): sin esto, un producto contado bajo su
+  // alias de FUDO (nombre_fudo) en vez de nombre_estandar exacto seguía apareciendo como "falta
+  // contar" para el sector, aunque ya se hubiera contado — bloqueaba cerrar el turno sin motivo.
+  const indice = indiceCatalogo_();
   const contados = {};
-  conteoListar_(fecha, sede).forEach(function (c) { contados[normalizar_(c.producto)] = true; });
+  conteoListar_(fecha, sede).forEach(function (c) { contados[claveProducto_(c.producto, indice)] = true; });
 
   return Object.keys(sectoresHoy).sort().map(function (sector) {
     const items = catalogo.filter(function (p) {
@@ -99,7 +103,7 @@ function turnoFaltantesPorSector_(fecha, sede) {
       return p.sector === sector && p.frecuencia_conteo && frecuencias.indexOf(p.frecuencia_conteo) !== -1 &&
         (!p.sede || p.sede === 'Ambas' || p.sede === sede);
     });
-    const faltantes = items.filter(function (p) { return !contados[normalizar_(p.nombre_estandar)]; }).map(function (p) { return p.nombre_estandar; });
+    const faltantes = items.filter(function (p) { return !contados[claveProducto_(p.nombre_estandar, indice)]; }).map(function (p) { return p.nombre_estandar; });
     return { sector: sector, total: items.length, faltantes: faltantes };
   });
 }

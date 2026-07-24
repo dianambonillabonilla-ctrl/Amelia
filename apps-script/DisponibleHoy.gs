@@ -332,9 +332,14 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
     const sedeConteo = c.sede || 'Sin sede';
     const fechas = entradaSede_(entradaProducto_(clave, nombreCanonico_(c.producto, indice)), sedeConteo).fechas;
     const base = aUnidadBase_(c.cantidad, c.unidad);
-    if (!fechas[f]) fechas[f] = { cantidad: 0, unidad: base.unidad };
+    if (!fechas[f]) fechas[f] = { cantidad: 0, unidad: base.unidad, timestamp: '' };
     if (fechas[f].unidad !== base.unidad) return;
     fechas[f].cantidad += base.cantidad;
+    // El más tardío entre los conteos de ese mismo día (puede haber varios puntos de conteo
+    // contando ese día) — es la hora real a partir de la cual una compra/merma/traslado del MISMO
+    // día ya debe sumar (ver eventoCubiertoPorConteo_ más abajo).
+    const tsConteo = timestampOrdenable_(c.timestamp);
+    if (tsConteo > fechas[f].timestamp) fechas[f].timestamp = tsConteo;
   });
 
   function asegurarSinConteo_(producto, sedeItem) {
@@ -356,9 +361,9 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
       const fechasSede = Object.keys(entrada.porSede[sedeItem].fechas).sort();
       const hayConteo = fechasSede.length > 0;
       const ultimaFecha = hayConteo ? fechasSede[fechasSede.length - 1] : '';
-      const base = hayConteo ? entrada.porSede[sedeItem].fechas[ultimaFecha] : { cantidad: 0, unidad: '' };
-      const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, fecha, indice, base.unidad);
-      const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad);
+      const base = hayConteo ? entrada.porSede[sedeItem].fechas[ultimaFecha] : { cantidad: 0, unidad: '', timestamp: '' };
+      const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
+      const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
       const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
@@ -371,19 +376,52 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   return resultado;
 }
 
-/** Suma compras/ajustes operativos y resta mermas de `sede` para `clave`, estrictamente después
- * de `fechaConteoExclusive` (vacío = sin tope inferior, para productos sin conteo previo) y hasta
- * `fechaCorteInclusive` (o sin tope si no se pasa fecha de corte). Si `unidadEsperada` viene
- * vacío (no hay conteo previo con qué comparar), toma la unidad de la primera compra/ajuste que
- * encuentre y exige que el resto coincida con esa. */
-function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+/** Convierte un timestamp (objeto Date o string) en un string comparable lexicográficamente
+ * (ISO 8601), o '' si no hay dato válido — para poder comparar "quién fue primero" entre un
+ * conteo y una compra/merma/traslado del MISMO día calendario (ver eventoCubiertoPorConteo_). */
+function timestampOrdenable_(valor) {
+  if (!valor) return '';
+  const d = (valor instanceof Date) ? valor : new Date(valor);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+/**
+ * Si un evento (compra, merma, traslado recibido) en `fechaEvento`/`timestampEvento` ya queda
+ * cubierto por el conteo físico hecho en `fechaConteo`/`timestampConteo` — o sea, si NO debe
+ * sumar aparte porque se asume que ese conteo ya lo incluía.
+ *
+ * Antes esto se decidía solo por fecha (día calendario), sin hora: cualquier evento del MISMO día
+ * que el último conteo se descartaba SIEMPRE, sin importar si había pasado antes o después del
+ * cierre — pedido real: "lo que tengo disponible para hoy no me cuadra". Ejemplo real: si el
+ * conteo físico de la mañana marca 2000 g de Costilla San Luis y esa misma tarde llega una compra
+ * de 5000 g, "Disponible Hoy" seguía mostrando 2000 g hasta el conteo del día siguiente. Ahora, si
+ * los dos lados tienen hora real (timestamp), el mismo día se decide por hora: el evento SÍ suma
+ * si ocurrió después del conteo. Sin hora en alguno de los dos lados (dato viejo o incompleto), se
+ * mantiene el comportamiento anterior (conservador: se asume cubierto) para no inventar un orden
+ * que el dato no tiene.
+ */
+function eventoCubiertoPorConteo_(fechaEvento, timestampEvento, fechaConteo, timestampConteo) {
+  if (!fechaConteo) return false; // sin conteo previo, nada puede estar "ya cubierto"
+  if (fechaEvento < fechaConteo) return true;
+  if (fechaEvento > fechaConteo) return false;
+  if (!timestampConteo || !timestampEvento) return true; // mismo día, sin hora de alguno: conservador
+  return timestampEvento <= timestampConteo;
+}
+
+/** Suma compras/ajustes operativos y resta mermas de `sede` para `clave`, después del conteo
+ * físico marcado por `fechaConteoExclusive`/`timestampConteoExclusive` (vacío = sin tope inferior,
+ * para productos sin conteo previo — ver eventoCubiertoPorConteo_) y hasta `fechaCorteInclusive`
+ * (o sin tope si no se pasa fecha de corte). Si `unidadEsperada` viene vacío (no hay conteo previo
+ * con qué comparar), toma la unidad de la primera compra/ajuste que encuentre y exige que el
+ * resto coincida con esa. */
+function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, timestampConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
   let neto = 0;
   let unidad = unidadEsperada || '';
   ajustes.forEach(function (a) {
     if ((a.sede || 'Sin sede') !== sede) return;
     if (claveProducto_(a.producto, indice) !== clave) return;
     const f = formatearFecha_(a.fecha);
-    if (f <= fechaConteoExclusive) return;
+    if (eventoCubiertoPorConteo_(f, timestampOrdenable_(a.timestamp), fechaConteoExclusive, timestampConteoExclusive)) return;
     if (fechaCorteInclusive && f > fechaCorteInclusive) return;
     const base = aUnidadBase_(a.cantidad, a.unidad);
     if (!unidad) unidad = base.unidad;
@@ -394,20 +432,21 @@ function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, fec
 }
 
 /** Suma lo recibido por `sede` para `clave` vía traslados Confirmados o Resueltos (ver
- * Traslados.gs), usando la fecha real de recepción (timestamp_recibe, o `fecha` si por algún
- * motivo no quedó registrada) — estrictamente después de `fechaConteoExclusive` y hasta
- * `fechaCorteInclusive`. Un traslado resuelto con faltante suma solo lo realmente recibido
- * (cantidad_recibida), no lo enviado. Mismo auto-detección de unidad que netoAjustesDesdeConteo_
- * cuando no hay conteo previo. */
-function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+ * Traslados.gs), usando la fecha/hora real de recepción (timestamp_recibe, o `fecha` si por algún
+ * motivo no quedó registrada) — después del conteo marcado por
+ * `fechaConteoExclusive`/`timestampConteoExclusive` y hasta `fechaCorteInclusive`. Un traslado
+ * resuelto con faltante suma solo lo realmente recibido (cantidad_recibida), no lo enviado. Mismo
+ * auto-detección de unidad que netoAjustesDesdeConteo_ cuando no hay conteo previo. */
+function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclusive, timestampConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
   let total = 0;
   let unidad = unidadEsperada || '';
   traslados.forEach(function (t) {
     if (t.sede_destino !== sede) return;
     if (['Confirmado', 'Resuelto'].indexOf(t.estado) === -1) return;
     if (claveProducto_(t.producto, indice) !== clave) return;
-    const f = formatearFecha_(t.timestamp_recibe || t.fecha);
-    if (f <= fechaConteoExclusive) return;
+    const fuenteFecha = t.timestamp_recibe || t.fecha;
+    const f = formatearFecha_(fuenteFecha);
+    if (eventoCubiertoPorConteo_(f, timestampOrdenable_(fuenteFecha), fechaConteoExclusive, timestampConteoExclusive)) return;
     if (fechaCorteInclusive && f > fechaCorteInclusive) return;
     const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
       ? t.cantidad_recibida : t.cantidad_enviada;

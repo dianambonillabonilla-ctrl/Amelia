@@ -240,6 +240,9 @@ function pintarPendientes_(filas) {
 function pintarObservados_(filas) {
   const body = document.getElementById('tabla-observados');
   if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">No hay observaciones pendientes de resolver.</td></tr>'; return; }
+  // Solo Administrador/Encargado pueden resolver (traslado_resolver en Code.gs) — Cocina puede ver
+  // esta pantalla pero no este botón, para no dar un botón que el backend siempre va a rechazar.
+  const puedeResolver = ['Administrador', 'Encargado'].includes((Sesion.usuario() || {}).rol);
   body.innerHTML = filas.map(t => `
     <tr>
       <td>${escapeHtml(t.producto)}</td>
@@ -247,7 +250,9 @@ function pintarObservados_(filas) {
       <td>${escapeHtml(lugar_(t.sede_destino, t.punto_destino))}</td>
       <td><span class="badge alerta">Sin resolver</span> ${escapeHtml(t.observacion)}</td>
       <td>${escapeHtml(t.usuario_recibe)}</td>
-      <td><button class="btn fantasma btn-resolver" data-id="${escapeHtml(t.id)}">Marcar resuelto</button></td>
+      <td>${puedeResolver
+        ? `<button class="btn fantasma btn-resolver" data-id="${escapeHtml(t.id)}">Marcar resuelto</button>`
+        : '<span style="color:var(--grey); font-size:.78rem">Solo Administrador/Encargado</span>'}</td>
     </tr>`).join('');
 
   body.querySelectorAll('.btn-resolver').forEach(btn => {

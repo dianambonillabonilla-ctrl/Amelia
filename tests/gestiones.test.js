@@ -42,18 +42,30 @@ const fakeSheet = {
   })
 };
 
+const normalizarGestionesMock_ = (s) => String(s || '').trim().toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+// Espejo simple de claveProducto_/indiceCatalogo_ (Catalogo.gs) — gestionAutoResolverPorCompra_
+// ahora las usa en vez de comparar con normalizar_ a secas (ver mismo mock en inventory-controls.test.js).
+function claveProductoGestionesMock_(texto, indice) {
+  const n = normalizarGestionesMock_(texto);
+  const canonico = indice && indice[n];
+  return canonico ? normalizarGestionesMock_(canonico) : n;
+}
+
 const gestiones = cargar('apps-script/Gestiones.gs', {
   SHEET_NAMES: { GESTIONES: 'Gestiones' },
   Utilities: { getUuid: () => 'g-' + filas.length },
   formatearFecha_: () => '2026-07-23',
-  normalizar_: (s) => String(s || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' '),
+  normalizar_: normalizarGestionesMock_,
   sheet_: (name) => name === 'Gestiones' ? fakeSheet : null,
   leerTabla_: (name) => name === 'Gestiones'
     ? filas.slice(1).filter(r => r.some(v => v !== '' && v !== null)).map(objFromRow_)
     : [],
   appendRowFromObj_: (name, obj) => { if (name === 'Gestiones') filas.push(HEADERS.map(h => obj[h] !== undefined ? obj[h] : '')); },
-  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  indiceCatalogo_: () => ({}),
+  claveProducto_: claveProductoGestionesMock_,
+  Logger: { log: () => {} }
 });
 
 const admin = { nombre: 'Diana', rol: 'Administrador', sede: 'Ambas' };
@@ -141,5 +153,31 @@ assert.equal(sanAntonioSigue.estado, 'Pendiente', 'la gestión de San Antonio no
 
 // No debe explotar si no hay nada que resolver.
 assert.doesNotThrow(() => gestiones.gestionAutoResolverPorCompra_([{ producto: 'Algo que no existe', sede: 'Capri' }], 'factura-2', admin));
+
+// --- gestionAutoResolverPorCompra_: también debe reconocer el producto por su alias de FUDO -----
+// (auditoría real, 24 jul 2026: antes comparaba con normalizar_ a secas, sin pasar por
+// claveProducto_/el catálogo — una gestión abierta como "Coca-Cola Original 350 ml" quedaba
+// abierta para siempre si la compra llegaba registrada con el alias de FUDO del mismo producto).
+reiniciar_();
+const indiceConAliasFudoGestiones = { 'coca cola 350': 'Coca-Cola Original 350 ml' };
+const gestionesConAlias = cargar('apps-script/Gestiones.gs', {
+  SHEET_NAMES: { GESTIONES: 'Gestiones' },
+  Utilities: { getUuid: () => 'g-' + filas.length },
+  formatearFecha_: () => '2026-07-24',
+  normalizar_: normalizarGestionesMock_,
+  sheet_: (name) => name === 'Gestiones' ? fakeSheet : null,
+  leerTabla_: (name) => name === 'Gestiones'
+    ? filas.slice(1).filter(r => r.some(v => v !== '' && v !== null)).map(objFromRow_)
+    : [],
+  appendRowFromObj_: (name, obj) => { if (name === 'Gestiones') filas.push(HEADERS.map(h => obj[h] !== undefined ? obj[h] : '')); },
+  sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
+  indiceCatalogo_: () => indiceConAliasFudoGestiones,
+  claveProducto_: claveProductoGestionesMock_,
+  Logger: { log: () => {} }
+});
+const gAlias = gestionesConAlias.gestionCrear_({ producto: 'Coca-Cola Original 350 ml', sede: 'Capri' }, capri);
+gestionesConAlias.gestionAutoResolverPorCompra_([{ producto: 'Coca Cola 350', sede: 'Capri' }], 'factura-3', admin);
+const gAliasResuelta = gestionesConAlias.gestionesListar_({}, admin).find(g => g.id === gAlias.id);
+assert.equal(gAliasResuelta.estado, 'Resuelto', 'una compra registrada con el alias de FUDO ("Coca Cola 350") debe cerrar la gestión del mismo producto');
 
 console.log('gestiones: OK');
