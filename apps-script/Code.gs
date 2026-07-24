@@ -29,7 +29,8 @@ const SHEET_NAMES = {
   AJUSTES_INVENTARIO: 'Ajustes_Inventario',
   TURNOS_SECTOR: 'Turnos_Sector',
   CIERRES_TURNO: 'Cierres_Turno',
-  GESTIONES: 'Gestiones'
+  GESTIONES: 'Gestiones',
+  AUDITORIA: 'Auditoria_Eventos'
 };
 
 function ss_() {
@@ -74,7 +75,9 @@ function configurarHojas() {
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
     Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp'],
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
-      'actualizado_por', 'timestamp_actualizado', 'factura_id']
+      'actualizado_por', 'timestamp_actualizado', 'factura_id'],
+    Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
+      'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
