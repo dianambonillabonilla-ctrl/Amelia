@@ -115,10 +115,11 @@ assert.equal(porFactura['F-1'].accion.opciones[0].unidad_sugerida, 'u', 'debe su
 assert.equal(porFactura['F-1'].accion.opciones[1].id, 'ir_a_conteo');
 
 assert.match(porFactura['F-3'].solucion, /ningún producto parecido/, 'F-3 ("Limones sueltos", sin parecido real en el catálogo) debe sugerir crearlo');
-assert.match(porFactura['F-3'].solucion, /Catálogo Maestro/, 'F-3 debe apuntar a dónde crearlo a mano si no se usa el botón');
-assert.equal(porFactura['F-3'].accion.opciones.length, 1, 'F-3 sin parecido real solo debe traer la opción de crear');
-assert.equal(porFactura['F-3'].accion.opciones[0].id, 'crear_producto');
-assert.equal(porFactura['F-3'].accion.opciones[0].nombre, 'Limones sueltos');
+assert.match(porFactura['F-3'].solucion, /Vincular a un producto existente/, 'F-3 debe remitir al botón de vincular manual, ya que puede ser el mismo producto con nombre totalmente distinto');
+assert.equal(porFactura['F-3'].accion.opciones.length, 2, 'F-3 sin parecido real debe traer vincular manual + crear');
+assert.equal(porFactura['F-3'].accion.opciones[0].id, 'vincular_manual');
+assert.equal(porFactura['F-3'].accion.opciones[1].id, 'crear_producto');
+assert.equal(porFactura['F-3'].accion.opciones[1].nombre, 'Limones sueltos');
 
 assert.match(porFactura['F-4'].solucion, /2026-07-05/, 'F-4 debe mencionar la fecha del último conteo en la solución');
 assert.equal(porFactura['F-4'].accion.opciones.length, 2, 'F-4 (fecha ya cubierta) debe traer las 2 opciones: confirmar, o ir a registrar el conteo');
@@ -148,12 +149,13 @@ assert.ok(f5, 'F-5 ("Costilla curda", typo de "Costilla cruda") debe marcarse co
 assert.match(f5.solucion, /Costilla cruda/, 'F-5 debe sugerir el parecido real "Costilla cruda" del catálogo');
 // Con un parecido encontrado, deben ofrecerse LAS DOS opciones (vincular Y crear aparte) — pedido
 // real: "yo decido qué hacer", no que el diagnóstico elija solo cuál de las dos aplica.
-assert.equal(f5.accion.opciones.length, 2, 'F-5 con un parecido encontrado debe traer las 2 opciones: vincular o crear aparte');
+assert.equal(f5.accion.opciones.length, 3, 'F-5 con un parecido encontrado debe traer las 3 opciones: vincular sugerido, vincular manual, o crear aparte');
 assert.equal(f5.accion.opciones[0].id, 'vincular_alias');
 assert.equal(f5.accion.opciones[0].catalogo_id, 'id-costilla', 'la opción de vincular debe apuntar al id real de "Costilla cruda" en el catálogo');
 assert.equal(f5.accion.opciones[0].alias, 'Costilla curda');
-assert.equal(f5.accion.opciones[1].id, 'crear_producto');
-assert.equal(f5.accion.opciones[1].nombre, 'Costilla curda');
+assert.equal(f5.accion.opciones[1].id, 'vincular_manual');
+assert.equal(f5.accion.opciones[2].id, 'crear_producto');
+assert.equal(f5.accion.opciones[2].nombre, 'Costilla curda');
 
 console.log('diagnosticarComprasNoSuman_: OK');
 
@@ -218,13 +220,15 @@ assert.ok(!porIngredienteReceta['Salsa de mora'], 'un ingrediente de una receta 
 
 assert.ok(porIngredienteReceta['Sal'], '"Sal" debe marcarse (no coincide exacto con "Sal Marina Fina")');
 assert.deepEqual(porIngredienteReceta['Sal'].recetas, ['Aioli Preparado']);
-assert.equal(porIngredienteReceta['Sal'].accion.opciones.length, 2, '"Sal" tiene un parecido real — debe ofrecer vincular Y crear');
+assert.equal(porIngredienteReceta['Sal'].accion.opciones.length, 3, '"Sal" tiene un parecido real — debe ofrecer vincular sugerido, vincular manual y crear');
 assert.equal(porIngredienteReceta['Sal'].accion.opciones[0].id, 'vincular_alias');
 assert.equal(porIngredienteReceta['Sal'].accion.opciones[0].catalogo_nombre, 'Sal Marina Fina');
+assert.equal(porIngredienteReceta['Sal'].accion.opciones[1].id, 'vincular_manual');
 
 assert.ok(porIngredienteReceta['Especias Secretas Amelia'], 'un ingrediente sin parecido debe marcarse');
-assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones.length, 1, 'sin parecido, solo debe ofrecer crear');
-assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones[0].id, 'crear_producto');
+assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones.length, 2, 'sin parecido, debe ofrecer vincular manual y crear');
+assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones[0].id, 'vincular_manual');
+assert.equal(porIngredienteReceta['Especias Secretas Amelia'].accion.opciones[1].id, 'crear_producto');
 
 assert.ok(porIngredienteReceta['Salsa de Costilla Nueva'], 'un ingrediente de una subreceta (tipo producción) también debe revisarse');
 

@@ -31,7 +31,8 @@ const SHEET_NAMES = {
   CIERRES_TURNO: 'Cierres_Turno',
   GESTIONES: 'Gestiones',
   AUDITORIA: 'Auditoria_Eventos',
-  STOCK_FUDO_BASE: 'Stock_FUDO_Base'
+  STOCK_FUDO_BASE: 'Stock_FUDO_Base',
+  CATALOGO_ALIAS: 'Catalogo_Alias'
 };
 
 function ss_() {
@@ -79,7 +80,8 @@ function configurarHojas() {
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
       'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo'],
-    Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en']
+    Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en'],
+    Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -201,6 +203,15 @@ function handleRequest_(e, method) {
       case 'catalogo_fusionar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoFusionar_(params.id_conservar, params.id_eliminar));
+      case 'catalogo_alias_crear':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoAliasCrear_(params.catalogo_id, params.alias, params.origen, sesion.usuario));
+      case 'catalogo_alias_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: catalogoAliasListar_(params.catalogo_id) });
+      case 'catalogo_alias_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoAliasEliminar_(params.id));
       case 'fudo_nombres_vistos':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoNombresVistos_() });

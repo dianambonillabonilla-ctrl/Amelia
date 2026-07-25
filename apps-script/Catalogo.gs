@@ -168,12 +168,89 @@ function catalogoFusionar_(idConservar, idEliminar) {
     catalogoGuardar_({ id: conservar.id, nombre_fudo: eliminar.nombre_fudo });
   }
 
+  // Los alias del producto que se elimina (ver Catalogo_Alias/catalogoAliasCrear_) no deben
+  // perderse — se reasignan al que se conserva, igual que ya se hace arriba con nombre_fudo.
+  const shAlias = sheet_(SHEET_NAMES.CATALOGO_ALIAS);
+  const dataAlias = shAlias.getDataRange().getValues();
+  const headersAlias = dataAlias[0];
+  const catalogoIdCol = headersAlias.indexOf('catalogo_id');
+  for (let r = 1; r < dataAlias.length; r++) {
+    if (dataAlias[r][catalogoIdCol] === idEliminar) {
+      shAlias.getRange(r + 1, catalogoIdCol + 1).setValue(idConservar);
+    }
+  }
+
   catalogoEliminar_(idEliminar);
 
   return {
     ok: true, conservado: conservar.nombre_estandar, eliminado: eliminar.nombre_estandar,
     filas_actualizadas: filasActualizadas
   };
+}
+
+/**
+ * Vincula manualmente un texto (ej. como está escrito en una receta) a un producto EXISTENTE del
+ * catálogo, sin importar si el nombre se parece o no — a diferencia de "vincular" en Diagnóstico
+ * (que solo sugiere cuando los nombres se parecen por escritura), esto es para el caso real donde
+ * dos nombres del mismo producto no comparten ni una palabra ("Sal gruesa" / "Sal Marina"). Un
+ * mismo producto puede tener VARIOS alias a la vez (a diferencia de nombre_fudo, que solo guarda
+ * uno) — pedido real, jul 2026: "necesito que todo sea el mismo idioma el sistema, las recetas y
+ * el FUDO". `origen` es solo informativo (ej. 'receta', 'manual') para mostrarlo en la lista.
+ */
+function catalogoAliasCrear_(catalogoId, alias, origen, usuario) {
+  if (!catalogoId) return { ok: false, error: 'Falta el producto del catálogo a vincular' };
+  const aliasLimpio = String(alias || '').trim();
+  if (!aliasLimpio) return { ok: false, error: 'Falta el texto del alias' };
+
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO);
+  const producto = catalogo.find(function (c) { return c.id === catalogoId; });
+  if (!producto) return { ok: false, error: 'No se encontró el producto del catálogo' };
+
+  const normAlias = normalizar_(aliasLimpio);
+  if (normalizar_(producto.nombre_estandar) === normAlias) {
+    return { ok: false, error: 'Ese texto ya es el nombre estándar de "' + producto.nombre_estandar + '" — no hace falta vincularlo' };
+  }
+
+  // Un mismo texto no puede quedar apuntando a dos productos distintos a la vez — evita el mismo
+  // problema que causó todo esto, pero para el propio catálogo. Si ya está vinculado al MISMO
+  // producto, no hay nada que hacer (idempotente).
+  const indice = indiceCatalogo_();
+  const yaApuntaA = indice[normAlias];
+  if (yaApuntaA && normalizar_(yaApuntaA) !== normalizar_(producto.nombre_estandar)) {
+    return { ok: false, error: '"' + aliasLimpio + '" ya está vinculado a "' + yaApuntaA + '" — fusiona o desvincula ese primero si de verdad es "' + producto.nombre_estandar + '".' };
+  }
+  if (yaApuntaA) return { ok: true, ya_existia: true };
+
+  appendRowFromObj_(SHEET_NAMES.CATALOGO_ALIAS, {
+    id: Utilities.getUuid(),
+    catalogo_id: catalogoId,
+    alias: aliasLimpio,
+    origen: origen || 'manual',
+    creado_por: (usuario && usuario.nombre) || '',
+    timestamp: new Date()
+  });
+  return { ok: true };
+}
+
+/** Todos los alias, o solo los de un producto si se pasa catalogoId — para la pantalla de gestión. */
+function catalogoAliasListar_(catalogoId) {
+  let filas = leerTabla_(SHEET_NAMES.CATALOGO_ALIAS);
+  if (catalogoId) filas = filas.filter(function (a) { return a.catalogo_id === catalogoId; });
+  return filas.sort(function (a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+}
+
+function catalogoAliasEliminar_(id) {
+  if (!id) return { ok: false, error: 'Falta el id del alias a eliminar' };
+  const sh = sheet_(SHEET_NAMES.CATALOGO_ALIAS);
+  const data = sh.getDataRange().getValues();
+  const idCol = data[0].indexOf('id');
+  for (let r = 1; r < data.length; r++) {
+    if (data[r][idCol] === id) {
+      sh.deleteRow(r + 1);
+      return { ok: true, eliminado: true };
+    }
+  }
+  return { ok: false, error: 'No se encontró el alias ' + id };
 }
 
 function catalogoBuscar_(nombre) {
@@ -199,15 +276,29 @@ function normalizar_(s) {
 
 /**
  * Índice nombre_normalizado -> nombre_estandar, construido una sola vez a partir del catálogo
- * maestro (incluye tanto nombre_estandar como nombre_fudo apuntando al mismo nombre_estandar).
- * Pásalo a claveProducto_/nombreCanonico_ para no releer la hoja Catalogo_Maestro en cada
- * comparación — construirlo una vez por función y reutilizarlo.
+ * maestro (incluye nombre_estandar, nombre_fudo, y CUALQUIER alias guardado en Catalogo_Alias
+ * apuntando al mismo nombre_estandar). Pásalo a claveProducto_/nombreCanonico_ para no releer las
+ * hojas en cada comparación — construirlo una vez por función y reutilizarlo.
+ *
+ * nombre_fudo solo alcanza para UN nombre alterno por producto — en la práctica un producto real
+ * necesita varios a la vez (el nombre que usa FUDO, y el nombre con el que cada receta lo escribió,
+ * que no siempre coincide: "Sal Marina" en el catálogo, pero "Sal gruesa" en una receta). Sin esta
+ * hoja aparte, vincular el nombre de una receta pisaba el nombre de FUDO ya guardado, o simplemente
+ * no había dónde guardar un segundo alias — pedido real: "necesito que todo sea el mismo idioma el
+ * sistema, las recetas y el FUDO... si la receta dice sal gruesa pero se guardó como sal marina
+ * nunca va a salir que tengo para brindar una costilla" (jul 2026).
  */
 function indiceCatalogo_() {
   const indice = {};
+  const catalogoPorId = {};
   leerTabla_(SHEET_NAMES.CATALOGO).forEach(function (c) {
     if (c.nombre_estandar) indice[normalizar_(c.nombre_estandar)] = c.nombre_estandar;
     if (c.nombre_fudo && !indice[normalizar_(c.nombre_fudo)]) indice[normalizar_(c.nombre_fudo)] = c.nombre_estandar;
+    catalogoPorId[c.id] = c.nombre_estandar;
+  });
+  leerTabla_(SHEET_NAMES.CATALOGO_ALIAS).forEach(function (a) {
+    const nombreEstandar = catalogoPorId[a.catalogo_id];
+    if (a.alias && nombreEstandar && !indice[normalizar_(a.alias)]) indice[normalizar_(a.alias)] = nombreEstandar;
   });
   return indice;
 }
