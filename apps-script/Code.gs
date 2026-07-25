@@ -30,7 +30,8 @@ const SHEET_NAMES = {
   TURNOS_SECTOR: 'Turnos_Sector',
   CIERRES_TURNO: 'Cierres_Turno',
   GESTIONES: 'Gestiones',
-  AUDITORIA: 'Auditoria_Eventos'
+  AUDITORIA: 'Auditoria_Eventos',
+  STOCK_FUDO_BASE: 'Stock_FUDO_Base'
 };
 
 function ss_() {
@@ -77,7 +78,8 @@ function configurarHojas() {
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
-      'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo']
+      'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo'],
+    Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -280,6 +282,9 @@ function handleRequest_(e, method) {
       case 'fudo_api_sincronizar_ventas':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoApiSincronizarVentas_(params.fecha_desde, params.fecha_hasta, sesion.usuario, params.opciones));
+      case 'stock_fudo_base_importar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(stockFudoBaseImportar_(params.filas, sesion.usuario));
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':

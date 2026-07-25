@@ -84,6 +84,10 @@ function conciliarBebidas_(fecha, sedeRestringida) {
     return !c.sede || c.sede === 'Ambas' || !sedeRestringida || c.sede === sedeRestringida;
   });
   const conteos = conteoListar_(fecha, null);
+  const stockBase = stockFudoBaseIndice_();
+  // Todas las ventas desde la fecha más vieja de la base hasta `fecha` (no solo las del día) —
+  // hace falta el rango completo para restar "lo vendido desde la base" en stockEsperadoFudo_.
+  const ventasDesdeBase = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) { return !ventaCancelada_(v); });
 
   return catalogo.map(function (item) {
     // Comparación normalizada (sin tildes/mayúsculas/espacios de sobra), igual que el resto del
@@ -121,13 +125,24 @@ function conciliarBebidas_(fecha, sedeRestringida) {
     const capri = conteos.find(function (c) { return claveProducto_(c.producto, indice) === claveItem && c.sede === 'Capri'; });
     const suma = (sa ? Number(sa.cantidad) : 0) + (capri ? Number(capri.cantidad) : 0);
 
+    // Si ese día no hubo movimientos (cierre === null), FUDO igual sabe el stock — solo que no lo
+    // sabemos NOSOTROS a menos que hayamos cargado un punto de partida (Stock_FUDO_Base, ver
+    // stockFudoBaseImportar_ en StockFudoBase.gs). Sin eso, antes esta bebida se mostraba "Sin
+    // datos FUDO" aunque tuviera consumo real calculado — el problema nunca era el consumo, era
+    // no tener ningún número de stock contra el cual comparar el conteo físico.
+    const estimadoBase = cierre === null
+      ? stockEsperadoFudo_(nombreFudoItem, fecha, stockBase, ventasDesdeBase)
+      : null;
+    const referencia = cierre !== null ? cierre : estimadoBase;
+
     const fila = {
       producto: item.nombre_estandar,
       sa: sa ? Number(sa.cantidad) : null,
       capri: capri ? Number(capri.cantidad) : null,
       suma_manual: suma,
       fudo_cierre: cierre,
-      diferencia_vs_suma: (cierre !== null) ? (cierre - suma) : null,
+      stock_esperado_fudo: estimadoBase,
+      diferencia_vs_suma: (referencia !== null) ? (referencia - suma) : null,
       consumo_fudo_total: consumoVenta,
       consumo_fudo_sa: consumoSede_('San Antonio'),
       consumo_fudo_capri: consumoSede_('Capri'),
@@ -136,10 +151,34 @@ function conciliarBebidas_(fecha, sedeRestringida) {
       // movimientos subido (comparado contra datos reales, jul 2026: coinciden en el 96%+ de los
       // casos — la diferencia son entradas de mercancía, que no son "consumo" sino compras).
       consumo_fudo_fuente: usarVentasApi ? 'ventas_api' : 'movimientos_manual',
+      // De dónde salió el número contra el que se compara suma_manual (fila.diferencia_vs_suma):
+      // el cierre real reportado por FUDO ese día, el estimado desde Stock_FUDO_Base, o ninguno.
+      referencia_fuente: cierre !== null ? 'movimientos_manual' : (estimadoBase !== null ? 'stock_base_estimado' : null),
       n_movimientos_fudo: movsItem.length
     };
     return sedeRestringida ? filaBebidaRestringida_(fila, sedeRestringida) : fila;
   });
+}
+
+/**
+ * Stock esperado de una bebida en `fecha`, partiendo de Stock_FUDO_Base y restando lo vendido
+ * desde la fecha de esa base (sin contar lo cancelado). Si `fecha` es el mismo día de la base, se
+ * devuelve el número de la base tal cual — no se sabe a qué hora del día se tomó ese snapshot,
+ * así que restar las ventas de ese mismo día podría estar restando algo que la base YA reflejaba.
+ * Si `fecha` es anterior a la base, no hay nada que estimar (la base no existía todavía ese día).
+ */
+function stockEsperadoFudo_(nombreFudoItem, fecha, stockBase, ventasDesdeBase) {
+  if (!nombreFudoItem) return null;
+  const base = stockBase[nombreFudoItem];
+  if (!base) return null;
+  const fechaBase = formatearFecha_(base.fecha_base);
+  if (fecha < fechaBase) return null;
+  if (fecha === fechaBase) return Number(base.stock);
+  const consumidoDesdeBase = ventasDesdeBase.filter(function (v) {
+    const f = formatearFecha_(v.creacion);
+    return f > fechaBase && f <= fecha && normalizar_(v.producto) === nombreFudoItem;
+  }).reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
+  return Number(base.stock) - consumidoDesdeBase;
 }
 
 /**
@@ -154,8 +193,9 @@ function filaBebidaRestringida_(fila, sede) {
     : {};
   return Object.assign({
     producto: fila.producto, sa: null, capri: null, suma_manual: null, fudo_cierre: null,
-    diferencia_vs_suma: null, consumo_fudo_total: null, consumo_fudo_sa: null, consumo_fudo_capri: null,
-    consumo_fudo_fuente: fila.consumo_fudo_fuente, n_movimientos_fudo: null
+    stock_esperado_fudo: null, diferencia_vs_suma: null, consumo_fudo_total: null,
+    consumo_fudo_sa: null, consumo_fudo_capri: null,
+    consumo_fudo_fuente: fila.consumo_fudo_fuente, referencia_fuente: fila.referencia_fuente, n_movimientos_fudo: null
   }, propio);
 }
 

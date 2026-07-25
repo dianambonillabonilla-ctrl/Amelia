@@ -62,6 +62,22 @@
       </div>
     </div>
 
+    <div class="card" style="border-color:var(--navy)">
+      <h2>Cargar stock base de FUDO</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Punto de partida real: sube el export "Control de Stock" de FUDO (pestañas Productos e
+        Ingredientes) para que Conciliación sepa el stock de una bebida aunque no se haya vendido
+        nada ese día. Subir un archivo más reciente reemplaza el punto de partida anterior de cada
+        producto — no se acumulan snapshots viejos.
+      </p>
+      <div class="grid grid-3">
+        <label>Fecha del snapshot <input type="date" id="stock-base-fecha"></label>
+        <label>Archivo <input type="file" id="input-stock-base" accept=".xls,.xlsx"></label>
+        <button class="btn dorado" id="btn-cargar-stock-base" style="align-self:end">Cargar stock base</button>
+      </div>
+      <pre id="resultado-stock-base" style="display:none; margin-top:12px; max-height:200px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
+    </div>
+
     <div class="card">
       <h2>1. ¿Qué reporte vas a subir?</h2>
       <div class="grid grid-3">
@@ -157,6 +173,51 @@ document.getElementById('btn-sincronizar-fudo-api').addEventListener('click', co
     pre.textContent = data.ok ? JSON.stringify(data, null, 2) : `Error: ${data.error}`;
   } catch (err) {
     pre.textContent = `No se pudo sincronizar: ${err.message}`;
+  }
+}));
+
+document.getElementById('stock-base-fecha').value = fechaLocalHoy_();
+document.getElementById('btn-cargar-stock-base').addEventListener('click', conBotonProtegido(document.getElementById('btn-cargar-stock-base'), async () => {
+  const input = document.getElementById('input-stock-base');
+  const fecha = document.getElementById('stock-base-fecha').value;
+  const pre = document.getElementById('resultado-stock-base');
+  pre.style.display = 'block';
+  if (!input.files[0]) { pre.textContent = 'Elige el archivo de stock primero.'; return; }
+  if (!fecha) { pre.textContent = 'Elige la fecha del snapshot.'; return; }
+  pre.textContent = 'Leyendo archivo…';
+  try {
+    const buffer = await input.files[0].arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const filas = [];
+    // El export de FUDO repite la columna "Unidad" tres veces (para Disponibilidad, Stock y Stock
+    // Mínimo) — SheetJS renombra los duplicados con sufijo _1/_2 en el orden en que aparecen, así
+    // que la unidad real de "Stock" queda en "Unidad_1", no en la primera "Unidad".
+    [['Productos', 'Producto'], ['Ingredientes', 'Ingrediente']].forEach(([nombreHoja, tipo]) => {
+      const hoja = wb.Sheets[nombreHoja];
+      if (!hoja) return;
+      XLSX.utils.sheet_to_json(hoja, { defval: null }).forEach((f) => {
+        if (!f['Nombre']) return;
+        filas.push({
+          nombre_fudo: f['Nombre'],
+          tipo: tipo,
+          stock: f['Stock'],
+          unidad: f['Unidad_1'] || f['Unidad'] || '',
+          fecha_base: fecha
+        });
+      });
+    });
+    if (!filas.length) {
+      pre.textContent = 'No se encontraron filas en las pestañas "Productos"/"Ingredientes" — revisa que el archivo tenga ese formato exacto (export "Control de Stock" de FUDO).';
+      return;
+    }
+    pre.textContent = `Enviando ${filas.length} fila(s)…`;
+    const data = await llamar('stock_fudo_base_importar', { filas });
+    pre.textContent = data.ok
+      ? `Listo — ${data.creados} nuevo(s), ${data.actualizados} actualizado(s), con fecha base ${fecha}.` +
+        (data.sin_nombre || data.sin_stock ? `\n(${data.sin_nombre || 0} sin nombre, ${data.sin_stock || 0} sin stock numérico — se omitieron)` : '')
+      : `Error: ${data.error}`;
+  } catch (err) {
+    pre.textContent = `No se pudo cargar: ${err.message}`;
   }
 }));
 

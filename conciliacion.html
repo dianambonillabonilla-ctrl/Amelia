@@ -146,9 +146,14 @@ function pintarBebidas(filas, sedeRestringida) {
     if (f.diferencia_vs_suma === null) badge = '<span class="badge aviso">Sin datos FUDO</span>';
     else if (Math.abs(f.diferencia_vs_suma) < 1.5) badge = '<span class="badge ok">Coincide</span>';
     else badge = `<span class="badge alerta">Off por ${f.diferencia_vs_suma > 0 ? '+' : ''}${escapeHtml(f.diferencia_vs_suma)}</span>`;
+    // fudo_cierre es el cierre real reportado por FUDO ese día (viene de Movimientos_FUDO); si ese
+    // día no hubo movimientos, se usa el estimado desde Stock_FUDO_Base (venta desde el punto de
+    // partida) — se marca con "(estimado)" para no confundirlo con un número que FUDO reportó tal cual.
+    const cierreMostrado = f.fudo_cierre ?? (f.stock_esperado_fudo !== null && f.stock_esperado_fudo !== undefined
+      ? `${escapeHtml(f.stock_esperado_fudo)} (estimado)` : '—');
     return `<tr>
       <td>${escapeHtml(f.producto)}</td><td>${f.sa ?? '—'}</td><td>${f.capri ?? '—'}</td>
-      <td>${escapeHtml(f.suma_manual)}</td><td>${f.fudo_cierre ?? '—'}</td><td>${escapeHtml(f.consumo_fudo_sa)} / ${escapeHtml(f.consumo_fudo_capri)}</td><td>${badge}</td>
+      <td>${escapeHtml(f.suma_manual)}</td><td>${cierreMostrado}</td><td>${escapeHtml(f.consumo_fudo_sa)} / ${escapeHtml(f.consumo_fudo_capri)}</td><td>${badge}</td>
     </tr>`;
   }).join('');
 }

@@ -900,7 +900,8 @@ const conciliacionBebidasRespaldo = cargar('apps-script/Conciliacion.gs', {
   normalizar_: normalizarSimple_,
   claveProducto_: (texto) => normalizarSimple_(texto),
   conteoListar_: () => [],
-  indiceCatalogo_: () => ({})
+  indiceCatalogo_: () => ({}),
+  stockFudoBaseIndice_: () => ({})
 });
 const bebidasRespaldo = conciliacionBebidasRespaldo.conciliarBebidas_('2026-07-21', null);
 const filaPokerRespaldo = bebidasRespaldo.find((b) => b.producto === 'Poker');
@@ -911,6 +912,85 @@ assert.equal(filaPokerRespaldo.consumo_fudo_capri, 5);
 assert.equal(filaPokerRespaldo.fudo_cierre, null, 'sin movimientos manuales no hay cierre de stock de FUDO');
 assert.equal(filaPokerRespaldo.n_movimientos_fudo, 0);
 console.log('conciliarBebidas_ usa Ventas_FUDO como respaldo cuando no hay movimientos ese día: OK');
+
+// --- stockFudoBaseImportar_: upsert por nombre_fudo, no acumula snapshots viejos ----------------
+(function () {
+  const headersStockBase = ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en'];
+  const dataStockBase = [headersStockBase, ['Ginger Ale', 'Producto', 10, 'unid.', '2026-07-20', 'Admin', '2026-07-20T00:00:00Z']];
+  const hojaStockBase = {
+    getDataRange: () => ({ getValues: () => dataStockBase }),
+    getRange: (fila, columna) => ({ setValue: (v) => { dataStockBase[fila - 1][columna - 1] = v; } })
+  };
+  const filasAppendeadas = [];
+  const stockBaseMod = cargar('apps-script/StockFudoBase.gs', {
+    SHEET_NAMES: { STOCK_FUDO_BASE: 'stockbase' },
+    sheet_: (nombre) => (nombre === 'stockbase' ? hojaStockBase : null),
+    normalizar_: normalizarSimple_,
+    valorFudo_: (fila, candidatos) => {
+      for (const c of candidatos) { if (fila[c] !== undefined && fila[c] !== null && fila[c] !== '') return fila[c]; }
+      return '';
+    },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    neutralizarObjetoFormulas_: (obj) => obj,
+    appendRowsFromObjs_: (nombreHoja, filas) => { filasAppendeadas.push.apply(filasAppendeadas, filas); },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) }
+  });
+
+  const resultado = stockBaseMod.stockFudoBaseImportar_([
+    { nombre_fudo: 'Ginger Ale', tipo: 'Producto', stock: 4, unidad: 'unid.', fecha_base: '2026-07-25' }, // ya existía -> actualiza
+    { nombre_fudo: 'Coca Cola Original 350 ml', tipo: 'Producto', stock: 8, unidad: 'unid.', fecha_base: '2026-07-25' }, // nueva
+    { nombre_fudo: '', stock: 5, fecha_base: '2026-07-25' }, // sin nombre
+    { nombre_fudo: 'Kefir', stock: 'no-es-numero', fecha_base: '2026-07-25' } // stock inválido
+  ], { nombre: 'Diana' });
+
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.actualizados, 1, 'Ginger Ale ya existía, debe actualizar en vez de crear otra fila');
+  assert.equal(resultado.creados, 1, 'Coca Cola es nueva');
+  assert.equal(resultado.sin_nombre, 1);
+  assert.equal(resultado.sin_stock, 1);
+  assert.equal(dataStockBase.length, 2, 'sigue habiendo solo 1 fila de datos (Ginger Ale actualizada) — no se duplicó');
+  assert.equal(dataStockBase[1][headersStockBase.indexOf('stock')], 4, 'el stock de Ginger Ale se actualizó al nuevo valor');
+  assert.equal(dataStockBase[1][headersStockBase.indexOf('fecha_base')], '2026-07-25');
+  assert.equal(filasAppendeadas.length, 1);
+  assert.equal(filasAppendeadas[0].nombre_fudo, 'Coca Cola Original 350 ml');
+  console.log('stockFudoBaseImportar_ upsert por nombre_fudo: OK');
+})();
+
+// --- conciliarBebidas_: usa Stock_FUDO_Base para estimar el stock cuando no hay movimientos -----
+// (bug real reportado por el usuario: una bebida sin ninguna venta ni movimiento ese día salía
+// "Sin datos FUDO" en Conciliación, aunque FUDO sí supiera su stock real — con un snapshot de
+// Stock_FUDO_Base cargado, ahora se puede estimar restando lo vendido desde esa fecha).
+(function () {
+  const stockBaseIndiceMock = { 'ginger ale': { nombre_fudo: 'Ginger Ale', stock: 20, fecha_base: '2026-07-20' } };
+  const ventasDesdeBaseMock = [
+    { creacion: '2026-07-21', sede: 'San Antonio', producto: 'Ginger Ale', cantidad: 3, cancelada: false },
+    { creacion: '2026-07-22', sede: 'Capri', producto: 'Ginger Ale', cantidad: 2, cancelada: false },
+    { creacion: '2026-07-22', sede: 'Capri', producto: 'Ginger Ale', cantidad: 100, cancelada: true } // no debe contarse
+  ];
+  const catalogoStockBase = [{ nombre_estandar: 'Ginger Ale', nombre_fudo: 'Ginger Ale', categoria: 'Bebidas/Gaseosas' }];
+  const conciliacionStockBase = cargar('apps-script/Conciliacion.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+    leerTabla_: (hoja) => {
+      if (hoja === 'ventas') return ventasDesdeBaseMock;
+      if (hoja === 'movimientos') return []; // sin movimientos el 22
+      if (hoja === 'catalogo') return catalogoStockBase;
+      return [];
+    },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    claveProducto_: (texto) => normalizarSimple_(texto),
+    conteoListar_: () => [],
+    indiceCatalogo_: () => ({}),
+    stockFudoBaseIndice_: () => stockBaseIndiceMock
+  });
+  const bebidasStockBase = conciliacionStockBase.conciliarBebidas_('2026-07-22', null);
+  const filaGingerAle = bebidasStockBase.find((b) => b.producto === 'Ginger Ale');
+  assert.equal(filaGingerAle.fudo_cierre, null, 'sin movimientos ese día, no hay cierre real de FUDO');
+  assert.equal(filaGingerAle.stock_esperado_fudo, 15, '20 de base - 3 (21 jul) - 2 (22 jul, sin contar la cancelada) = 15');
+  assert.equal(filaGingerAle.referencia_fuente, 'stock_base_estimado');
+  assert.equal(filaGingerAle.diferencia_vs_suma, 15, 'sin conteo físico cargado, suma_manual es 0 -> 15 - 0');
+  console.log('conciliarBebidas_ usa Stock_FUDO_Base para estimar stock cuando no hay movimientos: OK');
+})();
 
 // --- Usuarios: activar/desactivar un usuario existente NO debe exigir nombre/usuario/rol --------
 // (bug real: usuarios.html manda solo { id, activo } al togglear Activar/Desactivar. La validación
@@ -1402,7 +1482,8 @@ const conciliacionSedes = cargar('apps-script/Conciliacion.gs', {
   produccionListar_: () => [],
   produccionTotalPorItem_: () => ({}),
   ajustesNetosPorItem_: () => ({}),
-  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad }),
+  stockFudoBaseIndice_: () => ({})
 });
 
 const resultadoSA = conciliacionSedes.calcularConciliacion_('2026-07-21', encargadaSA);
