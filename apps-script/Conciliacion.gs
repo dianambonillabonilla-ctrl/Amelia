@@ -133,9 +133,26 @@ function resumirVentasFudo_(fecha) {
   });
 }
 
+/**
+ * Invierte indiceCatalogo_ (normalizado -> nombre_estandar) para poder responder, dado un
+ * nombre_estandar, con TODOS los textos que identifican a ese producto en los datos crudos de
+ * FUDO: su propio nombre, su "Nombre en FUDO" si lo tiene, y cualquier alias vinculado
+ * (Catalogo_Alias) — ver comentario en conciliarBebidas_ para el bug real que esto arregla.
+ */
+function nombresPosiblesPorEstandar_(indice) {
+  const mapa = {};
+  Object.keys(indice).forEach(function (normKey) {
+    const estandar = indice[normKey];
+    if (!mapa[estandar]) mapa[estandar] = [];
+    mapa[estandar].push(normKey);
+  });
+  return mapa;
+}
+
 // --- BEBIDAS: contra FUDO ----------------------------------------------------
 function conciliarBebidas_(fecha, sedeRestringida) {
   const indice = indiceCatalogo_();
+  const nombresPosiblesPorEstandar = nombresPosiblesPorEstandar_(indice);
   const movimientos = leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO)
     .filter(function (m) { return formatearFecha_(m.fecha) === fecha; });
   // Fuente de respaldo cuando ese día no se subió el archivo manual de movimientos (o ya se dejó
@@ -159,15 +176,17 @@ function conciliarBebidas_(fecha, sedeRestringida) {
   const ventasDesdeBase = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) { return !ventaCancelada_(v); });
 
   return catalogo.map(function (item) {
-    // Comparación normalizada (sin tildes/mayúsculas/espacios de sobra), igual que el resto del
-    // sistema (Catalogo.gs, DisponibleHoy.gs). Antes comparaba con === y una tilde, mayúscula o
-    // espacio distinto entre "nombre_fudo" del catálogo y el nombre real del export de FUDO hacía
-    // que nunca hubiera match: la importación sí guardaba los movimientos, pero esta pantalla
-    // seguía mostrando "Sin datos FUDO" para esa bebida en todas las fechas.
-    const nombreFudoItem = normalizar_(item.nombre_fudo);
-    const movsItem = nombreFudoItem
-      ? movimientos.filter(function (m) { return normalizar_(m.nombre) === nombreFudoItem; })
-      : [];
+    // Todo lo que puede identificar a esta bebida en los datos crudos de FUDO: su propio nombre
+    // estándar, su "Nombre en FUDO" si lo tiene, y cualquier alias vinculado (Catalogo_Alias) —
+    // NO solo "nombre_fudo": cuando el nombre ya es idéntico (ej. "Poker"), nadie lo llena ahí
+    // porque parece innecesario, y comparar solo contra ese campo vacío hacía que la bebida nunca
+    // encontrara sus propios movimientos/ventas/stock, aunque FUDO la reportara con ese mismo
+    // nombre tal cual (bug real, jul 2026: "sigue apareciendo sin datos fudo... la poker esté en
+    // el inventario de stock y aparece tal cual como poker").
+    const nombresPosibles = nombresPosiblesPorEstandar[item.nombre_estandar] || [normalizar_(item.nombre_estandar)];
+    function coincideNombreFudo_(nombre) { return nombresPosibles.indexOf(normalizar_(nombre)) !== -1; }
+
+    const movsItem = movimientos.filter(function (m) { return coincideNombreFudo_(m.nombre); });
     movsItem.sort(function (a, b) { return new Date(a.fecha) - new Date(b.fecha); });
     const cierre = movsItem.length ? movsItem[movsItem.length - 1].stock_actual : null;
 
@@ -178,9 +197,7 @@ function conciliarBebidas_(fecha, sedeRestringida) {
     }
     // Sin movimientos ese día (no se subió el archivo manual, o ya se dejó de subir): cada línea
     // vendida de la bebida cuenta como 1 unidad consumida — ver comentario arriba de ventasDelDia.
-    const ventasItem = nombreFudoItem
-      ? ventasDelDia.filter(function (v) { return normalizar_(v.producto) === nombreFudoItem; })
-      : [];
+    const ventasItem = ventasDelDia.filter(function (v) { return coincideNombreFudo_(v.producto); });
     function consumoVentasApi_(sede) {
       return ventasItem.filter(function (v) { return !sede || v.sede === sede; })
         .reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
@@ -200,7 +217,7 @@ function conciliarBebidas_(fecha, sedeRestringida) {
     // datos FUDO" aunque tuviera consumo real calculado — el problema nunca era el consumo, era
     // no tener ningún número de stock contra el cual comparar el conteo físico.
     const estimadoBase = cierre === null
-      ? stockEsperadoFudo_(nombreFudoItem, fecha, stockBase, ventasDesdeBase)
+      ? stockEsperadoFudo_(nombresPosibles, fecha, stockBase, ventasDesdeBase)
       : null;
     const referencia = cierre !== null ? cierre : estimadoBase;
 
@@ -235,17 +252,23 @@ function conciliarBebidas_(fecha, sedeRestringida) {
  * devuelve el número de la base tal cual — no se sabe a qué hora del día se tomó ese snapshot,
  * así que restar las ventas de ese mismo día podría estar restando algo que la base YA reflejaba.
  * Si `fecha` es anterior a la base, no hay nada que estimar (la base no existía todavía ese día).
+ * `nombresPosibles` es la lista de nombres normalizados que pueden identificar esta bebida en los
+ * datos de FUDO (nombre estándar, nombre_fudo, alias) — se prueba cada uno contra Stock_FUDO_Base
+ * porque no sabemos con cuál de esos nombres se subió ese archivo.
  */
-function stockEsperadoFudo_(nombreFudoItem, fecha, stockBase, ventasDesdeBase) {
-  if (!nombreFudoItem) return null;
-  const base = stockBase[nombreFudoItem];
+function stockEsperadoFudo_(nombresPosibles, fecha, stockBase, ventasDesdeBase) {
+  if (!nombresPosibles || !nombresPosibles.length) return null;
+  let base = null;
+  for (let i = 0; i < nombresPosibles.length; i++) {
+    if (stockBase[nombresPosibles[i]]) { base = stockBase[nombresPosibles[i]]; break; }
+  }
   if (!base) return null;
   const fechaBase = formatearFecha_(base.fecha_base);
   if (fecha < fechaBase) return null;
   if (fecha === fechaBase) return Number(base.stock);
   const consumidoDesdeBase = ventasDesdeBase.filter(function (v) {
     const f = formatearFecha_(v.creacion);
-    return f > fechaBase && f <= fecha && normalizar_(v.producto) === nombreFudoItem;
+    return f > fechaBase && f <= fecha && nombresPosibles.indexOf(normalizar_(v.producto)) !== -1;
   }).reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
   return Number(base.stock) - consumidoDesdeBase;
 }

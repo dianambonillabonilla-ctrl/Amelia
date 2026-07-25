@@ -1078,6 +1078,53 @@ console.log('conciliarBebidas_ usa Ventas_FUDO como respaldo cuando no hay movim
   console.log('conciliarBebidas_ usa Stock_FUDO_Base para estimar stock cuando no hay movimientos: OK');
 })();
 
+// --- conciliarBebidas_: debe encontrar los datos de FUDO aunque "Nombre en FUDO" esté vacío -----
+// (bug real reportado por la usuaria, jul 2026: "sigue apareciendo sin datos fudo a pesar que por
+// ejemplo la poker esté en el inventario de stock y aparece tal cual como poker" — cuando el
+// nombre ya es idéntico nadie llena "Nombre en FUDO", y antes conciliarBebidas_ solo comparaba
+// contra ESE campo: vacío -> nunca encontraba sus propios movimientos/ventas/stock, aunque el
+// nombre_estandar coincidiera exacto con lo que reporta FUDO. Usa el indiceCatalogo_ REAL de
+// Catalogo.gs (no un mock) para probar el camino completo, incluido el merge de Catalogo_Alias.
+(function () {
+  const catalogoPokerSinFudo = [{ id: 'id-poker', nombre_estandar: 'Poker', nombre_fudo: '', categoria: 'Bebidas/Cerveza' }];
+  const aliasPoker = [{ id: 'alias-1', catalogo_id: 'id-poker', alias: 'Poker 330cc' }];
+  const catalogoRealMod = cargar('apps-script/Catalogo.gs', {
+    normalizar_: normalizarSimple_,
+    SHEET_NAMES: { CATALOGO: 'catalogo', CATALOGO_ALIAS: 'catalogo_alias' },
+    leerTabla_: (hoja) => hoja === 'catalogo' ? catalogoPokerSinFudo : hoja === 'catalogo_alias' ? aliasPoker : []
+  });
+
+  const ventasPokerSinFudo = [
+    { creacion: '2026-07-23', sede: 'San Antonio', categoria: 'Bebidas', producto: 'Poker', cantidad: 3, cancelada: false },
+    // Vendida con el nombre alterno vinculado como alias — debe contarse igual como Poker.
+    { creacion: '2026-07-23', sede: 'Capri', categoria: 'Bebidas', producto: 'Poker 330cc', cantidad: 2, cancelada: false }
+  ];
+  const conciliacionPokerSinFudo = cargar('apps-script/Conciliacion.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+    leerTabla_: (hoja) => {
+      if (hoja === 'ventas') return ventasPokerSinFudo;
+      if (hoja === 'movimientos') return []; // no se subió el archivo manual ese día
+      if (hoja === 'catalogo') return catalogoPokerSinFudo;
+      return [];
+    },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    claveProducto_: (texto) => normalizarSimple_(texto),
+    conteoListar_: () => [],
+    indiceCatalogo_: catalogoRealMod.indiceCatalogo_,
+    stockFudoBaseIndice_: () => ({})
+  });
+
+  const bebidasPokerSinFudo = conciliacionPokerSinFudo.conciliarBebidas_('2026-07-23', null);
+  const filaPokerSinFudo = bebidasPokerSinFudo.find((b) => b.producto === 'Poker');
+  assert.ok(filaPokerSinFudo, 'debe aparecer la fila de Poker aunque nombre_fudo esté vacío');
+  assert.equal(filaPokerSinFudo.consumo_fudo_fuente, 'ventas_api');
+  assert.equal(filaPokerSinFudo.consumo_fudo_sa, 3, 'debe encontrar la venta comparando contra nombre_estandar, no solo nombre_fudo (que está vacío)');
+  assert.equal(filaPokerSinFudo.consumo_fudo_capri, 2, 'la venta con el nombre alterno ("Poker 330cc", vinculado por alias) debe contarse como consumo de Poker en Capri');
+  assert.equal(filaPokerSinFudo.consumo_fudo_total, 5);
+  console.log('conciliarBebidas_ encuentra ventas de FUDO por nombre_estandar/alias aunque "Nombre en FUDO" esté vacío: OK');
+})();
+
 // --- conciliacionHistorialDesfases_: histórico de lo que NO cuadra en un rango de fechas ---------
 // Pedido real: "que tuviera historico de conciliacion... que me muestre lo que no cuadra o lo que
 // esta desfasado aparte". Dos días: el 20 cuadra todo (bebida y comida), el 21 tiene un desfase de
