@@ -1078,6 +1078,44 @@ console.log('conciliarBebidas_ usa Ventas_FUDO como respaldo cuando no hay movim
   console.log('conciliarBebidas_ usa Stock_FUDO_Base para estimar stock cuando no hay movimientos: OK');
 })();
 
+// --- conciliarBebidas_: Stock_FUDO_Base también debe proyectarse HACIA ATRÁS ---------------------
+// (pedido real, jul 2026: "si le cambio fecha de conciliacion el 25 sí reconoce la poker, entonces
+// como hacemos [para otros días]" — antes, una fecha ANTERIOR a la del snapshot siempre devolvía
+// "Sin datos FUDO" aunque el snapshot sí existiera, porque solo se sabía proyectar hacia adelante.
+// Yendo hacia atrás se sabe igual: stock(fecha) = stock(base) + lo que se vendió entre fecha y la
+// base — ese consumo todavía no había pasado en `fecha`, así que el stock ese día era más alto).
+(function () {
+  const stockBaseIndiceMock = { 'poker': { nombre_fudo: 'Poker', stock: 40, fecha_base: '2026-07-25' } };
+  const ventasDesdeBaseMock = [
+    { creacion: '2026-07-23', sede: 'San Antonio', producto: 'Poker', cantidad: 5, cancelada: false }, // antes de la fecha que se consulta: no debe contarse
+    { creacion: '2026-07-24', sede: 'San Antonio', producto: 'Poker', cantidad: 4, cancelada: false },
+    { creacion: '2026-07-25', sede: 'Capri', producto: 'Poker', cantidad: 3, cancelada: false },
+    { creacion: '2026-07-24', sede: 'Capri', producto: 'Poker', cantidad: 100, cancelada: true } // no debe contarse
+  ];
+  const catalogoPokerAtras = [{ nombre_estandar: 'Poker', nombre_fudo: 'Poker', categoria: 'Bebidas/Cerveza' }];
+  const conciliacionPokerAtras = cargar('apps-script/Conciliacion.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+    leerTabla_: (hoja) => {
+      if (hoja === 'ventas') return ventasDesdeBaseMock;
+      if (hoja === 'movimientos') return []; // sin movimientos el 23 (antes del snapshot)
+      if (hoja === 'catalogo') return catalogoPokerAtras;
+      return [];
+    },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    claveProducto_: (texto) => normalizarSimple_(texto),
+    conteoListar_: () => [],
+    indiceCatalogo_: () => ({}),
+    stockFudoBaseIndice_: () => stockBaseIndiceMock
+  });
+  const bebidasPokerAtras = conciliacionPokerAtras.conciliarBebidas_('2026-07-23', null);
+  const filaPokerAtras = bebidasPokerAtras.find((b) => b.producto === 'Poker');
+  assert.equal(filaPokerAtras.fudo_cierre, null, 'sin movimientos ese día, no hay cierre real de FUDO');
+  assert.equal(filaPokerAtras.stock_esperado_fudo, 47, '40 de base + 4 (24 jul) + 3 (25 jul, sin contar la cancelada del 24) = 47, el 23 no cuenta (es la fecha que se consulta)');
+  assert.equal(filaPokerAtras.referencia_fuente, 'stock_base_estimado');
+  console.log('conciliarBebidas_ proyecta Stock_FUDO_Base hacia atrás para fechas anteriores al snapshot: OK');
+})();
+
 // --- conciliarBebidas_: debe encontrar los datos de FUDO aunque "Nombre en FUDO" esté vacío -----
 // (bug real reportado por la usuaria, jul 2026: "sigue apareciendo sin datos fudo a pesar que por
 // ejemplo la poker esté en el inventario de stock y aparece tal cual como poker" — cuando el

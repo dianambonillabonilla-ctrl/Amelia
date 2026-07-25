@@ -247,11 +247,16 @@ function conciliarBebidas_(fecha, sedeRestringida) {
 }
 
 /**
- * Stock esperado de una bebida en `fecha`, partiendo de Stock_FUDO_Base y restando lo vendido
- * desde la fecha de esa base (sin contar lo cancelado). Si `fecha` es el mismo día de la base, se
- * devuelve el número de la base tal cual — no se sabe a qué hora del día se tomó ese snapshot,
- * así que restar las ventas de ese mismo día podría estar restando algo que la base YA reflejaba.
- * Si `fecha` es anterior a la base, no hay nada que estimar (la base no existía todavía ese día).
+ * Stock esperado de una bebida en `fecha`, partiendo de Stock_FUDO_Base. Si `fecha` es el mismo
+ * día de la base, se devuelve el número de la base tal cual — no se sabe a qué hora del día se
+ * tomó ese snapshot, así que sumar/restar las ventas de ese mismo día podría estar contando algo
+ * que la base YA reflejaba. Si `fecha` es posterior a la base, se resta lo vendido desde entonces.
+ * Si `fecha` es ANTERIOR a la base (pedido real, jul 2026: "si le cambio fecha de conciliacion el
+ * 25 sí reconoce la poker, entonces como hacemos [para otros días]"), se hace lo inverso: se suma
+ * de vuelta lo que se vendió entre `fecha` y la base — ese consumo todavía no había pasado en
+ * `fecha`, así que el stock ese día tenía que ser más alto. En ambos casos, sin contar lo
+ * cancelado, y sin contar entradas de mercancía nuevas entre esas fechas (mismo supuesto que ya
+ * tenía la proyección hacia adelante: solo se descuenta/reintegra consumo, no compras).
  * `nombresPosibles` es la lista de nombres normalizados que pueden identificar esta bebida en los
  * datos de FUDO (nombre estándar, nombre_fudo, alias) — se prueba cada uno contra Stock_FUDO_Base
  * porque no sabemos con cuál de esos nombres se subió ese archivo.
@@ -264,13 +269,17 @@ function stockEsperadoFudo_(nombresPosibles, fecha, stockBase, ventasDesdeBase) 
   }
   if (!base) return null;
   const fechaBase = formatearFecha_(base.fecha_base);
-  if (fecha < fechaBase) return null;
   if (fecha === fechaBase) return Number(base.stock);
-  const consumidoDesdeBase = ventasDesdeBase.filter(function (v) {
-    const f = formatearFecha_(v.creacion);
-    return f > fechaBase && f <= fecha && nombresPosibles.indexOf(normalizar_(v.producto)) !== -1;
-  }).reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
-  return Number(base.stock) - consumidoDesdeBase;
+
+  function ventasEntre_(desdeExclusive, hastaInclusive) {
+    return ventasDesdeBase.filter(function (v) {
+      const f = formatearFecha_(v.creacion);
+      return f > desdeExclusive && f <= hastaInclusive && nombresPosibles.indexOf(normalizar_(v.producto)) !== -1;
+    }).reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
+  }
+
+  if (fecha > fechaBase) return Number(base.stock) - ventasEntre_(fechaBase, fecha);
+  return Number(base.stock) + ventasEntre_(fecha, fechaBase);
 }
 
 /**
