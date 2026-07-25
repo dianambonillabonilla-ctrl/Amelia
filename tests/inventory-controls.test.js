@@ -464,7 +464,11 @@ const sheetsFusion = {
   ajustes: [['id', 'producto'], ['a1', 'Helado de Vainilla']],
   recetas: [['id', 'producto', 'ingrediente'], ['r1', 'Combo', 'Helado de Vainilla'], ['r2', 'Combo', 'Costilla']],
   producciones: [['id', 'item'], ['p1', 'Helado de Vainilla']],
-  traslados: [['id', 'producto'], ['t1', 'Helado de Vainilla']]
+  traslados: [['id', 'producto'], ['t1', 'Helado de Vainilla']],
+  catalogo_alias: [
+    ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp'],
+    ['alias-helado-1', 'id-helado-b', 'Helado Vaini', 'manual', 'Ana', '2026-07-01']
+  ]
 };
 function sheetFusionMock_(nombre) {
   const data = sheetsFusion[nombre];
@@ -488,7 +492,8 @@ const catalogoFusion = cargar('apps-script/Catalogo.gs', {
     neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
   SHEET_NAMES: {
     CATALOGO: 'catalogo', CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes',
-    RECETAS: 'recetas', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados'
+    RECETAS: 'recetas', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados',
+    CATALOGO_ALIAS: 'catalogo_alias'
   },
   Logger: { log: () => {} },
   leerTabla_: leerTablaFusionMock_,
@@ -515,11 +520,92 @@ assert.equal(sheetsFusion.catalogo.length, 2, 'debe quedar solo el encabezado y 
 assert.equal(sheetsFusion.catalogo[1][0], 'id-helado-a');
 assert.equal(sheetsFusion.catalogo[1][2], 'HELADO VAINILLA FUDO', 'el nombre_fudo del eliminado debe heredarse porque el conservado no tenía uno propio');
 
+assert.equal(sheetsFusion.catalogo_alias[1][1], 'id-helado-a', 'los alias del producto eliminado deben reasignarse al que se conserva, no perderse');
+
 assert.equal(catalogoFusion.catalogoFusionar_(null, 'id-helado-a').ok, false, 'debe exigir los dos ids');
 assert.equal(catalogoFusion.catalogoFusionar_('id-helado-a', 'id-helado-a').ok, false, 'no debe dejar fusionar un producto consigo mismo');
 assert.equal(catalogoFusion.catalogoFusionar_('id-no-existe', 'id-helado-a').ok, false, 'debe fallar si alguno de los dos ids no existe en el catálogo');
 
 console.log('catalogoFusionar_: OK');
+
+// --- Catálogo: alias — un producto puede tener VARIOS nombres a la vez (a diferencia de --------
+// nombre_fudo, que solo guarda uno) — pedido real: "necesito que todo sea el mismo idioma el
+// sistema, las recetas y el FUDO", ej. "Sal gruesa" (receta) y "Sal Marina" (catálogo) sin
+// ninguna palabra en común, así que la sugerencia automática por parecido nunca los agarra.
+const catalogoAliasBase = [
+  { id: 'id-sal', nombre_estandar: 'Sal Marina' },
+  { id: 'id-azucar', nombre_estandar: 'Azúcar' }
+];
+let aliasGuardados = [];
+function catalogoAliasMod_(indiceExtra) {
+  return cargar('apps-script/Catalogo.gs', {
+    neutralizarFormula_: neutralizarFormulaMock_,
+    neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
+    SHEET_NAMES: { CATALOGO: 'catalogo', CATALOGO_ALIAS: 'catalogo_alias' },
+    Utilities: { getUuid: () => 'alias-' + (aliasGuardados.length + 1) },
+    leerTabla_: (hoja) => hoja === 'catalogo' ? catalogoAliasBase : aliasGuardados,
+    appendRowFromObj_: (hoja, fila) => aliasGuardados.push(fila),
+    normalizar_: (v) => String(v || '').trim().toLowerCase()
+  });
+}
+
+let modAlias = catalogoAliasMod_();
+const creado = modAlias.catalogoAliasCrear_('id-sal', 'Sal gruesa', 'receta', { nombre: 'Ana' });
+assert.equal(creado.ok, true, 'debe poder vincular "Sal gruesa" a "Sal Marina" aunque no compartan ninguna palabra');
+assert.equal(aliasGuardados.length, 1);
+assert.equal(aliasGuardados[0].catalogo_id, 'id-sal');
+assert.equal(aliasGuardados[0].alias, 'Sal gruesa');
+assert.equal(aliasGuardados[0].origen, 'receta');
+assert.equal(aliasGuardados[0].creado_por, 'Ana');
+
+assert.equal(modAlias.catalogoAliasCrear_(null, 'x').ok, false, 'debe exigir el producto');
+assert.equal(modAlias.catalogoAliasCrear_('id-sal', '').ok, false, 'debe exigir el texto del alias');
+assert.equal(modAlias.catalogoAliasCrear_('id-no-existe', 'x').ok, false, 'debe fallar si el producto no existe');
+assert.equal(modAlias.catalogoAliasCrear_('id-sal', 'sal marina').ok, false, 'no debe dejar vincular el propio nombre estándar como alias');
+
+// Repetir el mismo alias para el MISMO producto es idempotente, no un error.
+const repetido = modAlias.catalogoAliasCrear_('id-sal', 'Sal gruesa', 'manual', { nombre: 'Ana' });
+assert.equal(repetido.ok, true);
+assert.equal(repetido.ya_existia, true, 'vincular el mismo alias al mismo producto de nuevo no debe duplicar la fila');
+assert.equal(aliasGuardados.length, 1, 'no debe crear una segunda fila para el mismo alias+producto');
+
+// Un mismo texto no puede quedar apuntando a DOS productos distintos a la vez.
+const conflicto = modAlias.catalogoAliasCrear_('id-azucar', 'Sal gruesa', 'manual', { nombre: 'Ana' });
+assert.equal(conflicto.ok, false, '"Sal gruesa" ya está vinculado a Sal Marina — no debe poder vincularse también a Azúcar');
+assert.match(conflicto.error, /Sal Marina/);
+
+const listado = modAlias.catalogoAliasListar_('id-sal');
+assert.equal(listado.length, 1);
+assert.equal(listado[0].alias, 'Sal gruesa');
+assert.equal(modAlias.catalogoAliasListar_('id-azucar').length, 0, 'catalogoAliasListar_ debe filtrar por producto');
+
+// indiceCatalogo_ debe resolver el alias hacia el nombre_estandar del producto vinculado.
+const indiceConAliasReal = modAlias.indiceCatalogo_();
+assert.equal(indiceConAliasReal['sal gruesa'], 'Sal Marina', 'indiceCatalogo_ debe mezclar Catalogo_Alias, no solo nombre_estandar/nombre_fudo');
+assert.equal(indiceConAliasReal['sal marina'], 'Sal Marina');
+
+// catalogoAliasEliminar_ debe borrar la fila correcta de la hoja (por posición real, no por índice del array).
+const filasAliasSheet = [
+  ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp'],
+  ['alias-1', 'id-sal', 'Sal gruesa', 'receta', 'Ana', '2026-07-01'],
+  ['alias-2', 'id-sal', 'Sal en grano', 'manual', 'Ana', '2026-07-02']
+];
+const modAliasEliminar = cargar('apps-script/Catalogo.gs', {
+  neutralizarFormula_: neutralizarFormulaMock_,
+  neutralizarObjetoFormulas_: neutralizarObjetoFormulasMock_,
+  SHEET_NAMES: { CATALOGO_ALIAS: 'catalogo_alias' },
+  sheet_: () => ({
+    getDataRange: () => ({ getValues: () => filasAliasSheet }),
+    deleteRow: (fila) => { filasAliasSheet.splice(fila - 1, 1); }
+  })
+});
+const eliminadoAlias = modAliasEliminar.catalogoAliasEliminar_('alias-1');
+assert.equal(eliminadoAlias.ok, true);
+assert.equal(filasAliasSheet.length, 2, 'debe quedar solo el encabezado y el alias que no se borró');
+assert.equal(filasAliasSheet[1][0], 'alias-2', 'el alias que no se pidió borrar debe seguir intacto');
+assert.equal(modAliasEliminar.catalogoAliasEliminar_('no-existe').ok, false);
+
+console.log('catalogoAliasCrear_/Listar_/Eliminar_ e indiceCatalogo_ con alias: OK');
 
 // --- Extremo a extremo: compra sube el stock Y "para cuántos platos alcanza" (ejemplo del banano) ---
 const conteoBanano = [

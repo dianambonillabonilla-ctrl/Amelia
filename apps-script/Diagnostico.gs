@@ -247,11 +247,18 @@ function diagnosticarComprasNoSuman_() {
 }
 
 /**
- * Opciones concretas y ACCIONABLES para una compra cuyo nombre de producto no existe en el
- * Catálogo Maestro. SIEMPRE incluye "crear como producto nuevo" (catalogo_guardar sin id); si
- * además hay un producto del catálogo con nombre muy parecido (ver sonNombresParecidos_), se
- * agrega también "vincular como alias" del que ya existe (catalogo_guardar con nombre_fudo) — las
- * dos se muestran juntas para que decidas tú cuál aplica, en vez de que el diagnóstico elija solo.
+ * Opciones concretas y ACCIONABLES para un nombre (de una compra, o de un ingrediente de receta)
+ * que no existe en el Catálogo Maestro. SIEMPRE incluye "crear como producto nuevo" y "vincular
+ * manualmente a un producto ya existente" (elegir de una lista, sin importar si el nombre se
+ * parece); si además hay un producto con nombre muy parecido por escritura (ver
+ * sonNombresParecidos_), se agrega también esa sugerencia automática — las tres se muestran juntas
+ * para que decidas tú cuál aplica, en vez de que el diagnóstico elija solo.
+ *
+ * "Vincular" usa catalogoAliasCrear_ (Catalogo.gs), NO nombre_fudo — un producto puede necesitar
+ * varios alias a la vez (el nombre de FUDO Y el nombre que usó cada receta, que no siempre
+ * coinciden), y nombre_fudo solo guarda uno. Pedido real: "necesito que todo sea el mismo idioma
+ * el sistema, las recetas y el FUDO... si la receta dice sal gruesa pero se guardó como sal
+ * marina nunca va a salir que tengo para brindar una costilla" (jul 2026).
  */
 function resolverOpcionesNombreNoEnCatalogo_(nombreCompra, unidadCompra, catalogo) {
   const norm = normalizar_(nombreCompra);
@@ -263,13 +270,17 @@ function resolverOpcionesNombreNoEnCatalogo_(nombreCompra, unidadCompra, catalog
       'si quieres vincularlo a ese producto o crearlo como uno nuevo aparte.';
     opciones.push({
       id: 'vincular_alias', etiqueta: 'Vincular a "' + parecido.nombre_estandar + '" (ya existe, escrito distinto)',
-      catalogo_id: parecido.id, catalogo_nombre: parecido.nombre_estandar, alias: nombreCompra,
-      nombre_fudo_actual: parecido.nombre_fudo || ''
+      catalogo_id: parecido.id, catalogo_nombre: parecido.nombre_estandar, alias: nombreCompra
     });
   } else {
-    texto = 'No hay ningún producto parecido en el catálogo — créalo con el botón de abajo (o a mano desde Catálogo ' +
-      'Maestro) con nombre_estandar "' + nombreCompra + '" (corrígelo antes si fue un error de tipeo).';
+    texto = 'No hay ningún producto parecido en el catálogo por escritura — puede que sí sea el mismo producto con un ' +
+      'nombre totalmente distinto (ej. "Sal gruesa" y "Sal Marina"): usa "Vincular a un producto existente" para ' +
+      'buscarlo tú, o créalo como uno nuevo si de verdad no existe todavía.';
   }
+  opciones.push({
+    id: 'vincular_manual', etiqueta: 'Vincular a un producto existente (elegir de la lista)',
+    alias: nombreCompra
+  });
   opciones.push({
     id: 'crear_producto', etiqueta: 'Crear "' + nombreCompra + '" como producto nuevo',
     nombre: nombreCompra, unidad_base: normalizarUnidad_(unidadCompra) || ''

@@ -190,6 +190,32 @@
       <div id="resultado-duplicados" style="margin-top:18px"></div>
       <div id="resultado-fudo-sin-asignar" style="margin-top:18px"></div>
     </div>
+
+    <div class="card" data-solo-rol="Administrador">
+      <h2>4. Alias — vincular nombres distintos al mismo producto</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Un producto puede tener VARIOS nombres a la vez (a diferencia de "Nombre en FUDO", que solo
+        guarda uno): el que usa FUDO, y el que cada receta haya usado para escribirlo — no siempre
+        coinciden ("Sal gruesa" en una receta, "Sal Marina" en el catálogo). Sin vincularlos, el
+        sistema los trata como productos distintos y "Disponible Hoy"/recetas no cuadran, aunque
+        físicamente sea lo mismo. Esto no cambia el nombre del producto, solo le enseña al sistema
+        que ese otro texto significa lo mismo.
+      </p>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Producto</label>
+          <select id="alias-producto"><option value="">Elige un producto…</option></select>
+        </div>
+        <div class="campo">
+          <label>Alias nuevo (como se escribió en la receta, factura, etc.)</label>
+          <input type="text" id="alias-nuevo" placeholder="ej. Sal gruesa">
+        </div>
+        <div class="campo" style="display:flex; align-items:flex-end">
+          <button class="btn dorado" id="btn-vincular-alias" style="width:100%">Vincular</button>
+        </div>
+      </div>
+      <div id="alias-lista" style="margin-top:14px"></div>
+    </div>
   </main>
 </div>
 
@@ -227,6 +253,7 @@ async function cargarCatalogo() {
   catalogo = data.data;
   poblarFiltros_();
   poblarListasNuevoProducto_();
+  poblarSelectAlias_();
   pintarTabla_();
   cargarNombresFudo_();
 }
@@ -630,6 +657,66 @@ document.getElementById('btn-guardar').addEventListener('click', conBotonProtegi
   } else {
     alert(data.error);
   }
+}));
+
+function poblarSelectAlias_() {
+  const sel = document.getElementById('alias-producto');
+  const actual = sel.value;
+  const opciones = catalogo.slice().sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar));
+  sel.innerHTML = '<option value="">Elige un producto…</option>' +
+    opciones.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.nombre_estandar)}</option>`).join('');
+  sel.value = actual;
+}
+
+async function cargarAliasProducto_() {
+  const idProducto = document.getElementById('alias-producto').value;
+  const cont = document.getElementById('alias-lista');
+  if (!idProducto) { cont.innerHTML = ''; return; }
+
+  const producto = catalogo.find(p => p.id === idProducto);
+  cont.innerHTML = '<p class="vacio">Cargando…</p>';
+  const data = await llamar('catalogo_alias_listar', { catalogo_id: idProducto });
+  if (!data.ok) { cont.innerHTML = `<p class="vacio">${escapeHtml(data.error)}</p>`; return; }
+
+  const nombreFudo = producto && producto.nombre_fudo
+    ? `<li><strong>${escapeHtml(producto.nombre_fudo)}</strong> — Nombre en FUDO (se edita en la fila del producto, arriba)</li>`
+    : '';
+
+  if (!data.data.length && !nombreFudo) {
+    cont.innerHTML = '<p class="vacio">Este producto todavía no tiene alias vinculados.</p>';
+    return;
+  }
+
+  cont.innerHTML = '<ul style="list-style:none; padding:0; margin:0">' + nombreFudo +
+    data.data.map(a => `<li data-id="${escapeHtml(a.id)}" style="display:flex; align-items:center; gap:10px; padding:4px 0">
+      <span><strong>${escapeHtml(a.alias)}</strong> ${a.origen ? `<span style="color:var(--grey); font-size:.8rem">(${escapeHtml(a.origen)})</span>` : ''}</span>
+      <button class="btn fantasma btn-quitar-alias" type="button" style="padding:2px 10px; font-size:.8rem; color:var(--red); border-color:var(--red)">Quitar</button>
+    </li>`).join('') + '</ul>';
+
+  cont.querySelectorAll('.btn-quitar-alias').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const li = btn.closest('li');
+      const data = await llamar('catalogo_alias_eliminar', { id: li.dataset.id });
+      if (!data.ok) { alert(data.error); return; }
+      cargarAliasProducto_();
+    }));
+  });
+}
+
+document.getElementById('alias-producto').addEventListener('change', cargarAliasProducto_);
+
+document.getElementById('btn-vincular-alias').addEventListener('click', conBotonProtegido(document.getElementById('btn-vincular-alias'), async () => {
+  const idProducto = document.getElementById('alias-producto').value;
+  if (!idProducto) { alert('Elige a qué producto del catálogo corresponde el alias.'); return; }
+  const alias = document.getElementById('alias-nuevo').value.trim();
+  if (!alias) { alert('Escribe el texto del alias (como aparece en la receta, factura, etc.).'); return; }
+
+  const data = await llamar('catalogo_alias_crear', { catalogo_id: idProducto, alias, origen: 'manual' });
+  if (!data.ok) { alert(data.error); return; }
+
+  avisarGuardado(data.ya_existia ? `"${alias}" ya estaba vinculado a este producto.` : `"${alias}" vinculado correctamente.`);
+  document.getElementById('alias-nuevo').value = '';
+  cargarAliasProducto_();
 }));
 
 cargarCatalogo();

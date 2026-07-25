@@ -156,13 +156,14 @@ async function correrDiagnostico() {
   document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
 
-  const [recetas, recetasSinCatalogo, duplicados, ventas, comprasNoSuman, catalogoDuplicados] = await Promise.all([
+  const [recetas, recetasSinCatalogo, duplicados, ventas, comprasNoSuman, catalogoDuplicados, catalogoCompletoResp] = await Promise.all([
     llamar('diagnostico_recetas'),
     llamar('diagnostico_recetas_sin_catalogo'),
     llamar('diagnostico_conteos_duplicados'),
     llamar('diagnostico_ventas_fudo'),
     llamar('diagnostico_compras_no_suman'),
-    llamar('diagnostico_catalogo_duplicados')
+    llamar('diagnostico_catalogo_duplicados'),
+    llamar('catalogo_listar') // para el buscador de "Vincular a un producto existente"
   ]);
 
   if (!recetas.ok || !recetasSinCatalogo.ok || !duplicados.ok || !ventas.ok || !comprasNoSuman.ok || !catalogoDuplicados.ok) {
@@ -170,12 +171,25 @@ async function correrDiagnostico() {
     return;
   }
 
+  catalogoCompleto = catalogoCompletoResp.ok
+    ? catalogoCompletoResp.data.filter(c => c.nombre_estandar).sort((a, b) => a.nombre_estandar.localeCompare(b.nombre_estandar))
+    : [];
+
   pintarRecetas_(recetas.data);
   pintarRecetasSinCatalogo_(recetasSinCatalogo.data);
   pintarDuplicados_(duplicados.data);
   pintarVentas_(ventas.data);
   pintarComprasNoSuman_(comprasNoSuman.data);
   pintarCatalogoDuplicados_(catalogoDuplicados.data);
+}
+
+// Catálogo completo, para poblar los selectores de "Vincular a un producto existente (elegir de
+// la lista)" — se pide una sola vez por corrida del diagnóstico, no por cada fila con problema.
+let catalogoCompleto = [];
+function poblarSelectsVincularManual_() {
+  const opciones = '<option value="">Elige un producto…</option>' +
+    catalogoCompleto.map(c => `<option value="${escapeHtml(c.id)}" data-nombre="${escapeHtml(c.nombre_estandar)}">${escapeHtml(c.nombre_estandar)}</option>`).join('');
+  document.querySelectorAll('.select-vincular-manual').forEach(sel => { sel.innerHTML = opciones; });
 }
 
 function pintarRecetas_(data) {
@@ -207,6 +221,7 @@ function pintarRecetasSinCatalogo_(data) {
       <td><div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start">${botonesDeOpciones_(p.accion && p.accion.opciones)}</div></td>
     </tr>`).join('') +
     `<tr><td colspan="4" style="font-weight:600">${data.con_problema} ingrediente(s) sin catálogo de ${data.total_lineas} línea(s) revisadas.</td></tr>`;
+  poblarSelectsVincularManual_();
 }
 
 document.getElementById('tabla-recetas-sin-catalogo').addEventListener('click', manejarClicOpcionAccion_);
@@ -265,7 +280,13 @@ function botonesDeOpciones_(opciones) {
     if (o.id === 'vincular_alias') {
       return `<button class="btn fantasma btn-opcion-accion" type="button" data-opcion="vincular_alias"
         data-id="${escapeHtml(o.catalogo_id)}" data-catalogo-nombre="${escapeHtml(o.catalogo_nombre)}"
-        data-alias="${escapeHtml(o.alias)}" data-nombre-fudo-actual="${escapeHtml(o.nombre_fudo_actual || '')}">${escapeHtml(o.etiqueta)}</button>`;
+        data-alias="${escapeHtml(o.alias)}">${escapeHtml(o.etiqueta)}</button>`;
+    }
+    if (o.id === 'vincular_manual') {
+      return `<div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap">
+        <select class="select-vincular-manual" style="max-width:220px"><option value="">Cargando productos…</option></select>
+        <button class="btn fantasma btn-opcion-accion" type="button" data-opcion="vincular_manual" data-alias="${escapeHtml(o.alias)}">Vincular</button>
+      </div>`;
     }
     if (o.id === 'corregir_unidad') {
       return `<button class="btn fantasma btn-opcion-accion" type="button" data-opcion="corregir_unidad"
@@ -304,6 +325,7 @@ function pintarComprasNoSuman_(data) {
       <td style="font-size:.85rem">${escapeHtml(p.solucion || '')}<br><div style="margin-top:6px; display:flex; flex-direction:column; gap:4px; align-items:flex-start">${botonesDeOpciones_(p.accion && p.accion.opciones)}</div></td>
     </tr>`).join('') +
     `<tr><td colspan="7" style="font-weight:600">${data.con_problema} de ${data.total_compras} compra(s) no están sumando.</td></tr>`;
+  poblarSelectsVincularManual_();
 }
 
 document.getElementById('tabla-compras-no-suman').addEventListener('click', manejarClicOpcionAccion_);
@@ -334,13 +356,33 @@ async function manejarClicOpcionAccion_(ev) {
   if (opcion === 'vincular_alias') {
     const catalogoNombre = btn.dataset.catalogoNombre;
     const alias = btn.dataset.alias;
-    const nombreFudoActual = btn.dataset.nombreFudoActual;
-    let mensaje = `Vincular "${alias}" como nombre alterno de "${catalogoNombre}".`;
-    if (nombreFudoActual) mensaje += `\n\n⚠️ "${catalogoNombre}" ya tenía otro nombre alterno ("${nombreFudoActual}") — quedará reemplazado por "${alias}".`;
-    if (!confirm(mensaje + '\n\n¿Continuar?')) return;
+    if (!confirm(`Vincular "${alias}" como nombre alterno de "${catalogoNombre}".\n\n¿Continuar?`)) return;
     btn.disabled = true;
     try {
-      const data = await llamar('catalogo_guardar', { item: { id: btn.dataset.id, nombre_fudo: alias } });
+      // catalogoAliasCrear_ (no catalogo_guardar/nombre_fudo): un producto puede tener varios
+      // alias a la vez — esto ya no pisa el nombre de FUDO que ese producto tuviera guardado.
+      const data = await llamar('catalogo_alias_crear', { catalogo_id: btn.dataset.id, alias: alias, origen: 'diagnostico' });
+      if (!data.ok) { alert(data.error); return; }
+      avisarGuardado(`"${alias}" vinculado a "${catalogoNombre}".`);
+      correrDiagnostico();
+    } catch (err) {
+      alert('Algo salió mal y no se pudo vincular. Vuelve a intentarlo.');
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  if (opcion === 'vincular_manual') {
+    const alias = btn.dataset.alias;
+    const select = btn.parentElement.querySelector('.select-vincular-manual');
+    const catalogoId = select ? select.value : '';
+    if (!catalogoId) { alert('Elige un producto de la lista primero.'); return; }
+    const catalogoNombre = select.options[select.selectedIndex].dataset.nombre;
+    if (!confirm(`Vincular "${alias}" como nombre alterno de "${catalogoNombre}".\n\n¿Continuar?`)) return;
+    btn.disabled = true;
+    try {
+      const data = await llamar('catalogo_alias_crear', { catalogo_id: catalogoId, alias: alias, origen: 'diagnostico' });
       if (!data.ok) { alert(data.error); return; }
       avisarGuardado(`"${alias}" vinculado a "${catalogoNombre}".`);
       correrDiagnostico();
