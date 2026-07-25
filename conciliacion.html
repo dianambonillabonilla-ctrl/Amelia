@@ -24,6 +24,7 @@
       <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Conciliación</a>
+      <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
@@ -35,24 +36,24 @@
       <div id="barra-usuario"></div>
     </div>
 
-    <div id="aviso-sede-restringida" class="card" style="display:none; border-color:var(--amber); background:#FFFBF0">
-      <strong style="color:var(--amber)">⚠ Vista limitada a tu sede</strong>
-      <p style="margin:8px 0 0; font-size:.88rem">Tu usuario solo ve la conciliación de <strong id="aviso-sede-restringida-nombre"></strong> — no se muestran datos de las otras sedes.</p>
-    </div>
-
-    <div class="card">
-      <h2>Ventas reportadas por FUDO</h2>
-      <p id="ventas-dia-nota" style="color:var(--grey);font-size:.85rem">Incluye comida, bebidas y adiciones. “Ambas” o “Sin identificar” significa que el archivo resumido no permitió separar las sedes.</p>
-      <table><thead id="tabla-ventas-dia-head"><tr><th>Sede</th><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr></thead>
-        <tbody id="tabla-ventas-dia"><tr><td colspan="4" class="vacio">Elige una fecha.</td></tr></tbody></table>
-    </div>
-
     <div class="card">
       <div style="display:flex; gap:10px; align-items:center;">
         <label style="margin:0">Fecha a revisar</label>
         <input type="date" id="fecha" style="width:auto">
         <button class="btn fantasma" id="btn-cargar">Ver conciliación</button>
       </div>
+    </div>
+
+    <div id="aviso-sede-restringida" class="card" style="display:none; border-color:var(--amber); background:#FFFBF0">
+      <strong style="color:var(--amber)">⚠ Vista limitada a tu sede</strong>
+      <p style="margin:8px 0 0; font-size:.88rem">Tu usuario solo ve la conciliación de <strong id="aviso-sede-restringida-nombre"></strong> — no se muestran datos de las otras sedes.</p>
+    </div>
+
+    <div class="card">
+      <h2>Ventas reportadas por FUDO — <span id="ventas-dia-fecha"></span></h2>
+      <p id="ventas-dia-nota" style="color:var(--grey);font-size:.85rem">Incluye comida, bebidas y adiciones. “Ambas” o “Sin identificar” significa que el archivo resumido no permitió separar las sedes.</p>
+      <table><thead id="tabla-ventas-dia-head"><tr><th>Sede</th><th>Categoría</th><th>Producto</th><th>Cantidad vendida</th></tr></thead>
+        <tbody id="tabla-ventas-dia"><tr><td colspan="4" class="vacio">Elige una fecha y presiona "Ver conciliación".</td></tr></tbody></table>
     </div>
 
     <div class="card">
@@ -80,6 +81,11 @@ montarBarraUsuario();
 document.getElementById('fecha').value = fechaLocalHoy_();
 
 document.getElementById('btn-cargar').addEventListener('click', cargar);
+// Antes había que darle "Ver conciliación" incluso para ver el día de hoy — el selector de fecha
+// vivía más abajo en la página, separado de la tabla de ventas que controla, así que no quedaba
+// claro qué fecha estaba mostrando esa tabla (pedido real: "en ventas no sé qué fecha dice"). Ahora
+// la fecha va primero y carga sola al abrir la página con el día de hoy ya elegido.
+cargar();
 
 async function cargar() {
   const fecha = document.getElementById('fecha').value;
@@ -102,6 +108,7 @@ async function cargar() {
 
 function pintarVentasDia(filas, sedeRestringida) {
   const body = document.getElementById('tabla-ventas-dia');
+  document.getElementById('ventas-dia-fecha').textContent = document.getElementById('fecha').value;
   document.getElementById('ventas-dia-nota').textContent = sedeRestringida
     ? `Solo ventas de ${sedeRestringida}. Incluye comida, bebidas y adiciones.`
     : 'Incluye comida, bebidas y adiciones. "Ambas" o "Sin identificar" significa que el archivo resumido no permitió separar las sedes.';

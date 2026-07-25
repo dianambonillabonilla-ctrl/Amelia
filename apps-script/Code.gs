@@ -292,6 +292,9 @@ function handleRequest_(e, method) {
       case 'conciliacion':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha, sesion.usuario) });
+      case 'conciliacion_historial_desfases':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(conciliacionHistorialDesfases_(params.fecha_desde, params.fecha_hasta, sesion.usuario));
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
