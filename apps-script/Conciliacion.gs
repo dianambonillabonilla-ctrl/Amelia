@@ -11,6 +11,75 @@
  * Producciones o Ventas_FUDO se trata como un solo producto en toda la conciliación.
  */
 
+/**
+ * Recorre un rango de fechas y para cada una calcula la misma conciliación que calcularConciliacion_,
+ * pero solo devuelve lo que NO CUADRA — bebidas con diferencia contra FUDO y comida con "implícito"
+ * (lo que ningún registro operativo explica) distinto de cero — para no tener que revisar día por
+ * día a mano buscando desfases. Pedido real: "que tuviera historico de conciliacion... que me
+ * muestre lo que no cuadra o lo que esta desfasado aparte".
+ */
+function conciliacionHistorialDesfases_(fechaDesde, fechaHasta, usuario) {
+  if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
+  if (fechaDesde > fechaHasta) return { ok: false, error: 'La fecha "desde" no puede ser posterior a la fecha "hasta"' };
+
+  const fechas = rangoDeFechas_(fechaDesde, fechaHasta);
+  if (fechas.length > 62) {
+    return { ok: false, error: 'El rango es muy largo (máximo ~2 meses de una vez) — prueba con un rango más corto.' };
+  }
+
+  const sedeRestringida = sedeRestringidaConciliacion_(usuario);
+  const bebidas = [];
+  const comida = [];
+
+  fechas.forEach(function (fecha) {
+    conciliarBebidas_(fecha, sedeRestringida).forEach(function (b) {
+      if (b.diferencia_vs_suma !== null && b.diferencia_vs_suma !== 0) {
+        bebidas.push({
+          fecha: fecha, producto: b.producto, suma_manual: b.suma_manual,
+          fudo_cierre: b.fudo_cierre, diferencia: b.diferencia_vs_suma
+        });
+      }
+    });
+
+    const comidaPorSede = conciliarComidaPorSede_(fecha, sedeRestringida);
+    Object.keys(comidaPorSede).forEach(function (sede) {
+      comidaPorSede[sede].forEach(function (item) {
+        // Tolerancia de 1 (g/ml/u según el ingrediente): evita llenar el histórico de "desfases" de
+        // redondeo de un par de gramos que no significan nada operativamente.
+        if (item.implicito !== null && Math.abs(item.implicito) >= 1) {
+          comida.push({
+            fecha: fecha, sede: sede, ingrediente: item.ingrediente, unidad: item.unidad,
+            implicito: item.implicito, sin_receta: item.sin_receta
+          });
+        }
+      });
+    });
+  });
+
+  bebidas.sort(function (a, b) { return Math.abs(b.diferencia) - Math.abs(a.diferencia); });
+  comida.sort(function (a, b) { return Math.abs(b.implicito) - Math.abs(a.implicito); });
+
+  return { ok: true, dias_revisados: fechas.length, bebidas: bebidas, comida: comida };
+}
+
+/** 'yyyy-MM-dd' inclusive en ambos extremos — se arma con componentes locales (no parseando un
+ * string ISO directo) para que la zona horaria no corra el día, mismo criterio que
+ * frecuenciasDelDia_ en assets/config.js. */
+function rangoDeFechas_(desde, hasta) {
+  const fechas = [];
+  let actual = desde;
+  let guard = 0;
+  while (actual <= hasta) {
+    fechas.push(actual);
+    const [y, m, d] = actual.split('-').map(Number);
+    const siguiente = new Date(y, m - 1, d + 1);
+    actual = siguiente.getFullYear() + '-' + String(siguiente.getMonth() + 1).padStart(2, '0') + '-' + String(siguiente.getDate()).padStart(2, '0');
+    guard++;
+    if (guard > 400) break; // salvavidas — nunca debería hacer falta con el tope de 62 días de arriba
+  }
+  return fechas;
+}
+
 function calcularConciliacion_(fecha, usuario) {
   const sedeRestringida = sedeRestringidaConciliacion_(usuario);
   return {
