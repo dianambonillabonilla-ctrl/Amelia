@@ -274,6 +274,10 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
   let sinIdentificarTotal = 0;
   const sinIdentificarValores = new Set();
   let ultimoDiagnostico = null;
+  // Acumulado de motivos de descarte de TODOS los lotes (no solo el último) — con archivos grandes
+  // divididos en varios lotes, un lote con puros duplicados no debe tapar que otro lote sí tuvo
+  // filas genuinamente irreconocibles (columnas distintas, fecha inválida, etc.).
+  const motivosAcumulados = { sin_fecha: 0, sin_producto: 0, sin_nombre: 0, cantidad_invalida: 0, diferencia_invalida: 0 };
 
   actualizarProgreso_(0, total);
 
@@ -303,7 +307,14 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
       sinIdentificarTotal += data.sin_identificar.total;
       data.sin_identificar.valores.forEach(v => sinIdentificarValores.add(v));
     }
-    if (data.diagnostico) ultimoDiagnostico = data.diagnostico;
+    if (data.diagnostico) {
+      ultimoDiagnostico = data.diagnostico;
+      motivosAcumulados.sin_fecha += data.diagnostico.descartadas_sin_fecha || 0;
+      motivosAcumulados.sin_producto += data.diagnostico.descartadas_sin_producto || 0;
+      motivosAcumulados.sin_nombre += data.diagnostico.descartadas_sin_nombre || 0;
+      motivosAcumulados.cantidad_invalida += data.diagnostico.descartadas_cantidad_invalida || 0;
+      motivosAcumulados.diferencia_invalida += data.diagnostico.descartadas_diferencia_invalida || 0;
+    }
 
     actualizarProgreso_(Math.min(inicio + FILAS_POR_LOTE, total), total, `${totalImportadas} importadas, ${totalOmitidas} duplicadas`);
   }
@@ -316,17 +327,25 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
       `${sinIdentificarTotal} venta(s) no se pudieron asignar a una sede porque el nombre de caja/terminal no se reconoce: ${Array.from(sinIdentificarValores).join(', ')}. Ajusta sedeDesdeCreadaPor_() en Fudo.gs o revisa el nombre de la caja en FUDO — mientras tanto, esas ventas quedan fuera de la conciliación de comida.`;
     aviso.style.display = 'block';
   }
-  if (totalImportadas === 0 && ultimoDiagnostico) {
+  const totalMotivos = motivosAcumulados.sin_fecha + motivosAcumulados.sin_producto + motivosAcumulados.sin_nombre +
+    motivosAcumulados.cantidad_invalida + motivosAcumulados.diferencia_invalida;
+  // Si "importadas" salió en 0 solo porque todo ya estaba guardado de antes (omitidas > 0 y ningún
+  // motivo de descarte real), eso no es un error de columnas — es el resultado correcto y esperado
+  // de subir un archivo que se solapa con uno ya importado. Antes esta pantalla mostraba el aviso
+  // de "columnas no reconocidas" en ese caso también, alarmando sin motivo (auditoría real, jul
+  // 2026: un archivo de movimientos que se solapaba con uno ya subido salía "0 importadas" y el
+  // aviso rojo decía que ninguna columna se reconocía, cuando la explicación real era duplicados).
+  if (totalImportadas === 0 && totalMotivos > 0 && ultimoDiagnostico) {
     const d = ultimoDiagnostico;
     const motivos = [];
-    if (d.descartadas_sin_fecha) motivos.push(`${d.descartadas_sin_fecha} fila(s) sin fecha/creación reconocible`);
-    if (d.descartadas_sin_producto) motivos.push(`${d.descartadas_sin_producto} fila(s) sin producto reconocible`);
-    if (d.descartadas_sin_nombre) motivos.push(`${d.descartadas_sin_nombre} fila(s) sin nombre reconocible`);
-    if (d.descartadas_cantidad_invalida) motivos.push(`${d.descartadas_cantidad_invalida} fila(s) con cantidad inválida o en cero`);
-    if (d.descartadas_diferencia_invalida) motivos.push(`${d.descartadas_diferencia_invalida} fila(s) con "Diferencia" que no es un número`);
+    if (motivosAcumulados.sin_fecha) motivos.push(`${motivosAcumulados.sin_fecha} fila(s) sin fecha/creación reconocible`);
+    if (motivosAcumulados.sin_producto) motivos.push(`${motivosAcumulados.sin_producto} fila(s) sin producto reconocible`);
+    if (motivosAcumulados.sin_nombre) motivos.push(`${motivosAcumulados.sin_nombre} fila(s) sin nombre reconocible`);
+    if (motivosAcumulados.cantidad_invalida) motivos.push(`${motivosAcumulados.cantidad_invalida} fila(s) con cantidad inválida o en cero`);
+    if (motivosAcumulados.diferencia_invalida) motivos.push(`${motivosAcumulados.diferencia_invalida} fila(s) con "Diferencia" que no es un número`);
     document.getElementById('aviso-diagnostico-texto').textContent =
-      `Se leyeron ${total} fila(s) del archivo, pero ninguna tenía las columnas que este sistema reconoce — se descartaron todas:\n` +
-      (motivos.length ? '• ' + motivos.join('\n• ') + '\n\n' : '\n') +
+      `Se leyeron ${total} fila(s) del archivo; ${totalOmitidas} ya estaban guardadas de antes (duplicadas, normal), pero ${totalMotivos} no se pudieron leer:\n` +
+      '• ' + motivos.join('\n• ') + '\n\n' +
       `Columnas encontradas en tu archivo: ${d.columnas_detectadas.join(', ') || '(el archivo llegó vacío)'}\n\n` +
       'Revisa que el archivo tenga columnas de fecha/producto/cantidad con esos nombres exactos (o muy parecidos) — ' +
       'si FUDO cambió el nombre de alguna columna, hay que agregarlo a valorFudo_() en Fudo.gs.';
