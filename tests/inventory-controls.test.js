@@ -1116,6 +1116,35 @@ console.log('conciliarBebidas_ usa Ventas_FUDO como respaldo cuando no hay movim
   console.log('conciliarBebidas_ proyecta Stock_FUDO_Base hacia atrás para fechas anteriores al snapshot: OK');
 })();
 
+// --- conciliarBebidas_: si el producto NUNCA ha tenido venta, usa el stock de la base tal cual ---
+// (pedido real, jul 2026: "si no ha tenido venta la línea de base sea la del 25 de stock solo
+// para esos productos que no van a aparecer" — sin ninguna venta registrada no hay nada que
+// restar/sumar, así que da igual qué tan lejos esté la fecha consultada del snapshot).
+(function () {
+  const stockBaseIndiceMock = { 'zumo de naranja': { nombre_fudo: 'Zumo de naranja', stock: 12, fecha_base: '2026-07-25' } };
+  const catalogoZumo = [{ nombre_estandar: 'Zumo de naranja', nombre_fudo: 'Zumo de naranja', categoria: 'Bebidas/Jugos' }];
+  const conciliacionZumo = cargar('apps-script/Conciliacion.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+    leerTabla_: (hoja) => {
+      if (hoja === 'ventas') return []; // nunca se ha vendido, en toda la tabla
+      if (hoja === 'movimientos') return [];
+      if (hoja === 'catalogo') return catalogoZumo;
+      return [];
+    },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    claveProducto_: (texto) => normalizarSimple_(texto),
+    conteoListar_: () => [],
+    indiceCatalogo_: () => ({}),
+    stockFudoBaseIndice_: () => stockBaseIndiceMock
+  });
+  const bebidasZumoAntes = conciliacionZumo.conciliarBebidas_('2026-07-10', null);
+  assert.equal(bebidasZumoAntes.find((b) => b.producto === 'Zumo de naranja').stock_esperado_fudo, 12, 'mucho antes del snapshot, sin ventas debe usar el stock base tal cual');
+  const bebidasZumoDespues = conciliacionZumo.conciliarBebidas_('2026-08-05', null);
+  assert.equal(bebidasZumoDespues.find((b) => b.producto === 'Zumo de naranja').stock_esperado_fudo, 12, 'mucho después del snapshot, sin ventas debe usar el stock base tal cual');
+  console.log('conciliarBebidas_ usa el stock base tal cual cuando el producto nunca ha tenido venta: OK');
+})();
+
 // --- conciliarBebidas_: debe encontrar los datos de FUDO aunque "Nombre en FUDO" esté vacío -----
 // (bug real reportado por la usuaria, jul 2026: "sigue apareciendo sin datos fudo a pesar que por
 // ejemplo la poker esté en el inventario de stock y aparece tal cual como poker" — cuando el

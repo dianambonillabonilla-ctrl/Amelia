@@ -247,16 +247,23 @@ function conciliarBebidas_(fecha, sedeRestringida) {
 }
 
 /**
- * Stock esperado de una bebida en `fecha`, partiendo de Stock_FUDO_Base. Si `fecha` es el mismo
- * día de la base, se devuelve el número de la base tal cual — no se sabe a qué hora del día se
- * tomó ese snapshot, así que sumar/restar las ventas de ese mismo día podría estar contando algo
- * que la base YA reflejaba. Si `fecha` es posterior a la base, se resta lo vendido desde entonces.
- * Si `fecha` es ANTERIOR a la base (pedido real, jul 2026: "si le cambio fecha de conciliacion el
- * 25 sí reconoce la poker, entonces como hacemos [para otros días]"), se hace lo inverso: se suma
- * de vuelta lo que se vendió entre `fecha` y la base — ese consumo todavía no había pasado en
- * `fecha`, así que el stock ese día tenía que ser más alto. En ambos casos, sin contar lo
- * cancelado, y sin contar entradas de mercancía nuevas entre esas fechas (mismo supuesto que ya
- * tenía la proyección hacia adelante: solo se descuenta/reintegra consumo, no compras).
+ * Stock esperado de una bebida en `fecha`, partiendo de Stock_FUDO_Base.
+ *
+ * Si el producto NUNCA ha tenido ninguna venta registrada (no solo ese día: en todo lo que
+ * tenemos importado de Ventas_FUDO), no hay nada que restar ni sumar — se usa el número de la
+ * base tal cual, para cualquier fecha. Pedido real, jul 2026: "si no ha tenido venta la línea de
+ * base sea la del 25 de stock, solo para esos productos que no van a aparecer [de otra forma]".
+ *
+ * Si SÍ ha tenido ventas alguna vez: cuando `fecha` es el mismo día de la base, se devuelve el
+ * número de la base tal cual (no se sabe a qué hora del día se tomó ese snapshot, así que
+ * sumar/restar las ventas de ese mismo día podría estar contando algo que la base YA reflejaba).
+ * Si `fecha` es posterior a la base, se resta lo vendido desde entonces. Si `fecha` es ANTERIOR a
+ * la base, se hace lo inverso: se suma de vuelta lo que se vendió entre `fecha` y la base — ese
+ * consumo todavía no había pasado en `fecha`, así que el stock ese día tenía que ser más alto. En
+ * ambos casos, sin contar lo cancelado, y sin contar entradas de mercancía nuevas entre esas
+ * fechas (mismo supuesto que ya tenía la proyección hacia adelante: solo se descuenta/reintegra
+ * consumo, no compras).
+ *
  * `nombresPosibles` es la lista de nombres normalizados que pueden identificar esta bebida en los
  * datos de FUDO (nombre estándar, nombre_fudo, alias) — se prueba cada uno contra Stock_FUDO_Base
  * porque no sabemos con cuál de esos nombres se subió ese archivo.
@@ -268,13 +275,17 @@ function stockEsperadoFudo_(nombresPosibles, fecha, stockBase, ventasDesdeBase) 
     if (stockBase[nombresPosibles[i]]) { base = stockBase[nombresPosibles[i]]; break; }
   }
   if (!base) return null;
+
+  const ventasProducto = ventasDesdeBase.filter(function (v) { return nombresPosibles.indexOf(normalizar_(v.producto)) !== -1; });
+  if (!ventasProducto.length) return Number(base.stock);
+
   const fechaBase = formatearFecha_(base.fecha_base);
   if (fecha === fechaBase) return Number(base.stock);
 
   function ventasEntre_(desdeExclusive, hastaInclusive) {
-    return ventasDesdeBase.filter(function (v) {
+    return ventasProducto.filter(function (v) {
       const f = formatearFecha_(v.creacion);
-      return f > desdeExclusive && f <= hastaInclusive && nombresPosibles.indexOf(normalizar_(v.producto)) !== -1;
+      return f > desdeExclusive && f <= hastaInclusive;
     }).reduce(function (acc, v) { return acc + (Number(v.cantidad) || 0); }, 0);
   }
 
