@@ -912,6 +912,85 @@ assert.equal(filaPokerRespaldo.fudo_cierre, null, 'sin movimientos manuales no h
 assert.equal(filaPokerRespaldo.n_movimientos_fudo, 0);
 console.log('conciliarBebidas_ usa Ventas_FUDO como respaldo cuando no hay movimientos ese día: OK');
 
+// --- conciliacionHistorialDesfases_: histórico de lo que NO cuadra en un rango de fechas ---------
+// Pedido real: "que tuviera historico de conciliacion... que me muestre lo que no cuadra o lo que
+// esta desfasado aparte". Dos días: el 20 cuadra todo (bebida y comida), el 21 tiene un desfase de
+// bebida (FUDO 25 vs conteo manual 20) y uno de comida (Costilla: bajó 150g pero solo se esperaban
+// 100g de consumo por la venta de un Supremo) — el histórico debe traer SOLO el día 21.
+const catalogoBebidasHist = [{ nombre_estandar: 'Poker', nombre_fudo: 'Poker', categoria: 'Bebidas/Cerveza' }];
+const movimientosHist = [
+  { fecha: '2026-07-20', nombre: 'Poker', evento: 'Adición Creada', stock_anterior: 20, stock_actual: 15, diferencia: -5, sede: 'San Antonio' },
+  { fecha: '2026-07-21', nombre: 'Poker', evento: 'Adición Creada', stock_anterior: 30, stock_actual: 25, diferencia: -5, sede: 'San Antonio' }
+];
+const conteosHist = [
+  { fecha: '2026-07-20', sede: 'San Antonio', producto: 'Poker', unidad: 'u', cantidad: 10 },
+  { fecha: '2026-07-20', sede: 'Capri', producto: 'Poker', unidad: 'u', cantidad: 5 },
+  { fecha: '2026-07-21', sede: 'San Antonio', producto: 'Poker', unidad: 'u', cantidad: 15 },
+  { fecha: '2026-07-21', sede: 'Capri', producto: 'Poker', unidad: 'u', cantidad: 5 },
+  { fecha: '2026-07-20', sede: 'San Antonio', producto: 'Costilla', unidad: 'g', cantidad: 500 },
+  { fecha: '2026-07-21', sede: 'San Antonio', producto: 'Costilla', unidad: 'g', cantidad: 350 }
+];
+const ventasHist = [
+  { creacion: '2026-07-21', sede: 'San Antonio', categoria: 'Comida', producto: 'Supremo', cantidad: 1, cancelada: false }
+];
+const recetaMapHist = { supremo: { nombre: 'Supremo', tipo: 'plato', lineas: [{ ingrediente: 'Costilla', cantidad: 100, rendimiento: 1, unidad: 'g', controla_disponibilidad: true }] } };
+
+const conciliacionHistorial = cargar('apps-script/Conciliacion.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', CONTEOS: 'conteos', TRASLADOS: 'traslados', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+  leerTabla_: (hoja) => hoja === 'ventas' ? ventasHist : hoja === 'movimientos' ? movimientosHist : hoja === 'catalogo' ? catalogoBebidasHist : hoja === 'conteos' ? conteosHist : [],
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  normalizar_: normalizarSimple_,
+  nombreCanonico_: (texto) => texto,
+  claveProducto_: (texto) => normalizarSimple_(texto),
+  conteoListar_: (fecha, sede) => conteosHist.filter((c) => c.fecha === fecha && (!sede || c.sede === sede)),
+  claveRecetaVenta_: (producto, recetaMap) => { const d = normalizarSimple_(producto); return recetaMap[d] ? d : d; },
+  construirRecetaMap_: () => recetaMapHist,
+  recetasVigentes_: () => [],
+  explotarReceta_: (claveProducto, cantidadBase, recetaMap, acumulado) => {
+    const entrada = recetaMap[claveProducto];
+    if (!entrada) return acumulado;
+    entrada.lineas.forEach(function (l) {
+      const k = normalizarSimple_(l.ingrediente);
+      if (!acumulado[k]) acumulado[k] = { nombre: l.ingrediente, cantidad: 0, unidad: l.unidad };
+      acumulado[k].cantidad += cantidadBase * l.cantidad;
+    });
+    return acumulado;
+  },
+  produccionTotalPorItem_: () => ({}),
+  produccionListar_: () => [],
+  ajustesNetosPorItem_: () => ({}),
+  indiceCatalogo_: () => ({}),
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+
+const desfases = conciliacionHistorial.conciliacionHistorialDesfases_('2026-07-20', '2026-07-21', { rol: 'Administrador' });
+assert.equal(desfases.ok, true);
+assert.equal(desfases.dias_revisados, 2);
+assert.equal(desfases.bebidas.length, 1, 'solo el día 21 tiene desfase de bebida — el 20 cuadra exacto');
+assert.equal(desfases.bebidas[0].fecha, '2026-07-21');
+assert.equal(desfases.bebidas[0].producto, 'Poker');
+assert.equal(desfases.bebidas[0].diferencia, 5, 'FUDO (25) - conteo manual (20) = 5');
+// Costilla (San Antonio, -50) y Poker (San Antonio, +5: el cambio físico de la bebida tampoco
+// tiene receta que lo explique) — Poker en Capri no cambió entre los dos días, así que no aparece.
+assert.equal(desfases.comida.length, 2);
+assert.equal(desfases.comida.every((c) => c.fecha === '2026-07-21'), true);
+const filaCostillaHist = desfases.comida.find((c) => c.ingrediente === 'Costilla');
+assert.equal(filaCostillaHist.implicito, -50, 'bajó 150g físico pero solo se esperaban 100g de consumo -> -50 sin explicar');
+const filaPokerHist = desfases.comida.find((c) => c.ingrediente === 'Poker');
+assert.equal(filaPokerHist.implicito, 5, 'el cambio físico de Poker en San Antonio tampoco tiene receta que lo explique');
+console.log('conciliacionHistorialDesfases_ trae solo los días/ítems que no cuadran: OK');
+
+// Guardas de entrada — no necesitan datos reales, deben cortar antes de leer nada.
+const conciliacionHistorialGuardas = cargar('apps-script/Conciliacion.gs', {
+  SHEET_NAMES: { VENTAS_FUDO: 'ventas', CONTEOS: 'conteos', TRASLADOS: 'traslados', MOVIMIENTOS_FUDO: 'movimientos', CATALOGO: 'catalogo' },
+  leerTabla_: () => { throw new Error('no debería leer nada si la validación de fechas ya cortó'); }
+});
+assert.equal(conciliacionHistorialGuardas.conciliacionHistorialDesfases_('', '2026-07-21', { rol: 'Administrador' }).ok, false, 'debe exigir fecha_desde');
+assert.equal(conciliacionHistorialGuardas.conciliacionHistorialDesfases_('2026-07-21', '2026-07-20', { rol: 'Administrador' }).ok, false, 'desde posterior a hasta debe rechazarse');
+const resultadoRangoLargo = conciliacionHistorialGuardas.conciliacionHistorialDesfases_('2026-01-01', '2026-12-31', { rol: 'Administrador' });
+assert.equal(resultadoRangoLargo.ok, false, 'un rango de casi un año debe rechazarse antes de calcular nada');
+assert.match(resultadoRangoLargo.error, /rango es muy largo/);
+
 // --- Usuarios: activar/desactivar un usuario existente NO debe exigir nombre/usuario/rol --------
 // (bug real: usuarios.html manda solo { id, activo } al togglear Activar/Desactivar. La validación
 // exigía nombre/usuario/rol SIEMPRE, así que esa actualización fallaba en el 100% de los casos —
