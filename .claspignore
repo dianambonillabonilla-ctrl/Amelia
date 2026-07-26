@@ -1,0 +1,11 @@
+# Solo subir el backend de Apps Script desde la raíz
+**/**
+!appsscript.json
+!*.js
+!*.gs
+!*.html
+
+# Nunca subir herramientas de Node ni configuración de GitHub
+tests/**
+.github/**
+node_modules/**
