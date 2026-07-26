@@ -327,10 +327,30 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
   });
 
   if (!filas.length) {
-    return { ok: true, importados: 0, omitidos_duplicados: 0, tipo: 'ventas', ventas_encontradas: resultado.registros.length };
+    const vacio = { ok: true, importados: 0, omitidos_duplicados: 0, tipo: 'ventas', ventas_encontradas: resultado.registros.length };
+    if (typeof fudoApiSyncRegistrar_ === 'function') {
+      fudoApiSyncRegistrar_('ventas', {
+        ok: true, fecha_desde: fechaDesde, fecha_hasta: fechaHasta, usuario: usuario && usuario.nombre,
+        importados: 0, omitidos_duplicados: 0, ventas_encontradas: resultado.registros.length, error: ''
+      });
+    }
+    return vacio;
   }
 
-  return importarFudo_('ventas', filas, usuario, Object.assign({ archivo: 'API FUDO ' + fechaDesde + ' a ' + fechaHasta }, opciones));
+  const importado = importarFudo_('ventas', filas, usuario, Object.assign({ archivo: 'API FUDO ' + fechaDesde + ' a ' + fechaHasta }, opciones));
+  if (typeof fudoApiSyncRegistrar_ === 'function') {
+    fudoApiSyncRegistrar_('ventas', {
+      ok: importado.ok !== false,
+      fecha_desde: fechaDesde,
+      fecha_hasta: fechaHasta,
+      usuario: usuario && usuario.nombre,
+      importados: importado.importados || 0,
+      omitidos_duplicados: importado.omitidos_duplicados || 0,
+      ventas_encontradas: resultado.registros.length,
+      error: importado.error || ''
+    });
+  }
+  return importado;
 }
 
 /**
@@ -402,8 +422,27 @@ function fudoApiTomarSnapshotStock_(usuario) {
   }
   agregar(productos, 'Producto');
   agregar(ingredientes, 'Ingrediente');
-  if (!filas.length) return { ok: true, actualizados: 0, creados: 0, sin_nombre: 0, sin_stock: 0 };
-  return stockFudoBaseImportar_(filas, usuario);
+  if (!filas.length) {
+    const vacio = { ok: true, actualizados: 0, creados: 0, sin_nombre: 0, sin_stock: 0 };
+    if (typeof fudoApiSyncRegistrar_ === 'function') {
+      fudoApiSyncRegistrar_('stock', {
+        ok: true, usuario: usuario && usuario.nombre, creados: 0, actualizados: 0, productos_api: 0, error: ''
+      });
+    }
+    return vacio;
+  }
+  const importado = stockFudoBaseImportar_(filas, usuario);
+  if (typeof fudoApiSyncRegistrar_ === 'function') {
+    fudoApiSyncRegistrar_('stock', {
+      ok: importado.ok !== false,
+      usuario: usuario && usuario.nombre,
+      creados: importado.creados || 0,
+      actualizados: importado.actualizados || 0,
+      productos_api: filas.length,
+      error: importado.error || ''
+    });
+  }
+  return importado;
 }
 
 const FUDO_API_PAYMENTS_INCLUDE_ = 'paymentMethod';
@@ -455,12 +494,33 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
   });
 
   if (!filas.length) {
-    return { ok: true, importados: 0, actualizados: 0, omitidos: 0, tipo: 'pagos', pagos_encontrados: 0 };
+    const vacio = { ok: true, importados: 0, actualizados: 0, omitidos: 0, tipo: 'pagos', pagos_encontrados: 0 };
+    if (typeof fudoApiSyncRegistrar_ === 'function') {
+      fudoApiSyncRegistrar_('pagos', {
+        ok: true, fecha_desde: fechaDesde, fecha_hasta: fechaHasta, usuario: usuario && usuario.nombre,
+        importados: 0, actualizados: 0, omitidos: 0, pagos_encontrados: 0, error: ''
+      });
+    }
+    return vacio;
   }
 
-  return pagosFudoImportar_(filas, usuario, Object.assign({
+  const importado = pagosFudoImportar_(filas, usuario, Object.assign({
     archivo: 'API FUDO pagos ' + fechaDesde + ' a ' + fechaHasta
   }, opciones));
+  if (typeof fudoApiSyncRegistrar_ === 'function') {
+    fudoApiSyncRegistrar_('pagos', {
+      ok: importado.ok !== false,
+      fecha_desde: fechaDesde,
+      fecha_hasta: fechaHasta,
+      usuario: usuario && usuario.nombre,
+      importados: importado.importados || 0,
+      actualizados: importado.actualizados || 0,
+      omitidos: importado.omitidos || 0,
+      pagos_encontrados: filas.length,
+      error: importado.error || ''
+    });
+  }
+  return importado;
 }
 
 function fudoApiProbarConexion_() {

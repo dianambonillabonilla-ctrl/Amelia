@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Panel Fudo</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
+      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="fudo.html" data-solo-rol="Administrador,Encargado" class="activo">Panel Fudo</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura">Libro de inventario</a>
+      <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Panel Fudo</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Estado de la integración con Fudo: última sincronización, datos de hoy, ventas sin sede y
+        productos del snapshot que aún no están en el catálogo. Para importar archivos Excel o
+        configurar la API en detalle, usa <a href="importar.html">Importar de FUDO</a>.
+      </p>
+      <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+    </div>
+
+    <div id="aviso-sin-credenciales" class="card" style="display:none; border-color:var(--amber); background:#FFFBF0">
+      <strong style="color:var(--amber)">API sin configurar</strong>
+      <p style="margin:8px 0 0; font-size:.88rem">Las credenciales de la API de Fudo no están guardadas en Apps Script — la sincronización automática no funcionará hasta que un desarrollador ejecute <code>fudoApiConfigurarCredenciales_</code> desde el editor.</p>
+    </div>
+
+    <div class="grid grid-3" id="tarjetas-sync" style="margin-bottom:20px"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h2>Hoy en Amelia</h2>
+        <div id="resumen-hoy" class="vacio">Cargando…</div>
+      </div>
+      <div class="card">
+        <h2>Stock Fudo (referencia)</h2>
+        <div id="resumen-stock" class="vacio">Cargando…</div>
+        <p id="acciones-stock-admin" style="display:none; margin:12px 0 0">
+          <button class="btn dorado" id="btn-snapshot-stock">Tomar snapshot desde API</button>
+        </p>
+      </div>
+    </div>
+
+    <div class="card" id="card-pendientes" style="display:none">
+      <h2>Ventas sin sede identificada</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Fudo no trae sede directamente — estas ventas no calzaron con ningún mapeo conocido.
+        Asígnalas en <a href="importar.html#card-ventas-pendientes-sede">Importar de FUDO</a>.
+      </p>
+      <table>
+        <thead><tr><th>Referencia</th><th>Líneas</th><th>Desde</th><th>Hasta</th></tr></thead>
+        <tbody id="tabla-pendientes"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="card-sin-catalogo" style="display:none">
+      <h2>Productos en Fudo sin catálogo en Amelia</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">Del último snapshot de stock — revisa si falta registrarlos en <a href="catalogo.html">Registrar producto</a>.</p>
+      <ul id="lista-sin-catalogo" style="margin:0; padding-left:20px"></ul>
+    </div>
+
+    <div class="card" id="card-sync-rapida" style="display:none">
+      <h2>Sincronización rápida</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">Solo Administrador. Ventas primero, pagos después — mismo criterio que en Importar.</p>
+      <div class="grid grid-3" style="align-items:end">
+        <div class="campo"><label>Desde</label><input type="date" id="sync-desde"></div>
+        <div class="campo"><label>Hasta</label><input type="date" id="sync-hasta"></div>
+        <button class="btn dorado" id="btn-sync-hoy">Sincronizar ventas y pagos</button>
+      </div>
+      <p style="margin:8px 0 0">
+        <button class="btn fantasma" id="btn-reintentar-ultimo" type="button">Reintentar último rango de ventas</button>
+      </p>
+      <pre id="resultado-sync" style="display:none; margin-top:12px; max-height:200px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado']);
+montarBarraUsuario();
+
+const usuario = Sesion.usuario();
+const esAdmin = usuario.rol === 'Administrador';
+if (esAdmin) {
+  document.getElementById('card-sync-rapida').style.display = 'block';
+  document.getElementById('acciones-stock-admin').style.display = 'block';
+}
+
+const hoy = fechaLocalHoy_();
+document.getElementById('sync-desde').value = hoy;
+document.getElementById('sync-hasta').value = hoy;
+
+let ultimoEstado = null;
+
+document.getElementById('btn-actualizar').addEventListener('click', cargar);
+cargar();
+
+async function cargar() {
+  const data = await llamar('fudo_panel_estado', {});
+  if (!data.ok) { alert(data.error || 'No se pudo cargar el panel'); return; }
+  ultimoEstado = data;
+  pintarCredenciales(data);
+  pintarTarjetasSync(data.ultima_sincronizacion);
+  pintarResumenHoy(data.resumen_hoy);
+  pintarStock(data.stock_fudo_base);
+  pintarPendientes(data.ventas_pendientes_sede);
+  pintarSinCatalogo(data.productos_sin_catalogo);
+}
+
+function pintarCredenciales(data) {
+  document.getElementById('aviso-sin-credenciales').style.display = data.credenciales_configuradas ? 'none' : 'block';
+}
+
+function formatoSync_(s) {
+  if (!s) return '<span class="badge aviso">Nunca</span>';
+  const fecha = s.timestamp ? new Date(s.timestamp).toLocaleString('es-CO') : '—';
+  const badge = s.ok === false
+    ? `<span class="badge alerta">Error</span>`
+    : `<span class="badge ok">OK</span>`;
+  let detalle = '';
+  if (s.tipo === 'ventas' || s.fecha_desde) {
+    detalle = `Rango: ${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}<br>`;
+    if (s.importados !== undefined) detalle += `Importados: ${escapeHtml(s.importados)} · Duplicados omitidos: ${escapeHtml(s.omitidos_duplicados || 0)}<br>`;
+    if (s.ventas_encontradas !== undefined) detalle += `Ventas en API: ${escapeHtml(s.ventas_encontradas)}<br>`;
+  }
+  if (s.tipo === 'pagos') {
+    detalle = `Rango: ${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}<br>`;
+    detalle += `Importados: ${escapeHtml(s.importados || 0)} · Actualizados: ${escapeHtml(s.actualizados || 0)}<br>`;
+  }
+  if (s.tipo === 'stock') {
+    detalle = `Productos API: ${escapeHtml(s.productos_api || 0)} · Creados: ${escapeHtml(s.creados || 0)} · Actualizados: ${escapeHtml(s.actualizados || 0)}<br>`;
+  }
+  if (s.usuario) detalle += `Por: ${escapeHtml(s.usuario)}<br>`;
+  if (s.error) detalle += `<span style="color:var(--red)">${escapeHtml(s.error)}</span>`;
+  return `${badge} <span style="font-size:.85rem; color:var(--grey)">${fecha}</span><p style="margin:8px 0 0; font-size:.85rem">${detalle}</p>`;
+}
+
+function pintarTarjetasSync(sync) {
+  sync = sync || {};
+  document.getElementById('tarjetas-sync').innerHTML = [
+    { titulo: 'Ventas', key: 'ventas' },
+    { titulo: 'Pagos', key: 'pagos' },
+    { titulo: 'Stock (snapshot)', key: 'stock' }
+  ].map(t => `<div class="card" style="margin:0"><h3 style="margin:0 0 8px">${t.titulo}</h3>${formatoSync_(sync[t.key])}</div>`).join('');
+}
+
+function pintarResumenHoy(r) {
+  if (!r) return;
+  document.getElementById('resumen-hoy').innerHTML =
+    `<p style="margin:0"><strong>${escapeHtml(r.fecha)}</strong></p>` +
+    `<p style="margin:8px 0 0">Líneas de venta importadas: <strong>${escapeHtml(r.ventas_lineas)}</strong></p>` +
+    `<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros)}</strong></p>`;
+}
+
+function pintarStock(stock) {
+  if (!stock) return;
+  const u = stock.ultimo_import;
+  document.getElementById('resumen-stock').innerHTML =
+    `<p style="margin:0">Productos en Stock_FUDO_Base: <strong>${escapeHtml(stock.productos)}</strong></p>` +
+    (u && u.importado_en
+      ? `<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Última carga: ${escapeHtml(new Date(u.importado_en).toLocaleString('es-CO'))} por ${escapeHtml(u.importado_por || '—')}</p>`
+      : `<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Sin snapshot cargado todavía.</p>`);
+}
+
+function pintarPendientes(p) {
+  const card = document.getElementById('card-pendientes');
+  if (!p || !p.grupos) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const body = document.getElementById('tabla-pendientes');
+  if (!p.grupos) {
+    body.innerHTML = '<tr><td colspan="4" class="vacio">No hay ventas pendientes de sede.</td></tr>';
+    return;
+  }
+  if (!p.detalle || !p.detalle.length) {
+    body.innerHTML = '<tr><td colspan="4" class="vacio">No hay ventas pendientes de sede.</td></tr>';
+    return;
+  }
+  body.innerHTML = p.detalle.map(g => `<tr>
+    <td>${escapeHtml(g.creada_por || '(vacío)')}</td>
+    <td>${escapeHtml(g.cantidad)}</td>
+    <td>${escapeHtml(String(g.primera_fecha || '').slice(0, 10))}</td>
+    <td>${escapeHtml(String(g.ultima_fecha || '').slice(0, 10))}</td>
+  </tr>`).join('') +
+    (p.grupos > p.detalle.length ? `<tr><td colspan="4" style="color:var(--grey); font-size:.85rem">… y ${p.grupos - p.detalle.length} grupos más en Importar.</td></tr>` : '');
+}
+
+function pintarSinCatalogo(sc) {
+  const card = document.getElementById('card-sin-catalogo');
+  if (!sc || !sc.total) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const lista = document.getElementById('lista-sin-catalogo');
+  lista.innerHTML = sc.muestra.map(n => `<li>${escapeHtml(n)}</li>`).join('') +
+    (sc.total > sc.muestra.length ? `<li style="color:var(--grey)">… y ${sc.total - sc.muestra.length} más</li>` : '');
+}
+
+document.getElementById('btn-sync-hoy').addEventListener('click', conBotonProtegido(document.getElementById('btn-sync-hoy'), sincronizarRango));
+document.getElementById('btn-reintentar-ultimo').addEventListener('click', async () => {
+  const u = ultimoEstado && ultimoEstado.ultima_sincronizacion && ultimoEstado.ultima_sincronizacion.ventas;
+  if (!u || !u.fecha_desde || !u.fecha_hasta) { alert('No hay un rango de ventas anterior guardado.'); return; }
+  document.getElementById('sync-desde').value = String(u.fecha_desde).slice(0, 10);
+  document.getElementById('sync-hasta').value = String(u.fecha_hasta).slice(0, 10);
+  await sincronizarRango();
+});
+
+document.getElementById('btn-snapshot-stock').addEventListener('click', conBotonProtegido(document.getElementById('btn-snapshot-stock'), async () => {
+  const data = await llamar('fudo_api_tomar_snapshot_stock', {});
+  const pre = document.getElementById('resultado-sync');
+  pre.style.display = 'block';
+  pre.textContent = JSON.stringify(data, null, 2);
+  if (data.ok) { avisarGuardado('Snapshot de stock actualizado.'); cargar(); }
+  else alert(data.error || 'Error al tomar snapshot');
+}));
+
+async function sincronizarRango() {
+  const desde = document.getElementById('sync-desde').value;
+  const hasta = document.getElementById('sync-hasta').value;
+  const pre = document.getElementById('resultado-sync');
+  pre.style.display = 'block';
+  pre.textContent = 'Sincronizando ventas…';
+  try {
+    const dataVentas = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: desde, fecha_hasta: hasta });
+    pre.textContent = 'Ventas:\n' + JSON.stringify(dataVentas, null, 2) + '\n\nSincronizando pagos…';
+    const dataPagos = await llamar('fudo_api_sincronizar_pagos', { fecha_desde: desde, fecha_hasta: hasta });
+    pre.textContent = 'Ventas:\n' + JSON.stringify(dataVentas, null, 2) + '\n\nPagos:\n' + JSON.stringify(dataPagos, null, 2);
+    if (dataVentas.ok && dataPagos.ok) avisarGuardado('Sincronización completada.');
+    cargar();
+  } catch (err) {
+    pre.textContent = 'Error: ' + err.message;
+  }
+}
+</script>
+</body>
+</html>
