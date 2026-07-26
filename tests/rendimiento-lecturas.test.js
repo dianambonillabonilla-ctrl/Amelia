@@ -219,4 +219,66 @@ function tablasBase() {
   console.log(`el libro no recorre el calendario día por día (${total} lecturas): OK`);
 })();
 
+// --- 6. Leer las ventas de un día no puede recorrer la tabla completa ----------------------------
+// El coste dominante deja de ser el número de lecturas al Sheet cuando ya son pocas: pasa a ser
+// cuántas veces se recorre cada tabla en memoria. `formatearFecha_` es el mejor indicador, porque es
+// una llamada nativa de Apps Script y se hace una vez por fila examinada. Si pedir las líneas de N
+// días vuelve a filtrar la tabla entera N veces, este número crece con N y la prueba falla.
+
+(function () {
+  const { crearEntorno } = require('./helpers/entorno-apps-script.js');
+  const env = crearEntorno();
+  env.fijarReloj(new Date(2026, 6, 26, 7, 0, 0));
+  env.ctx.configurarHojas();
+
+  const DIAS = 30;
+  const LINEAS_POR_DIA = 40;
+  const filas = [];
+  for (let d = 0; d < DIAS; d++) {
+    const dt = new Date(2026, 6, 26 - d, 13, 0, 0);
+    for (let i = 0; i < LINEAS_POR_DIA; i++) {
+      filas.push({
+        id: `I${d}-${i}`, clave_item: `I${d}-${i}`, id_venta: `V${d}-${i}`, creacion: dt,
+        producto: 'Plato ' + (i % 5), categoria: 'Platos', cantidad: 1, precio: 1000,
+        cancelada: false, sede: 'San Antonio'
+      });
+    }
+  }
+  env.agregar('Fudo_Items', filas);
+  const totalFilas = filas.length;
+
+  // Contar las conversiones de fecha durante la consulta de los 30 días.
+  let conversiones = 0;
+  const original = env.ctx.formatearFecha_;
+  env.ctx.formatearFecha_ = function (...args) { conversiones++; return original.apply(null, args); };
+
+  const fechas = [];
+  for (let d = 0; d < DIAS; d++) {
+    const dt = new Date(2026, 6, 26 - d);
+    const p = (n) => String(n).padStart(2, '0');
+    fechas.push(`${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`);
+  }
+
+  const encontradas = env.ctx.conCacheDeTablas_(function () {
+    return fechas.map(function (f) {
+      return env.ctx.ventasFudoLineasParaFecha_(f, { sin_canceladas: true, sede: 'San Antonio' }).lineas.length;
+    });
+  });
+
+  assert.deepEqual(
+    encontradas, fechas.map(() => LINEAS_POR_DIA),
+    'cada día debe devolver sus propias líneas'
+  );
+
+  // Con el índice por fecha basta con recorrer la tabla una vez (más un puñado de conversiones
+  // sueltas). Sin él serían 30 x 1200 = 36.000. Se deja margen amplio: lo que importa es que NO
+  // crezca con el número de días consultados.
+  assert.ok(
+    conversiones < totalFilas * 3,
+    `leer ${DIAS} días costó ${conversiones.toLocaleString()} conversiones de fecha para ${totalFilas.toLocaleString()} filas. ` +
+    'Eso significa que se está filtrando la tabla completa una vez por día en vez de indexarla una sola vez.'
+  );
+  console.log(`leer ${DIAS} días de ventas recorre la tabla una vez (${conversiones.toLocaleString()} conversiones para ${totalFilas.toLocaleString()} filas): OK`);
+})();
+
 console.log('rendimiento-lecturas: OK');

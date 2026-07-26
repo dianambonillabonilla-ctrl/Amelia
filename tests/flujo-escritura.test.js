@@ -22,6 +22,10 @@ const OTRA_SEDE = 'Capri';
 
 function nuevoEntornoConAdmin() {
   const env = crearEntorno();
+  // Hora fija: el código guarda `new Date()` en cada registro y varias reglas comparan esa hora
+  // contra la fecha del conteo. Sin fijarla, correr la prueba de noche movía el día y el resultado
+  // cambiaba según la hora de ejecución.
+  env.fijarReloj(new Date(2026, 6, 26, 7, 0, 0));
   env.ctx.configurarHojas();
   env.ctx.crearAdministradorInicial_('Diana', 'diana', 'contrasegura1', 'diana@example.com');
   const login = env.post({ action: 'login', usuario: 'diana', password: 'contrasegura1' });
@@ -41,6 +45,11 @@ function exigir(env, cuerpo, queHace) {
 (function () {
   const { env, token } = nuevoEntornoConAdmin();
   const p = (cuerpo) => Object.assign({ token }, cuerpo);
+  // Un día real no ocurre en el mismo milisegundo, y varias reglas comparan la HORA de dos hechos
+  // del mismo día (una compra solo suma si fue DESPUÉS del último conteo). Se avanza el reloj entre
+  // pasos para que el orden de los hechos sea explícito en vez de depender de la velocidad de la
+  // máquina — ver avanzarReloj en tests/helpers/entorno-apps-script.js.
+  const luegoDe = (minutos) => env.avanzarReloj(minutos * 60 * 1000);
 
   // Catálogo: un insumo crudo, un preparado y un plato vendible.
   exigir(env, p({ action: 'catalogo_guardar', item: { nombre_estandar: 'Papa', categoria: 'Insumos', unidad_base: 'g', tipo: 'insumo', stock_minimo: 2000, frecuencia_conteo: 'diario', sede: SEDE } }), 'crear el insumo');
@@ -59,6 +68,7 @@ function exigir(env, cuerpo, queHace) {
   assert.equal(recetas.length, 2);
 
   // Conteo físico de la mañana: 20 kg de papa cruda.
+  luegoDe(30);
   const conteo = exigir(env, p({
     action: 'conteo_registrar',
     items: [{ fecha: HOY, sede: SEDE, punto_conteo: 'Cocina', producto: 'Papa', unidad: 'kg', cantidad: 20 }]
@@ -75,7 +85,8 @@ function exigir(env, cuerpo, queHace) {
   assert.equal(conteosDelDia.length, 1, 'no puede haber dos filas para el mismo producto/punto/turno');
   assert.equal(Number(conteosDelDia[0].cantidad), 22);
 
-  // Compra con factura: entran 5 kg más de papa.
+  // Compra con factura: entran 5 kg más de papa (por la tarde, DESPUÉS del conteo).
+  luegoDe(60);
   const compra = exigir(env, p({
     action: 'compra_registrar_factura',
     factura: {
@@ -100,6 +111,7 @@ function exigir(env, cuerpo, queHace) {
   );
 
   // Producción: se preparan 3 kg de papa frita gastando 3,6 kg de papa cruda.
+  luegoDe(30);
   const produccion = exigir(env, p({
     action: 'produccion_registrar',
     items: [{
@@ -121,12 +133,14 @@ function exigir(env, cuerpo, queHace) {
   assert.equal(producciones.length, 1, 'no puede quedar producción duplicada');
 
   // Merma: se botan 500 g de papa.
+  luegoDe(30);
   exigir(env, p({
     action: 'ajuste_inventario_registrar',
     item: { fecha: HOY, sede: SEDE, punto: 'Cocina', tipo: 'Merma / desperdicio', producto: 'Papa', unidad: 'g', cantidad: 500, motivo: 'Se pasó de cocción' }
   }), 'registrar la merma');
 
   // Traslado desde el Centro de Producción, y su recepción.
+  luegoDe(30);
   const traslado = exigir(env, p({
     action: 'traslado_crear',
     item: { fecha: HOY, producto: 'Papa', unidad: 'kg', cantidad: 4, sede_origen: 'Centro de Producción', punto_origen: 'Bodega', sede_destino: SEDE, punto_destino: 'Cocina' }
@@ -293,13 +307,17 @@ function exigir(env, cuerpo, queHace) {
     item: { fecha: HOY, sede: SEDE, punto: 'Cocina', tipo: 'Merma / desperdicio', producto: 'Papa', unidad: 'g', cantidad: 100, motivo: '=HYPERLINK("http://malo","clic")' }
   }), 'registrar una merma con un motivo que parece fórmula');
 
+  // Lo que hay que comprobar aquí es la ida y vuelta: el valor vuelve EXACTAMENTE como se mandó.
+  // La comilla que `neutralizarFormula_` antepone es una marca de formato de Sheets ("guarda esto
+  // como texto"), no parte del dato, así que al leer no debe aparecer. Que la neutralización se
+  // aplique está comprobado aparte, a nivel de función, en tests/formula-injection.test.js.
   const filas = exigir(env, p({ action: 'ajustes_inventario_listar', fecha: HOY, sede: SEDE, filtro: {} }), 'listar ajustes').data;
   assert.equal(filas.length, 1);
-  assert.ok(
-    String(filas[0].motivo).startsWith("'="),
-    `el motivo debía guardarse neutralizado con una comilla delante, se guardó: ${filas[0].motivo}`
+  assert.equal(
+    filas[0].motivo, '=HYPERLINK("http://malo","clic")',
+    `el motivo debía volver igual que se mandó, volvió: ${filas[0].motivo}`
   );
-  console.log('el texto libre se guarda neutralizado y Sheets no lo evalúa: OK');
+  console.log('un texto que parece fórmula se guarda como texto y vuelve igual: OK');
 })();
 
 // --- 6. Auditoría: las escrituras sensibles quedan registradas ------------------------------------
