@@ -240,6 +240,13 @@ function turnoVentasTotalesSedeFecha_(fecha, sede) {
 }
 
 function turnoResumenCierre_(fecha, sede) {
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () { return turnoResumenCierreSinCache_(fecha, sede); });
+  }
+  return turnoResumenCierreSinCache_(fecha, sede);
+}
+
+function turnoResumenCierreSinCache_(fecha, sede) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
 
   const ventas = turnoVentasTotalesSedeFecha_(fecha, sede);

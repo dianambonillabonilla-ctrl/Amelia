@@ -7,6 +7,141 @@
  */
 
 /**
+ * AUTODIAGNÓSTICO DE LA INSTALACIÓN — la primera cosa que conviene correr cuando "no funciona" y no
+ * está claro si el problema es el código desplegado, las hojas del Sheet o los datos.
+ *
+ * Se ejecuta a mano desde el editor de Apps Script: elige `verificarInstalacion` en la lista de
+ * funciones, dale a Ejecutar y mira el informe en "Registro de ejecución". No modifica nada.
+ *
+ * Revisa, en este orden:
+ *  1. Que el Code.gs desplegado esté al día con el resto de los archivos. Si falta alguna función o
+ *     alguna entrada de SHEET_NAMES, el síntoma que se ve en la app es
+ *     'No existe la hoja "undefined"' — y no se arregla creando hojas, sino subiendo el proyecto
+ *     completo con clasp push.
+ *  2. Que exista cada hoja que el código espera, con su fila de encabezados.
+ *  3. Cuánto tarda de verdad "Disponible Hoy" en cada sede, que es la pantalla más costosa y la
+ *     primera que se abre. Apps Script corta cualquier ejecución a los 6 minutos.
+ *  4. Estado de la integración con FUDO (credenciales y última sincronización).
+ */
+function verificarInstalacion() {
+  const informe = [];
+  function linea(txt) { informe.push(txt); }
+
+  linea('=== AUTODIAGNÓSTICO DILANA OS — ' + new Date().toISOString() + ' ===');
+
+  // 1. ¿Está el Code.gs desplegado al día con el resto de los archivos?
+  linea('');
+  linea('1) CÓDIGO DESPLEGADO');
+  const funcionesEsperadas = [
+    'conCacheDeTablas_', 'leerTabla_', 'sheet_', 'configurarHojas',
+    'fudoFechasConVentas_', 'fudoFechasConVentasEnRango_',
+    'movimientosVentasMemoizar_', 'fechasConVentasParaRango_',
+    'calcularDisponibleHoy_', 'obtenerUltimoStockPorIngrediente_'
+  ];
+  const faltantes = funcionesEsperadas.filter(function (n) {
+    try { return typeof globalThis[n] !== 'function'; } catch (e) { return true; }
+  });
+  if (faltantes.length) {
+    linea('   PROBLEMA: faltan estas funciones en el proyecto: ' + faltantes.join(', '));
+    linea('   -> El proyecto desplegado está incompleto o desactualizado.');
+    linea('      Corre `clasp push` con TODOS los archivos y vuelve a desplegar la Web App.');
+  } else {
+    linea('   OK — están todas las funciones que el resto de los módulos necesitan.');
+  }
+
+  let nombresHojas = [];
+  try {
+    nombresHojas = Object.keys(SHEET_NAMES).map(function (k) { return { clave: k, nombre: SHEET_NAMES[k] }; });
+    const sinValor = nombresHojas.filter(function (h) { return !h.nombre; });
+    if (sinValor.length) {
+      linea('   PROBLEMA: SHEET_NAMES tiene entradas vacías: ' + sinValor.map(function (h) { return h.clave; }).join(', '));
+    } else {
+      linea('   OK — SHEET_NAMES declara ' + nombresHojas.length + ' hojas, todas con nombre.');
+    }
+  } catch (e) {
+    linea('   PROBLEMA: no se pudo leer SHEET_NAMES (' + e.message + '). El Code.gs desplegado está roto o incompleto.');
+    Logger.log(informe.join('\n'));
+    return informe.join('\n');
+  }
+
+  // 2. ¿Existe cada hoja, y tiene encabezados?
+  linea('');
+  linea('2) HOJAS DEL SPREADSHEET');
+  const spreadsheet = ss_();
+  const hojasFaltantes = [];
+  const hojasSinEncabezado = [];
+  const conteoFilas = [];
+  nombresHojas.forEach(function (h) {
+    const sh = spreadsheet.getSheetByName(h.nombre);
+    if (!sh) { hojasFaltantes.push(h.nombre); return; }
+    if (sh.getLastRow() === 0) { hojasSinEncabezado.push(h.nombre); return; }
+    conteoFilas.push(h.nombre + ': ' + (sh.getLastRow() - 1));
+  });
+  if (hojasFaltantes.length) {
+    linea('   PROBLEMA: faltan estas hojas: ' + hojasFaltantes.join(', '));
+    linea('   -> Corre `configurarHojas()` desde este mismo editor.');
+  } else {
+    linea('   OK — existen las ' + nombresHojas.length + ' hojas esperadas.');
+  }
+  if (hojasSinEncabezado.length) {
+    linea('   AVISO: sin fila de encabezados (corre configurarHojas()): ' + hojasSinEncabezado.join(', '));
+  }
+  linea('   Filas de datos por hoja:');
+  conteoFilas.forEach(function (c) { linea('     - ' + c); });
+
+  // 3. ¿Cuánto tarda de verdad Disponible Hoy?
+  linea('');
+  linea('3) TIEMPO REAL DE "DISPONIBLE HOY" (límite de Apps Script: 6 minutos = 360 s)');
+  const hoy = formatearFecha_(new Date());
+  ['San Antonio', 'Capri', 'Centro de Producción'].forEach(function (sede) {
+    const t0 = Date.now();
+    try {
+      const r = calcularDisponibleHoy_(hoy, sede);
+      const seg = ((Date.now() - t0) / 1000).toFixed(1);
+      const nProductos = Object.keys(r.stock_ingredientes || {}).length;
+      const marca = Number(seg) > 60 ? '  <-- LENTO, revisar' : '';
+      linea('   ' + sede + ': ' + seg + ' s — ' + nProductos + ' productos, ' +
+        (r.platos || []).length + ' platos' + marca);
+    } catch (e) {
+      linea('   ' + sede + ': FALLA tras ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s — ' + e.message);
+    }
+  });
+
+  // 4. Integración con FUDO
+  linea('');
+  linea('4) INTEGRACIÓN CON FUDO');
+  const props = PropertiesService.getScriptProperties();
+  const tieneCredenciales = !!(props.getProperty('FUDO_API_KEY') && props.getProperty('FUDO_API_SECRET'));
+  linea('   Credenciales configuradas: ' + (tieneCredenciales ? 'sí' : 'NO — corre fudoApiConfigurarCredenciales_(apiKey, apiSecret)'));
+  if (typeof fudoApiSyncLeer_ === 'function') {
+    ['ventas', 'pagos', 'stock'].forEach(function (tipo) {
+      const s = fudoApiSyncLeer_(tipo);
+      linea('   Última sync de ' + tipo + ': ' + (s && s.timestamp ? s.timestamp + (s.ok === false ? ' (con error)' : '') : 'nunca'));
+    });
+  }
+  const triggers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+  linea('   Triggers activos: ' + (triggers.length ? triggers.join(', ') : 'NINGUNO — corre configurarTriggers()'));
+
+  // 5. Usuarios
+  linea('');
+  linea('5) USUARIOS');
+  try {
+    const usuarios = leerTabla_(SHEET_NAMES.USUARIOS);
+    const activos = usuarios.filter(function (u) { return u.activo === true; });
+    linea('   ' + usuarios.length + ' usuario(s), ' + activos.length + ' activo(s).');
+    if (!usuarios.length) linea('   -> Corre crearAdministradorInicial_(nombre, usuario, password, email).');
+  } catch (e) {
+    linea('   PROBLEMA al leer Usuarios: ' + e.message);
+  }
+
+  linea('');
+  linea('=== FIN DEL AUTODIAGNÓSTICO ===');
+  const texto = informe.join('\n');
+  Logger.log(texto);
+  return texto;
+}
+
+/**
  * Busca en Recetas cantidades sospechosamente grandes (indicio típico de un cero de más o de
  * mezclar gramos con kilos al capturar el dato) — esto es justo lo que hace que "Disponible Hoy"
  * calcule 0 preparaciones posibles aunque sí haya stock real.

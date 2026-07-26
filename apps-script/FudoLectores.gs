@@ -188,3 +188,54 @@ function subitemsFudoTodas_(opciones) {
   lineas = lineas.map(fudoSubitemALineaPlana_);
   return ventasFudoLineasFiltrar_(lineas, opciones, 'Fudo_Subitems');
 }
+
+const FUDO_FECHAS_CACHE_PREFIJO_ = '__fechas_con_ventas__';
+
+/**
+ * Días (yyyy-MM-dd) que de verdad tienen alguna línea de venta en `sede`, leyendo las tablas de
+ * Fudo UNA sola vez y memoizando el resultado en el mismo objeto de caché que ya comparten
+ * movimientosDesdeVentas_/movimientosDesdeCancelaciones_.
+ *
+ * Existe porque los cálculos que necesitan "consumo por venta acumulado" (Disponible Hoy, libro,
+ * inventario teórico) recorrían el rango de fechas día por día con fechasEnRangoMovimientos_ y
+ * pedían las tablas completas de Fudo una vez por día de CALENDARIO — no por día con datos. Con un
+ * producto que todavía no tiene conteo físico el rango arrancaba en 1970, o sea ~20.000 días y
+ * ~62.000 lecturas al Sheet para un solo producto: imposible de terminar dentro del límite de 6
+ * minutos de Apps Script.
+ *
+ * Devuelve la unión de las fechas presentes en Fudo_Items, Ventas_FUDO y Fudo_Subitems (no solo la
+ * tabla que "gane" el fallback) a propósito: es un superconjunto de los días que
+ * ventasFudoLineasParaConsumo_ podría resolver por cualquiera de sus dos caminos, así que ningún
+ * día con datos se queda fuera. Un día de más solo cuesta una consulta memoizada que devuelve [].
+ */
+function fudoFechasConVentas_(sede, cache) {
+  const claveCache = FUDO_FECHAS_CACHE_PREFIJO_ + '|' + (sede || '');
+  if (cache && cache[claveCache]) return cache[claveCache];
+
+  const fechas = {};
+  function marcar(linea) {
+    if (sede && sede !== 'Ambas' && linea.sede !== sede) return;
+    const f = formatearFecha_(linea.creacion);
+    if (f) fechas[f] = true;
+  }
+  leerTabla_(SHEET_NAMES.FUDO_ITEMS).forEach(marcar);
+  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(marcar);
+  leerTabla_(SHEET_NAMES.FUDO_SUBITEMS).forEach(marcar);
+
+  const lista = Object.keys(fechas).sort();
+  if (cache) cache[claveCache] = lista;
+  return lista;
+}
+
+/**
+ * Igual que fudoFechasConVentas_ pero acotado: solo los días estrictamente posteriores a
+ * `despuesDe` (vacío = sin tope inferior) y hasta `hasta` inclusive. Sin `hasta` no devuelve nada,
+ * porque un cálculo "hasta el corte" sin fecha de corte no tiene rango que recorrer.
+ */
+function fudoFechasConVentasEnRango_(sede, despuesDe, hasta, cache) {
+  if (!hasta) return [];
+  return fudoFechasConVentas_(sede, cache).filter(function (f) {
+    if (despuesDe && f <= despuesDe) return false;
+    return f <= hasta;
+  });
+}
