@@ -45,20 +45,21 @@ function respuesta_(code, bodyObj) {
 let logueado = [];
 const fakeLogger = { log: (msg) => { logueado.push(msg); } };
 
-function cargarFudoApi_(extras = {}) {
-  const base = {
-    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
-    normalizar_: (s) => String(s || '').trim().toLowerCase(),
-    leerTabla_: (h) => h === 'mapeo' ? (extras.mapeos || []) : [],
+// fudoResolverSedeVenta_ vive en FudoMapeoSedes.gs — en Apps Script real comparte scope con
+// FudoApi.gs, pero en estas pruebas se carga aislado (mismo motivo que sedeDesdeCreadaPor_ en
+// Fudo.gs). Mock por defecto: sin ningún mapeo configurado, todo queda "Sin identificar" —
+// las pruebas que necesiten verificar la resolución real la sobreescriben.
+function fudoResolverSedeVentaMock_() {
+  return { sede: 'Sin identificar', resuelto_por: null };
+}
+
+function cargarFudoApi_() {
+  return cargar('apps-script/FudoApi.gs', {
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
-    Logger: fakeLogger
-  };
-  const ctx = Object.assign(base, extras);
-  vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync('apps-script/FudoMapeoSedes.gs', 'utf8'), ctx, { filename: 'FudoMapeoSedes.gs' });
-  vm.runInContext(fs.readFileSync('apps-script/FudoApi.gs', 'utf8'), ctx, { filename: 'FudoApi.gs' });
-  return ctx;
+    Logger: fakeLogger,
+    fudoResolverSedeVenta_: fudoResolverSedeVentaMock_
+  });
 }
 
 // --- fudoApiConfigurarCredenciales_ ------------------------------------------------------------
@@ -295,7 +296,7 @@ function ctxAutenticadoConDatos_(paginas) {
   assert.equal(filas[0]['Precio'], 15000);
   assert.equal(filas[0]['Cancelada'], false);
   assert.equal(filas[0]['Creada por'], 'Terraza Capri');
-  assert.equal(filas[0]['Sede'], 'Capri');
+  assert.ok('Sede' in filas[0], 'debe traer una columna Sede además de Creada por');
   // instanceof Date falla entre contextos de vm distintos (el Date de FudoApi.gs no es el mismo
   // constructor que el de este archivo de test) — se verifica por forma en vez de por instancia.
   assert.equal(Object.prototype.toString.call(filas[0]['Creación']), '[object Date]');
@@ -340,6 +341,43 @@ function ctxAutenticadoConDatos_(paginas) {
   console.log('fudoApiFilasVentaDesdeSale_ omite ítems sin producto resuelto: OK');
 })();
 
+(function () {
+  // Venta SIN mesa (delivery/take away) pero CON mesero e identificador de venta incluidos (piden
+  // include=waiter,saleIdentifier en fudoApiSincronizarVentas_) — debe extraer ambas referencias y
+  // pasárselas a fudoResolverSedeVenta_ (no solo la sala, que acá ni existe). NO debe intentar
+  // extraer "caja registradora": /sales no tiene esa relación en la especificación oficial.
+  let referenciasRecibidas = null;
+  const ctx = cargar('apps-script/FudoApi.gs', {
+    PropertiesService: fakePropertiesService,
+    UrlFetchApp: fakeUrlFetchApp,
+    Logger: fakeLogger,
+    fudoResolverSedeVenta_: (referencias) => {
+      referenciasRecibidas = referencias;
+      return { sede: 'Capri', resuelto_por: 'Usuario' };
+    }
+  });
+  const incluidos = {
+    'Item:1': { type: 'Item', id: '1', attributes: { createdAt: '2026-07-21T12:00:00Z', quantity: 1, price: 20000, canceled: false }, relationships: { product: { data: { type: 'Product', id: '1' } } } },
+    'Product:1': { type: 'Product', id: '1', attributes: { name: 'Domicilio Chanchostilla' } },
+    'User:7': { type: 'User', id: '7', attributes: { name: 'Ana Mesera' } },
+    'SaleIdentifier:9': { type: 'SaleIdentifier', id: '9', attributes: { name: 'Domicilios Capri' } }
+  };
+  const sale = {
+    id: '300',
+    attributes: {},
+    relationships: {
+      items: { data: [{ type: 'Item', id: '1' }] },
+      waiter: { data: { type: 'User', id: '7' } },
+      saleIdentifier: { data: { type: 'SaleIdentifier', id: '9' } }
+    }
+  };
+  const filas = ctx.fudoApiFilasVentaDesdeSale_(sale, incluidos);
+  assert.deepEqual(referenciasRecibidas, { sala: null, identificador: 'Domicilios Capri', usuario: 'Ana Mesera' });
+  assert.equal(filas[0]['Sede'], 'Capri', 'debe usar la sede que devuelva fudoResolverSedeVenta_');
+  assert.equal(filas[0]['Creada por'], '', 'sin mesa, "Creada por" (sala) sigue vacío como siempre');
+  console.log('fudoApiFilasVentaDesdeSale_ extrae mesero/identificador de venta para fudoResolverSedeVenta_: OK');
+})();
+
 // --- fudoApiSincronizarVentas_ --------------------------------------------------------------------
 
 (function () {
@@ -371,12 +409,8 @@ function ctxAutenticadoConDatos_(paginas) {
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
     Logger: fakeLogger,
-    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
-    normalizar_: (s) => String(s || '').trim().toLowerCase(),
-    leerTabla_: () => [],
-    fudoResolverSedeVenta_: () => ({ sede: 'Sin identificar', resuelto_por: null }),
-    fudoMapeoSedeIndice_: () => ({}),
-    importarFudo_: importarFudoMock_
+    importarFudo_: importarFudoMock_,
+    fudoResolverSedeVenta_: fudoResolverSedeVentaMock_
   });
 
   const usuario = { nombre: 'Admin' };
@@ -387,13 +421,14 @@ function ctxAutenticadoConDatos_(paginas) {
   assert.equal(llamadaImportarFudo.tipo, 'ventas');
   assert.equal(llamadaImportarFudo.filas.length, 1);
   assert.equal(llamadaImportarFudo.filas[0]['Producto'], 'Waffle Bonitos');
+  assert.equal(llamadaImportarFudo.filas[0]['Sede'], 'Sin identificar', 'sin mapeos configurados (mock por defecto), debe quedar Sin identificar');
   assert.equal(llamadaImportarFudo.usuario, usuario);
   assert.ok(/API FUDO 2026-07-20 a 2026-07-20/.test(llamadaImportarFudo.opciones.archivo));
 
   const url = llamadas[0].url;
   assert.ok(url.includes('filter[createdAt]=' + encodeURIComponent('and(gte.2026-07-20T00:00:00,lte.2026-07-20T23:59:59)')));
   assert.ok(url.includes('filter[saleState]=' + encodeURIComponent('in.(CLOSED)')));
-  assert.ok(url.includes('include=' + encodeURIComponent('items.product,items.subitems.product,table.room,waiter,saleIdentifier,cashRegister,payments.paymentMethod')));
+  assert.ok(url.includes('include=' + encodeURIComponent('items.product,table.room,waiter,saleIdentifier')), 'debe pedir waiter y saleIdentifier además de table.room, para tener más oportunidades de resolver la sede');
   console.log('fudoApiSincronizarVentas_ arma filtros y delega en importarFudo_: OK');
 })();
 
@@ -449,15 +484,14 @@ function ctxAutenticadoConDatos_(paginas) {
   fetchImpl = (url) => {
     if (url.indexOf('/products') !== -1) {
       return respuesta_(200, {
-        data: [{ id: '1', type: 'Product', attributes: { name: 'Costilla Preparada', stock: 12.5 }, relationships: { unit: { data: { type: 'Unit', id: '7' } } } }],
-        included: [{ type: 'Unit', id: '7', attributes: { name: 'kg' } }]
+        data: [{ id: '1', attributes: { name: 'Costilla Preparada', stock: 12.5 }, relationships: { unit: { data: { type: 'Unit', id: '5' } } } }],
+        included: [{ type: 'Unit', id: '5', attributes: { name: 'kg' } }]
       });
     }
     if (url.indexOf('/ingredients') !== -1) {
-      return respuesta_(200, {
-        data: [{ id: '2', type: 'Ingredient', attributes: { name: 'Costilla cruda', stock: 40 }, relationships: { unit: { data: { type: 'Unit', id: '8' } } } }],
-        included: [{ type: 'Unit', id: '8', attributes: { name: 'g' } }]
-      });
+      // Ingrediente sin unidad resuelta en "incluidos" (no debería pasar con include=unit, pero por
+      // seguridad no debe reventar) — debe quedar en '', no inventarse una unidad.
+      return respuesta_(200, { data: [{ id: '2', attributes: { name: 'Costilla cruda', stock: 40 } }], included: [] });
     }
     return respuesta_(200, { data: [] });
   };
@@ -479,11 +513,11 @@ function ctxAutenticadoConDatos_(paginas) {
   llamadaStockFudoBase.filas.forEach((f) => { porTipo[f.tipo] = f; });
   assert.equal(porTipo['Producto'].nombre_fudo, 'Costilla Preparada');
   assert.equal(porTipo['Producto'].stock, 12.5);
-  assert.equal(porTipo['Producto'].unidad, 'kg');
+  assert.equal(porTipo['Producto'].unidad, 'kg', 'debe resolver la unidad real vía relationships.unit + included, no dejarla en blanco');
   assert.equal(porTipo['Ingrediente'].nombre_fudo, 'Costilla cruda');
   assert.equal(porTipo['Ingrediente'].stock, 40);
-  assert.equal(porTipo['Ingrediente'].unidad, 'g');
-  console.log('fudoApiTomarSnapshotStock_ arma filas de /products e /ingredients y delega en stockFudoBaseImportar_: OK');
+  assert.equal(porTipo['Ingrediente'].unidad, '', 'sin unidad resuelta en "incluidos", debe quedar en blanco, no inventar una');
+  console.log('fudoApiTomarSnapshotStock_ arma filas de /products e /ingredients (con unidad real) y delega en stockFudoBaseImportar_: OK');
 })();
 
 (function () {

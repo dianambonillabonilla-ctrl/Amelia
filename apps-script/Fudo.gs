@@ -127,10 +127,16 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
 
     filas.forEach(function (f, i) {
       const creadaPor = valorFudo_(f, ['Creada por', 'Usuario', 'Caja']);
-      const sedePreResuelta = valorFudo_(f, ['Sede']);
+      // 'Sede' (columna nueva, jul 2026): fudoApiFilasVentaDesdeSale_ (FudoApi.gs) la manda ya
+      // resuelta por fudoResolverSedeVenta_ (sala/identificador/mesero) cuando la venta viene de la
+      // API — el export CSV nunca trae esta columna, así que ahí sigue funcionando exactamente
+      // igual que antes. Si esa resolución no encontró nada ("Sin identificar"), igual se le da una
+      // oportunidad a sedeDesdeCreadaPor_ (que además del mapeo por sala tiene la lista fija
+      // histórica) antes de rendirse — nunca se pierde cobertura, solo se suma una posibilidad más.
+      const sedeResuelta = valorFudo_(f, ['Sede']);
       const sede = opciones.sede && opciones.sede !== 'Automática'
         ? opciones.sede
-        : (sedePreResuelta || sedeDesdeCreadaPor_(creadaPor));
+        : (sedeResuelta && sedeResuelta !== 'Sin identificar' ? sedeResuelta : sedeDesdeCreadaPor_(creadaPor));
       const obj = esResumen ? {
         id_venta: 'RESUMEN-' + String(valorFudo_(f, ['Fecha']) || '') + '-' + (i + 1),
         creacion: valorFudo_(f, ['Fecha']),
