@@ -64,12 +64,16 @@ function fudoApiEstadoPanel_() {
   const tieneCredenciales = !!(props.getProperty('FUDO_API_KEY') && props.getProperty('FUDO_API_SECRET'));
 
   const hoy = formatearFecha_(new Date());
-  const ventasHoy = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-    return formatearFecha_(v.creacion) === hoy && !ventaCancelada_(v);
-  }).length;
-  const pagosHoy = leerTabla_(SHEET_NAMES.PAGOS_FUDO).filter(function (p) {
-    return formatearFecha_(p.fecha) === hoy && !(p.cancelado === true || normalizar_(p.cancelado) === 'si');
-  }).length;
+  const ventasHoyData = typeof ventasFudoLineasParaFecha_ === 'function'
+    ? ventasFudoLineasParaFecha_(hoy, { sin_canceladas: true })
+    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+      return formatearFecha_(v.creacion) === hoy && !ventaCancelada_(v);
+    }), fuente: 'Ventas_FUDO' };
+  const pagosHoyData = typeof pagosFudoCantidadFecha_ === 'function'
+    ? pagosFudoCantidadFecha_(hoy)
+    : { registros: leerTabla_(SHEET_NAMES.PAGOS_FUDO).filter(function (p) {
+      return formatearFecha_(p.fecha) === hoy && !(p.cancelado === true || normalizar_(p.cancelado) === 'si');
+    }).length, fuente: 'Pagos_FUDO' };
 
   const pendientes = typeof ventasPendientesSedeListar_ === 'function' ? ventasPendientesSedeListar_() : [];
   const lineasPendientes = pendientes.reduce(function (acc, g) { return acc + (Number(g.cantidad) || 0); }, 0);
@@ -100,8 +104,10 @@ function fudoApiEstadoPanel_() {
     },
     resumen_hoy: {
       fecha: hoy,
-      ventas_lineas: ventasHoy,
-      pagos_registros: pagosHoy
+      ventas_lineas: ventasHoyData.lineas.length,
+      pagos_registros: pagosHoyData.registros,
+      fuente_ventas: ventasHoyData.fuente,
+      fuente_pagos: pagosHoyData.fuente
     },
     ventas_pendientes_sede: {
       grupos: pendientes.length,
