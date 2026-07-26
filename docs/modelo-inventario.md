@@ -363,17 +363,27 @@ describía una rama/commit inexistentes) encontró dos gaps reales en lo ya cons
   de la API misma.
 
 La misma revisión señaló, correctamente, que `Ubicaciones.gs` (arriba) duplicaba
-`PUNTOS_POR_SEDE` — ver la nota tachada más arriba.
+`PUNTOS_POR_SEDE` — ver la nota tachada más arriba. **Corrección jul 2026:** la PR #93 intentó
+unificar ubicaciones vía `ubicaciones_listar`, pero esa acción ya no existía (eliminada en #92);
+el frontend caía a un fallback con nombres ficticios. Se restauró `PUNTOS_POR_SEDE` en
+`assets/config.js` como única fuente de puntos de conteo/traslado.
+
+### Hecho en jul 2026 (Pasos 6–17, además de lo listado arriba)
+
+- Sincronización de **pagos** Fudo (`Pagos_FUDO` + dual-write `Fudo_Pagos`).
+- Tablas normalizadas **`Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Descuentos`/`Fudo_Propinas`** con dual-write desde sync/API.
+- **Panel Fudo** (`fudo.html`) con última sincronización, migraciones históricas y estado de tablas normalizadas.
+- **Evidencias** en Drive (`Evidencias.gs`) conectadas a compras, conteo, producción y ajustes.
+- **Cierre de turno enriquecido:** `turnoResumenCierre_` incluye pagos esperados, descuentos, propinas, diferencia de caja (efectivo contado vs esperado) y resumen de inventario teórico vs contado.
+- **Conciliación:** inventario teórico de referencia, consumo por ventas (libro), subítems en consumo por receta (paso 17).
+- **Lectores con fallback** (`FudoLectores.gs`): `Fudo_Items`/`Fudo_Pagos` primero, tablas planas si no hay datos.
 
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
 
-- `pagos_esperados`/`diferencia_caja`/`inventario_contado`/`diferencia_inventario` de la sección
-  6.F siguen sin implementar — necesitan sincronizar pagos de Fudo (hoy solo se sincronizan ventas)
-  y un valor agregado único de inventario teórico vs. contado por sede, que hoy no existe (calcular
-  contra qué comparar el efectivo o qué "un solo número" de diferencia de inventario significaría
-  requiere una decisión de producto, no solo código).
-- Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten `movimientosInventarioListar_`/
+- Dejar de depender de **`Ventas_FUDO`/`Pagos_FUDO` planas** como fuente principal en todo el código
+  (hoy los lectores ya prefieren normalizadas, pero escritura y algunos módulos siguen en plano).
+- Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten **solo** `movimientosInventarioListar_`/
   `calcularInventarioTeorico_`/`movimientosDesdeVentas_` en vez de combinar las hojas por su
   cuenta — deliberadamente no se hizo en esta pasada para no arriesgar su lógica ya probada
   (comparación por hora exacta, proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón
@@ -383,15 +393,8 @@ antes de tocar código en producción):
   Conciliacion.gs. Si en el futuro se necesita registrar la reversa de un consumo ya contabilizado
   (ej. una venta que se cancela DESPUÉS de haberse preparado/servido), hace falta una regla de
   negocio nueva sobre el momento de la cancelación, no solo código.
-- `movimientosDesdeVentas_` no está conectado a ninguna pantalla todavía (sí a la acción
-  `movimientos_venta_dia_listar`) — falta decidir dónde mostrarlo (¿una vista nueva del libro?
-  ¿dentro de Conciliación?).
-- Foto/evidencia de pesaje (`evidencia_url`) y hora de inicio/fin del lote: el backend ya tiene las
-  columnas pero no hay flujo de subida de imágenes en todo el repositorio todavía (no es solo
-  agregar un campo — hace falta decidir dónde se guardan las fotos, ej. Google Drive vía Apps
-  Script) ni un input de hora en producir.html.
-- Refactor de `Ventas_FUDO` en `Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Pagos`/
-  `Fudo_Descuentos`/`Fudo_Propinas`.
-- Ampliación de `Cierres_Turno` con los campos de sincronización/pagos/inventario del punto 6.F.
-- Pantallas nuevas (bandeja "Ventas pendientes de sede", panel Fudo con última sincronización,
-  vista del libro de movimientos/inventario por ubicación).
+- Hora de inicio/fin del lote en producir.html (el backend ya guarda las columnas).
+- **Dual-write del libro central** (`Movimientos_Inventario`): flag `inventarioLibroActivo_` existe
+  pero sigue inactivo por defecto — activar en producción requiere migración y validación.
+- Disponible Hoy conectado a ventas/subítems normalizados (Fase 6).
+- Vista del libro de movimientos/inventario por ubicación (pantalla dedicada más allá de conciliación).

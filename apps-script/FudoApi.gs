@@ -115,18 +115,29 @@ function fudoApiObtenerToken_() {
 /**
  * Una sola página, sin desenvolver — devuelve el JSON tal cual (con .data y, si se pidió con
  * `include`, también .included) para que cada llamador decida qué necesita. filtros = { columna:
- * 'operador.valor' } (ej. { createdAt: 'gte.2026-07-01T00:00:00' }), orden = 'col,-col2', include =
- * 'items.product,table.room' (comas, según la documentación oficial).
+ * 'operador.valor' } o anidado { sales: { saleState: 'in.(CLOSED)' } } → filter[sales][saleState]=...
  */
+function fudoApiSerializarFiltros_(filtros, prefijo) {
+  prefijo = prefijo || 'filter';
+  const params = [];
+  Object.keys(filtros || {}).forEach(function (col) {
+    const val = filtros[col];
+    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      params.push.apply(params, fudoApiSerializarFiltros_(val, prefijo + '[' + encodeURIComponent(col) + ']'));
+    } else {
+      params.push(prefijo + '[' + encodeURIComponent(col) + ']=' + encodeURIComponent(val));
+    }
+  });
+  return params;
+}
+
 function fudoApiPeticionPagina_(recurso, opciones) {
   opciones = opciones || {};
   const token = fudoApiObtenerToken_();
   const params = [];
   params.push('page[size]=' + encodeURIComponent(opciones.pageSize || 500));
   params.push('page[number]=' + encodeURIComponent(opciones.pagina || 1));
-  Object.keys(opciones.filtros || {}).forEach(function (col) {
-    params.push('filter[' + encodeURIComponent(col) + ']=' + encodeURIComponent(opciones.filtros[col]));
-  });
+  params.push.apply(params, fudoApiSerializarFiltros_(opciones.filtros || {}));
   if (opciones.orden) params.push('sort=' + encodeURIComponent(opciones.orden));
   if (opciones.include) params.push('include=' + encodeURIComponent(opciones.include));
 
@@ -496,7 +507,7 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
     filtros: {
       createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
       canceled: 'neq.true',
-      'sales.saleState': 'in.(CLOSED)'
+      sales: { saleState: 'in.(CLOSED)' }
     },
     include: FUDO_API_PAYMENTS_INCLUDE_
   });
