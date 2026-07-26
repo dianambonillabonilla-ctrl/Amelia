@@ -374,6 +374,9 @@ function handleRequest_(e, method) {
       case 'inventario_libro_estado':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: inventarioLibroEstado_() });
+      case 'inventario_libro_configurar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(inventarioLibroConfigurarDesdeApi_(params.activo));
       case 'migracion_inventario_simular':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migracionInventarioSimular_());
@@ -392,6 +395,9 @@ function handleRequest_(e, method) {
       case 'resumen_diferencias_inventario':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_(resumenDiferenciasInventarioFechaSede_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'evidencia_subir':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(evidenciaSubir_(params.archivo));
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));

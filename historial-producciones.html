@@ -68,7 +68,7 @@
       <div style="overflow-x:auto">
         <table>
           <thead>
-            <tr><th>Fecha</th><th>Sede</th><th>Producto</th><th>Cantidad</th><th>Registrado por</th><th>Registrado el</th></tr>
+            <tr><th>Fecha</th><th>Sede</th><th>Producto</th><th>Cantidad</th><th>Registrado por</th><th>Registrado el</th><th>Detalle</th></tr>
           </thead>
           <tbody id="tabla-historial"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
         </table>
@@ -104,7 +104,7 @@ function formatearHora_(valor) {
 async function cargar() {
   const tabla = document.getElementById('tabla-historial');
   const contador = document.getElementById('contador-resultados');
-  tabla.innerHTML = '<tr><td colspan="6" class="vacio">Cargando…</td></tr>';
+  tabla.innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   contador.style.display = 'none';
 
   const filtros = {
@@ -115,7 +115,7 @@ async function cargar() {
   };
   const data = await llamar('produccion_historial', { filtros });
   if (!data.ok) {
-    tabla.innerHTML = `<tr><td colspan="6" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+    tabla.innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(data.error)}</td></tr>`;
     document.getElementById('card-stats-produccion').style.display = 'none';
     return;
   }
@@ -123,13 +123,18 @@ async function cargar() {
   pintarEstadisticasProduccion_(data.data);
 
   if (!data.data.length) {
-    tabla.innerHTML = '<tr><td colspan="6" class="vacio">Sin producción registrada que coincida con el filtro.</td></tr>';
+    tabla.innerHTML = '<tr><td colspan="7" class="vacio">Sin producción registrada que coincida con el filtro.</td></tr>';
     return;
   }
 
   contador.style.display = 'block';
   contador.textContent = `${data.data.length} registro(s) encontrado(s).`;
-  tabla.innerHTML = data.data.map(r => `
+  tabla.innerHTML = data.data.map(r => {
+    const extras = [];
+    if (r.hora_inicio || r.hora_fin) extras.push(`Lote ${r.hora_inicio || '—'} – ${r.hora_fin || '—'}`);
+    if (r.evidencia_url) extras.push(`<a href="${escapeHtml(r.evidencia_url)}" target="_blank" rel="noopener">Foto</a>`);
+    if (r.insumo_producto) extras.push(`${escapeHtml(r.insumo_cantidad)} ${escapeHtml(r.insumo_unidad)} de ${escapeHtml(r.insumo_producto)}`);
+    return `
     <tr>
       <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
       <td>${escapeHtml(r.sede)}</td>
@@ -137,7 +142,9 @@ async function cargar() {
       <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
       <td>${escapeHtml(r.usuario)}</td>
       <td style="color:var(--grey); font-size:.85rem">${formatearHora_(r.timestamp)}</td>
-    </tr>`).join('');
+      <td style="font-size:.85rem">${extras.length ? extras.join('<br>') : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function pintarEstadisticasProduccion_(filas) {
