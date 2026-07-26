@@ -88,12 +88,18 @@ function rangoDeFechas_(desde, hasta) {
 
 function calcularConciliacion_(fecha, usuario) {
   const sedeRestringida = sedeRestringidaConciliacion_(usuario);
+  const ventasData = typeof ventasFudoLineasParaFecha_ === 'function'
+    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true })
+    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+      return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
+    }), fuente: 'Ventas_FUDO' };
   return {
     fecha: fecha,
     // El frontend usa esto para saber si debe mostrar los controles/columnas de "toda la
     // empresa" (Administrador o sede "Ambas") o solo lo de su propia sede.
     sede_restringida: sedeRestringida,
-    ventas: resumirVentasFudo_(fecha).filter(function (v) { return !sedeRestringida || v.sede === sedeRestringida; }),
+    fuente_ventas: ventasData.fuente,
+    ventas: resumirVentasFudo_(fecha, ventasData.lineas).filter(function (v) { return !sedeRestringida || v.sede === sedeRestringida; }),
     bebidas: conciliarBebidas_(fecha, sedeRestringida),
     comida: conciliarComidaPorSede_(fecha, sedeRestringida)
   };
@@ -119,11 +125,14 @@ function ventaCancelada_(v) {
   return v.cancelada === true || normalizar_(v.cancelada) === 'si';
 }
 
-function resumirVentasFudo_(fecha) {
+function resumirVentasFudo_(fecha, lineasPrecargadas) {
   const grupos = {};
-  leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-    return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
-  }).forEach(function (v) {
+  const lineas = lineasPrecargadas || (typeof ventasFudoLineasParaFecha_ === 'function'
+    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true }).lineas
+    : leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+      return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
+    }));
+  lineas.forEach(function (v) {
     const clave = [v.sede || 'Sin identificar', v.categoria || 'Sin categoría', v.producto].join('|');
     if (!grupos[clave]) grupos[clave] = { sede: v.sede || 'Sin identificar', categoria: v.categoria || 'Sin categoría', producto: v.producto, cantidad: 0 };
     grupos[clave].cantidad += Number(v.cantidad) || 0;
@@ -155,12 +164,12 @@ function conciliarBebidas_(fecha, sedeRestringida) {
   const nombresPosiblesPorEstandar = nombresPosiblesPorEstandar_(indice);
   const movimientos = leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO)
     .filter(function (m) { return formatearFecha_(m.fecha) === fecha; });
-  // Fuente de respaldo cuando ese día no se subió el archivo manual de movimientos (o ya se dejó
-  // de subir porque la sincronización de ventas es por API): cada línea vendida de una bebida
-  // consume exactamente 1 unidad de esa bebida (no tiene receta, "sellAlone" en FUDO) — mismo
-  // supuesto que ya usa conciliarComidaPorSede_ para productos sin receta encontrada.
-  const ventasDelDia = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
-    .filter(function (v) { return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v); });
+  const ventasDataDia = typeof ventasFudoLineasParaFecha_ === 'function'
+    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true })
+    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+      return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
+    }), fuente: 'Ventas_FUDO' };
+  const ventasDelDia = ventasDataDia.lineas;
 
   // Una bebida de una sola sede (ej. algo que solo se vende en Capri, marcado con "Sede donde se
   // vende/usa" en Registrar producto) no debe aparecer en la conciliación de la otra — mismo
@@ -173,7 +182,9 @@ function conciliarBebidas_(fecha, sedeRestringida) {
   const stockBase = stockFudoBaseIndice_();
   // Todas las ventas desde la fecha más vieja de la base hasta `fecha` (no solo las del día) —
   // hace falta el rango completo para restar "lo vendido desde la base" en stockEsperadoFudo_.
-  const ventasDesdeBase = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) { return !ventaCancelada_(v); });
+  const ventasDesdeBase = (typeof ventasFudoLineasTodas_ === 'function'
+    ? ventasFudoLineasTodas_({ sin_canceladas: true })
+    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) { return !ventaCancelada_(v); }) }).lineas;
 
   return catalogo.map(function (item) {
     // Todo lo que puede identificar a esta bebida en los datos crudos de FUDO: su propio nombre
@@ -314,8 +325,11 @@ function filaBebidaRestringida_(fila, sede) {
 // --- COMIDA: por sede, ventas x receta vs. cambio físico --------------------
 function conciliarComidaPorSede_(fecha, sedeRestringida) {
   const indice = indiceCatalogo_();
-  const ventas = leerTabla_(SHEET_NAMES.VENTAS_FUDO)
-    .filter(function (v) { return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v); });
+  const ventas = (typeof ventasFudoLineasParaFecha_ === 'function'
+    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true })
+    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+      return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
+    }) }).lineas;
 
   // Con sede restringida, solo se calcula (y se devuelve) el bloque de esa sede — las otras dos
   // ni siquiera se procesan, así nunca hay nada de otra sede en la respuesta.

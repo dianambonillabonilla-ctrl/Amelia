@@ -224,8 +224,8 @@ function pintarResumenHoy(r) {
   if (!r) return;
   document.getElementById('resumen-hoy').innerHTML =
     `<p style="margin:0"><strong>${escapeHtml(r.fecha)}</strong></p>` +
-    `<p style="margin:8px 0 0">Líneas de venta importadas: <strong>${escapeHtml(r.ventas_lineas)}</strong></p>` +
-    `<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros)}</strong></p>`;
+    `<p style="margin:8px 0 0">Líneas de venta importadas: <strong>${escapeHtml(r.ventas_lineas)}</strong>${r.fuente_ventas ? ` <span style="color:var(--grey)">(${escapeHtml(r.fuente_ventas)})</span>` : ''}</p>` +
+    `<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros)}</strong>${r.fuente_pagos ? ` <span style="color:var(--grey)">(${escapeHtml(r.fuente_pagos)})</span>` : ''}</p>`;
 }
 
 function pintarStock(stock) {

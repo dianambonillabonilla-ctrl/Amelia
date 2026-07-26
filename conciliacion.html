@@ -125,6 +125,12 @@ async function cargar() {
   }
 
   pintarVentasDia(data.data.ventas, sedeRestringida);
+  if (data.data.fuente_ventas) {
+    const nota = document.getElementById('ventas-dia-nota');
+    nota.textContent = (sedeRestringida
+      ? `Solo ventas de ${sedeRestringida}. `
+      : '') + `Fuente: ${data.data.fuente_ventas}. Incluye comida, bebidas y adiciones.`;
+  }
   pintarBebidas(data.data.bebidas, sedeRestringida);
   pintarComida(data.data.comida);
   pintarConsumoVentasLibro_(fecha, sedeRestringida, Object.keys(data.data.comida || {}));
