@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Inicio de turno</title>
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+  .inicio-wrap{max-width:920px;margin:0 auto}.bienvenida{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:stretch}.perfil-card{background:linear-gradient(135deg,#0B1F3A,#16305A);color:white;border-radius:14px;padding:26px}.perfil-card h1,.perfil-card h2{color:white}.perfil-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.perfil-dato{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px}.perfil-dato span{display:block;font-size:.72rem;opacity:.72;text-transform:uppercase}.perfil-dato strong{display:block;margin-top:5px}.paso{border-left:4px solid var(--gold)}.recordatorio-rappi{background:#FFF3E6;border:2px solid #E47911;border-radius:12px;padding:16px;font-weight:700;color:#8B4100}.acciones-inicio{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.accion{display:block;text-decoration:none;background:white;border:1px solid var(--line);border-radius:12px;padding:18px}.accion strong{display:block;color:var(--navy);margin-bottom:5px}.accion span{font-size:.82rem;color:var(--grey)}.accion.principal{border-color:var(--gold);background:#FFFDF7}.oculto{display:none!important}@media(max-width:760px){.bienvenida{grid-template-columns:1fr}.perfil-datos{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="inicio.html" class="activo">Inicio de turno</a>
+      <a href="caja.html" id="nav-caja" class="oculto">Caja</a>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Reportar novedad</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="topbar"><h1>Inicio de turno</h1><div id="barra-usuario"></div></div>
+    <div class="inicio-wrap">
+      <div class="bienvenida">
+        <section class="perfil-card">
+          <p style="margin:0 0 6px;opacity:.8">Bienvenida/o</p>
+          <h1 id="nombre-usuario">—</h1>
+          <p style="margin:0;opacity:.82">Antes de empezar, confirma qué función tendrás hoy.</p>
+          <div class="perfil-datos">
+            <div class="perfil-dato"><span>Rol del sistema</span><strong id="rol-usuario">—</strong></div>
+            <div class="perfil-dato"><span>Sede</span><strong id="sede-usuario">—</strong></div>
+            <div class="perfil-dato"><span>Función de hoy</span><strong id="sector-actual">Sin elegir</strong></div>
+          </div>
+        </section>
+        <section class="card paso" style="margin:0">
+          <h2>1. Mi función de hoy</h2>
+          <p style="color:var(--grey);font-size:.86rem">Elige la función que realmente vas a realizar en este turno.</p>
+          <div class="campo"><label for="sector">Función / sector</label><select id="sector"></select></div>
+          <button class="btn dorado" id="btn-confirmar-sector">Confirmar función</button>
+        </section>
+      </div>
+
+      <section id="bloque-caja" class="card oculto" style="margin-top:20px;border:2px solid var(--gold)">
+        <h2>2. Abrir mi caja</h2>
+        <div class="recordatorio-rappi">⚠ No olvides prender Rappi al iniciar el turno.</div>
+        <p>Tu función de hoy es <strong>Caja</strong>. Debes abrir la caja y contar la base antes de empezar a recibir pagos.</p>
+        <a class="btn dorado" href="caja.html" style="display:inline-block;text-decoration:none">Ir a abrir caja</a>
+      </section>
+
+      <section id="bloque-acciones" class="card oculto" style="margin-top:20px">
+        <h2>Lo que necesitas hoy</h2>
+        <div class="acciones-inicio" id="acciones-sector"></div>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+const usuario = Sesion.usuario();
+const hoy = fechaLocalHoy_();
+const selectSector = document.getElementById('sector');
+const permitidos = String(usuario.sectores_permitidos || '').split(',').map(s=>s.trim()).filter(Boolean);
+const opciones = permitidos.length ? permitidos : (usuario.rol === 'Administrador' || usuario.rol === 'Encargado' ? SECTORES_DISPONIBLES : []);
+
+document.getElementById('nombre-usuario').textContent = usuario.nombre || usuario.usuario || 'Usuario';
+document.getElementById('rol-usuario').textContent = usuario.rol || '—';
+document.getElementById('sede-usuario').textContent = usuario.sede || '—';
+selectSector.innerHTML = '<option value="">Elige tu función</option>' + opciones.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
+
+function accionesParaSector(sector){
+  const mapa = {
+    'Cocina': [
+      ['Registrar producción','producir.html','Anota lo preparado durante el turno.'],
+      ['Registrar conteo','conteo.html','Cuenta los productos asignados a Cocina.'],
+      ['Traslados','traslados.html','Envía o recibe productos entre sedes.']
+    ],
+    'Café': [
+      ['Registrar conteo','conteo.html','Cuenta bebidas, café, postres y productos asignados.'],
+      ['Traslados','traslados.html','Confirma lo recibido o enviado.'],
+      ['Reportar novedad','gestiones.html','Deja constancia de un faltante o problema.']
+    ],
+    'Bebidas': [
+      ['Registrar conteo','conteo.html','Cuenta bebidas y productos asignados.'],
+      ['Traslados','traslados.html','Confirma lo recibido o enviado.'],
+      ['Reportar novedad','gestiones.html','Deja constancia de un faltante o problema.']
+    ],
+    'Caja': [
+      ['Abrir y manejar caja','caja.html','Base, Rappi, movimientos de efectivo y cierre.'],
+      ['Registrar conteo','conteo.html','Completa los productos asignados a Caja.'],
+      ['Traslados','traslados.html','Confirma entregas pendientes.']
+    ]
+  };
+  return mapa[sector] || [['Disponible Hoy','dashboard.html','Revisa pendientes y existencias del día.']];
+}
+
+function pintarSector(sector){
+  document.getElementById('sector-actual').textContent = sector || 'Sin elegir';
+  document.getElementById('bloque-caja').classList.toggle('oculto', sector !== 'Caja');
+  document.getElementById('nav-caja').classList.toggle('oculto', sector !== 'Caja' && usuario.rol !== 'Administrador' && usuario.rol !== 'Encargado');
+  document.getElementById('bloque-acciones').classList.toggle('oculto', !sector);
+  document.getElementById('acciones-sector').innerHTML = accionesParaSector(sector).map(a=>`<a class="accion ${a[1]==='caja.html'?'principal':''}" href="${a[1]}"><strong>${escapeHtml(a[0])}</strong><span>${escapeHtml(a[2])}</span></a>`).join('');
+}
+
+async function cargarSector(){
+  const data = await llamar('turno_sector_hoy',{fecha:hoy});
+  if(data.ok && data.sector){ selectSector.value=data.sector; pintarSector(data.sector); }
+}
+
+document.getElementById('btn-confirmar-sector').addEventListener('click', conBotonProtegido(document.getElementById('btn-confirmar-sector'), async()=>{
+  const sector=selectSector.value;
+  if(!sector){alert('Elige tu función de hoy.');return;}
+  const data=await llamar('turno_sector_elegir',{fecha:hoy,sector});
+  if(!data.ok){alert(data.error);return;}
+  pintarSector(sector);
+  avisarGuardado('Función de hoy confirmada: '+sector+'.');
+}));
+
+cargarSector();
+</script>
+</body>
+</html>
