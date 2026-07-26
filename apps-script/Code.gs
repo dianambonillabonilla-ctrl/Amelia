@@ -334,6 +334,9 @@ function handleRequest_(e, method) {
       case 'fudo_api_tomar_snapshot_stock':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoApiTomarSnapshotStock_(sesion.usuario));
+      case 'fudo_panel_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_(fudoApiEstadoPanel_());
       case 'fudo_mapeo_sede_listar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });
