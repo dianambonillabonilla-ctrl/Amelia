@@ -168,6 +168,33 @@ Corre entero sin red y sin Google: cada prueba carga los `.gs` de verdad y les i
   poder abrir aunque el resultado sea correcto. Si tocas `DisponibleHoy.gs`, `MovimientosInventario.gs`
   o `FudoLectores.gs`, esta prueba es la que avisa.
 
+### Probar contra el despliegue real: `npm run test:api`
+
+`npm test` corre offline sobre un Sheet simulado, así que nunca puede decir si el despliegue de
+Google está bien ni si una pantalla aguanta el volumen real de datos. Para eso hay una prueba aparte
+que sí usa red y habla con la Web App publicada (toma la URL de `assets/config.js`, o de `API_URL`
+si se pasa por entorno). Solo llama acciones de **lectura** — una lista blanca explícita — así que se
+puede correr contra producción sin riesgo.
+
+```bash
+npm run test:api                                             # nivel 1
+DILANA_USUARIO=usuario DILANA_PASSWORD=clave npm run test:api  # niveles 1, 2 y 3
+```
+
+- **Nivel 1 (sin credenciales)** — el despliegue está vivo y respeta el contrato: `GET` rechazado
+  (para que nunca viajen credenciales en la URL), `login` procesado, cuerpo mal formado manejado, y
+  ninguna lectura permitida sin token. Si esto falla, el problema es el despliegue, no los datos.
+- **Nivel 2 (con usuario y contraseña)** — inicia sesión y recorre las ~49 acciones de lectura contra
+  los datos reales, midiendo cuánto tarda cada una. Avisa por encima de 10 s y falla por encima de
+  30 s, porque Apps Script corta la ejecución a los 6 minutos. Incluye el informe de
+  `verificarInstalacion()` con el tiempo de "Disponible Hoy" medido dentro de Apps Script, sin el
+  ida y vuelta de red.
+- **Nivel 3** — estado real de FUDO: credenciales, antigüedad de la última sincronización de
+  ventas/pagos/stock, ventas sin sede identificada y productos de FUDO que no están en el catálogo.
+
+Conviene crear un usuario dedicado con rol **Lectura** en vez de usar un Administrador. Las acciones
+que exigen Administrador se reportan como "sin permiso (esperado)", no como fallo.
+
 ### Rendimiento: por qué se cuentan las lecturas
 
 En Apps Script el coste dominante no es el cálculo, son las llamadas a Sheets. Dos reglas que
