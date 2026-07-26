@@ -283,11 +283,13 @@ function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional) {
 function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
   if (!fecha || !sede) return [];
   const indice = indiceOpcional || indiceCatalogo_();
-  const ventasDelDia = (typeof ventasFudoLineasParaFecha_ === 'function'
-    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true, sede: sede })
-    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-      return formatearFecha_(v.creacion) === fecha && v.sede === sede && !ventaCancelada_(v);
-    }) }).lineas;
+  const ventasDelDia = (typeof ventasFudoLineasParaConsumo_ === 'function'
+    ? ventasFudoLineasParaConsumo_(fecha, { sin_canceladas: true, sede: sede })
+    : typeof ventasFudoLineasParaFecha_ === 'function'
+      ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true, sede: sede })
+      : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+        return formatearFecha_(v.creacion) === fecha && v.sede === sede && !ventaCancelada_(v);
+      }) }).lineas;
   if (!ventasDelDia.length) return [];
 
   const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);

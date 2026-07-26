@@ -237,7 +237,15 @@ function cargarMovimientosVentas_(fx) {
         acumulado[linea.clave].cantidad += cantidad * linea.cantidad;
       });
     },
-    nombreCanonico_: (texto) => texto
+    nombreCanonico_: (texto) => texto,
+    ventasFudoLineasParaConsumo_: (fecha, opciones) => {
+      let lineas = (fx.ventas || []).filter((v) => String(v.creacion).slice(0, 10) === fecha);
+      if (opciones && opciones.sin_canceladas !== false) {
+        lineas = lineas.filter((v) => !(v.cancelada === true || normalizarSimple_(v.cancelada) === 'si'));
+      }
+      if (opciones && opciones.sede) lineas = lineas.filter((v) => v.sede === opciones.sede);
+      return { lineas, fuente: 'mock', fuente_subitems: fx.subitems && fx.subitems.length ? 'Fudo_Subitems' : null };
+    }
   });
 }
 
@@ -278,6 +286,25 @@ function cargarMovimientosVentas_(fx) {
   assert.deepEqual(mod.movimientosDesdeVentas_('', 'Capri', {}), [], 'sin fecha, no debe intentar calcular nada');
   assert.deepEqual(mod.movimientosDesdeVentas_('2026-07-21', '', {}), [], 'sin sede, no debe intentar calcular nada');
   console.log('movimientosDesdeVentas_ sin datos/parámetros: OK');
+})();
+
+(function () {
+  const fx = {
+    ventas: [
+      { creacion: '2026-07-21', sede: 'Capri', producto: 'Chanchostilla', cantidad: 1, cancelada: false },
+      { creacion: '2026-07-21', sede: 'Capri', producto: 'Extra queso', cantidad: 2, cancelada: false, es_subitem: true }
+    ],
+    subitems: [{ producto: 'Extra queso' }],
+    recetaMap: {
+      chanchostilla: { lineas: [{ clave: 'costilla preparada', nombre: 'Costilla Preparada', unidad: 'g', cantidad: 100 }] }
+    }
+  };
+  const mod = cargarMovimientosVentas_(fx);
+  const movimientos = mod.movimientosDesdeVentas_('2026-07-21', 'Capri', {});
+  const extra = movimientos.find((m) => m.producto === 'Extra queso');
+  assert.ok(extra, 'subítem sin receta se autoconsume 1:1');
+  assert.equal(extra.cantidad, -2);
+  console.log('movimientosDesdeVentas_ incluye subítems como líneas extra: OK');
 })();
 
 (function () {

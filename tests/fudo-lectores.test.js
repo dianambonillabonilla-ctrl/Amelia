@@ -59,6 +59,50 @@ function normalizarSimple_(s) {
 
 (function () {
   const items = [
+    { id_venta: '1', creacion: '2026-07-21', sede: 'Capri', producto: 'Waffle', categoria: 'Comida', cantidad: 1, precio: 10000, cancelada: false }
+  ];
+  const subitems = [
+    { id_venta: '1', id_item: '50', creacion: '2026-07-21', sede: 'Capri', producto: 'Extra queso', cantidad: 2, precio: 1500, cancelado: false },
+    { id_venta: '1', id_item: '50', creacion: '2026-07-21', sede: 'Capri', producto: 'Extra cancelado', cantidad: 9, precio: 0, cancelado: true }
+  ];
+  const mod = cargar('apps-script/FudoLectores.gs', {
+    SHEET_NAMES: { FUDO_ITEMS: 'items', VENTAS_FUDO: 'flat', FUDO_SUBITEMS: 'subitems', FUDO_PAGOS: 'pagosNorm', PAGOS_FUDO: 'pagosFlat' },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    ventaCancelada_: (v) => v.cancelada === true || normalizarSimple_(v.cancelada) === 'si',
+    leerTabla_: (h) => {
+      if (h === 'items') return items;
+      if (h === 'subitems') return subitems;
+      return [];
+    }
+  });
+
+  const sub = mod.subitemsFudoParaFecha_('2026-07-21');
+  assert.equal(sub.fuente, 'Fudo_Subitems');
+  assert.equal(sub.lineas.length, 1, 'omite subítems cancelados');
+  assert.equal(sub.lineas[0].producto, 'Extra queso');
+  assert.equal(sub.lineas[0].es_subitem, true);
+
+  const consumo = mod.ventasFudoLineasParaConsumo_('2026-07-21');
+  assert.equal(consumo.lineas.length, 2, 'ítem + subítem');
+  assert.equal(consumo.fuente_subitems, 'Fudo_Subitems');
+
+  const sinSub = cargar('apps-script/FudoLectores.gs', {
+    SHEET_NAMES: { FUDO_ITEMS: 'items', VENTAS_FUDO: 'flat', FUDO_SUBITEMS: 'subitems', FUDO_PAGOS: 'pagosNorm', PAGOS_FUDO: 'pagosFlat' },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    ventaCancelada_: (v) => v.cancelada === true,
+    leerTabla_: (h) => h === 'items' ? items : []
+  });
+  const soloItems = sinSub.ventasFudoLineasParaConsumo_('2026-07-21');
+  assert.equal(soloItems.lineas.length, 1);
+  assert.equal(soloItems.fuente_subitems, null);
+
+  console.log('subitemsFudoParaFecha_ y ventasFudoLineasParaConsumo_: OK');
+})();
+
+(function () {
+  const items = [
     { id_venta: '10', creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', categoria: 'Bebidas', cantidad: 3, precio: 5000, cancelada: false }
   ];
   const mod = cargar('apps-script/Conciliacion.gs', {

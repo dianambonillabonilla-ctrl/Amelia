@@ -21,6 +21,25 @@ function fudoItemALineaPlana_(item) {
   };
 }
 
+function fudoSubitemALineaPlana_(subitem) {
+  return {
+    id_venta: subitem.id_venta,
+    id_item: subitem.id_item,
+    creacion: subitem.creacion,
+    producto: subitem.producto,
+    categoria: '',
+    cantidad: subitem.cantidad,
+    precio: subitem.precio,
+    cancelada: subitem.cancelado === true || normalizar_(subitem.cancelado) === 'si',
+    sede: subitem.sede,
+    creada_por: '',
+    formato_origen: '',
+    archivo_origen: subitem.archivo_origen || '',
+    importado_en: subitem.importado_en,
+    es_subitem: true
+  };
+}
+
 function ventasFudoLineasFiltrar_(lineas, opciones, fuente) {
   opciones = opciones || {};
   if (opciones.sin_canceladas !== false) {
@@ -51,6 +70,34 @@ function ventasFudoLineasParaFecha_(fecha, opciones) {
     lineas = lineas.map(fudoItemALineaPlana_);
   }
   return ventasFudoLineasFiltrar_(lineas, opciones, fuente);
+}
+
+/** Subítems/modificadores de un día — solo Fudo_Subitems (sin tabla plana). */
+function subitemsFudoParaFecha_(fecha, opciones) {
+  opciones = opciones || {};
+  let lineas = leerTabla_(SHEET_NAMES.FUDO_SUBITEMS).filter(function (s) {
+    return formatearFecha_(s.creacion) === fecha;
+  });
+  if (!lineas.length) return { lineas: [], fuente: null };
+  lineas = lineas.map(fudoSubitemALineaPlana_);
+  return ventasFudoLineasFiltrar_(lineas, opciones, 'Fudo_Subitems');
+}
+
+/**
+ * Líneas para consumo por venta (conciliación comida, libro) — ítems + subítems si existen.
+ * Si Fudo_Subitems está vacío para ese día, el resultado es idéntico a ventasFudoLineasParaFecha_.
+ */
+function ventasFudoLineasParaConsumo_(fecha, opciones) {
+  const base = ventasFudoLineasParaFecha_(fecha, opciones);
+  const subData = subitemsFudoParaFecha_(fecha, opciones);
+  if (!subData.lineas.length) {
+    return { lineas: base.lineas, fuente: base.fuente, fuente_subitems: null };
+  }
+  return {
+    lineas: base.lineas.concat(subData.lineas),
+    fuente: base.fuente,
+    fuente_subitems: subData.fuente
+  };
 }
 
 /** Todas las líneas de venta — Fudo_Items si la tabla tiene datos, si no Ventas_FUDO. */

@@ -59,6 +59,17 @@
         <tbody id="tabla-ventas-dia"><tr><td colspan="4" class="vacio">Elige una fecha y presiona "Ver conciliación".</td></tr></tbody></table>
     </div>
 
+    <div class="card" id="card-subitems" style="display:none">
+      <h2>Modificadores / extras — <span id="subitems-dia-fecha"></span></h2>
+      <p id="subitems-dia-nota" style="color:var(--grey);font-size:.85rem">
+        Subítems de venta (extras, modificadores) — se suman al consumo por receta en la conciliación de comida.
+      </p>
+      <table>
+        <thead><tr><th>Sede</th><th>Producto</th><th>Cantidad</th></tr></thead>
+        <tbody id="tabla-subitems"><tr><td colspan="3" class="vacio">Sin modificadores ese día.</td></tr></tbody>
+      </table>
+    </div>
+
     <div class="card">
       <h2>Bebidas y unidades — conteo manual vs. FUDO</h2>
       <p id="bebidas-nota" style="color:var(--grey); font-size:.85rem">FUDO cierre = último "Stock Actual" del día en Movimientos_FUDO. Aquí sí comparamos contra FUDO.</p>
@@ -131,6 +142,7 @@ async function cargar() {
       ? `Solo ventas de ${sedeRestringida}. `
       : '') + `Fuente: ${data.data.fuente_ventas}. Incluye comida, bebidas y adiciones.`;
   }
+  pintarSubitems(data.data.subitems, data.data.fuente_subitems, sedeRestringida);
   pintarBebidas(data.data.bebidas, sedeRestringida);
   pintarComida(data.data.comida);
   pintarConsumoVentasLibro_(fecha, sedeRestringida, Object.keys(data.data.comida || {}));
@@ -174,6 +186,20 @@ function pintarVentasDia(filas, sedeRestringida) {
   body.innerHTML = filas.map(f => sedeRestringida
     ? `<tr><td>${escapeHtml(f.categoria)}</td><td>${escapeHtml(f.producto)}</td><td>${escapeHtml(f.cantidad)}</td></tr>`
     : `<tr><td>${escapeHtml(f.sede)}</td><td>${escapeHtml(f.categoria)}</td><td>${escapeHtml(f.producto)}</td><td>${escapeHtml(f.cantidad)}</td></tr>`
+  ).join('');
+}
+
+function pintarSubitems(filas, fuente, sedeRestringida) {
+  const card = document.getElementById('card-subitems');
+  if (!filas || !filas.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  document.getElementById('subitems-dia-fecha').textContent = document.getElementById('fecha').value;
+  const nota = document.getElementById('subitems-dia-nota');
+  nota.textContent = (sedeRestringida ? `Solo ${sedeRestringida}. ` : '') +
+    (fuente ? `Fuente: ${fuente}. ` : '') +
+    'Se incluyen en el consumo por receta de la conciliación de comida.';
+  document.getElementById('tabla-subitems').innerHTML = filas.map(s =>
+    `<tr><td>${escapeHtml(s.sede)}</td><td>${escapeHtml(s.producto)}</td><td>${escapeHtml(s.cantidad)}</td></tr>`
   ).join('');
 }
 
