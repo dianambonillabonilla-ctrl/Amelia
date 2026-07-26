@@ -89,6 +89,7 @@ function calcularDisponibleHoy_(fecha, sede) {
   return {
     fecha: fecha || 'último conteo disponible',
     sede: sede || 'Ambas',
+    ventas_descontadas: true,
     stock_ingredientes: stockContado,
     platos: resultado,
     disponibilidad_receta: disponibilidadPorReceta
@@ -376,10 +377,11 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
       const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
       const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
       const resProduccion = netoProduccionDesdeConteo_(producciones, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
-      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad;
+      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad);
+      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad || resVentas.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
-      total += base.cantidad + resAjustes.neto + resTraslados.total + resProduccion.neto;
+      total += base.cantidad + resAjustes.neto + resTraslados.total + resProduccion.neto + resVentas.neto;
       if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
     });
     if (!unidadFinal) return; // sin conteo, compra, traslado ni producción con unidad reconocible en ninguna sede
@@ -438,7 +440,7 @@ function netoAjustesDesdeConteo_(ajustes, clave, sede, fechaConteoExclusive, tim
     const base = aUnidadBase_(a.cantidad, a.unidad);
     if (!unidad) unidad = base.unidad;
     if (base.unidad !== unidad) return;
-    neto += a.tipo === 'Merma / desperdicio' ? -base.cantidad : base.cantidad;
+    neto += a.tipo === 'Merma / desperdicio' || a.tipo === 'Consumo interno' ? -base.cantidad : base.cantidad;
   });
   return { neto: neto, unidad: unidad };
 }
@@ -489,6 +491,34 @@ function netoProduccionDesdeConteo_(producciones, clave, sede, fechaConteoExclus
     if (!unidad) unidad = base.unidad;
     if (base.unidad !== unidad) return;
     neto += base.cantidad;
+  });
+  return { neto: neto, unidad: unidad };
+}
+
+/**
+ * Resta el consumo por ventas (ítems + subítems, recetas vigentes) desde el último conteo físico
+ * hasta la fecha de corte — Fase 6 del roadmap. Solo días posteriores al día del conteo (misma
+ * limitación por fecha que calcularInventarioTeorico_).
+ */
+function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+  if (!sede || sede === 'Ambas') return { neto: 0, unidad: unidadEsperada || '' };
+  if (typeof movimientosDesdeVentas_ !== 'function') return { neto: 0, unidad: unidadEsperada || '' };
+  let neto = 0;
+  let unidad = unidadEsperada || '';
+  const desde = fechaConteoExclusive || '1970-01-01';
+  const hasta = fechaCorteInclusive || desde;
+  const fechas = typeof fechasEnRangoMovimientos_ === 'function'
+    ? fechasEnRangoMovimientos_(desde, hasta)
+    : [hasta];
+  fechas.forEach(function (f) {
+    if (fechaConteoExclusive && f <= fechaConteoExclusive) return;
+    movimientosDesdeVentas_(f, sede, indice).forEach(function (m) {
+      if (claveProducto_(m.producto, indice) !== clave) return;
+      const base = aUnidadBase_(Math.abs(m.cantidad), m.unidad);
+      if (!unidad) unidad = base.unidad;
+      if (base.unidad !== unidad) return;
+      neto += m.cantidad;
+    });
   });
   return { neto: neto, unidad: unidad };
 }

@@ -265,10 +265,11 @@ function inventarioLibroIntentarDesdeAjuste_(filaAjuste, usuario) {
     const TIPO_A_MOVIMIENTO = {
       'Compra cruda': 'Compra recibida',
       'Merma / desperdicio': 'Merma en sede',
-      'Ajuste operativo': 'Ajuste autorizado'
+      'Ajuste operativo': 'Ajuste autorizado',
+      'Consumo interno': 'Consumo interno'
     };
     const tipoMov = TIPO_A_MOVIMIENTO[filaAjuste.tipo] || 'Ajuste autorizado';
-    const esSalida = tipoMov === 'Merma en sede';
+    const esSalida = tipoMov === 'Merma en sede' || tipoMov === 'Consumo interno';
     const ubic = movimientoUbicacion_(filaAjuste.sede, filaAjuste.punto);
     inventarioMovimientoCrear_(inventarioLibroItemDesdeVista_({
       fecha: formatearFecha_(filaAjuste.fecha),

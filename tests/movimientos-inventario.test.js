@@ -366,6 +366,44 @@ function cargarMovimientosVentas_(fx) {
 })();
 
 (function () {
+  const mod = cargar('apps-script/MovimientosInventario.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', RECETAS: 'recetas', AJUSTES_INVENTARIO: 'ajustes', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados' },
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    claveProducto_: claveProductoMock_,
+    nombreCanonico_: (t) => t,
+    indiceCatalogo_: () => ({}),
+    leerTabla_: () => [],
+    ventaCancelada_: (v) => v.cancelada === true,
+    ventasFudoLineasCanceladasParaFecha_: (fecha, opciones) => ({
+      lineas: [{ creacion: fecha, sede: opciones.sede, producto: 'Poker', cantidad: 2, cancelada: true }]
+    }),
+    recetasVigentes_: () => [],
+    construirRecetaMap_: () => ({}),
+    claveRecetaVenta_: (producto) => claveProductoMock_(producto),
+    explotarReceta_: () => {},
+    movimientoUbicacion_: (sede) => sede
+  });
+  const cancelaciones = mod.movimientosDesdeCancelaciones_('2026-07-21', 'Capri', {});
+  assert.equal(cancelaciones.length, 1);
+  assert.equal(cancelaciones[0].tipo_movimiento, 'Cancelación de venta');
+  assert.equal(cancelaciones[0].cantidad, 2);
+  console.log('movimientosDesdeCancelaciones_: OK');
+})();
+
+(function () {
+  const fx = fixtures_();
+  const mod = cargarMovimientos_(fx);
+  const resumen = mod.inventarioUbicacionResumen_('2026-07-01', '2026-07-04', 'Capri', 'Almacén', {});
+  assert.equal(resumen.ok, true);
+  assert.ok(resumen.filas.length >= 1);
+  const costilla = resumen.filas.find((f) => f.producto === 'Costilla');
+  assert.ok(costilla, 'debe haber movimientos de Costilla en Almacén');
+  assert.equal(mod.inventarioUbicacionResumen_('', '2026-07-04', 'Capri', 'Almacén', {}).ok, false);
+  console.log('inventarioUbicacionResumen_: OK');
+})();
+
+(function () {
   const conteos = [
     { fecha: '2026-07-10', sede: 'Capri', producto: 'Costilla', cantidad: 8, unidad: 'u' },
     { fecha: '2026-07-10', sede: 'Capri', producto: 'Aceite', cantidad: 2, unidad: 'u' }

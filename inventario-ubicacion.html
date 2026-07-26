@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Inventario por ubicación</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
+      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="fudo.html" data-solo-rol="Administrador,Encargado">Panel Fudo</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura">Libro de inventario</a>
+      <a href="inventario-ubicacion.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Inventario por ubicación</a>
+      <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
+      <a href="historial-cierres-turno.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de cierres</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Inventario por ubicación</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Resumen de entradas y salidas por punto de conteo/traslado (ej. Cocina terraza, Bodega).
+        Usa la misma vista calculada del libro — filtra movimientos cuya ubicación origen o destino
+        incluye el punto seleccionado. Para el detalle línea por línea, ve al
+        <a href="libro-inventario.html">libro de inventario</a>.
+      </p>
+      <div class="grid grid-4" style="margin-bottom:10px">
+        <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
+        <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta"></div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="filtro-sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Punto / ubicación</label>
+          <select id="filtro-punto"><option value="">Elige un punto…</option></select>
+        </div>
+      </div>
+      <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:10px">
+        <label style="font-size:.88rem; display:flex; align-items:center; gap:8px; margin:0">
+          <input type="checkbox" id="filtro-incluir-ventas">
+          Incluir consumo por ventas
+        </label>
+        <label style="font-size:.88rem; display:flex; align-items:center; gap:8px; margin:0">
+          <input type="checkbox" id="filtro-incluir-cancelaciones">
+          Incluir cancelaciones de venta
+        </label>
+      </div>
+      <button class="btn dorado" id="btn-cargar">Cargar resumen</button>
+      <p id="estado-resumen" style="margin:10px 0 0; font-size:.85rem; color:var(--grey)"></p>
+    </div>
+
+    <div class="card">
+      <h2>Neto por producto</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Producto</th><th>Entradas</th><th>Salidas</th><th>Neto</th><th>Unidad</th></tr></thead>
+          <tbody id="tabla-resumen"><tr><td colspan="5" class="vacio">Elige sede y punto, luego carga.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Lectura']);
+montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('filtro-sede'));
+
+const hoy = fechaLocalHoy_();
+document.getElementById('filtro-desde').value = hoy;
+document.getElementById('filtro-hasta').value = hoy;
+
+async function poblarPuntos_() {
+  await poblarSelectUbicaciones_(document.getElementById('filtro-punto'), document.getElementById('filtro-sede').value);
+}
+document.getElementById('filtro-sede').addEventListener('change', poblarPuntos_);
+poblarPuntos_();
+
+document.getElementById('btn-cargar').addEventListener('click', conBotonProtegido(document.getElementById('btn-cargar'), async () => {
+  const punto = document.getElementById('filtro-punto').value;
+  if (!punto) { alert('Elige un punto de la sede.'); return; }
+  const opciones = {};
+  if (document.getElementById('filtro-incluir-ventas').checked) opciones.incluir_consumo_ventas = true;
+  if (document.getElementById('filtro-incluir-cancelaciones').checked) opciones.incluir_cancelaciones_ventas = true;
+  const data = await llamar('inventario_ubicacion_resumen', {
+    fecha_desde: document.getElementById('filtro-desde').value,
+    fecha_hasta: document.getElementById('filtro-hasta').value,
+    sede: document.getElementById('filtro-sede').value,
+    punto: punto,
+    opciones: opciones
+  });
+  if (!data.ok) { alert(data.error); return; }
+  document.getElementById('estado-resumen').textContent =
+    `${data.movimientos} movimientos en ${escapeHtml(data.sede)} / ${escapeHtml(data.punto)}`;
+  const body = document.getElementById('tabla-resumen');
+  if (!data.filas.length) {
+    body.innerHTML = '<tr><td colspan="5" class="vacio">Sin movimientos en este punto y rango.</td></tr>';
+    return;
+  }
+  body.innerHTML = data.filas.map(f => `<tr>
+    <td>${escapeHtml(f.producto)}</td>
+    <td>${escapeHtml(f.entradas)}</td>
+    <td>${escapeHtml(f.salidas)}</td>
+    <td>${escapeHtml(f.neto)}</td>
+    <td>${escapeHtml(f.unidad)}</td>
+  </tr>`).join('');
+}));
+</script>
+</body>
+</html>

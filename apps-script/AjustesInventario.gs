@@ -204,7 +204,7 @@ function ajustesNetosPorItem_(fecha, sede, indice) {
     if (a.tipo === 'Compra cruda') {
       totales[clave].cantidad += base.cantidad;
       totales[clave].compras += base.cantidad;
-    } else if (a.tipo === 'Merma / desperdicio') {
+    } else if (a.tipo === 'Merma / desperdicio' || a.tipo === 'Consumo interno') {
       totales[clave].cantidad -= base.cantidad;
       totales[clave].mermas += base.cantidad;
     } else {

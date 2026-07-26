@@ -194,7 +194,7 @@ function fechasEnRangoMovimientos_(fechaDesde, fechaHasta) {
 
 /**
  * Libro completo, normalizado y filtrable — filtros = { fecha_desde, fecha_hasta, sede, producto,
- * punto, incluir_consumo_ventas, indice (índice de Catalogo_Alias, opcional) }.
+ * punto, incluir_consumo_ventas, incluir_cancelaciones_ventas, indice (índice de Catalogo_Alias, opcional) }.
  */
 function movimientosInventarioListar_(filtros) {
   filtros = filtros || {};
@@ -209,6 +209,13 @@ function movimientosInventarioListar_(filtros) {
     const hasta = filtros.fecha_hasta || filtros.fecha_desde;
     fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
       movimientos.push.apply(movimientos, movimientosDesdeVentas_(fecha, filtros.sede, indice));
+    });
+  }
+  if (filtros.incluir_cancelaciones_ventas && filtros.sede && filtros.sede !== 'Ambas') {
+    const desde = filtros.fecha_desde || filtros.fecha_hasta;
+    const hasta = filtros.fecha_hasta || filtros.fecha_desde;
+    fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
+      movimientos.push.apply(movimientos, movimientosDesdeCancelaciones_(fecha, filtros.sede, indice));
     });
   }
   if (filtros.fecha_desde) movimientos = movimientos.filter(function (m) { return m.fecha >= filtros.fecha_desde; });
@@ -351,6 +358,95 @@ function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
       estado: 'Registrado'
     };
   });
+}
+
+/**
+ * Reversa de consumo por venta cancelada — misma explosión de receta que movimientosDesdeVentas_,
+ * pero solo líneas canceladas y con signo positivo (devuelve al inventario teórico).
+ */
+function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional) {
+  if (!fecha || !sede) return [];
+  const indice = indiceOpcional || indiceCatalogo_();
+  const canceladas = (typeof ventasFudoLineasCanceladasParaFecha_ === 'function'
+    ? ventasFudoLineasCanceladasParaFecha_(fecha, { sede: sede })
+    : typeof ventasFudoLineasParaFecha_ === 'function'
+      ? ventasFudoLineasParaFecha_(fecha, { sede: sede, solo_canceladas: true, sin_canceladas: false })
+      : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+        return formatearFecha_(v.creacion) === fecha && v.sede === sede && ventaCancelada_(v);
+      }) }).lineas;
+  if (!canceladas.length) return [];
+
+  const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+  const consumoEsperado = {};
+  canceladas.forEach(function (v) {
+    const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
+    if (recetaMap[claveProd]) {
+      explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
+    } else {
+      if (!consumoEsperado[claveProd]) {
+        consumoEsperado[claveProd] = { nombre: nombreCanonico_(v.producto, indice), cantidad: 0, unidad: 'u' };
+      }
+      consumoEsperado[claveProd].cantidad += Number(v.cantidad) || 0;
+    }
+  });
+
+  return Object.keys(consumoEsperado).map(function (clave) {
+    const c = consumoEsperado[clave];
+    return {
+      fecha: fecha,
+      producto: c.nombre,
+      cantidad: Math.abs(c.cantidad),
+      unidad: c.unidad,
+      sede: sede,
+      ubicacion_origen: '',
+      ubicacion_destino: movimientoUbicacion_(sede, ''),
+      tipo_movimiento: 'Cancelación de venta',
+      usuario: '',
+      documento_relacionado: '',
+      estado: 'Registrado'
+    };
+  });
+}
+
+/**
+ * Resumen de movimientos por producto en un punto/ubicación — entradas, salidas y neto.
+ */
+function inventarioUbicacionResumen_(fechaDesde, fechaHasta, sede, punto, opciones) {
+  opciones = opciones || {};
+  if (!fechaDesde || !fechaHasta || !sede || !punto) {
+    return { ok: false, error: 'Faltan fecha_desde, fecha_hasta, sede o punto' };
+  }
+  const filtros = {
+    fecha_desde: fechaDesde,
+    fecha_hasta: fechaHasta,
+    sede: sede,
+    punto: punto,
+    incluir_consumo_ventas: !!opciones.incluir_consumo_ventas,
+    incluir_cancelaciones_ventas: !!opciones.incluir_cancelaciones_ventas
+  };
+  const movimientos = movimientosInventarioListar_(filtros);
+  const porProducto = {};
+  movimientos.forEach(function (m) {
+    const clave = m.producto;
+    if (!porProducto[clave]) {
+      porProducto[clave] = { producto: m.producto, unidad: m.unidad, entradas: 0, salidas: 0, neto: 0 };
+    }
+    const cant = Number(m.cantidad) || 0;
+    if (cant > 0) porProducto[clave].entradas += cant;
+    else porProducto[clave].salidas += Math.abs(cant);
+    porProducto[clave].neto += cant;
+  });
+  const filas = Object.keys(porProducto).map(function (k) {
+    const f = porProducto[k];
+    return {
+      producto: f.producto,
+      unidad: f.unidad,
+      entradas: Number(f.entradas.toFixed(3)),
+      salidas: Number(f.salidas.toFixed(3)),
+      neto: Number(f.neto.toFixed(3))
+    };
+  }).sort(function (a, b) { return String(a.producto).localeCompare(String(b.producto)); });
+  return { ok: true, sede: sede, punto: punto, movimientos: movimientos.length, filas: filas };
 }
 
 /**

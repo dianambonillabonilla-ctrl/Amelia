@@ -385,23 +385,18 @@ el frontend caía a un fallback con nombres ficticios. Se restauró `PUNTOS_POR_
 - **Aprobar recetas:** botón en `recetas.html` + `receta_aprobar` (borrador → activo).
 - **Catálogo:** columna `id_fudo` en `Catalogo_Maestro` (vínculo estable al ID numérico de Fudo).
 
-Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
-antes de tocar código en producción):
+### Hecho en jul 2026 (Paso 20 — pendientes del roadmap)
 
-- Dejar de depender de **`Ventas_FUDO`/`Pagos_FUDO` planas** como fuente principal en todo el código
-  (hoy los lectores ya prefieren normalizadas, pero escritura y algunos módulos siguen en plano).
-- Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten **solo** `movimientosInventarioListar_`/
-  `calcularInventarioTeorico_`/`movimientosDesdeVentas_` en vez de combinar las hojas por su
-  cuenta — deliberadamente no se hizo en esta pasada para no arriesgar su lógica ya probada
-  (comparación por hora exacta, proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón
-  concreta.
-- "Cancelación de venta" (el tipo de movimiento en sí) no está implementado — hoy una venta
-  cancelada simplemente se excluye del cálculo (no genera ningún movimiento), igual que ya hacía
-  Conciliacion.gs. Si en el futuro se necesita registrar la reversa de un consumo ya contabilizado
-  (ej. una venta que se cancela DESPUÉS de haberse preparado/servido), hace falta una regla de
-  negocio nueva sobre el momento de la cancelación, no solo código.
-- Hora de inicio/fin del lote en producir.html (el backend ya guarda las columnas).
-- **Dual-write del libro central** (`Movimientos_Inventario`): flag `inventarioLibroActivo_` existe
-  pero sigue inactivo por defecto — activar en producción requiere migración y validación.
-- Disponible Hoy conectado a ventas/subítems normalizados (Fase 6).
-- Vista del libro de movimientos/inventario por ubicación (pantalla dedicada más allá de conciliación).
+- **Cancelación de venta** como movimiento (`movimientosDesdeCancelaciones_`) — reversa positiva del consumo por receta para ventas canceladas; opción `incluir_cancelaciones_ventas` en el libro.
+- **Disponible Hoy (Fase 6):** descuenta consumo por ventas (ítems + subítems normalizados) desde el último conteo vía `netoVentasDesdeConteo_`.
+- **Consumo interno** en conciliación de ajustes, Disponible Hoy y dual-write del libro físico.
+- **Conciliación:** traslados netos delegan a `movimientosInventarioListar_` cuando hay datos.
+- **Vista por ubicación:** pantalla `inventario-ubicacion.html` + API `inventario_ubicacion_resumen`.
+- **Hora inicio/fin de lote** en `producir.html` — ya implementada (se quitó de pendientes).
+
+Pendiente (requiere migración de datos reales en producción o decisiones de producto):
+
+- Dejar de **escribir** en `Ventas_FUDO`/`Pagos_FUDO` planas (hoy lectura prioriza normalizadas; escritura sigue en dual-write desde sync).
+- Migración completa de `Conciliacion.gs`/`DisponibleHoy.gs` al motor único con comparación por hora exacta (Disponible Hoy conserva lógica horaria propia).
+- **Activar dual-write del libro central** en producción (`inventarioLibroActivo_`) — requiere migración histórica validada en la hoja real.
+- Regla de negocio avanzada: cancelación después de servido vs. antes del cierre (hoy todas las canceladas generan reversa en el libro).
