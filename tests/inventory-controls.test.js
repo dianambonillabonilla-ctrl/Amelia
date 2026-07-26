@@ -2104,13 +2104,52 @@ const turnosModFaltantesAlias = cargar('apps-script/Turnos.gs', {
 const faltantesAlias = turnosModFaltantesAlias.turnoFaltantesPorSector_('2026-07-21', 'San Antonio');
 assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO ("Coca Cola 350"), no debe seguir marcado como "falta contar"');
 
+// --- turnoResumenCierre_: ventas Fudo, traslados pendientes y producción, por fecha/sede --------
+(function () {
+  const ventasFudoFixture = [
+    { creacion: '2026-07-21', sede: 'San Antonio', precio: 100, cantidad: 2, cancelada: false }, // 200
+    { creacion: '2026-07-21', sede: 'San Antonio', precio: 50, cantidad: 3, cancelada: 'Si' }, // cancelada, no debe sumar
+    { creacion: '2026-07-21', sede: 'Capri', precio: 999, cantidad: 1, cancelada: false }, // otra sede, no debe sumar
+    { creacion: '2026-07-20', sede: 'San Antonio', precio: 999, cantidad: 1, cancelada: false } // otro día, no debe sumar
+  ];
+  const trasladosFixture = [
+    { sede_origen: 'San Antonio', sede_destino: 'Capri', estado: 'Enviado' }, // pendiente (origen)
+    { sede_origen: 'Centro de Producción', sede_destino: 'San Antonio', estado: 'Con observación' }, // pendiente (destino)
+    { sede_origen: 'San Antonio', sede_destino: 'Capri', estado: 'Confirmado' }, // ya resuelto, no cuenta
+    { sede_origen: 'Capri', sede_destino: 'Centro de Producción', estado: 'Enviado' } // no toca a San Antonio
+  ];
+  const produccionesFixture = [
+    { fecha: '2026-07-21', sede: 'San Antonio' },
+    { fecha: '2026-07-21', sede: 'San Antonio' },
+    { fecha: '2026-07-21', sede: 'Capri' }, // otra sede
+    { fecha: '2026-07-20', sede: 'San Antonio' } // otro día
+  ];
+  const mod = cargar('apps-script/Turnos.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', TRASLADOS: 'traslados', PRODUCCIONES: 'producciones' },
+    leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudoFixture : hoja === 'traslados' ? trasladosFixture : hoja === 'producciones' ? produccionesFixture : [],
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_
+  });
+  const resumen = mod.turnoResumenCierre_('2026-07-21', 'San Antonio');
+  assert.equal(resumen.ok, true);
+  assert.equal(resumen.ventas_fudo_total, 200, 'solo la venta no cancelada de San Antonio de ese día (100*2)');
+  assert.equal(resumen.ventas_fudo_cantidad, 1);
+  assert.equal(resumen.traslados_pendientes, 2, 'los dos traslados Enviado/Con observación que tocan San Antonio (origen o destino)');
+  assert.equal(resumen.producciones_registradas, 2);
+  assert.equal(mod.turnoResumenCierre_('', 'San Antonio').ok, false, 'debe exigir fecha y sede');
+  console.log('turnoResumenCierre_: OK');
+})();
+
 // turnoCerrar_: bloquea si falta algo, dejando el detalle; permite y registra el cierre si no falta nada.
 let cierresExistentes = [];
 const cierresGuardados = [];
 function cargarTurnosCerrar_(conteosHoy) {
   return cargar('apps-script/Turnos.gs', {
-    SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres' },
-    leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy : (hoja === 'cierres' ? cierresExistentes : catalogoTurno)),
+    SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres',
+      VENTAS_FUDO: 'ventas_fudo_cierre', TRASLADOS: 'traslados_cierre', PRODUCCIONES: 'producciones_cierre' },
+    leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy
+      : (hoja === 'cierres' ? cierresExistentes
+      : (['ventas_fudo_cierre', 'traslados_cierre', 'producciones_cierre'].indexOf(hoja) !== -1 ? [] : catalogoTurno))),
     formatearFecha_: (v) => String(v).slice(0, 10),
     normalizar_: normalizarSimple_,
     frecuenciasObligatoriasDelDia_: () => ['Diario'],
@@ -2135,6 +2174,24 @@ const cierreOk = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_(
 assert.equal(cierreOk.ok, true, 'con todo contado, debe permitir cerrar el turno');
 assert.equal(cierresGuardados.length, 1, 'debe dejar registro del cierre en Cierres_Turno');
 assert.equal(cierresGuardados[0].usuario, 'Diana');
+assert.equal(cierresGuardados[0].ventas_fudo_total, 0, 'sin ventas en el fixture, el snapshot debe quedar en 0, no vacío/undefined');
+assert.equal(cierresGuardados[0].traslados_pendientes, 0);
+assert.equal(cierresGuardados[0].producciones_registradas, 0);
+assert.equal(cierreOk.resumen.ventas_fudo_total, 0, 'turnoCerrar_ también debe devolver el resumen usado, no solo guardarlo');
+assert.equal(cierresGuardados[0].efectivo_contado, '', 'sin datosCierre, efectivo_contado debe quedar vacío, no forzado a 0');
+assert.equal(cierresGuardados[0].observaciones, '');
+
+// datosCierre (efectivo contado + observaciones) es opcional y se guarda tal cual cuando llega.
+// (cierresExistentes se deja como estaba — solo con el cierre de AYER — para no disparar de nuevo
+// el requisito de "conteo de inicio" que ya se probó aparte más abajo).
+const cierreConDatos = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCerrar_(
+  '2026-07-21', 'San Antonio', { nombre: 'Diana', rol: 'Administrador' },
+  { efectivo_contado: 150000, observaciones: 'Faltó una boleta de la caja chica' }
+);
+assert.equal(cierreConDatos.ok, true);
+assert.equal(cierresGuardados[cierresGuardados.length - 1].efectivo_contado, 150000);
+assert.equal(cierresGuardados[cierresGuardados.length - 1].observaciones, 'Faltó una boleta de la caja chica');
+cierresGuardados.pop(); // deja cierresGuardados como estaba tras cierreOk, para no romper los conteos de abajo
 
 // Dos Encargados cerrando casi al mismo tiempo (o un doble clic) no debe dejar dos filas de cierre.
 cierresExistentes = [{ fecha: '2026-07-21', sede: 'San Antonio', usuario: 'Diana', timestamp: '2026-07-21T20:00:00' }];
@@ -2342,6 +2399,37 @@ const produccionBloqueadaMod = cargar('apps-script/Produccion.gs', {
 const produccionBloqueada = produccionBloqueadaMod.produccionRegistrar_(itemsProduccion, usuarioProduccion, { request_id: 'req-3' });
 assert.equal(produccionBloqueada.ok, false, 'con el lock ocupado, produccionRegistrar_ no debe registrar nada');
 assert.match(produccionBloqueada.error, /espera un momento/);
+
+// --- produccionRegistrar_: insumo consumido y merma de proceso son opcionales (jul 2026) --------
+// (docs/modelo-inventario.md sección 6.B: un mismo evento de producción puede declarar también
+// cuánto insumo crudo entró al lote y cuánto se perdió como merma, sin que sea obligatorio).
+produccionGuardada = [];
+const itemConInsumoYMerma = [{
+  fecha: '2026-07-24', sede: 'San Antonio', item: 'Costilla Preparada', unidad: 'kg', cantidad: 18.2,
+  insumo_producto: 'Costilla cruda', insumo_cantidad: 25, insumo_unidad: 'kg', merma_cantidad: 6.8
+}];
+const resultadoConInsumo = cargarProduccion_().produccionRegistrar_(itemConInsumoYMerma, usuarioProduccion, {});
+assert.equal(resultadoConInsumo.ok, true);
+assert.equal(produccionGuardada[0].insumo_producto, 'Costilla cruda');
+assert.equal(produccionGuardada[0].insumo_cantidad, 25);
+assert.equal(produccionGuardada[0].merma_cantidad, 6.8);
+
+assert.equal(
+  cargarProduccion_().produccionRegistrar_([{ fecha: '2026-07-24', sede: 'San Antonio', item: 'X', unidad: 'kg', cantidad: 1, insumo_producto: 'Costilla cruda' }], usuarioProduccion, {}).ok,
+  false,
+  'insumo_producto sin cantidad/unidad no debe guardarse a medias'
+);
+assert.equal(
+  cargarProduccion_().produccionRegistrar_([{ fecha: '2026-07-24', sede: 'San Antonio', item: 'X', unidad: 'kg', cantidad: 1, merma_cantidad: -1 }], usuarioProduccion, {}).ok,
+  false,
+  'una merma negativa no tiene sentido físico'
+);
+
+produccionGuardada = [];
+const sinInsumoNiMerma = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, {});
+assert.equal(sinInsumoNiMerma.ok, true, 'seguir sin declarar insumo/merma (como siempre) debe funcionar igual que antes');
+assert.equal(produccionGuardada[0].insumo_producto, '');
+assert.equal(produccionGuardada[0].merma_cantidad, '');
 
 // --- produccionConObligatoriosRegistrar_: una sola operación, valida TODO antes de escribir nada -
 // (auditoría de seguridad, jul 2026: antes producir.html mandaba dos llamadas independientes en

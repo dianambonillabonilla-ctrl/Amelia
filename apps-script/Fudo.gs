@@ -261,6 +261,19 @@ function formatearFechaHoraFudo_(valor) {
  */
 function sedeDesdeCreadaPor_(creadaPor) {
   const valor = normalizar_(creadaPor);
+  // Fudo_Mapeo_Sedes (ver FudoMapeoSedes.gs) deja configurar/editar esta relación sala->sede desde
+  // la app en vez de depender solo de la lista fija de abajo — un mapeo tipo "Sala" para el nombre
+  // real de esa sala tiene prioridad. Se lee la tabla acá mismo (sin llamar a fudoMapeoSedeIndice_,
+  // que vive en otro archivo) para no sumar una dependencia entre módulos que en Apps Script real
+  // no hace falta (todos los .gs comparten scope) pero sí importa en las pruebas, que cargan cada
+  // .gs en un contexto aislado — así una hoja Fudo_Mapeo_Sedes vacía o no configurada aún se
+  // comporta exactamente igual que antes.
+  const mapeos = leerTabla_(SHEET_NAMES.FUDO_MAPEO_SEDES);
+  for (let i = 0; i < mapeos.length; i++) {
+    if (normalizar_(mapeos[i].tipo_referencia) === 'sala' && normalizar_(mapeos[i].nombre) === valor) {
+      return mapeos[i].sede;
+    }
+  }
   const capri = ['cajacapri', 'terrazacapri', 'caja capri', 'terraza capri', 'la waffleria - capri'];
   const sanAntonio = ['terraza', 'caja', 'caja san antonio', 'terraza san antonio', 'salon sa', 'terraza sa'];
   if (capri.indexOf(valor) !== -1) return 'Capri';

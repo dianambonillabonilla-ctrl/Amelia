@@ -66,6 +66,10 @@
         <option value="g"><option value="kg"><option value="u"><option value="ml"><option value="l"><option value="paq">
       </datalist>
       <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar ítem</button>
+      <p style="color:var(--grey); font-size:.8rem; margin:6px 0 0">
+        "Detalle de lote" (en cada ítem) es opcional: sirve para dejar registrado cuánto insumo crudo
+        entró y cuánto se perdió como merma en esa producción, además de lo ya preparado.
+      </p>
 
       <div id="bloque-obligatorios-produccion" style="display:none; margin-top:24px">
         <h3>Insumos obligatorios de cocina</h3>
@@ -88,8 +92,8 @@
     <div class="card">
       <h2>Producción de hoy</h2>
       <table>
-        <thead><tr><th>Ítem</th><th>Sede</th><th>Cantidad</th><th>Unidad</th><th>Registrado por</th></tr></thead>
-        <tbody id="tabla-historial"><tr><td colspan="5" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Ítem</th><th>Sede</th><th>Cantidad</th><th>Unidad</th><th>Registrado por</th><th>Detalle de lote</th></tr></thead>
+        <tbody id="tabla-historial"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
   </main>
@@ -145,13 +149,57 @@ function pintarObligatoriosProduccion_(catalogo) {
 
 function nuevaFila(item = '', unidad = 'g', cantidad = '') {
   const tr = document.createElement('tr');
+  tr.className = 'fila-produccion';
   tr.innerHTML = `
     <td><input type="text" class="in-item" list="lista-productos" value="${escapeHtml(item)}" placeholder="ej. Costilla Preparada"></td>
     <td><input type="text" class="in-unidad" list="lista-unidades" value="${escapeHtml(unidad)}" style="width:70px"></td>
     <td><input type="number" step="0.01" class="in-cantidad" value="${cantidad}"></td>
-    <td><button class="btn fantasma btn-quitar" type="button">Quitar</button></td>`;
-  tr.querySelector('.btn-quitar').addEventListener('click', () => tr.remove());
+    <td>
+      <button class="btn fantasma btn-detalle" type="button" style="font-size:.75rem">+ Detalle de lote</button>
+      <button class="btn fantasma btn-quitar" type="button">Quitar</button>
+    </td>`;
+
+  // Fila de detalle: oculta por defecto — nada de esto es obligatorio, es la excepción, no la regla
+  // (la mayoría de producciones solo declara el producto terminado, como siempre).
+  const trDetalle = document.createElement('tr');
+  trDetalle.className = 'fila-detalle-produccion';
+  trDetalle.style.display = 'none';
+  trDetalle.innerHTML = `
+    <td colspan="4" style="background:var(--bg-suave, #f7f7f7)">
+      <div class="grid grid-3" style="gap:10px">
+        <div class="campo">
+          <label>Insumo crudo consumido</label>
+          <input type="text" class="in-insumo-producto" list="lista-productos" placeholder="ej. Costilla cruda">
+        </div>
+        <div class="campo">
+          <label>Cantidad de insumo</label>
+          <input type="number" step="0.01" class="in-insumo-cantidad" placeholder="ej. 25">
+        </div>
+        <div class="campo">
+          <label>Unidad de insumo</label>
+          <input type="text" class="in-insumo-unidad" list="lista-unidades" style="width:70px">
+        </div>
+        <div class="campo">
+          <label>Merma de proceso</label>
+          <input type="number" step="0.01" class="in-merma-cantidad" placeholder="ej. 6.8">
+        </div>
+        <div class="campo">
+          <label>Rendimiento (%)</label>
+          <input type="number" step="0.01" class="in-rendimiento" placeholder="opcional">
+        </div>
+        <div class="campo">
+          <label>Observación</label>
+          <input type="text" class="in-observacion" placeholder="opcional">
+        </div>
+      </div>
+    </td>`;
+
+  tr.querySelector('.btn-detalle').addEventListener('click', () => {
+    trDetalle.style.display = trDetalle.style.display === 'none' ? '' : 'none';
+  });
+  tr.querySelector('.btn-quitar').addEventListener('click', () => { tr.remove(); trDetalle.remove(); });
   document.getElementById('filas').appendChild(tr);
+  document.getElementById('filas').appendChild(trDetalle);
 }
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
@@ -162,13 +210,32 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
   const fecha = document.getElementById('fecha').value;
   const sede = document.getElementById('sede').value;
 
-  const items = Array.from(document.getElementById('filas').children)
-    .map(tr => ({
-      fecha, sede,
-      item: tr.querySelector('.in-item').value.trim(),
-      unidad: tr.querySelector('.in-unidad').value,
-      cantidad: parseFloat(tr.querySelector('.in-cantidad').value.replace(',', '.'))
-    }))
+  // El "Detalle de lote" (insumo/merma/rendimiento) es opcional y vive en la fila oculta que sigue
+  // a cada .fila-produccion (ver nuevaFila) — solo se manda si de verdad se llenó algo, para no
+  // guardar insumo_producto vacío por cada ítem que nunca abrió ese detalle.
+  const items = Array.from(document.getElementById('filas').getElementsByClassName('fila-produccion'))
+    .map(tr => {
+      const detalle = tr.nextElementSibling;
+      const item = {
+        fecha, sede,
+        item: tr.querySelector('.in-item').value.trim(),
+        unidad: tr.querySelector('.in-unidad').value,
+        cantidad: parseFloat(tr.querySelector('.in-cantidad').value.replace(',', '.'))
+      };
+      const insumoProducto = detalle.querySelector('.in-insumo-producto').value.trim();
+      if (insumoProducto) {
+        item.insumo_producto = insumoProducto;
+        item.insumo_cantidad = parseFloat(detalle.querySelector('.in-insumo-cantidad').value.replace(',', '.'));
+        item.insumo_unidad = detalle.querySelector('.in-insumo-unidad').value || item.unidad;
+      }
+      const mermaCantidad = detalle.querySelector('.in-merma-cantidad').value.trim();
+      if (mermaCantidad !== '') item.merma_cantidad = parseFloat(mermaCantidad.replace(',', '.'));
+      const rendimiento = detalle.querySelector('.in-rendimiento').value.trim();
+      if (rendimiento !== '') item.rendimiento_porcentaje = parseFloat(rendimiento.replace(',', '.'));
+      const observacion = detalle.querySelector('.in-observacion').value.trim();
+      if (observacion) item.observacion = observacion;
+      return item;
+    })
     .filter(it => it.item && !isNaN(it.cantidad));
 
   // Los insumos obligatorios de cocina (vinagre balsámico, salsa de soya, sal marina...) bloquean
@@ -222,11 +289,15 @@ async function cargarHistorial() {
   const fecha = document.getElementById('fecha').value;
   const data = await llamar('produccion_listar', { fecha });
   const body = document.getElementById('tabla-historial');
-  if (!data.ok) { body.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
-  if (!data.data.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">Sin producción registrada hoy.</td></tr>'; return; }
-  body.innerHTML = data.data.map(p => `
-    <tr><td>${escapeHtml(p.item)}</td><td>${escapeHtml(p.sede)}</td><td>${escapeHtml(p.cantidad)}</td><td>${escapeHtml(p.unidad)}</td><td>${escapeHtml(p.usuario)}</td></tr>
-  `).join('');
+  if (!data.ok) { body.innerHTML = `<tr><td colspan="6" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  if (!data.data.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">Sin producción registrada hoy.</td></tr>'; return; }
+  body.innerHTML = data.data.map(p => {
+    const detalle = p.insumo_producto
+      ? `${escapeHtml(p.insumo_cantidad)} ${escapeHtml(p.insumo_unidad)} de ${escapeHtml(p.insumo_producto)}` +
+        (p.merma_cantidad ? ` (merma: ${escapeHtml(p.merma_cantidad)} ${escapeHtml(p.merma_unidad || p.insumo_unidad)})` : '')
+      : '—';
+    return `<tr><td>${escapeHtml(p.item)}</td><td>${escapeHtml(p.sede)}</td><td>${escapeHtml(p.cantidad)}</td><td>${escapeHtml(p.unidad)}</td><td>${escapeHtml(p.usuario)}</td><td>${detalle}</td></tr>`;
+  }).join('');
 }
 
 cargarHistorial();

@@ -32,7 +32,8 @@ const SHEET_NAMES = {
   GESTIONES: 'Gestiones',
   AUDITORIA: 'Auditoria_Eventos',
   STOCK_FUDO_BASE: 'Stock_FUDO_Base',
-  CATALOGO_ALIAS: 'Catalogo_Alias'
+  CATALOGO_ALIAS: 'Catalogo_Alias',
+  FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes'
 };
 
 function ss_() {
@@ -67,7 +68,9 @@ function configurarHojas() {
     Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por',
       'sede', 'formato_origen', 'archivo_origen', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
-    Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id'],
+    Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
+      'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
+      'rendimiento_porcentaje', 'receta_referencia', 'hora_inicio', 'hora_fin', 'observacion', 'evidencia_url'],
     AlertasEnviadas: ['fecha', 'plato'],
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
@@ -75,22 +78,38 @@ function configurarHojas() {
     Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
       'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado'],
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
-    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp'],
+    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
+      'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones'],
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
       'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo'],
     Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en'],
-    Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp']
+    Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp'],
+    Fudo_Mapeo_Sedes: ['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
     let sh = spreadsheet.getSheetByName(name);
+    const esNueva = !sh;
     if (!sh) sh = spreadsheet.insertSheet(name);
     if (sh.getLastRow() === 0) {
       sh.getRange(1, 1, 1, spec[name].length).setValues([spec[name]]);
       sh.setFrozenRows(1);
       sh.getRange(1, 1, 1, spec[name].length).setFontWeight('bold').setBackground('#0B1F3A').setFontColor('#FFFFFF');
+      // Semilla de Fudo_Mapeo_Sedes: mismas salas ya hardcodeadas en sedeDesdeCreadaPor_ (Fudo.gs)
+      // para que, al crear la hoja por primera vez, el comportamiento no cambie — solo se vuelve
+      // editable desde la app en vez de requerir tocar código para agregar/corregir una sala.
+      if (name === 'Fudo_Mapeo_Sedes' && esNueva) {
+        const ahoraSemilla = new Date();
+        const semillas = [
+          ['Salón SA', 'San Antonio'], ['Terraza SA', 'San Antonio'],
+          ['Terraza Capri', 'Capri'], ['La Waffleria - Capri', 'Capri']
+        ];
+        sh.getRange(2, 1, semillas.length, spec[name].length).setValues(semillas.map(function (s) {
+          return [Utilities.getUuid(), 'Sala', '', s[0], s[1], 'sistema', ahoraSemilla];
+        }));
+      }
     } else {
       asegurarColumnas_(sh, spec[name]);
     }
@@ -248,9 +267,12 @@ function handleRequest_(e, method) {
         // Mismo motivo: el filtro fino de "solo Caja (o Admin/Encargado) puede cerrar" vive dentro
         // de turnoCerrar_, no aquí — este solo exige que la sesión sea de un rol operativo válido.
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
+        return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario, params.datos_cierre));
       case 'turno_cierre_estado':
         return jsonOut_(turnoCierreEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'turno_resumen_cierre':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(turnoResumenCierre_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
@@ -296,6 +318,24 @@ function handleRequest_(e, method) {
       case 'stock_fudo_base_importar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(stockFudoBaseImportar_(params.filas, sesion.usuario));
+      case 'fudo_api_tomar_snapshot_stock':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiTomarSnapshotStock_(sesion.usuario));
+      case 'fudo_mapeo_sede_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });
+      case 'fudo_mapeo_sede_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoMapeoSedeGuardar_(params.item, sesion.usuario));
+      case 'fudo_mapeo_sede_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoMapeoSedeEliminar_(params.id));
+      case 'ventas_pendientes_sede_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: ventasPendientesSedeListar_() });
+      case 'ventas_pendientes_sede_asignar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ventasPendientesSedeAsignar_(params.creada_por, params.sede, sesion.usuario));
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':
@@ -306,6 +346,14 @@ function handleRequest_(e, method) {
       case 'conciliacion_historial_desfases':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_(conciliacionHistorialDesfases_(params.fecha_desde, params.fecha_hasta, sesion.usuario));
+      case 'ubicaciones_listar':
+        return jsonOut_({ ok: true, data: ubicacionesListar_(params.sede) });
+      case 'movimientos_inventario_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: movimientosInventarioListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'inventario_teorico_calcular':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));

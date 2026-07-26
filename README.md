@@ -88,6 +88,11 @@ El backend crea o actualiza estas hojas:
 - `Ajustes_Inventario`
 - `Turnos_Sector`
 - `Cierres_Turno`
+- `Fudo_Mapeo_Sedes`
+
+`Ubicaciones.gs` y `MovimientosInventario.gs` no crean hojas nuevas: leen `Ajustes_Inventario`,
+`Producciones`, `Traslados` y `Conteos_Manuales` (ya existentes) y las normalizan a un único
+formato de movimiento con signo (ver `docs/modelo-inventario.md`).
 
 ## Desarrollo
 

@@ -390,4 +390,76 @@ function ctxAutenticadoConDatos_(paginas) {
   console.log('fudoApiSincronizarVentas_ exige fecha_desde/fecha_hasta: OK');
 })();
 
+// --- fudoApiTomarSnapshotStock_ --------------------------------------------------------------------
+// Trae /products + /ingredients y los manda a stockFudoBaseImportar_ (StockFudoBase.gs) con el
+// mismo upsert que ya usaba la carga manual del Excel — no se crea una hoja/lógica paralela para
+// lo mismo (ver docs/modelo-inventario.md, sección "Cómo se usa el stock de Fudo").
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = (url) => {
+    if (url.indexOf('/products') !== -1) {
+      return respuesta_(200, { data: [{ id: '1', attributes: { name: 'Costilla Preparada', stock: 12.5 } }] });
+    }
+    if (url.indexOf('/ingredients') !== -1) {
+      return respuesta_(200, { data: [{ id: '2', attributes: { name: 'Costilla cruda', stock: 40 } }] });
+    }
+    return respuesta_(200, { data: [] });
+  };
+
+  let llamadaStockFudoBase = null;
+  const ctx = cargar('apps-script/FudoApi.gs', {
+    PropertiesService: fakePropertiesService,
+    UrlFetchApp: fakeUrlFetchApp,
+    Logger: fakeLogger,
+    stockFudoBaseImportar_: (filas, usuario) => {
+      llamadaStockFudoBase = { filas, usuario };
+      return { ok: true, actualizados: 0, creados: filas.length, sin_nombre: 0, sin_stock: 0 };
+    }
+  });
+
+  const resultado = ctx.fudoApiTomarSnapshotStock_({ nombre: 'Admin' });
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.creados, 2, 'debe pasar 1 producto + 1 ingrediente a stockFudoBaseImportar_');
+  assert.ok(llamadaStockFudoBase, 'debe delegar en stockFudoBaseImportar_, no reimplementar el upsert');
+  assert.equal(llamadaStockFudoBase.usuario.nombre, 'Admin');
+  const porTipo = {};
+  llamadaStockFudoBase.filas.forEach((f) => { porTipo[f.tipo] = f; });
+  assert.equal(porTipo['Producto'].nombre_fudo, 'Costilla Preparada');
+  assert.equal(porTipo['Producto'].stock, 12.5);
+  assert.equal(porTipo['Ingrediente'].nombre_fudo, 'Costilla cruda');
+  assert.equal(porTipo['Ingrediente'].stock, 40);
+  console.log('fudoApiTomarSnapshotStock_ arma filas de /products e /ingredients y delega en stockFudoBaseImportar_: OK');
+})();
+
+(function () {
+  // Sin ningún producto/ingrediente con nombre, no debe llamar a stockFudoBaseImportar_ con un
+  // arreglo vacío (evita una escritura sin sentido a Sheets).
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, { data: [] });
+
+  let seLlamo = false;
+  const ctx = cargar('apps-script/FudoApi.gs', {
+    PropertiesService: fakePropertiesService,
+    UrlFetchApp: fakeUrlFetchApp,
+    Logger: fakeLogger,
+    stockFudoBaseImportar_: () => { seLlamo = true; return { ok: true }; }
+  });
+  const resultado = ctx.fudoApiTomarSnapshotStock_({ nombre: 'Admin' });
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.creados, 0);
+  assert.equal(seLlamo, false, 'sin filas no debe llamar a stockFudoBaseImportar_');
+  console.log('fudoApiTomarSnapshotStock_ sin productos/ingredientes no llama a stockFudoBaseImportar_: OK');
+})();
+
 console.log('fudo-api: OK');

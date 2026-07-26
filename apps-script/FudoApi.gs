@@ -298,6 +298,40 @@ function fudoApiProbarConexionRecursoSeguro_(recurso, opciones) {
   }
 }
 
+/**
+ * Snapshot automático del stock consolidado de la cuenta (/products + /ingredients) hacia
+ * Stock_FUDO_Base, reutilizando el mismo UPSERT por nombre normalizado que ya usaba la carga
+ * manual del export Excel "Control de Stock" (ver stockFudoBaseImportar_ en StockFudoBase.gs) —
+ * no se crea una hoja/lógica paralela para lo mismo. Este stock sigue siendo una REFERENCIA
+ * SECUNDARIA (comparación contra el consolidado de Amelia, detectar productos nuevos o sin control
+ * de stock), nunca el inventario oficial por sede: ni /products ni /ingredients traen ninguna
+ * relación de sede/sucursal (confirmado contra la especificación OpenAPI oficial completa, ver
+ * apps-script/fudo-openapi.yml — modelo acordado jul 2026, ver docs/modelo-inventario.md).
+ * Acción admin desde la app: 'fudo_api_tomar_snapshot_stock'.
+ */
+function fudoApiTomarSnapshotStock_(usuario) {
+  const productos = fudoApiObtenerTodo_('products', { include: 'unit' });
+  const ingredientes = fudoApiObtenerTodo_('ingredients', { include: 'unit' });
+  const filas = [];
+  function agregar(lista, tipo) {
+    lista.forEach(function (item) {
+      const attrs = item.attributes || {};
+      if (!attrs.name) return;
+      filas.push({
+        nombre_fudo: attrs.name,
+        tipo: tipo,
+        stock: attrs.stock,
+        unidad: '',
+        fecha_base: ''
+      });
+    });
+  }
+  agregar(productos, 'Producto');
+  agregar(ingredientes, 'Ingrediente');
+  if (!filas.length) return { ok: true, actualizados: 0, creados: 0, sin_nombre: 0, sin_stock: 0 };
+  return stockFudoBaseImportar_(filas, usuario);
+}
+
 function fudoApiProbarConexion_() {
   const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: 'items.product,table,waiter,payments' });
   const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);
