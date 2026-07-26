@@ -46,15 +46,23 @@ async function llamar(action, params = {}) {
   const body = Object.assign({ action, token: Sesion.token() }, params);
   let res;
   try {
-    res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
   } catch (err) {
-    return { ok: false, error: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
+    return { ok: false, error: 'No se pudo conectar con el servidor. Revisa que API_URL en config.js termine en /exec y que abras la app con http(s), no como archivo local (file://).' };
   }
+  const texto = await res.text();
   let data;
   try {
-    data = await res.json();
+    data = JSON.parse(texto);
   } catch (err) {
-    // Ej. la sesión venció y Apps Script devolvió una página de login en vez del JSON esperado.
+    const syntax = texto.match(/SyntaxError:[^<]+/);
+    if (syntax) {
+      return { ok: false, error: 'Apps Script no arranca: ' + syntax[0].replace(/&#39;/g, "'") + '. En el editor, elimina el archivo viejo "FudoEstado", haz clasp push y crea una nueva implementación web.' };
+    }
     return { ok: false, error: 'El servidor respondió algo que no se pudo leer. Vuelve a intentarlo; si sigue igual, cierra sesión y entra de nuevo.' };
   }
   if (!data.ok && data.codigo === 'SESION_INVALIDA') {
