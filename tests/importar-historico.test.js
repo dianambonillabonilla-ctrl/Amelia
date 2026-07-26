@@ -43,6 +43,59 @@ function lockOcupadoMock_() {
 
 const usuario = { nombre: 'Diana', sede: 'Ambas' };
 
+function spreadsheetMock_(hojas) {
+  return {
+    getActiveSpreadsheet: () => ({
+      getSheetByName: (nombre) => {
+        const filas = hojas[nombre];
+        if (!filas) return null;
+        return { getDataRange: () => ({ getValues: () => filas }) };
+      }
+    })
+  };
+}
+
+// --- historicoLeerPestana_ ----------------------------------------------------------------------
+
+(function () {
+  const ctx = cargar({ contadorClaves_: contadorClavesMock_, normalizar_: normalizarMock_, formatearFecha_: formatearFechaMock_, LockService: lockLibreMock_(), SHEET_NAMES: {}, leerTabla_: () => [], SpreadsheetApp: spreadsheetMock_({}) });
+  assert.equal(ctx.historicoLeerPestana_('').ok, false, 'debe exigir un nombre de pestaña');
+  assert.equal(ctx.historicoLeerPestana_('No existe').ok, false, 'debe avisar si la pestaña no existe en el Sheet');
+  console.log('historicoLeerPestana_ valida nombre y existencia de la pestaña: OK');
+})();
+
+(function () {
+  const ctx = cargar({
+    contadorClaves_: contadorClavesMock_, normalizar_: normalizarMock_, formatearFecha_: formatearFechaMock_, LockService: lockLibreMock_(), SHEET_NAMES: {}, leerTabla_: () => [],
+    SpreadsheetApp: spreadsheetMock_({ 'Compras 2026': [['Fecha', 'Producto', 'Cantidad']] })
+  });
+  const resultado = ctx.historicoLeerPestana_('Compras 2026');
+  assert.equal(resultado.ok, false, 'una pestaña solo con encabezados (sin filas) debe avisar, no devolver vacío en silencio');
+  console.log('historicoLeerPestana_ avisa si la pestaña no tiene filas de datos: OK');
+})();
+
+(function () {
+  const filasCrudas = [
+    ['Fecha', 'Producto', '', 'Cantidad'],
+    ['2026-07-01', 'Costilla', 'sobra', 5],
+    ['', '', '', ''], // fila completamente vacía (común al final de una hoja pegada a mano) -> se descarta
+    ['2026-07-02', 'Aceite', '', 2]
+  ];
+  const ctx = cargar({
+    contadorClaves_: contadorClavesMock_, normalizar_: normalizarMock_, formatearFecha_: formatearFechaMock_, LockService: lockLibreMock_(), SHEET_NAMES: {}, leerTabla_: () => [],
+    SpreadsheetApp: spreadsheetMock_({ 'Compras 2026': filasCrudas })
+  });
+  const resultado = ctx.historicoLeerPestana_('Compras 2026');
+  assert.equal(resultado.ok, true);
+  assert.deepEqual(resultado.columnas, ['Fecha', 'Producto', 'Cantidad'], 'la columna con encabezado vacío no debe listarse');
+  assert.equal(resultado.filas.length, 2, 'la fila completamente vacía debe descartarse');
+  assert.equal(resultado.filas[0]['Fecha'], '2026-07-01');
+  assert.equal(resultado.filas[0]['Producto'], 'Costilla');
+  assert.equal(resultado.filas[0][''], undefined, 'el valor bajo la columna sin nombre no debe colarse en el objeto de la fila');
+  assert.equal(resultado.filas[1]['Producto'], 'Aceite');
+  console.log('historicoLeerPestana_ lee filas de una pestaña existente, ignora columnas sin nombre y filas vacías: OK');
+})();
+
 // --- historicoTiposListar_ ------------------------------------------------------------------------
 
 (function () {

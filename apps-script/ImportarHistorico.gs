@@ -100,6 +100,40 @@ function historicoTiposListar_() {
   });
 }
 
+/**
+ * Lee una pestaña que YA existe dentro de este mismo Google Sheet (ej. un Excel viejo que se pegó
+ * ahí antes de usar Dilana OS) y la devuelve como filas {columna: valor}, igual que si viniera de
+ * un archivo subido — así importar.html puede usar EXACTAMENTE el mismo mapeo de columnas/vista
+ * previa/confirmación para las dos fuentes, sin duplicar esa UI. No modifica ni borra la pestaña
+ * original: es de solo lectura, se puede volver a leer cuantas veces haga falta.
+ */
+function historicoLeerPestana_(nombrePestana) {
+  if (!nombrePestana || !String(nombrePestana).trim()) return { ok: false, error: 'Escribe el nombre exacto de la pestaña.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(String(nombrePestana).trim());
+  if (!sh) return { ok: false, error: 'No existe una pestaña llamada "' + nombrePestana + '" en este Sheet (revisa mayúsculas/espacios exactos del nombre).' };
+
+  const datos = sh.getDataRange().getValues();
+  if (datos.length < 2) return { ok: false, error: 'Esa pestaña está vacía o solo tiene encabezados, no hay filas para importar.' };
+
+  const encabezados = datos[0];
+  const columnas = encabezados.map(function (h) { return String(h || '').trim(); }).filter(function (h) { return h; });
+  if (!columnas.length) return { ok: false, error: 'La primera fila de esa pestaña no tiene ningún encabezado de columna con texto.' };
+
+  const filas = datos.slice(1)
+    // Descarta filas completamente vacías (comunes al final de una hoja pegada a mano).
+    .filter(function (fila) { return fila.some(function (v) { return v !== '' && v !== null; }); })
+    .map(function (fila) {
+      const obj = {};
+      encabezados.forEach(function (h, i) {
+        const nombre = String(h || '').trim();
+        if (nombre) obj[nombre] = fila[i];
+      });
+      return obj;
+    });
+
+  return { ok: true, columnas: columnas, filas: filas };
+}
+
 function historicoNormNum_(v) {
   const n = Number(v);
   return isNaN(n) ? '' : String(n);

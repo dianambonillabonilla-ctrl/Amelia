@@ -161,8 +161,25 @@
       </p>
       <div class="grid grid-3">
         <label>¿Qué vas a traer? <select id="historico-tipo"></select></label>
+        <label>¿De dónde viene?
+          <select id="historico-fuente">
+            <option value="archivo">Subir un archivo Excel/CSV</option>
+            <option value="pestana">Leer una pestaña que ya existe en este Sheet</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid grid-3" id="historico-fuente-archivo" style="margin-top:12px">
         <label>Archivo <input type="file" id="historico-input-archivo" accept=".xls,.xlsx,.csv"></label>
       </div>
+
+      <div class="grid grid-3" id="historico-fuente-pestana" style="display:none; margin-top:12px">
+        <label>Nombre exacto de la pestaña
+          <input type="text" id="historico-nombre-pestana" placeholder="ej. Compras 2026 (Excel viejo)">
+        </label>
+        <button class="btn" id="btn-historico-leer-pestana" style="align-self:end">Leer pestaña</button>
+      </div>
+      <p id="historico-fuente-pestana-error" style="display:none; color:var(--red); font-size:.85rem; margin-top:6px"></p>
 
       <div id="historico-mapeo" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid #E5E5E5">
         <h3 style="margin:0 0 8px">Columnas del archivo</h3>
@@ -534,6 +551,17 @@ async function historicoCargarTipos_() {
 }
 historicoCargarTipos_();
 
+// Fuente A o B: subir un archivo, o leer una pestaña que ya vive en este mismo Google Sheet (ej. un
+// Excel viejo que alguien pegó ahí antes de usar Dilana OS — no hace falta volver a exportarlo).
+// Las dos terminan llenando historicoFilasCrudas_ igual, así que comparten el mismo mapeo/vista
+// previa/confirmación de abajo.
+document.getElementById('historico-fuente').addEventListener('change', () => {
+  const esPestana = document.getElementById('historico-fuente').value === 'pestana';
+  document.getElementById('historico-fuente-archivo').style.display = esPestana ? 'none' : '';
+  document.getElementById('historico-fuente-pestana').style.display = esPestana ? '' : 'none';
+  document.getElementById('historico-fuente-pestana-error').style.display = 'none';
+});
+
 document.getElementById('historico-input-archivo').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -548,6 +576,20 @@ document.getElementById('historico-input-archivo').addEventListener('change', as
   }
   historicoRenderMapeo_();
 });
+
+document.getElementById('btn-historico-leer-pestana').addEventListener('click', conBotonProtegido(document.getElementById('btn-historico-leer-pestana'), async () => {
+  const nombrePestana = document.getElementById('historico-nombre-pestana').value.trim();
+  const errorEl = document.getElementById('historico-fuente-pestana-error');
+  errorEl.style.display = 'none';
+  if (!nombrePestana) { errorEl.textContent = 'Escribe el nombre exacto de la pestaña.'; errorEl.style.display = 'block'; return; }
+
+  const data = await llamar('historico_leer_pestana', { nombre_pestana: nombrePestana });
+  if (!data.ok) { errorEl.textContent = data.error; errorEl.style.display = 'block'; return; }
+
+  historicoFilasCrudas_ = data.filas;
+  document.getElementById('historico-preview').style.display = 'none';
+  historicoRenderMapeo_();
+}));
 
 // Adivina qué columna del archivo corresponde a cada campo del backend comparando por nombre
 // normalizado (sin tildes/mayúsculas) — exacto primero, luego "una contiene a la otra". Nunca es

@@ -374,6 +374,9 @@ function handleRequest_(e, method) {
       case 'historico_tipos_listar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: historicoTiposListar_() });
+      case 'historico_leer_pestana':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(historicoLeerPestana_(params.nombre_pestana));
       case 'historico_importar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(historicoImportarFilas_(params.tipo_destino, params.filas, sesion.usuario, params.opciones));

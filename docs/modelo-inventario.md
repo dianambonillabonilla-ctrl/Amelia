@@ -420,12 +420,19 @@ antes de usar Dilana OS, y (2) que la aplicación se sintiera con menos pantalla
   externo como en Fudo) usando el mismo `contadorClaves_` de `Fudo.gs`, así subir el mismo Excel dos
   veces no duplica filas. Acciones nuevas: `historico_tipos_listar` / `historico_importar` (solo
   Administrador, ver `Code.gs`).
-- **UI en `importar.html`** (sección "Datos históricos manuales (Excel)", NO una pestaña nueva) — sube
-  un `.xls`/`.xlsx`/`.csv` con `XLSX.js` (ya vendorizado, mismo que usa la importación de Fudo),
-  arma un mapeo de columnas con adivinado automático por nombre parecido, vista previa, y confirma en
-  lotes de 100 filas con barra de progreso — mismo patrón que la importación de Fudo, para que las
-  columnas reales del Excel del negocio (que casi nunca calzan con los nombres de campo del backend)
-  no bloqueen nada.
+- **Dos fuentes para las mismas filas** — `historicoLeerPestana_(nombrePestana)` (nuevo, acción
+  `historico_leer_pestana`) lee directo, de solo lectura, una pestaña que YA existe dentro del mismo
+  Google Sheet (caso real: el Excel viejo ya estaba pegado ahí antes de usar Dilana OS, no hacía
+  falta pedir que lo subieran de nuevo) — sin esto, la única fuente era subir un archivo desde el
+  navegador. Las dos fuentes alimentan el mismo `historicoFilasCrudas_` en `importar.html`, así que
+  comparten exactamente el mismo mapeo de columnas/vista previa/confirmación de abajo.
+- **UI en `importar.html`** (sección "Datos históricos manuales (Excel)", NO una pestaña nueva) — un
+  selector "¿De dónde viene?" alterna entre subir un `.xls`/`.xlsx`/`.csv` con `XLSX.js` (ya
+  vendorizado, mismo que usa la importación de Fudo) o escribir el nombre de una pestaña del Sheet.
+  Cualquiera de las dos arma un mapeo de columnas con adivinado automático por nombre parecido, vista
+  previa, y confirma en lotes de 100 filas con barra de progreso — mismo patrón que la importación de
+  Fudo, para que las columnas reales del Excel del negocio (que casi nunca calzan con los nombres de
+  campo del backend) no bloqueen nada.
 - **Consolidación de pantallas** — `historial.html` (nuevo) reemplaza `historial-conteos.html`,
   `historial-mermas.html`, `historial-producciones.html`, `historial-conciliacion.html` y
   `historial-cierres-turno.html` (eliminados): un selector de tipo muestra/oculta cada sección, cada
