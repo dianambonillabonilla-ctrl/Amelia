@@ -59,9 +59,11 @@ async function llamar(action, params = {}) {
   try {
     data = JSON.parse(texto);
   } catch (err) {
+    // Apps Script devuelve una página HTML cuando el proyecto no arranca (ej. const duplicado
+    // en FudoEstado.gs pegado dos veces en el editor). Mostrar el error real ayuda a diagnosticar.
     const syntax = texto.match(/SyntaxError:[^<]+/);
     if (syntax) {
-      return { ok: false, error: 'Apps Script no arranca: ' + syntax[0].replace(/&#39;/g, "'") + '. En el editor, elimina el archivo viejo "FudoEstado", haz clasp push y crea una nueva implementación web.' };
+      return { ok: false, error: 'El backend de Apps Script no arranca: ' + syntax[0].replace(/&#39;/g, "'") + '. Abre el editor de Apps Script, busca el archivo indicado y elimina código duplicado; luego Implementar > Nueva implementación.' };
     }
     return { ok: false, error: 'El servidor respondió algo que no se pudo leer. Vuelve a intentarlo; si sigue igual, cierra sesión y entra de nuevo.' };
   }
