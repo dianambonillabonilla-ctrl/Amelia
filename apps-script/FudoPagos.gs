@@ -71,6 +71,27 @@ function fudoPagosMigrarDesdeFlat_() {
   return fudoPagosEscribirDesdeFlat_(leerTabla_(SHEET_NAMES.PAGOS_FUDO));
 }
 
+/** Totales de pagos normalizados para una fecha/sede — usado en cierre de turno con fallback a plana. */
+function fudoPagosTotalesSedeFecha_(fecha, sede) {
+  let total = 0;
+  let efectivo = 0;
+  let cantidad = 0;
+  leerTabla_(SHEET_NAMES.FUDO_PAGOS).forEach(function (p) {
+    if (formatearFecha_(p.fecha || p.creacion) !== fecha || p.sede !== sede) return;
+    if (p.cancelado === true || normalizar_(p.cancelado) === 'si') return;
+    const monto = Number(p.monto) || 0;
+    total += monto;
+    cantidad++;
+    if (p.es_efectivo === true) efectivo += monto;
+  });
+  return {
+    pagos_fudo_total: total,
+    pagos_efectivo_esperado: efectivo,
+    pagos_fudo_cantidad: cantidad,
+    registros: cantidad
+  };
+}
+
 function fudoPagosEstado_() {
   const norm = leerTabla_(SHEET_NAMES.FUDO_PAGOS);
   let efectivo = 0;
