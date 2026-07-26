@@ -2202,7 +2202,10 @@ function cargarTurnosCerrar_(conteosHoy) {
     indiceCatalogo_: indiceCatalogoVacioMock_,
     claveProducto_: claveProductoMock_,
     pagosFudoTotalesSedeFecha_: () => ({ pagos_fudo_total: 0, pagos_efectivo_esperado: 0, pagos_fudo_cantidad: 0 }),
-    resumenDiferenciasInventarioFechaSede_: () => ({ ok: true, productos_contados: 3, productos_con_diferencia: 1, diferencias: [] })
+    resumenDiferenciasInventarioFechaSede_: () => ({
+      ok: true, productos_contados: 3, productos_con_diferencia: 1,
+      diferencias: [{ producto: 'Sal Marina', contado: 5, teorico: 4, diferencia: 1, unidad: 'kg' }]
+    })
   });
 }
 
