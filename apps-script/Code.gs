@@ -32,7 +32,8 @@ const SHEET_NAMES = {
   GESTIONES: 'Gestiones',
   AUDITORIA: 'Auditoria_Eventos',
   STOCK_FUDO_BASE: 'Stock_FUDO_Base',
-  CATALOGO_ALIAS: 'Catalogo_Alias'
+  CATALOGO_ALIAS: 'Catalogo_Alias',
+  FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes'
 };
 
 function ss_() {
@@ -81,16 +82,31 @@ function configurarHojas() {
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
       'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo'],
     Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en'],
-    Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp']
+    Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp'],
+    Fudo_Mapeo_Sedes: ['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
     let sh = spreadsheet.getSheetByName(name);
+    const esNueva = !sh;
     if (!sh) sh = spreadsheet.insertSheet(name);
     if (sh.getLastRow() === 0) {
       sh.getRange(1, 1, 1, spec[name].length).setValues([spec[name]]);
       sh.setFrozenRows(1);
       sh.getRange(1, 1, 1, spec[name].length).setFontWeight('bold').setBackground('#0B1F3A').setFontColor('#FFFFFF');
+      // Semilla de Fudo_Mapeo_Sedes: mismas salas ya hardcodeadas en sedeDesdeCreadaPor_ (Fudo.gs)
+      // para que, al crear la hoja por primera vez, el comportamiento no cambie — solo se vuelve
+      // editable desde la app en vez de requerir tocar código para agregar/corregir una sala.
+      if (name === 'Fudo_Mapeo_Sedes' && esNueva) {
+        const ahoraSemilla = new Date();
+        const semillas = [
+          ['Salón SA', 'San Antonio'], ['Terraza SA', 'San Antonio'],
+          ['Terraza Capri', 'Capri'], ['La Waffleria - Capri', 'Capri']
+        ];
+        sh.getRange(2, 1, semillas.length, spec[name].length).setValues(semillas.map(function (s) {
+          return [Utilities.getUuid(), 'Sala', '', s[0], s[1], 'sistema', ahoraSemilla];
+        }));
+      }
     } else {
       asegurarColumnas_(sh, spec[name]);
     }
@@ -296,6 +312,18 @@ function handleRequest_(e, method) {
       case 'stock_fudo_base_importar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(stockFudoBaseImportar_(params.filas, sesion.usuario));
+      case 'fudo_api_tomar_snapshot_stock':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiTomarSnapshotStock_(sesion.usuario));
+      case 'fudo_mapeo_sede_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });
+      case 'fudo_mapeo_sede_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoMapeoSedeGuardar_(params.item, sesion.usuario));
+      case 'fudo_mapeo_sede_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoMapeoSedeEliminar_(params.id));
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':

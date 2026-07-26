@@ -88,6 +88,7 @@ El backend crea o actualiza estas hojas:
 - `Ajustes_Inventario`
 - `Turnos_Sector`
 - `Cierres_Turno`
+- `Fudo_Mapeo_Sedes`
 
 ## Desarrollo
 
