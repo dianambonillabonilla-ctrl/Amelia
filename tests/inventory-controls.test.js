@@ -2124,11 +2124,27 @@ assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO
     { fecha: '2026-07-21', sede: 'Capri' }, // otra sede
     { fecha: '2026-07-20', sede: 'San Antonio' } // otro día
   ];
+  const pagosFixture = [
+    { fecha: '2026-07-21', sede: 'San Antonio', monto: 50000, cancelado: false, metodo_tipo: 'CASH', metodo_pago: 'Efectivo' },
+    { fecha: '2026-07-21', sede: 'San Antonio', monto: 30000, cancelado: false, metodo_tipo: 'DEBIT-CARD', metodo_pago: 'Débito' },
+    { fecha: '2026-07-21', sede: 'San Antonio', monto: 9999, cancelado: true, metodo_tipo: 'CASH', metodo_pago: 'Efectivo' },
+    { fecha: '2026-07-21', sede: 'Capri', monto: 100000, cancelado: false, metodo_tipo: 'CASH', metodo_pago: 'Efectivo' }
+  ];
   const mod = cargar('apps-script/Turnos.gs', {
-    SHEET_NAMES: { VENTAS_FUDO: 'ventas', TRASLADOS: 'traslados', PRODUCCIONES: 'producciones' },
-    leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudoFixture : hoja === 'traslados' ? trasladosFixture : hoja === 'producciones' ? produccionesFixture : [],
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', PAGOS_FUDO: 'pagos', TRASLADOS: 'traslados', PRODUCCIONES: 'producciones' },
+    leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudoFixture : hoja === 'pagos' ? pagosFixture : hoja === 'traslados' ? trasladosFixture : hoja === 'producciones' ? produccionesFixture : [],
     formatearFecha_: (v) => String(v).slice(0, 10),
-    normalizar_: normalizarSimple_
+    normalizar_: normalizarSimple_,
+    pagosFudoTotalesSedeFecha_: (fecha, sede) => {
+      let total = 0; let efectivo = 0; let cantidad = 0;
+      pagosFixture.forEach(function (p) {
+        if (String(p.fecha).slice(0, 10) !== fecha || p.sede !== sede || p.cancelado) return;
+        total += Number(p.monto) || 0;
+        cantidad++;
+        if (normalizarSimple_(p.metodo_tipo) === 'cash') efectivo += Number(p.monto) || 0;
+      });
+      return { pagos_fudo_total: total, pagos_efectivo_esperado: efectivo, pagos_fudo_cantidad: cantidad };
+    }
   });
   const resumen = mod.turnoResumenCierre_('2026-07-21', 'San Antonio');
   assert.equal(resumen.ok, true);
@@ -2136,6 +2152,9 @@ assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO
   assert.equal(resumen.ventas_fudo_cantidad, 1);
   assert.equal(resumen.traslados_pendientes, 2, 'los dos traslados Enviado/Con observación que tocan San Antonio (origen o destino)');
   assert.equal(resumen.producciones_registradas, 2);
+  assert.equal(resumen.pagos_fudo_total, 80000, '50000 efectivo + 30000 débito de San Antonio, sin el cancelado ni Capri');
+  assert.equal(resumen.pagos_efectivo_esperado, 50000);
+  assert.equal(resumen.pagos_fudo_cantidad, 2);
   assert.equal(mod.turnoResumenCierre_('', 'San Antonio').ok, false, 'debe exigir fecha y sede');
   console.log('turnoResumenCierre_: OK');
 })();
@@ -2146,10 +2165,10 @@ const cierresGuardados = [];
 function cargarTurnosCerrar_(conteosHoy) {
   return cargar('apps-script/Turnos.gs', {
     SHEET_NAMES: { TURNOS_SECTOR: 'turnos', USUARIOS: 'usuarios', CATALOGO: 'catalogo', CIERRES_TURNO: 'cierres',
-      VENTAS_FUDO: 'ventas_fudo_cierre', TRASLADOS: 'traslados_cierre', PRODUCCIONES: 'producciones_cierre' },
+      VENTAS_FUDO: 'ventas_fudo_cierre', TRASLADOS: 'traslados_cierre', PRODUCCIONES: 'producciones_cierre', PAGOS_FUDO: 'pagos' },
     leerTabla_: (hoja) => hoja === 'usuarios' ? usuariosTurno : (hoja === 'turnos' ? turnosHoy
       : (hoja === 'cierres' ? cierresExistentes
-      : (['ventas_fudo_cierre', 'traslados_cierre', 'producciones_cierre'].indexOf(hoja) !== -1 ? [] : catalogoTurno))),
+      : (['ventas_fudo_cierre', 'traslados_cierre', 'producciones_cierre', 'pagos'].indexOf(hoja) !== -1 ? [] : catalogoTurno))),
     formatearFecha_: (v) => String(v).slice(0, 10),
     normalizar_: normalizarSimple_,
     frecuenciasObligatoriasDelDia_: () => ['Diario'],
@@ -2157,7 +2176,8 @@ function cargarTurnosCerrar_(conteosHoy) {
     appendRowFromObj_: (hoja, fila) => cierresGuardados.push(fila),
     Utilities: { getUuid: () => 'cierre-1' },
     indiceCatalogo_: indiceCatalogoVacioMock_,
-    claveProducto_: claveProductoMock_
+    claveProducto_: claveProductoMock_,
+    pagosFudoTotalesSedeFecha_: () => ({ pagos_fudo_total: 0, pagos_efectivo_esperado: 0, pagos_fudo_cantidad: 0 })
   });
 }
 
@@ -2190,6 +2210,7 @@ const cierreConDatos = cargarTurnosCerrar_([{ producto: 'Sal Marina' }]).turnoCe
 );
 assert.equal(cierreConDatos.ok, true);
 assert.equal(cierresGuardados[cierresGuardados.length - 1].efectivo_contado, 150000);
+assert.equal(cierresGuardados[cierresGuardados.length - 1].diferencia_caja, 150000, 'sin pagos en fixture, diferencia = efectivo contado');
 assert.equal(cierresGuardados[cierresGuardados.length - 1].observaciones, 'Faltó una boleta de la caja chica');
 cierresGuardados.pop(); // deja cierresGuardados como estaba tras cierreOk, para no romper los conteos de abajo
 

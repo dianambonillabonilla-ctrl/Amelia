@@ -425,6 +425,63 @@ function fudoApiTomarSnapshotStock_(usuario) {
   return stockFudoBaseImportar_(filas, usuario);
 }
 
+const FUDO_API_PAYMENTS_INCLUDE_ = 'paymentMethod';
+
+/**
+ * Un pago de FUDO (con paymentMethod incluido) → fila para Pagos_FUDO. La sede se toma del índice
+ * id_venta → sede armado desde Ventas_FUDO (sincronizar ventas antes en el mismo rango ayuda).
+ */
+function fudoApiFilaPagoDesdePayment_(payment, incluidos, sedePorVenta) {
+  const attrs = payment.attributes || {};
+  const salePtr = payment.relationships && payment.relationships.sale && payment.relationships.sale.data;
+  const idVenta = salePtr ? String(salePtr.id) : '';
+  const pmPtr = payment.relationships && payment.relationships.paymentMethod && payment.relationships.paymentMethod.data;
+  const pm = pmPtr ? incluidos[pmPtr.type + ':' + pmPtr.id] : null;
+  const creacion = attrs.paidAt || attrs.createdAt;
+  return {
+    id_pago: String(payment.id),
+    id_venta: idVenta,
+    fecha: creacion ? formatearFecha_(new Date(creacion)) : '',
+    creacion: creacion ? new Date(creacion) : '',
+    monto: attrs.amount,
+    cancelado: !!attrs.canceled,
+    metodo_pago: fudoApiNombreIncluido_(pm),
+    metodo_tipo: pm && pm.attributes && pm.attributes.kind ? pm.attributes.kind : '',
+    sede: (idVenta && sedePorVenta[idVenta]) || FUDO_SEDE_SIN_IDENTIFICAR_
+  };
+}
+
+/**
+ * Sincroniza pagos no cancelados de ventas cerradas hacia Pagos_FUDO para un rango de fechas.
+ * Acción admin: 'fudo_api_sincronizar_pagos' (ver Code.gs, importar.html).
+ */
+function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
+  opciones = opciones || {};
+  if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
+
+  const sedePorVenta = pagosFudoIndiceSedePorVenta_();
+  const resultado = fudoApiObtenerTodoCompleto_('payments', {
+    filtros: {
+      createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
+      canceled: 'neq.true',
+      'sales.saleState': 'in.(CLOSED)'
+    },
+    include: FUDO_API_PAYMENTS_INCLUDE_
+  });
+
+  const filas = resultado.registros.map(function (payment) {
+    return fudoApiFilaPagoDesdePayment_(payment, resultado.incluidos, sedePorVenta);
+  });
+
+  if (!filas.length) {
+    return { ok: true, importados: 0, actualizados: 0, omitidos: 0, tipo: 'pagos', pagos_encontrados: 0 };
+  }
+
+  return pagosFudoImportar_(filas, usuario, Object.assign({
+    archivo: 'API FUDO pagos ' + fechaDesde + ' a ' + fechaHasta
+  }, opciones));
+}
+
 function fudoApiProbarConexion_() {
   const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: FUDO_API_SALES_INCLUDE_ });
   const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);

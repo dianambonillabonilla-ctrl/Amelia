@@ -48,16 +48,17 @@
       <pre id="resultado-fudo-api" style="display:none; margin-top:12px; max-height:320px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
 
       <div style="margin-top:16px; padding-top:16px; border-top:1px solid #E5E5E5">
-        <h3 style="margin:0 0 8px">Sincronizar ventas directo desde la API</h3>
+        <h3 style="margin:0 0 8px">Sincronizar ventas y pagos desde la API</h3>
         <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-          Reemplaza la subida manual del reporte de ventas para un rango de fechas. Usa rangos cortos
-          (un día o pocos días) — rangos muy grandes pueden tardar demasiado y fallar por el límite de
-          ejecución de Apps Script (6 minutos).
+          Reemplaza la subida manual del reporte de ventas para un rango de fechas. Sincroniza ventas
+          y luego pagos (conviene en ese orden: la sede de cada pago se infiere de la venta ya
+          importada). Usa rangos cortos (un día o pocos días) — rangos muy grandes pueden tardar
+          demasiado y fallar por el límite de ejecución de Apps Script (6 minutos).
         </p>
         <div class="grid grid-3">
           <label>Desde <input type="date" id="fudo-api-fecha-desde"></label>
           <label>Hasta <input type="date" id="fudo-api-fecha-hasta"></label>
-          <button class="btn dorado" id="btn-sincronizar-fudo-api" style="align-self:end">Sincronizar ventas</button>
+          <button class="btn dorado" id="btn-sincronizar-fudo-api" style="align-self:end">Sincronizar ventas y pagos</button>
         </div>
         <pre id="resultado-sincronizar-fudo-api" style="display:none; margin-top:12px; max-height:260px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
       </div>
@@ -182,11 +183,15 @@ document.getElementById('btn-sincronizar-fudo-api').addEventListener('click', co
   const pre = document.getElementById('resultado-sincronizar-fudo-api');
   pre.style.display = 'block';
   if (!fechaDesde || !fechaHasta) { pre.textContent = 'Elige fecha desde y hasta.'; return; }
-  pre.textContent = 'Sincronizando…';
+  pre.textContent = 'Sincronizando ventas…';
   try {
-    const data = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
-    pre.textContent = data.ok ? JSON.stringify(data, null, 2) : `Error: ${data.error}`;
-    if (data.ok) cargarVentasPendientesSede_();
+    const dataVentas = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+    pre.textContent = 'Sincronizando pagos…';
+    const dataPagos = await llamar('fudo_api_sincronizar_pagos', { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+    const data = { ventas: dataVentas, pagos: dataPagos };
+    pre.textContent = dataVentas.ok && dataPagos.ok ? JSON.stringify(data, null, 2)
+      : `Error: ${dataVentas.error || dataPagos.error || 'revisa el detalle'}`;
+    if (dataVentas.ok) cargarVentasPendientesSede_();
   } catch (err) {
     pre.textContent = `No se pudo sincronizar: ${err.message}`;
   }
