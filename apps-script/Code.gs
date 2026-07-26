@@ -334,6 +334,14 @@ function handleRequest_(e, method) {
       case 'conciliacion_historial_desfases':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_(conciliacionHistorialDesfases_(params.fecha_desde, params.fecha_hasta, sesion.usuario));
+      case 'ubicaciones_listar':
+        return jsonOut_({ ok: true, data: ubicacionesListar_(params.sede) });
+      case 'movimientos_inventario_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: movimientosInventarioListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'inventario_teorico_calcular':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));

@@ -282,14 +282,34 @@ los cálculos existentes):
 - Snapshot automático de `/products` y `/ingredients` vía API hacia `Stock_FUDO_Base` (reutilizando
   el upsert que ya existía para la carga manual por Excel) — ver `fudoApiTomarSnapshotStock_` en
   `FudoApi.gs`.
+- **Ubicaciones (sub-zonas por sede)** — `Ubicaciones.gs`: catálogo de los puntos de la sección 4
+  (Cocina/Barra/Almacén/Caja, etc.) por sede, para que la app pueda ofrecer un desplegable en vez de
+  texto libre en los campos `punto`/`punto_conteo`/`punto_origen`/`punto_destino` que ya existían en
+  Ajustes_Inventario/Conteos_Manuales/Traslados. No valida ni migra retroactivamente lo ya guardado.
+- **Libro de movimientos, como VISTA de solo lectura** — `MovimientosInventario.gs`:
+  `movimientosInventarioListar_(filtros)` normaliza Ajustes_Inventario, Producciones y Traslados a
+  un único formato con signo (`MOVIMIENTO_TIPOS_SIGNO_`), y `calcularInventarioTeorico_(producto,
+  sede, fechaCorte)` implementa la fórmula de la sección 5 (último conteo + movimientos
+  posteriores) como una sola función reusable. Es una vista calculada, no una tabla nueva: no migra
+  las hojas de origen ni cambia cómo Producción/Traslados/Ajustes escriben hoy. Tampoco incluye
+  todavía "Consumo por venta" (requiere explotar la receta vigente, ya resuelto en
+  `DisponibleHoy.gs`/`Conciliacion.gs` — se conecta ahí cuando se decida consolidar, no se
+  duplica). Y compara por FECHA, no por hora exacta como sí hace `DisponibleHoy.gs` para la
+  pantalla operativa — esa lógica más fina sigue siendo la que se usa en producción por ahora.
 
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
 
-- Tabla central `Movimientos_Inventario` unificando producción/traslados/compras/ajustes/conteos
-  (hoy siguen siendo hojas separadas que ya se concilian, pero no una tabla única).
-- Sub-ubicaciones por sede (Cocina/Barra/Almacén/Caja) — hoy solo existe la sede completa.
+- Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten `movimientosInventarioListar_`/
+  `calcularInventarioTeorico_` en vez de combinar las hojas por su cuenta — deliberadamente no se
+  hizo en esta pasada para no arriesgar su lógica ya probada (comparación por hora exacta,
+  proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón concreta.
+- Agregar "Consumo de producción"/"Merma de producción" reales: hoy `Producciones` solo registra el
+  producto TERMINADO (cantidad+unidad), no el insumo crudo que entró ni la merma de proceso de la
+  sección 6.B — para eso hace falta ampliar el formulario de producción, no solo el libro.
+  "Consumo por venta"/"Cancelación de venta" tampoco están en el libro todavía (ver punto anterior).
 - Refactor de `Ventas_FUDO` en `Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Pagos`/
   `Fudo_Descuentos`/`Fudo_Propinas`.
 - Ampliación de `Cierres_Turno` con los campos de sincronización/pagos/inventario del punto 6.F.
-- Pantallas nuevas (bandeja "Ventas pendientes de sede", panel Fudo con última sincronización).
+- Pantallas nuevas (bandeja "Ventas pendientes de sede", panel Fudo con última sincronización,
+  vista del libro de movimientos/inventario por ubicación).
