@@ -484,6 +484,15 @@ async function pintarPendientes_() {
           `Traslados pendientes: ${escapeHtml(dataCierre.traslados_pendientes || 0)}`,
           `Producciones registradas: ${escapeHtml(dataCierre.producciones_registradas || 0)}`
         ];
+        if (Number(dataCierre.descuentos_total) > 0) {
+          detalleCierre.push(`Descuentos: $${escapeHtml(Number(dataCierre.descuentos_total).toLocaleString('es-CO'))}`);
+        }
+        if (Number(dataCierre.propinas_total) > 0) {
+          detalleCierre.push(`Propinas: $${escapeHtml(Number(dataCierre.propinas_total).toLocaleString('es-CO'))}`);
+        }
+        if (dataCierre.fuente_ventas || dataCierre.fuente_pagos) {
+          detalleCierre.push(`Fuentes: ${escapeHtml(dataCierre.fuente_ventas || '—')} / ${escapeHtml(dataCierre.fuente_pagos || '—')}`);
+        }
         if (dataCierre.efectivo_contado !== '' && dataCierre.efectivo_contado !== undefined) {
           detalleCierre.push(`Efectivo contado: $${escapeHtml(Number(dataCierre.efectivo_contado).toLocaleString('es-CO'))}`);
         }
@@ -542,6 +551,12 @@ async function pintarPendientes_() {
             `Efectivo esperado (Fudo): $${escapeHtml(Number(resumen.pagos_efectivo_esperado || 0).toLocaleString('es-CO'))} · ` +
             `Traslados pendientes: ${escapeHtml(resumen.traslados_pendientes || 0)} · ` +
             `Producciones registradas: ${escapeHtml(resumen.producciones_registradas || 0)}` +
+            (Number(resumen.descuentos_total) > 0 ? ` · Descuentos: $${escapeHtml(Number(resumen.descuentos_total).toLocaleString('es-CO'))}` : '') +
+            (Number(resumen.propinas_total) > 0 ? ` · Propinas: $${escapeHtml(Number(resumen.propinas_total).toLocaleString('es-CO'))}` : '') +
+            (resumen.fuente_ventas ? ` · Ventas: ${escapeHtml(resumen.fuente_ventas)}` : '') +
+            (resumen.fuente_pagos ? ` · Pagos: ${escapeHtml(resumen.fuente_pagos)}` : '') +
+            (resumen.sync_ventas_en ? ` · Sync ventas: ${escapeHtml(new Date(resumen.sync_ventas_en).toLocaleString('es-CO'))}` : '') +
+            (resumen.sync_pagos_en ? ` · Sync pagos: ${escapeHtml(new Date(resumen.sync_pagos_en).toLocaleString('es-CO'))}` : '') +
             (resumen.inventario_contado ? ` · Productos contados: ${escapeHtml(resumen.inventario_contado)}` : '') +
             (resumen.diferencia_inventario ? ` · <span style="color:var(--red)">Con diferencia inventario: ${escapeHtml(resumen.diferencia_inventario)}</span> — <a href="libro-inventario.html">ver detalle</a>` : '') +
             (resumen.traslados_pendientes ? ` — revisa <a href="traslados.html">Traslados</a> antes de cerrar si corresponde` : '') +

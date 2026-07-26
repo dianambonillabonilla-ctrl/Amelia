@@ -153,6 +153,32 @@ function fudoDescuentosPropinasMigrarDesdeApi_(fechaDesde, fechaHasta) {
   });
 }
 
+/** Totales de descuentos y propinas no cancelados para una fecha/sede — usado en cierre de turno. */
+function fudoDescuentosPropinasTotalesSedeFecha_(fecha, sede) {
+  let descuentosTotal = 0;
+  let descuentosCantidad = 0;
+  let propinasTotal = 0;
+  let propinasCantidad = 0;
+  leerTabla_(SHEET_NAMES.FUDO_DESCUENTOS).forEach(function (d) {
+    if (formatearFecha_(d.creacion) !== fecha || d.sede !== sede) return;
+    if (d.cancelado === true || normalizar_(d.cancelado) === 'si') return;
+    descuentosTotal += Number(d.monto) || 0;
+    descuentosCantidad++;
+  });
+  leerTabla_(SHEET_NAMES.FUDO_PROPINAS).forEach(function (p) {
+    if (formatearFecha_(p.creacion) !== fecha || p.sede !== sede) return;
+    if (p.cancelado === true || normalizar_(p.cancelado) === 'si') return;
+    propinasTotal += Number(p.monto) || 0;
+    propinasCantidad++;
+  });
+  return {
+    descuentos_total: Number(descuentosTotal.toFixed(2)),
+    descuentos_cantidad: descuentosCantidad,
+    propinas_total: Number(propinasTotal.toFixed(2)),
+    propinas_cantidad: propinasCantidad
+  };
+}
+
 function fudoDescuentosPropinasEstado_() {
   const descuentos = leerTabla_(SHEET_NAMES.FUDO_DESCUENTOS);
   const propinas = leerTabla_(SHEET_NAMES.FUDO_PROPINAS);

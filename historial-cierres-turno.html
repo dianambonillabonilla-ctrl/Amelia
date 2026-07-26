@@ -143,6 +143,15 @@ function pintar(filas) {
         Productos contados: ${escapeHtml(f.inventario_contado ?? '—')} ·
         Con diferencia inventario: ${escapeHtml(f.diferencia_inventario ?? 0)}
       </p>
+      ${(Number(f.descuentos_total) > 0 || Number(f.propinas_total) > 0 || f.fuente_ventas || f.fuente_pagos)
+        ? `<p style="margin:6px 0 0; font-size:.85rem; color:var(--grey)">` +
+          (Number(f.descuentos_total) > 0 ? `Descuentos: ${formatoMoneda_(f.descuentos_total)} · ` : '') +
+          (Number(f.propinas_total) > 0 ? `Propinas: ${formatoMoneda_(f.propinas_total)} · ` : '') +
+          (f.fuente_ventas ? `Ventas desde ${escapeHtml(f.fuente_ventas)} · ` : '') +
+          (f.fuente_pagos ? `Pagos desde ${escapeHtml(f.fuente_pagos)} · ` : '') +
+          (f.sync_ventas_en ? `Sync ventas: ${escapeHtml(new Date(f.sync_ventas_en).toLocaleString('es-CO'))} · ` : '') +
+          (f.sync_pagos_en ? `Sync pagos: ${escapeHtml(new Date(f.sync_pagos_en).toLocaleString('es-CO'))}` : '') +
+          `</p>` : ''}
       ${f.observaciones ? `<p style="margin:6px 0 0; font-size:.85rem"><strong>Observaciones:</strong> ${escapeHtml(f.observaciones)}</p>` : ''}
       ${tablaDiffs}
     </div>`;

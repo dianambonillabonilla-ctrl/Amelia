@@ -21,8 +21,7 @@ function pagosFudoEsEfectivo_(pago) {
   return nombre.indexOf('efectivo') !== -1 || nombre === 'cash' || nombre.indexOf('cash') !== -1;
 }
 
-/** Totales de pagos Fudo no cancelados para una fecha/sede — usado en turnoResumenCierre_ (Turnos.gs). */
-function pagosFudoTotalesSedeFecha_(fecha, sede) {
+function pagosFudoTotalesPlanaSedeFecha_(fecha, sede) {
   let total = 0;
   let efectivo = 0;
   let cantidad = 0;
@@ -35,6 +34,24 @@ function pagosFudoTotalesSedeFecha_(fecha, sede) {
     if (pagosFudoEsEfectivo_(p)) efectivo += monto;
   });
   return { pagos_fudo_total: total, pagos_efectivo_esperado: efectivo, pagos_fudo_cantidad: cantidad };
+}
+
+/** Totales de pagos Fudo no cancelados para una fecha/sede — usado en turnoResumenCierre_ (Turnos.gs). */
+function pagosFudoTotalesSedeFecha_(fecha, sede) {
+  if (typeof fudoPagosTotalesSedeFecha_ === 'function') {
+    const norm = fudoPagosTotalesSedeFecha_(fecha, sede);
+    if (norm.registros > 0) {
+      return {
+        pagos_fudo_total: norm.pagos_fudo_total,
+        pagos_efectivo_esperado: norm.pagos_efectivo_esperado,
+        pagos_fudo_cantidad: norm.pagos_fudo_cantidad,
+        fuente: 'Fudo_Pagos'
+      };
+    }
+  }
+  const plana = pagosFudoTotalesPlanaSedeFecha_(fecha, sede);
+  plana.fuente = 'Pagos_FUDO';
+  return plana;
 }
 
 function clavePagoFudo_(p) {

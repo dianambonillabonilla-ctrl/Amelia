@@ -195,22 +195,56 @@ function turnoOportuno_(fecha, sede, usuario) {
  * algo antes de confirmar. Es de solo lectura (se puede pedir las veces que haga falta sin efecto
  * alguno); turnoCerrar_ vuelve a calcular lo mismo y lo guarda como snapshot al momento de cerrar.
  *
- * Incluye pagos sincronizados de Fudo (Pagos_FUDO) para comparar el efectivo esperado contra
- * `efectivo_contado` al cerrar, y un resumen de diferencias inventario (teórico vs. contado del día)
- * para los productos que sí tuvieron conteo en esa sede.
+ * Incluye pagos sincronizados de Fudo (Fudo_Pagos con fallback a Pagos_FUDO) para comparar el
+ * efectivo esperado contra `efectivo_contado` al cerrar, descuentos/propinas normalizados si existen,
+ * estado de la última sync de ventas/pagos, y un resumen de diferencias inventario (teórico vs.
+ * contado del día) para los productos que sí tuvieron conteo en esa sede.
  */
-function turnoResumenCierre_(fecha, sede) {
-  if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+function turnoSyncFudoResumen_() {
+  const ventas = typeof fudoApiSyncLeer_ === 'function' ? fudoApiSyncLeer_('ventas') : null;
+  const pagos = typeof fudoApiSyncLeer_ === 'function' ? fudoApiSyncLeer_('pagos') : null;
+  return {
+    sync_ventas_en: ventas && ventas.timestamp ? ventas.timestamp : '',
+    sync_ventas_ok: ventas ? ventas.ok !== false : '',
+    sync_pagos_en: pagos && pagos.timestamp ? pagos.timestamp : '',
+    sync_pagos_ok: pagos ? pagos.ok !== false : ''
+  };
+}
 
+function turnoVentasTotalesSedeFecha_(fecha, sede) {
+  if (typeof fudoVentasTotalesSedeFecha_ === 'function') {
+    const norm = fudoVentasTotalesSedeFecha_(fecha, sede);
+    if (norm.registros > 0) {
+      return {
+        ventas_fudo_total: norm.ventas_fudo_total,
+        ventas_fudo_cantidad: norm.ventas_fudo_cantidad,
+        fuente_ventas: 'Fudo_Ventas'
+      };
+    }
+  }
   const ventasDelDia = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
     return formatearFecha_(v.creacion) === fecha && v.sede === sede &&
       !(v.cancelada === true || normalizar_(v.cancelada) === 'si');
   });
-  const ventasFudoTotal = ventasDelDia.reduce(function (acc, v) {
+  const total = ventasDelDia.reduce(function (acc, v) {
     return acc + (Number(v.precio) || 0) * (Number(v.cantidad) || 0);
   }, 0);
+  return {
+    ventas_fudo_total: total,
+    ventas_fudo_cantidad: ventasDelDia.length,
+    fuente_ventas: 'Ventas_FUDO'
+  };
+}
 
+function turnoResumenCierre_(fecha, sede) {
+  if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+
+  const ventas = turnoVentasTotalesSedeFecha_(fecha, sede);
   const pagos = pagosFudoTotalesSedeFecha_(fecha, sede);
+  const extras = typeof fudoDescuentosPropinasTotalesSedeFecha_ === 'function'
+    ? fudoDescuentosPropinasTotalesSedeFecha_(fecha, sede)
+    : { descuentos_total: 0, descuentos_cantidad: 0, propinas_total: 0, propinas_cantidad: 0 };
+  const sync = turnoSyncFudoResumen_();
 
   const trasladosPendientes = leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
     return (t.sede_origen === sede || t.sede_destino === sede) &&
@@ -231,11 +265,21 @@ function turnoResumenCierre_(fecha, sede) {
 
   return {
     ok: true,
-    ventas_fudo_total: ventasFudoTotal,
-    ventas_fudo_cantidad: ventasDelDia.length,
+    ventas_fudo_total: ventas.ventas_fudo_total,
+    ventas_fudo_cantidad: ventas.ventas_fudo_cantidad,
+    fuente_ventas: ventas.fuente_ventas,
     pagos_fudo_total: pagos.pagos_fudo_total,
     pagos_efectivo_esperado: pagos.pagos_efectivo_esperado,
     pagos_fudo_cantidad: pagos.pagos_fudo_cantidad,
+    fuente_pagos: pagos.fuente || 'Pagos_FUDO',
+    descuentos_total: extras.descuentos_total,
+    descuentos_cantidad: extras.descuentos_cantidad,
+    propinas_total: extras.propinas_total,
+    propinas_cantidad: extras.propinas_cantidad,
+    sync_ventas_en: sync.sync_ventas_en,
+    sync_ventas_ok: sync.sync_ventas_ok,
+    sync_pagos_en: sync.sync_pagos_en,
+    sync_pagos_ok: sync.sync_pagos_ok,
     traslados_pendientes: trasladosPendientes,
     producciones_registradas: produccionesRegistradas,
     inventario_contado: inventario.productos_contados || 0,
@@ -309,6 +353,12 @@ function turnoCerrar_(fecha, sede, usuario, datosCierre) {
     producciones_registradas: resumen.producciones_registradas,
     pagos_fudo_total: resumen.pagos_fudo_total,
     pagos_efectivo_esperado: resumen.pagos_efectivo_esperado,
+    fuente_ventas: resumen.fuente_ventas || '',
+    fuente_pagos: resumen.fuente_pagos || '',
+    descuentos_total: resumen.descuentos_total || 0,
+    propinas_total: resumen.propinas_total || 0,
+    sync_ventas_en: resumen.sync_ventas_en || '',
+    sync_pagos_en: resumen.sync_pagos_en || '',
     diferencia_caja: diferenciaCaja,
     efectivo_contado: efectivoContado,
     inventario_contado: resumen.inventario_contado,
@@ -371,6 +421,12 @@ function turnoCierreEstado_(fecha, sede) {
     producciones_registradas: fila ? fila.producciones_registradas : '',
     pagos_fudo_total: fila ? fila.pagos_fudo_total : '',
     pagos_efectivo_esperado: fila ? fila.pagos_efectivo_esperado : '',
+    fuente_ventas: fila ? fila.fuente_ventas : '',
+    fuente_pagos: fila ? fila.fuente_pagos : '',
+    descuentos_total: fila ? fila.descuentos_total : '',
+    propinas_total: fila ? fila.propinas_total : '',
+    sync_ventas_en: fila ? fila.sync_ventas_en : '',
+    sync_pagos_en: fila ? fila.sync_pagos_en : '',
     diferencia_caja: fila ? fila.diferencia_caja : '',
     efectivo_contado: fila ? fila.efectivo_contado : '',
     inventario_contado: fila ? fila.inventario_contado : '',

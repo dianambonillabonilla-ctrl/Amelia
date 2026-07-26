@@ -116,6 +116,22 @@ function fudoVentasMigrarDesdeFlat_() {
   return fudoVentasEscribirDesdeFlat_(filas);
 }
 
+/** Totales de ventas agrupadas para una fecha/sede — usado en cierre de turno con fallback a plana. */
+function fudoVentasTotalesSedeFecha_(fecha, sede) {
+  let total = 0;
+  let cantidad = 0;
+  leerTabla_(SHEET_NAMES.FUDO_VENTAS).forEach(function (v) {
+    if (formatearFecha_(v.creacion) !== fecha || v.sede !== sede) return;
+    cantidad++;
+    total += Number(v.monto_total) || 0;
+  });
+  return {
+    ventas_fudo_total: Number(total.toFixed(2)),
+    ventas_fudo_cantidad: cantidad,
+    registros: cantidad
+  };
+}
+
 function fudoVentasEstado_() {
   return {
     flat_lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).length,
