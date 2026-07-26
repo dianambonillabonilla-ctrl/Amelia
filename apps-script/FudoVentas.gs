@@ -5,10 +5,20 @@
  * estas tablas preparan la migración sin romper nada existente.
  */
 
+/**
+ * Cantidad de ocurrencias ya guardadas por clave_item.
+ *
+ * Una venta de FUDO puede traer el mismo producto varias veces como ítems distintos (por ejemplo,
+ * tres Combo Libra agregados por separado). La clave de negocio es igual para los tres, así que un
+ * índice booleano descartaba el segundo y el tercero. Contar ocurrencias permite conservarlos y, al
+ * mismo tiempo, seguir siendo idempotentes cuando se vuelve a migrar el mismo histórico.
+ */
 function fudoVentasIndiceItems_() {
   const indice = {};
   leerTabla_(SHEET_NAMES.FUDO_ITEMS).forEach(function (item) {
-    if (item.clave_item) indice[item.clave_item] = true;
+    const clave = String(item.clave_item || '');
+    if (!clave) return;
+    indice[clave] = (indice[clave] || 0) + 1;
   });
   return indice;
 }
@@ -41,7 +51,11 @@ function fudoVentasCabeceraDesdeItems_(idVenta, items) {
   items.forEach(function (it) {
     const cancelada = it.cancelada === true || ventaCancelada_(it);
     if (cancelada) canceladas++;
-    else montoTotal += (Number(it.cantidad) || 0) * (Number(it.precio) || 0);
+    // En la API/export detallado de FUDO, `precio` ya es el total de esa línea. `cantidad` describe
+    // cuántas unidades contiene la línea, pero volver a multiplicarla infla extras como "Aioli x2".
+    // Caso real 31359: 3×Combo (tres filas) + Aioli x2 ($6.000 línea) + Cebollita x2 ($6.000 línea)
+    // + domicilio $16.000 = $304.000, exactamente el pago reportado por FUDO.
+    else montoTotal += Number(it.precio) || 0;
   });
   return neutralizarObjetoFormulas_({
     id_venta: String(idVenta),
@@ -79,27 +93,38 @@ function fudoVentasRecalcularCabecera_(idVenta) {
 }
 
 /**
- * Escribe filas nuevas del formato plano (mismo objeto que Ventas_FUDO) en Fudo_Items/Fudo_Ventas.
- * Idempotente por clave_item — se puede re-ejecutar sobre el histórico sin duplicar ítems.
+ * Escribe filas del formato plano en Fudo_Items/Fudo_Ventas.
+ *
+ * Idempotencia por NÚMERO DE OCURRENCIA de clave_item: si el histórico plano tiene tres filas con la
+ * misma clave y Fudo_Items solo conserva una por el bug anterior, una migración crea las dos faltantes.
+ * Al repetir la migración, las tres ocurrencias ya existen y no se duplica ninguna.
  */
 function fudoVentasEscribirDesdeFlat_(filasFlat) {
   if (!filasFlat || !filasFlat.length) return { ok: true, items_creados: 0, ventas_actualizadas: 0, omitidos: 0 };
 
-  const itemsExistentes = fudoVentasIndiceItems_();
+  const ocurrenciasExistentes = fudoVentasIndiceItems_();
+  const ocurrenciasVistas = {};
   const itemsNuevos = [];
   const ventasTocadas = {};
   let omitidos = 0;
 
   filasFlat.forEach(function (fila) {
+    const idVenta = String(fila.id_venta || '');
+    if (idVenta) ventasTocadas[idVenta] = true;
+
     const clave = claveVenta_(fila);
-    if (itemsExistentes[clave]) { omitidos++; return; }
-    const item = fudoVentasFilaItem_(fila);
-    itemsExistentes[clave] = true;
-    itemsNuevos.push(item);
-    if (item.id_venta) ventasTocadas[item.id_venta] = true;
+    ocurrenciasVistas[clave] = (ocurrenciasVistas[clave] || 0) + 1;
+    if (ocurrenciasVistas[clave] <= (ocurrenciasExistentes[clave] || 0)) {
+      omitidos++;
+      return;
+    }
+
+    itemsNuevos.push(fudoVentasFilaItem_(fila));
   });
 
   if (itemsNuevos.length) appendRowsFromObjs_(SHEET_NAMES.FUDO_ITEMS, itemsNuevos);
+  // Se recalculan también ventas cuyas filas ya existían. Esto repara montos históricos calculados
+  // como cantidad × precio, incluso cuando no hacía falta insertar un ítem nuevo.
   Object.keys(ventasTocadas).forEach(function (idVenta) { fudoVentasRecalcularCabecera_(idVenta); });
 
   return {
@@ -110,7 +135,7 @@ function fudoVentasEscribirDesdeFlat_(filasFlat) {
   };
 }
 
-/** Migra todo Ventas_FUDO a las tablas normalizadas (idempotente). Solo Administrador vía API. */
+/** Migra todo Ventas_FUDO a las tablas normalizadas (idempotente y reparadora). Solo Administrador vía API. */
 function fudoVentasMigrarDesdeFlat_() {
   const filas = leerTabla_(SHEET_NAMES.VENTAS_FUDO);
   return fudoVentasEscribirDesdeFlat_(filas);
