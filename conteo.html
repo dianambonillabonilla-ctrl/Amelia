@@ -123,15 +123,9 @@ montarBarraUsuario();
 restringirSelectorSede_(document.getElementById('sede'));
 document.getElementById('fecha').value = fechaLocalHoy_();
 
-// Los puntos de conteo dependen de la sede elegida (cada sede tiene sus propias áreas).
-// PUNTOS_POR_SEDE vive en assets/config.js (compartido con traslados.html).
-function poblarPuntos_() {
-  const sede = document.getElementById('sede').value;
-  const select = document.getElementById('punto');
-  const anterior = select.value;
-  const opciones = PUNTOS_POR_SEDE[sede] || [];
-  select.innerHTML = opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
-  if (opciones.includes(anterior)) select.value = anterior;
+// Los puntos de conteo vienen del catálogo único del backend (Ubicaciones.gs).
+async function poblarPuntos_() {
+  await poblarSelectUbicaciones_(document.getElementById('punto'), document.getElementById('sede').value);
 }
 
 let catalogoCache_ = [];
@@ -321,11 +315,15 @@ async function mostrarEstadoTurnoInicio_() {
 mostrarEstadoTurnoInicio_();
 
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
-document.getElementById('sede').addEventListener('change', () => { poblarPuntos_(); cargarConteoAnterior_(); cargarAjustes_(); mostrarEstadoTurnoInicio_(); });
+document.getElementById('sede').addEventListener('change', async () => {
+  await poblarPuntos_();
+  cargarConteoAnterior_();
+  cargarAjustes_();
+  mostrarEstadoTurnoInicio_();
+});
 document.getElementById('fecha').addEventListener('change', () => { cargarConteoAnterior_(); cargarAjustes_(); mostrarEstadoTurnoInicio_(); });
 document.getElementById('punto').addEventListener('change', cargarConteoAnterior_);
-poblarPuntos_();
-cargarConteoAnterior_();
+poblarPuntos_().then(() => cargarConteoAnterior_());
 
 const btnGuardarConteo = document.getElementById('btn-guardar');
 btnGuardarConteo.addEventListener('click', conBotonProtegido(btnGuardarConteo, async () => {

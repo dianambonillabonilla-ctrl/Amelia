@@ -255,9 +255,10 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
   if (!items.length && !filasObligatorias.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
 
   // Los insumos obligatorios se registran como CONTEO (cuánto queda), no como producción — nada
-  // se "produce" del vinagre balsámico. El punto de conteo usa el primero de PUNTOS_POR_SEDE de
-  // la sede elegida (el más relacionado con cocina en cada sede); si prefieres otro punto, dilo.
-  const puntoConteo = (PUNTOS_POR_SEDE[sede] || [])[0] || 'Café';
+  // se "produce" del vinagre balsámico. El punto de conteo usa la ubicación predeterminada del
+  // catálogo único del backend (Cocina en sedes, Productos terminados en CP).
+  const ubicaciones = await ubicacionesPorSede_(sede);
+  const puntoConteo = ubicacionPredeterminada_(sede, ubicaciones);
   const itemsObligatorios = filasObligatorias.map(tr => ({
     fecha, sede, punto_conteo: puntoConteo,
     producto: tr.dataset.producto,

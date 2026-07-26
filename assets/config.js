@@ -108,12 +108,66 @@ function frecuenciasDelDia_(fechaStr) {
   return frecuencias;
 }
 
-// Puntos de conteo disponibles por sede — compartido entre conteo.html y traslados.html.
-const PUNTOS_POR_SEDE = {
-  'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],
-  'Capri': ['Cocina terraza', 'Nevera terraza', 'Neveras Primer piso', 'Cocina primer piso', 'Bodega segundo piso', 'Bodega Cocina'],
-  'Centro de Producción': ['General']
+// Catálogo único de ubicaciones por sede — viene del backend (Ubicaciones.gs vía ubicaciones_listar).
+// Antes cada pantalla tenía su propia lista fija en este archivo (PUNTOS_POR_SEDE) y no coincidía con
+// el catálogo del servidor; ahora conteos, traslados, producción e históricos leen la misma fuente.
+let ubicacionesCatalogo_ = null;
+
+const UBICACIONES_FALLBACK_ = {
+  'Centro de Producción': [
+    'Materia prima cruda', 'Productos en proceso', 'Productos terminados',
+    'Despachos pendientes', 'Mermas de producción'
+  ],
+  'San Antonio': ['Cocina', 'Barra o bebidas', 'Almacén', 'Terraza o servicio', 'Caja'],
+  'Capri': ['Cocina', 'Café y barra', 'Waflería', 'Almacén', 'Caja']
 };
+
+async function cargarUbicaciones_() {
+  if (ubicacionesCatalogo_) return ubicacionesCatalogo_;
+  const data = await llamar('ubicaciones_listar');
+  if (data.ok && data.data && typeof data.data === 'object') {
+    ubicacionesCatalogo_ = data.data;
+    return ubicacionesCatalogo_;
+  }
+  ubicacionesCatalogo_ = UBICACIONES_FALLBACK_;
+  return ubicacionesCatalogo_;
+}
+
+async function ubicacionesPorSede_(sede) {
+  const cat = await cargarUbicaciones_();
+  return cat[sede] || [];
+}
+
+async function ubicacionesTodasFlat_() {
+  const cat = await cargarUbicaciones_();
+  return Array.from(new Set(Object.values(cat).flat())).sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+function ubicacionPredeterminada_(sede, lista) {
+  const preferidas = {
+    'San Antonio': 'Cocina',
+    'Capri': 'Cocina',
+    'Centro de Producción': 'Productos terminados'
+  };
+  const pref = preferidas[sede];
+  if (pref && lista.includes(pref)) return pref;
+  return lista[0] || '';
+}
+
+async function poblarSelectUbicaciones_(select, sede, opciones) {
+  if (!select) return;
+  opciones = opciones || {};
+  const anterior = select.value;
+  const ubicaciones = opciones.todasLasSedes
+    ? await ubicacionesTodasFlat_()
+    : await ubicacionesPorSede_(sede);
+  const vacio = opciones.opcionVacia !== undefined
+    ? `<option value="">${escapeHtml(opciones.opcionVacia)}</option>`
+    : '';
+  select.innerHTML = vacio + ubicaciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
+  if (ubicaciones.includes(anterior)) select.value = anterior;
+  else if (opciones.seleccionarPrimera && ubicaciones.length) select.value = ubicaciones[0];
+}
 
 // Lista fija de sectores (compartida entre usuarios.html y catalogo.html) — pedido explícito: "que
 // se dejen seleccionar con selección múltiple nada de escribir y comas porque eso hace que si me
