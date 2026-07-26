@@ -90,4 +90,37 @@ const detContadoEnCero = ctx.cantidadDisponibleDetallada_('ajo preparado', {},
   { 'ajo preparado': { cantidad: 0, unidad: 'g' } }, {}, {}, {});
 assert.strictEqual(detContadoEnCero.sin_dato, false, 'Contado y en cero, sin_dato debe ser false');
 
+(function () {
+  const filas = [
+    { producto: 'Plato X', ingrediente: 'A', estado: 'borrador' },
+    { producto: 'Plato X', ingrediente: 'B', estado: 'borrador' },
+    { producto: 'Otro', ingrediente: 'C', estado: 'borrador' }
+  ];
+  const headers = ['id', 'producto', 'ingrediente', 'estado'];
+  const mod = (function () {
+    const localCtx = {
+      console,
+      SHEET_NAMES: { RECETAS: 'recetas' },
+      normalizar_: (s) => String(s || '').trim().toLowerCase(),
+      sheet_: () => ({
+        getDataRange: () => ({
+          getValues: () => [headers].concat(filas.map((f, i) => [String(i), f.producto, f.ingrediente, f.estado]))
+        }),
+        getRange: (fila, columna) => ({
+          setValue: (valor) => { filas[fila - 2].estado = valor; }
+        })
+      })
+    };
+    vm.createContext(localCtx);
+    vm.runInContext(fs.readFileSync('apps-script/Recetas.gs', 'utf8'), localCtx, { filename: 'apps-script/Recetas.gs' });
+    return localCtx;
+  })();
+  const res = mod.recetaAprobar_('Plato X', { nombre: 'Admin' });
+  assert.equal(res.ok, true);
+  assert.equal(res.actualizadas, 2);
+  assert.equal(filas.filter((f) => f.producto === 'Plato X' && f.estado === 'activo').length, 2);
+  assert.equal(filas.find((f) => f.producto === 'Otro').estado, 'borrador');
+  console.log('recetaAprobar_ borrador → activo: OK');
+})();
+
 console.log('recipe-engine: OK');

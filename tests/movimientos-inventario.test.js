@@ -322,6 +322,50 @@ function cargarMovimientosVentas_(fx) {
 })();
 
 (function () {
+  const fx = fixtures_();
+  fx.conteos = [];
+  fx.ajustes = [];
+  fx.producciones = [];
+  fx.traslados = [];
+  fx.ventas = [{ creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', cantidad: 4, cancelada: false }];
+  const mod = cargar('apps-script/MovimientosInventario.gs', Object.assign({}, {
+    SHEET_NAMES: { AJUSTES_INVENTARIO: 'ajustes', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados', CONTEOS: 'conteos', VENTAS_FUDO: 'ventas', RECETAS: 'recetas' },
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    claveProducto_: claveProductoMock_,
+    aUnidadBase_: aUnidadBaseMock_,
+    indiceCatalogo_: () => ({}),
+    leerTabla_: (hoja) => hoja === 'ajustes' ? fx.ajustes : hoja === 'producciones' ? fx.producciones : hoja === 'traslados' ? fx.traslados : hoja === 'ventas' ? fx.ventas : (fx.conteos || []),
+    ventaCancelada_: (v) => v.cancelada === true || normalizarSimple_(v.cancelada) === 'si',
+    recetasVigentes_: () => [],
+    construirRecetaMap_: () => ({}),
+    claveRecetaVenta_: (producto) => claveProductoMock_(producto),
+    explotarReceta_: () => {},
+    nombreCanonico_: (texto) => texto,
+    ventasFudoLineasParaConsumo_: (fecha, opciones) => {
+      let lineas = fx.ventas.filter((v) => String(v.creacion).slice(0, 10) === fecha);
+      if (opciones && opciones.sede) lineas = lineas.filter((v) => v.sede === opciones.sede);
+      return { lineas, fuente: 'mock' };
+    }
+  }));
+  const sinVentas = mod.calcularInventarioTeorico_('Poker', 'Capri', '2026-07-21', {}, {});
+  const conVentas = mod.calcularInventarioTeorico_('Poker', 'Capri', '2026-07-21', {}, { incluir_consumo_ventas: true });
+  assert.equal(sinVentas.cantidad, 0);
+  assert.equal(conVentas.cantidad, -4);
+  console.log('calcularInventarioTeorico_ incluir_consumo_ventas: OK');
+})();
+
+(function () {
+  const fx = fixtures_();
+  fx.ajustes.push({ id: 'a3', fecha: '2026-07-05', sede: 'Capri', punto: 'Cocina', tipo: 'Consumo interno', producto: 'Poker', unidad: 'u', cantidad: 2, usuario: 'Ana', avalado: false });
+  const mod = cargarMovimientos_(fx);
+  const mov = mod.movimientosInventarioListar_({}).find((m) => m.documento_relacionado === 'a3');
+  assert.equal(mov.tipo_movimiento, 'Consumo interno');
+  assert.equal(mov.cantidad, -2);
+  console.log('movimientosDesdeAjustes_ Consumo interno: OK');
+})();
+
+(function () {
   const conteos = [
     { fecha: '2026-07-10', sede: 'Capri', producto: 'Costilla', cantidad: 8, unidad: 'u' },
     { fecha: '2026-07-10', sede: 'Capri', producto: 'Aceite', cantidad: 2, unidad: 'u' }

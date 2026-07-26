@@ -56,11 +56,12 @@ function movimientosDesdeAjustes_() {
   const TIPO_A_MOVIMIENTO = {
     'Compra cruda': 'Compra recibida',
     'Merma / desperdicio': 'Merma en sede',
-    'Ajuste operativo': 'Ajuste autorizado'
+    'Ajuste operativo': 'Ajuste autorizado',
+    'Consumo interno': 'Consumo interno'
   };
   return leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO).map(function (a) {
     const tipoMovimiento = TIPO_A_MOVIMIENTO[a.tipo] || 'Ajuste autorizado';
-    const esSalida = tipoMovimiento === 'Merma en sede';
+    const esSalida = tipoMovimiento === 'Merma en sede' || tipoMovimiento === 'Consumo interno';
     return {
       fecha: formatearFecha_(a.fecha),
       producto: a.producto,
@@ -234,7 +235,8 @@ function movimientosInventarioListar_(filtros) {
  * Sin conteo previo, arranca en 0 y suma todos los movimientos hasta fechaCorte (mismo criterio ya
  * usado en DisponibleHoy.gs para un producto nunca contado).
  */
-function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional) {
+function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional, opciones) {
+  opciones = opciones || {};
   const indice = indiceOpcional || indiceCatalogo_();
   const clave = claveProducto_(producto, indice);
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS)
@@ -255,7 +257,8 @@ function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional) 
     fecha_hasta: fechaCorte,
     sede: sede,
     producto: producto,
-    indice: indice
+    indice: indice,
+    incluir_consumo_ventas: !!opciones.incluir_consumo_ventas
   }).filter(function (m) {
     // El día EXACTO del último conteo ya quedó representado por el conteo mismo — solo se suman
     // movimientos de días posteriores (ver limitación de "por fecha, no por hora" en el encabezado).
@@ -275,12 +278,12 @@ function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional) 
  * Inventario teórico de VARIOS productos en UNA sede a la fecha de corte — envoltorio batch de
  * calcularInventarioTeorico_ para Conciliación y otras vistas que ya tienen la lista de nombres.
  */
-function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional) {
+function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional, opciones) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   const indice = indiceOpcional || indiceCatalogo_();
   const lista = (productos || []).filter(function (p) { return p; });
   const filas = lista.map(function (producto) {
-    const teorico = calcularInventarioTeorico_(producto, sede, fecha, indice);
+    const teorico = calcularInventarioTeorico_(producto, sede, fecha, indice, opciones);
     return {
       producto: producto,
       cantidad: Number((Number(teorico.cantidad) || 0).toFixed(3)),
