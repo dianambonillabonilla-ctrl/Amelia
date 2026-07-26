@@ -385,9 +385,9 @@ function ctxAutenticadoConDatos_(paginas) {
     }
   };
   const filas = ctx.fudoApiFilasVentaDesdeSale_(sale, incluidos);
-  assert.deepEqual(referenciasRecibidas, { sala: null, identificador: 'Domicilios Capri', usuario: 'Ana Mesera' });
+  assert.deepEqual(referenciasRecibidas, { sala: '', caja: '', identificador: 'Domicilios Capri', usuario: 'Ana Mesera' });
   assert.equal(filas[0]['Sede'], 'Capri', 'debe usar la sede que devuelva fudoResolverSedeVenta_');
-  assert.equal(filas[0]['Creada por'], '', 'sin mesa, "Creada por" (sala) sigue vacío como siempre');
+  assert.equal(filas[0]['Creada por'], 'Domicilios Capri', 'sin mesa, usa identificador como mejor referencia');
   console.log('fudoApiFilasVentaDesdeSale_ extrae mesero/identificador de venta para fudoResolverSedeVenta_: OK');
 })();
 
@@ -418,13 +418,7 @@ function ctxAutenticadoConDatos_(paginas) {
     return { ok: true, importados: filas.length, omitidos_duplicados: 0, tipo: tipo };
   };
 
-  const ctx = cargar('apps-script/FudoApi.gs', {
-    PropertiesService: fakePropertiesService,
-    UrlFetchApp: fakeUrlFetchApp,
-    Logger: fakeLogger,
-    importarFudo_: importarFudoMock_,
-    fudoResolverSedeVenta_: fudoResolverSedeVentaMock_
-  });
+  const ctx = cargarFudoApi_({ importarFudo_: importarFudoMock_ });
 
   const usuario = { nombre: 'Admin' };
   const resultado = ctx.fudoApiSincronizarVentas_('2026-07-20', '2026-07-20', usuario, {});
@@ -441,7 +435,7 @@ function ctxAutenticadoConDatos_(paginas) {
   const url = llamadas[0].url;
   assert.ok(url.includes('filter[createdAt]=' + encodeURIComponent('and(gte.2026-07-20T00:00:00,lte.2026-07-20T23:59:59)')));
   assert.ok(url.includes('filter[saleState]=' + encodeURIComponent('in.(CLOSED)')));
-  assert.ok(url.includes('include=' + encodeURIComponent('items.product,table.room,waiter,saleIdentifier')), 'debe pedir waiter y saleIdentifier además de table.room, para tener más oportunidades de resolver la sede');
+  assert.ok(url.includes('include=' + encodeURIComponent('items.product,items.subitems.product,table.room,waiter,saleIdentifier,cashRegister,payments.paymentMethod')));
   console.log('fudoApiSincronizarVentas_ arma filtros y delega en importarFudo_: OK');
 })();
 
@@ -455,17 +449,7 @@ function ctxAutenticadoConDatos_(paginas) {
   fetchImpl = () => respuesta_(200, { data: [], included: [] });
 
   let seLlamoImportarFudo = false;
-  const ctx = cargar('apps-script/FudoApi.gs', {
-    PropertiesService: fakePropertiesService,
-    UrlFetchApp: fakeUrlFetchApp,
-    Logger: fakeLogger,
-    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
-    normalizar_: (s) => String(s || '').trim().toLowerCase(),
-    leerTabla_: () => [],
-    fudoResolverSedeVenta_: () => ({ sede: 'Sin identificar', resuelto_por: null }),
-    fudoMapeoSedeIndice_: () => ({}),
-    importarFudo_: () => { seLlamoImportarFudo = true; }
-  });
+  const ctx = cargarFudoApi_({ importarFudo_: () => { seLlamoImportarFudo = true; } });
 
   const resultado = ctx.fudoApiSincronizarVentas_('2026-07-20', '2026-07-20', { nombre: 'Admin' }, {});
   assert.equal(resultado.ok, true);

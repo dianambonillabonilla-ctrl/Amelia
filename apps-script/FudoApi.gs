@@ -276,16 +276,6 @@ function fudoApiFilasVentaDesdeSale_(sale, incluidos, indiceMapeoOpcional) {
   const creadaPor = fudoApiCreadaPorDesdeReferencias_(referencias);
   const itemsPtr = (sale.relationships && sale.relationships.items && sale.relationships.items.data) || [];
 
-  const waiterPtr = sale.relationships && sale.relationships.waiter && sale.relationships.waiter.data;
-  const waiter = waiterPtr ? incluidos[waiterPtr.type + ':' + waiterPtr.id] : null;
-  const saleIdentifierPtr = sale.relationships && sale.relationships.saleIdentifier && sale.relationships.saleIdentifier.data;
-  const saleIdentifier = saleIdentifierPtr ? incluidos[saleIdentifierPtr.type + ':' + saleIdentifierPtr.id] : null;
-  const sedeResuelta = fudoResolverSedeVenta_({
-    sala: creadaPor || null,
-    identificador: (saleIdentifier && saleIdentifier.attributes && saleIdentifier.attributes.name) || null,
-    usuario: (waiter && waiter.attributes && waiter.attributes.name) || null
-  }).sede;
-
   const filas = [];
   itemsPtr.forEach(function (ptr) {
     const item = incluidos[ptr.type + ':' + ptr.id];
@@ -303,7 +293,7 @@ function fudoApiFilasVentaDesdeSale_(sale, incluidos, indiceMapeoOpcional) {
       'Precio': item.attributes.price,
       'Cancelada': !!item.attributes.canceled,
       'Creada por': creadaPor,
-      'Sede': sedeResuelta
+      'Sede': sedeResuelta.sede
     });
   });
   return filas;
@@ -327,11 +317,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
       // saleState no acepta eq. — su patrón real (según la documentación) solo permite in.(...).
       saleState: 'in.(CLOSED)'
     },
-    // waiter y saleIdentifier se agregan para que fudoApiFilasVentaDesdeSale_ tenga más de una
-    // referencia con la que intentar resolver la sede (ver fudoResolverSedeVenta_ en
-    // FudoMapeoSedes.gs) — antes solo se pedía table.room, y una venta sin mesa (delivery/take
-    // away) no tenía ninguna otra oportunidad de identificarse.
-    include: 'items.product,table.room,waiter,saleIdentifier',
+    include: FUDO_API_SALES_INCLUDE_,
     orden: 'createdAt'
   });
 
@@ -401,11 +387,6 @@ function fudoApiTomarSnapshotStock_(usuario) {
   const productos = fudoApiObtenerTodoCompleto_('products', { include: 'unit' });
   const ingredientes = fudoApiObtenerTodoCompleto_('ingredients', { include: 'unit' });
   const filas = [];
-  function unidadDe_(item, incluidos) {
-    const unitPtr = item.relationships && item.relationships.unit && item.relationships.unit.data;
-    const unit = unitPtr ? incluidos[unitPtr.type + ':' + unitPtr.id] : null;
-    return (unit && unit.attributes && unit.attributes.name) || '';
-  }
   function agregar(resultado, tipo) {
     resultado.registros.forEach(function (item) {
       const attrs = item.attributes || {};
@@ -414,13 +395,13 @@ function fudoApiTomarSnapshotStock_(usuario) {
         nombre_fudo: attrs.name,
         tipo: tipo,
         stock: attrs.stock,
-        unidad: unidadDe_(item, resultado.incluidos),
+        unidad: fudoApiUnidadDesdeItem_(item, resultado.incluidos),
         fecha_base: ''
       });
     });
   }
-  agregar(productos.registros, 'Producto');
-  agregar(ingredientes.registros, 'Ingrediente');
+  agregar(productos, 'Producto');
+  agregar(ingredientes, 'Ingrediente');
   if (!filas.length) return { ok: true, actualizados: 0, creados: 0, sin_nombre: 0, sin_stock: 0 };
   return stockFudoBaseImportar_(filas, usuario);
 }
