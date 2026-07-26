@@ -6,6 +6,15 @@
  */
 
 function calcularTendenciaIngrediente_(ingrediente, dias, sede) {
+  // Solo lectura, y recalcula el stock completo una vez por cada día del rango: sin memoizar las
+  // hojas, un rango de 30 días leía las mismas tablas 30 veces enteras.
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () { return calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede); });
+  }
+  return calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede);
+}
+
+function calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede) {
   if (!ingrediente) return { error: 'Falta el ingrediente' };
   dias = Number(dias) || 30;
   const indice = indiceCatalogo_();
@@ -22,7 +31,7 @@ function calcularTendenciaIngrediente_(ingrediente, dias, sede) {
   // un usuario limitado a una sola sede podía ver la tendencia combinada, que revela por resta el
   // dato de la otra sede. Ahora respeta la misma sede que el resto de "Disponible Hoy".
   const stockPorFecha = fechas.map(function (fecha) {
-    const s = obtenerUltimoStockPorIngrediente_(fecha, indice, sede)[clave];
+    const s = obtenerUltimoStockPorIngrediente_(fecha, indice, sede, clave)[clave];
     return s ? s.cantidad : 0;
   });
 

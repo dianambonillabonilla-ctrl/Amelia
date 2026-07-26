@@ -49,6 +49,20 @@
       <span id="msg-error" style="margin-left:12px; color:var(--red); font-weight:600;"></span>
     </div>
 
+    <!-- Revisa la instalación misma (código desplegado, hojas, tiempos, FUDO), no los datos: es lo
+         primero que conviene mirar cuando una pantalla no abre o sale un error de hoja. -->
+    <div class="card">
+      <h2>Estado de la instalación</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Revisa si el código desplegado está al día, si existen todas las hojas del Sheet, cuánto tarda
+        de verdad "Disponible Hoy" en cada sede y cómo va la sincronización con FUDO. Empieza por aquí
+        si una pantalla no abre o sale un error de hoja inexistente.
+      </p>
+      <button class="btn fantasma" id="btn-verificar">Revisar instalación</button>
+      <span id="msg-verificar" style="margin-left:12px; font-weight:600;"></span>
+      <pre id="resultado-verificar" style="display:none; margin-top:14px; background:#0B1F3A; color:#E8EDF4; padding:14px; border-radius:8px; font-size:.78rem; line-height:1.5; overflow-x:auto; white-space:pre-wrap"></pre>
+    </div>
+
     <details class="card">
       <summary style="cursor:pointer; font-weight:700; color:var(--navy)">Mantenimiento avanzado de Recetas (uso puntual, no necesitas esto en el día a día)</summary>
       <div style="margin-top:14px; border-color:var(--gold)">
@@ -482,6 +496,23 @@ document.getElementById('tabla-catalogo-duplicados').addEventListener('click', a
 
 document.getElementById('btn-actualizar').addEventListener('click', correrDiagnostico);
 correrDiagnostico();
+
+const btnVerificar = document.getElementById('btn-verificar');
+btnVerificar.addEventListener('click', conBotonProtegido(btnVerificar, async () => {
+  const msg = document.getElementById('msg-verificar');
+  const salida = document.getElementById('resultado-verificar');
+  msg.textContent = 'Revisando…';
+  salida.style.display = 'none';
+  const data = await llamar('verificar_instalacion');
+  msg.textContent = '';
+  if (!data.ok) { alert(data.error); return; }
+  // Texto plano a propósito: es un informe para leer y poder copiar y pegar tal cual.
+  salida.textContent = data.informe;
+  salida.style.display = 'block';
+  const hayProblemas = data.informe.includes('PROBLEMA');
+  msg.style.color = hayProblemas ? 'var(--red)' : 'var(--green, #1f7a4d)';
+  msg.textContent = hayProblemas ? 'Se encontraron problemas — mira el informe.' : 'Todo en orden.';
+}));
 
 document.getElementById('btn-migrar-julio').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-julio'), async () => {
   if (!confirm('Esto va a archivar recetas viejas y cargar RECETAS_FINAL_DILANA_OS v3 en la hoja Recetas real. ¿Continuar?')) return;

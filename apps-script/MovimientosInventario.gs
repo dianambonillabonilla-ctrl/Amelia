@@ -198,10 +198,42 @@ function movimientosVentasCacheClave_(tipo, sede, fecha) {
 }
 
 /**
+ * Guarda `resultado` en el caché de consumo por venta (si hay caché) y lo devuelve, para poder
+ * memoizar también las respuestas vacías en una sola expresión de `return`.
+ */
+function movimientosVentasMemoizar_(cacheVentas, cacheClave, resultado) {
+  if (cacheVentas && cacheClave) cacheVentas[cacheClave] = resultado;
+  return resultado;
+}
+
+/**
+ * Días con ventas dentro de [fechaDesde, fechaHasta] (ambos inclusive) en una sede — reemplaza el
+ * recorrido día por día del calendario, que pedía las tablas de Fudo completas una vez por día
+ * aunque ese día no hubiera vendido nada. Sin FudoLectores.gs cargado (pruebas que usan este
+ * archivo suelto) cae al rango de calendario de siempre.
+ */
+function fechasConVentasParaRango_(sede, fechaDesde, fechaHasta, cache) {
+  const desde = fechaDesde || fechaHasta;
+  const hasta = fechaHasta || fechaDesde;
+  if (!desde || !hasta) return [];
+  if (typeof fudoFechasConVentas_ !== 'function') return fechasEnRangoMovimientos_(desde, hasta);
+  return fudoFechasConVentas_(sede, cache).filter(function (f) {
+    return f >= desde && f <= hasta;
+  });
+}
+
+/**
  * Libro completo, normalizado y filtrable — filtros = { fecha_desde, fecha_hasta, sede, producto,
  * punto, incluir_consumo_ventas, incluir_cancelaciones_ventas, indice (índice de Catalogo_Alias, opcional) }.
  */
 function movimientosInventarioListar_(filtros) {
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () { return movimientosInventarioListarSinCache_(filtros); });
+  }
+  return movimientosInventarioListarSinCache_(filtros);
+}
+
+function movimientosInventarioListarSinCache_(filtros) {
   filtros = filtros || {};
   const indice = filtros.indice || indiceCatalogo_();
   const cacheVentas = filtros.cache_ventas || {};
@@ -211,16 +243,12 @@ function movimientosInventarioListar_(filtros) {
     movimientosDesdeTraslados_()
   );
   if (filtros.incluir_consumo_ventas && filtros.sede && filtros.sede !== 'Ambas') {
-    const desde = filtros.fecha_desde || filtros.fecha_hasta;
-    const hasta = filtros.fecha_hasta || filtros.fecha_desde;
-    fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
+    fechasConVentasParaRango_(filtros.sede, filtros.fecha_desde, filtros.fecha_hasta, cacheVentas).forEach(function (fecha) {
       movimientos.push.apply(movimientos, movimientosDesdeVentas_(fecha, filtros.sede, indice, cacheVentas));
     });
   }
   if (filtros.incluir_cancelaciones_ventas && filtros.sede && filtros.sede !== 'Ambas') {
-    const desde = filtros.fecha_desde || filtros.fecha_hasta;
-    const hasta = filtros.fecha_hasta || filtros.fecha_desde;
-    fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
+    fechasConVentasParaRango_(filtros.sede, filtros.fecha_desde, filtros.fecha_hasta, cacheVentas).forEach(function (fecha) {
       movimientos.push.apply(movimientos, movimientosDesdeCancelaciones_(fecha, filtros.sede, indice, cacheVentas));
     });
   }
@@ -294,6 +322,15 @@ function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional, 
  * calcularInventarioTeorico_ para Conciliación y otras vistas que ya tienen la lista de nombres.
  */
 function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional, opciones) {
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () {
+      return inventarioTeoricoResumenSinCache_(fecha, sede, productos, indiceOpcional, opciones);
+    });
+  }
+  return inventarioTeoricoResumenSinCache_(fecha, sede, productos, indiceOpcional, opciones);
+}
+
+function inventarioTeoricoResumenSinCache_(fecha, sede, productos, indiceOpcional, opciones) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   const indice = indiceOpcional || indiceCatalogo_();
   const lista = (productos || []).filter(function (p) { return p; });
@@ -339,7 +376,10 @@ function movimientosDesdeVentas_(fecha, sede, indiceOpcional, cacheVentas) {
       : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
         return formatearFecha_(v.creacion) === fecha && v.sede === sede && !ventaCancelada_(v);
       }) }).lineas;
-  if (!ventasDelDia.length) return [];
+  // Un día sin ventas también se memoiza: si no, el caché no servía de nada justo en los días
+  // vacíos, que son la mayoría cuando se recorre un rango largo, y cada uno volvía a pedir las
+  // tablas de Fudo completas.
+  if (!ventasDelDia.length) return movimientosVentasMemoizar_(cacheVentas, cacheClave, []);
 
   const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
   const consumoEsperado = {};
@@ -392,7 +432,7 @@ function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional, cacheVentas
       : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
         return formatearFecha_(v.creacion) === fecha && v.sede === sede && ventaCancelada_(v);
       }) }).lineas;
-  if (!canceladas.length) return [];
+  if (!canceladas.length) return movimientosVentasMemoizar_(cacheVentas, cacheClave, []);
 
   const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
   const consumoEsperado = {};
@@ -475,6 +515,15 @@ function inventarioUbicacionResumen_(fechaDesde, fechaHasta, sede, punto, opcion
  * conteo ese día en esa sede (suma todos los puntos de conteo del mismo producto).
  */
 function resumenDiferenciasInventarioFechaSede_(fecha, sede, indiceOpcional) {
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () {
+      return resumenDiferenciasInventarioFechaSedeSinCache_(fecha, sede, indiceOpcional);
+    });
+  }
+  return resumenDiferenciasInventarioFechaSedeSinCache_(fecha, sede, indiceOpcional);
+}
+
+function resumenDiferenciasInventarioFechaSedeSinCache_(fecha, sede, indiceOpcional) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   const indice = indiceOpcional || indiceCatalogo_();
   const conteosDelDia = conteoListar_(fecha, sede);

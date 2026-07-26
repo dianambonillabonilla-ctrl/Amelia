@@ -138,6 +138,9 @@ let catalogoActual = [];
 let entradasStockActual = [];
 let disponibilidadRecetaActual = {};
 let verTodoStock = false;
+// La tendencia queda "pendiente" hasta que se abra la pestaña "Todo lo que tengo hoy" — ver
+// activarPestanaDisponible_.
+let tendenciaPendiente = true;
 const LIMITE_STOCK_INICIAL = 40;
 let fechaCorteActual = '';
 let sedeCorteActual = '';
@@ -147,24 +150,21 @@ async function cargar() {
   const sede = document.getElementById('sede-corte').value;
   fechaCorteActual = fecha;
   sedeCorteActual = sede;
-  const hoy = fechaLocalHoy_();
-  const sedeEspecifica = sede && sede !== 'Ambas';
 
-  // Antes esto se pedía en 4-5 tandas SEGUIDAS (cada una esperaba a que terminara la anterior:
-  // disponible_hoy/catalogo/gestiones, luego traslados, luego sector, luego faltantes+cierre,
-  // luego resumen) — y turno_sector_hoy/turno_cierre_estado encima se pedían dos veces cada uno
-  // (una en pintarEstadoTurno_, otra en pintarPendientes_). Cada llamada a Apps Script tiene un
-  // costo fijo de ida y vuelta aparte del cálculo mismo, así que 8-10 llamadas en cadena es lo que
-  // hacía que "Disponible Hoy" tardara 25-35 segundos en cargar. Pedir todo lo independiente de una
-  // sola vez no cambia ningún dato ni cálculo — solo cuántos viajes de red hay que esperar.
-  const [data, catalogoData, gestionesData, dataTraslados, dataSector, dataCierre, dataFaltantes] = await Promise.all([
+  // Todo lo que necesita esta pantalla se lanza junto, en una sola ida y vuelta: ninguna de estas
+  // consultas depende del resultado de otra, y cada `await` encadenado sería una espera completa
+  // más contra el Apps Script. turno_sector_hoy/turno_cierre_estado se piden UNA sola vez aquí
+  // (dentro de pendientesConsultas_) y se comparten entre el indicador de arriba (estado del
+  // turno) y el bloque de pendientes de abajo — antes cada uno pedía los suyos por separado.
+  const usuario = Sesion.usuario();
+  const consultasPendientes = usuario
+    ? pendientesConsultas_(usuario, fechaLocalHoy_(), sede)
+    : { sectoresPermitidos: [], puedeCerrarPorRol: false, pideCierre: false, promesas: {} };
+
+  const [data, catalogoData, gestionesData] = await Promise.all([
     llamar('disponible_hoy', { fecha, sede }),
     llamar('catalogo_listar'),
-    llamar('gestiones_listar', { filtro: { estado: 'abiertas', sede: sede === 'Ambas' ? undefined : sede } }),
-    llamar('traslados_listar', { filtro: { estado: 'Enviado' } }),
-    llamar('turno_sector_hoy', { fecha: hoy }),
-    sedeEspecifica ? llamar('turno_cierre_estado', { fecha: hoy, sede }) : Promise.resolve({ ok: false }),
-    sedeEspecifica ? llamar('turno_faltantes_por_sector', { fecha: hoy, sede }) : Promise.resolve({ ok: false })
+    llamar('gestiones_listar', { filtro: { estado: 'abiertas', sede: sede === 'Ambas' ? undefined : sede } })
   ]);
   if (!data.ok) { alert(data.error); return; }
 
@@ -174,8 +174,16 @@ async function cargar() {
   const nFrecuencia = pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
   const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede, gestionesAbiertas);
   const nPlatosBajos = pintarTilesPlatos_(data.data.platos);
-  pintarEstadoTurno_(sede, dataCierre, dataSector);
-  const nPendientes = await pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierre, dataFaltantes);
+  if (consultasPendientes.promesas.cierre) {
+    const [dataCierre, dataSector] = await Promise.all([
+      consultasPendientes.promesas.cierre,
+      consultasPendientes.promesas.sector || Promise.resolve({ ok: false })
+    ]);
+    pintarEstadoTurno_(sede, dataCierre, dataSector);
+  } else {
+    pintarEstadoTurno_(sede, { ok: false }, { ok: false });
+  }
+  const nPendientes = usuario ? await pintarPendientes_(consultasPendientes) : 0;
   actualizarResumenDia_({ pendientes: nPendientes, frecuencia: nFrecuencia, platosBajos: nPlatosBajos, insumos: nInsumos });
 
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
@@ -218,9 +226,15 @@ function actualizarResumenDia_(n) {
 function activarPestanaDisponible_(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('activo', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== tab; });
-  // Chart.js no se redibuja solo al salir de un contenedor oculto (display:none/[hidden]) — sin
-  // este resize queda con tamaño 0 si el gráfico ya se había dibujado antes de abrir esta pestaña.
-  if (tab === 'todo' && grafico) grafico.resize();
+  if (tab === 'todo') {
+    // La tendencia es la consulta más lenta de esta pantalla y su gráfico vive solo en esta
+    // pestaña, que no es la que se abre por defecto — se pide al entrar aquí por primera vez, no
+    // al cargar el dashboard, para no hacer esperar por algo que todavía no se está mirando.
+    if (tendenciaPendiente) { tendenciaPendiente = false; cargarTendencia(); }
+    // Chart.js no se redibuja solo al salir de un contenedor oculto (display:none/[hidden]) — sin
+    // este resize queda con tamaño 0 si el gráfico ya se había dibujado antes de abrir esta pestaña.
+    if (grafico) grafico.resize();
+  }
 }
 document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => activarPestanaDisponible_(b.dataset.tab)));
 
@@ -480,15 +494,70 @@ function pintarEstadoTurno_(sede, dataCierre, dataSector) {
  * Encargado/Administrador, qué sectores de la sede seleccionada arriba siguen con conteo
  * pendiente hoy, con el botón para cerrar el turno cuando ya no falte nada (ver Turnos.gs).
  */
-async function pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierre, dataFaltantes) {
+/**
+ * Todas las consultas que necesita el bloque de pendientes (y el indicador de estado de turno de
+ * arriba), pedidas de una sola vez. Antes se pedían en cadena (traslados, luego sector de hoy,
+ * luego faltantes+estado de cierre, luego resumen) y encima turno_sector_hoy/turno_cierre_estado
+ * se volvían a pedir aparte para el indicador de arriba — cada `await` encadenado, o cada consulta
+ * repetida, era otra ida y vuelta completa al Apps Script, la causa real de los 25-35 segundos que
+ * tardaba en cargar "Disponible Hoy".
+ *
+ * `sector`/`cierre` se piden si hace falta para CUALQUIERA de los dos usos (el indicador de arriba
+ * los necesita para toda la sede, no solo para quien puede cerrar turno); `faltantes`/`resumen`
+ * solo se piden para quien de verdad podría llegar a cerrar el turno (Administrador/Encargado, o
+ * quien tenga hoy el sector "Caja" — eso último solo se sabe tras la respuesta de `sector`, así que
+ * aquí se aproxima con "tiene Caja entre sus sectores habilitados", suficiente para decidir si vale
+ * la pena pedirlo de una vez; pintarPendientes_ vuelve a confirmarlo con el sector de hoy ya real).
+ */
+function pendientesConsultas_(usuario, hoy, sede) {
+  const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
+  const puedeCerrarPorRol = usuario.rol === 'Administrador' || usuario.rol === 'Encargado';
+  const podriaCerrarPorCaja = sectoresPermitidos.includes('Caja');
+  const sedeEspecifica = !!(sede && sede !== 'Ambas');
+  const pideCierre = (puedeCerrarPorRol || podriaCerrarPorCaja) && sedeEspecifica;
+  return {
+    sectoresPermitidos,
+    puedeCerrarPorRol,
+    pideCierre,
+    promesas: {
+      traslados: llamar('traslados_listar', { filtro: { estado: 'Enviado' } }),
+      sector: (sectoresPermitidos.length || sedeEspecifica) ? llamar('turno_sector_hoy', { fecha: hoy }) : null,
+      cierre: sedeEspecifica ? llamar('turno_cierre_estado', { fecha: hoy, sede }) : null,
+      faltantes: pideCierre ? llamar('turno_faltantes_por_sector', { fecha: hoy, sede }) : null,
+      // Se pide junto con las demás en vez de esperar a saber si falta algún conteo: en el caso
+      // normal (no falta nada) hace falta igual, y así no cuesta otra ida y vuelta.
+      resumen: pideCierre ? llamar('turno_resumen_cierre', { fecha: hoy, sede }) : null
+    }
+  };
+}
+
+/** Vuelve a pedir y pintar el indicador de estado de turno y el bloque de pendientes — tras cerrar turno, por ejemplo. */
+async function refrescarPendientes_() {
+  const usuario = Sesion.usuario();
+  if (!usuario) return 0;
+  const sede = document.getElementById('sede-corte').value;
+  const consultas = pendientesConsultas_(usuario, fechaLocalHoy_(), sede);
+  if (consultas.promesas.cierre) {
+    const [dataCierre, dataSector] = await Promise.all([
+      consultas.promesas.cierre,
+      consultas.promesas.sector || Promise.resolve({ ok: false })
+    ]);
+    pintarEstadoTurno_(sede, dataCierre, dataSector);
+  }
+  return pintarPendientes_(consultas);
+}
+
+async function pintarPendientes_(consultas) {
   const card = document.getElementById('card-pendientes');
   const cont = document.getElementById('pendientes-contenido');
   const usuario = Sesion.usuario();
   if (!usuario) { card.style.display = 'none'; return 0; }
+  const hoy = fechaLocalHoy_();
   const bloques = [];
   let pendientesReales = 0; // solo lo accionable — no cuenta "ya cerrado" ni "listo para cerrar"
   let tituloCard = '⏳ Pendientes antes de cerrar turno'; // se ajusta abajo según el estado real
 
+  const dataTraslados = await consultas.promesas.traslados;
   if (dataTraslados.ok) {
     const pendientes = dataTraslados.data.filter(t => sedeAlcanzable_(t.sede_destino));
     if (pendientes.length) {
@@ -499,9 +568,10 @@ async function pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierr
     }
   }
 
-  const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
+  const sectoresPermitidos = consultas.sectoresPermitidos;
   let sectorHoyUsuario = '';
-  if (sectoresPermitidos.length) {
+  if (sectoresPermitidos.length && consultas.promesas.sector) {
+    const dataSector = await consultas.promesas.sector;
     if (dataSector.ok) sectorHoyUsuario = dataSector.sector || '';
     if (dataSector.ok && !dataSector.sector) {
       pendientesReales += 1;
@@ -514,9 +584,14 @@ async function pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierr
   // sector "Caja" asignado hoy — pedido real: "caja es el responsable final de que todo quede
   // bien". turnoCerrar_ (Turnos.gs) exige exactamente lo mismo del lado del servidor; esto es solo
   // para no mostrarle a Cocina/Café un botón que de todas formas les va a fallar.
-  const puedeCerrarTurno = usuario.rol === 'Administrador' || usuario.rol === 'Encargado' || sectorHoyUsuario === 'Caja';
+  const puedeCerrarTurno = consultas.puedeCerrarPorRol || sectorHoyUsuario === 'Caja';
   if (puedeCerrarTurno) {
-    if (sede && sede !== 'Ambas') {
+    const sede = document.getElementById('sede-corte').value;
+    if (sede && sede !== 'Ambas' && consultas.promesas.faltantes) {
+      const [dataFaltantes, dataCierre] = await Promise.all([
+        consultas.promesas.faltantes,
+        consultas.promesas.cierre
+      ]);
       if (dataCierre.ok && dataCierre.cerrado) {
         tituloCard = '✅ Turno de hoy ya cerrado';
         // Resumen guardado al momento de cerrar (docs/modelo-inventario.md, sección 6.F) — no se
@@ -584,8 +659,7 @@ async function pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierr
         // cierra vea de un vistazo qué falta sin tener que ir a otra pantalla.
         let bloqueResumenYBoton = '';
         if (!pendientesInicio.length && !pendientesSector.length) {
-          tituloCard = '✅ Todo listo — puedes cerrar el turno';
-          const dataResumen = await llamar('turno_resumen_cierre', { fecha: hoy, sede });
+          const dataResumen = await consultas.promesas.resumen;
           const resumen = dataResumen.ok ? dataResumen : {
             ventas_fudo_total: 0, pagos_fudo_total: 0, pagos_efectivo_esperado: 0,
             traslados_pendientes: 0, producciones_registradas: 0
@@ -640,7 +714,7 @@ async function pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierr
       if (inEfectivo && inEfectivo.value.trim() !== '') datosCierre.efectivo_contado = parseFloat(inEfectivo.value.replace(',', '.'));
       if (inObservaciones && inObservaciones.value.trim()) datosCierre.observaciones = inObservaciones.value.trim();
       const data = await llamar('turno_cerrar', { fecha: hoy, sede: btnCerrar.dataset.sede, datos_cierre: datosCierre });
-      if (data.ok) { avisarGuardado('Turno cerrado.'); cargar(); } else { alert(data.error); }
+      if (data.ok) { avisarGuardado('Turno cerrado.'); refrescarPendientes_(); } else { alert(data.error); }
     }));
   }
   return pendientesReales;
@@ -759,7 +833,11 @@ function poblarSelectorIngredientes_(ingredientes) {
   const actual = select.value;
   select.innerHTML = ingredientes.map(i => `<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join('');
   if (ingredientes.includes(actual)) select.value = actual;
-  if (select.value) cargarTendencia();
+  // No se pide la tendencia aquí: se pide cuando el usuario abre la pestaña donde está el gráfico
+  // (activarPestanaDisponible_). Si ya la estaba mirando, se refresca de una.
+  const pestanaTodoAbierta = !document.querySelector('.tab-panel[data-panel="todo"]').hidden;
+  if (select.value && pestanaTodoAbierta) { tendenciaPendiente = false; cargarTendencia(); }
+  else tendenciaPendiente = !!select.value;
 }
 
 async function cargarTendencia() {

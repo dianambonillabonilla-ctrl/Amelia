@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dilana OS — Diagnóstico de conexión</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <style>
+    .diag-wrap{max-width:900px;margin:0 auto;padding:28px 18px}
+    .diag-grid{display:grid;gap:12px;margin-top:18px}
+    .diag-item{background:#fff;border:1px solid #ddd;border-left:6px solid #999;border-radius:10px;padding:14px 16px}
+    .diag-item.ok{border-left-color:#238636}.diag-item.error{border-left-color:#c62828}.diag-item.aviso{border-left-color:#d49b00}.diag-item.cargando{border-left-color:#777}
+    .diag-titulo{font-weight:700;margin-bottom:5px}.diag-detalle{font-size:.88rem;white-space:pre-wrap;word-break:break-word;color:#4a4a4a}
+    .diag-resumen{font-size:1.05rem;font-weight:700;margin-top:14px}
+    .acciones{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+    code{background:#f4f2ed;padding:2px 5px;border-radius:4px}
+  </style>
+</head>
+<body>
+  <div class="diag-wrap">
+    <h1>Diagnóstico de conexión</h1>
+    <p>Esta pantalla solo lee información. No crea, modifica ni elimina datos.</p>
+    <p>Revisa en orden: página, API, sesión, permisos, catálogo y Disponible Hoy.</p>
+
+    <div class="acciones">
+      <button class="btn dorado" id="btn-probar">Probar todo nuevamente</button>
+      <button class="btn fantasma" id="btn-copiar">Copiar resultado</button>
+      <a class="btn fantasma" href="dashboard.html">Volver a Disponible Hoy</a>
+    </div>
+
+    <div id="resumen" class="diag-resumen">Preparando pruebas…</div>
+    <div id="resultados" class="diag-grid"></div>
+  </div>
+
+  <script src="assets/config.js"></script>
+  <script>
+    const resultados = [];
+    const contenedor = document.getElementById('resultados');
+    const resumen = document.getElementById('resumen');
+
+    function mostrar(nombre, estado, detalle) {
+      resultados.push({ nombre, estado, detalle: String(detalle || '') });
+      const div = document.createElement('div');
+      div.className = 'diag-item ' + estado;
+      const icono = estado === 'ok' ? '✅' : estado === 'error' ? '❌' : estado === 'aviso' ? '⚠️' : '⏳';
+      div.innerHTML = `<div class="diag-titulo">${icono} ${escapeHtml(nombre)}</div><div class="diag-detalle">${escapeHtml(detalle || '')}</div>`;
+      contenedor.appendChild(div);
+    }
+
+    async function postDirecto(action, params) {
+      const body = Object.assign({ action, token: Sesion.token() }, params || {});
+      let response;
+      try {
+        response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(body),
+          redirect: 'follow'
+        });
+      } catch (error) {
+        return { transporte_ok: false, error: 'Falló la conexión de red: ' + error.message };
+      }
+
+      const texto = await response.text();
+      let data;
+      try {
+        data = JSON.parse(texto);
+      } catch (error) {
+        return {
+          transporte_ok: true,
+          http: response.status,
+          json_ok: false,
+          error: 'La API respondió texto/HTML en vez de JSON.',
+          muestra: texto.slice(0, 500)
+        };
+      }
+      return { transporte_ok: true, http: response.status, json_ok: true, data };
+    }
+
+    async function correr() {
+      resultados.length = 0;
+      contenedor.innerHTML = '';
+      resumen.textContent = 'Ejecutando pruebas…';
+
+      mostrar('1. Página de diagnóstico', 'ok', 'El HTML y JavaScript del sitio cargaron correctamente.');
+
+      if (typeof API_URL === 'string' && API_URL.startsWith('https://script.google.com/') && API_URL.endsWith('/exec')) {
+        mostrar('2. Dirección de la API', 'ok', API_URL);
+      } else {
+        mostrar('2. Dirección de la API', 'error', 'API_URL no existe o no termina en /exec: ' + String(API_URL));
+      }
+
+      try {
+        const respuestaGet = await fetch(API_URL, { method: 'GET', redirect: 'follow' });
+        const textoGet = await respuestaGet.text();
+        let jsonGet = null;
+        try { jsonGet = JSON.parse(textoGet); } catch (e) {}
+        if (respuestaGet.ok && jsonGet) {
+          mostrar('3. API pública', 'ok', 'Apps Script responde por internet con JSON. HTTP ' + respuestaGet.status + '.');
+        } else {
+          mostrar('3. API pública', 'error', 'HTTP ' + respuestaGet.status + '. Respuesta: ' + textoGet.slice(0, 300));
+        }
+      } catch (error) {
+        mostrar('3. API pública', 'error', error.message);
+      }
+
+      const token = Sesion.token();
+      const usuario = Sesion.usuario();
+      if (token) mostrar('4. Token de sesión', 'ok', 'Existe un token en esta pestaña.');
+      else mostrar('4. Token de sesión', 'error', 'No hay token. Vuelve al inicio de sesión en esta misma pestaña y entra otra vez.');
+
+      if (usuario && usuario.nombre && usuario.rol) {
+        mostrar('5. Datos del usuario', 'ok', `Nombre: ${usuario.nombre}\nRol: ${usuario.rol}\nSede: ${usuario.sede || 'sin sede'}\nSectores: ${usuario.sectores_permitidos || 'ninguno'}`);
+      } else {
+        mostrar('5. Datos del usuario', 'error', 'No se pudo leer dilana_usuario en sessionStorage.');
+      }
+
+      const rolesValidos = ['Administrador', 'Encargado', 'Cocina', 'Lectura'];
+      if (usuario && rolesValidos.includes(usuario.rol)) {
+        mostrar('6. Rol reconocido', 'ok', usuario.rol);
+      } else {
+        mostrar('6. Rol reconocido', 'error', 'Rol recibido: ' + (usuario && usuario.rol ? usuario.rol : 'vacío') + '. Debe coincidir exactamente con: ' + rolesValidos.join(', ') + '.');
+      }
+
+      const catalogo = await postDirecto('catalogo_listar');
+      if (!catalogo.transporte_ok || !catalogo.json_ok) {
+        mostrar('7. Lectura del catálogo', 'error', catalogo.error + (catalogo.muestra ? '\n' + catalogo.muestra : ''));
+      } else if (!catalogo.data.ok) {
+        mostrar('7. Lectura del catálogo', 'error', catalogo.data.error || JSON.stringify(catalogo.data));
+      } else if (!Array.isArray(catalogo.data.data)) {
+        mostrar('7. Lectura del catálogo', 'error', 'La API respondió ok, pero data no es una lista: ' + JSON.stringify(catalogo.data).slice(0, 500));
+      } else {
+        mostrar('7. Lectura del catálogo', 'ok', 'Productos encontrados: ' + catalogo.data.data.length + '.');
+      }
+
+      const sedePrueba = usuario && usuario.rol !== 'Administrador' && usuario.sede && usuario.sede !== 'Ambas' ? usuario.sede : 'Ambas';
+      const disponible = await postDirecto('disponible_hoy', { fecha: fechaLocalHoy_(), sede: sedePrueba });
+      if (!disponible.transporte_ok || !disponible.json_ok) {
+        mostrar('8. API Disponible Hoy', 'error', disponible.error + (disponible.muestra ? '\n' + disponible.muestra : ''));
+      } else if (!disponible.data.ok) {
+        mostrar('8. API Disponible Hoy', 'error', disponible.data.error || JSON.stringify(disponible.data));
+      } else {
+        const d = disponible.data.data || {};
+        const stock = d.stock_ingredientes && typeof d.stock_ingredientes === 'object' ? Object.keys(d.stock_ingredientes).length : null;
+        const platos = Array.isArray(d.platos) ? d.platos.length : null;
+        if (stock === null || platos === null) {
+          mostrar('8. API Disponible Hoy', 'error', 'Respuesta incompleta: ' + JSON.stringify(disponible.data).slice(0, 700));
+        } else {
+          mostrar('8. API Disponible Hoy', 'ok', `Sede consultada: ${sedePrueba}\nProductos con stock: ${stock}\nPlatos calculados: ${platos}`);
+        }
+      }
+
+      if (usuario && ['Administrador', 'Encargado', 'Cocina'].includes(usuario.rol)) {
+        const gestiones = await postDirecto('gestiones_listar', { filtro: { estado: 'abiertas', sede: sedePrueba === 'Ambas' ? undefined : sedePrueba } });
+        if (!gestiones.transporte_ok || !gestiones.json_ok || !gestiones.data.ok) {
+          mostrar('9. Gestiones usadas por Disponible Hoy', 'error', gestiones.error || (gestiones.data && gestiones.data.error) || JSON.stringify(gestiones));
+        } else {
+          mostrar('9. Gestiones usadas por Disponible Hoy', 'ok', 'La ruta respondió correctamente.');
+        }
+      } else {
+        mostrar('9. Gestiones usadas por Disponible Hoy', 'aviso', 'Prueba omitida porque el rol Lectura no tiene permiso para esta ruta.');
+      }
+
+      if (usuario && usuario.rol === 'Administrador') {
+        const usuarios = await postDirecto('usuarios_listar');
+        if (!usuarios.transporte_ok || !usuarios.json_ok || !usuarios.data.ok) {
+          mostrar('10. Permisos de Administrador', 'error', usuarios.error || (usuarios.data && usuarios.data.error) || JSON.stringify(usuarios));
+        } else {
+          const lista = Array.isArray(usuarios.data.data) ? usuarios.data.data : [];
+          mostrar('10. Permisos de Administrador', 'ok', 'La API reconoce el rol Administrador. Usuarios visibles: ' + lista.length + '.');
+        }
+      } else {
+        mostrar('10. Permisos de Administrador', 'aviso', 'No se probó usuarios_listar porque el usuario actual no es Administrador.');
+      }
+
+      try {
+        const [dash, cat] = await Promise.all([fetch('dashboard.html', { cache: 'no-store' }), fetch('catalogo.html', { cache: 'no-store' })]);
+        if (dash.ok && cat.ok) mostrar('11. Archivos del sitio', 'ok', 'dashboard.html y catalogo.html existen en GitHub Pages.');
+        else mostrar('11. Archivos del sitio', 'error', `dashboard.html: HTTP ${dash.status}; catalogo.html: HTTP ${cat.status}.`);
+      } catch (error) {
+        mostrar('11. Archivos del sitio', 'error', error.message);
+      }
+
+      const errores = resultados.filter(r => r.estado === 'error').length;
+      const avisos = resultados.filter(r => r.estado === 'aviso').length;
+      resumen.textContent = errores ? `Resultado: ${errores} error(es) y ${avisos} aviso(s). Copia el resultado y envíalo.` : `Resultado: conexión correcta. ${avisos} aviso(s).`;
+    }
+
+    document.getElementById('btn-probar').addEventListener('click', correr);
+    document.getElementById('btn-copiar').addEventListener('click', async () => {
+      const texto = resultados.map(r => `[${r.estado.toUpperCase()}] ${r.nombre}\n${r.detalle}`).join('\n\n');
+      try {
+        await navigator.clipboard.writeText(texto);
+        alert('Resultado copiado.');
+      } catch (error) {
+        prompt('Copia este resultado:', texto);
+      }
+    });
+
+    correr();
+  </script>
+</body>
+</html>
