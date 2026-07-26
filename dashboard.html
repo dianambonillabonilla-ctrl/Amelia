@@ -147,10 +147,24 @@ async function cargar() {
   const sede = document.getElementById('sede-corte').value;
   fechaCorteActual = fecha;
   sedeCorteActual = sede;
-  const [data, catalogoData, gestionesData] = await Promise.all([
+  const hoy = fechaLocalHoy_();
+  const sedeEspecifica = sede && sede !== 'Ambas';
+
+  // Antes esto se pedía en 4-5 tandas SEGUIDAS (cada una esperaba a que terminara la anterior:
+  // disponible_hoy/catalogo/gestiones, luego traslados, luego sector, luego faltantes+cierre,
+  // luego resumen) — y turno_sector_hoy/turno_cierre_estado encima se pedían dos veces cada uno
+  // (una en pintarEstadoTurno_, otra en pintarPendientes_). Cada llamada a Apps Script tiene un
+  // costo fijo de ida y vuelta aparte del cálculo mismo, así que 8-10 llamadas en cadena es lo que
+  // hacía que "Disponible Hoy" tardara 25-35 segundos en cargar. Pedir todo lo independiente de una
+  // sola vez no cambia ningún dato ni cálculo — solo cuántos viajes de red hay que esperar.
+  const [data, catalogoData, gestionesData, dataTraslados, dataSector, dataCierre, dataFaltantes] = await Promise.all([
     llamar('disponible_hoy', { fecha, sede }),
     llamar('catalogo_listar'),
-    llamar('gestiones_listar', { filtro: { estado: 'abiertas', sede: sede === 'Ambas' ? undefined : sede } })
+    llamar('gestiones_listar', { filtro: { estado: 'abiertas', sede: sede === 'Ambas' ? undefined : sede } }),
+    llamar('traslados_listar', { filtro: { estado: 'Enviado' } }),
+    llamar('turno_sector_hoy', { fecha: hoy }),
+    sedeEspecifica ? llamar('turno_cierre_estado', { fecha: hoy, sede }) : Promise.resolve({ ok: false }),
+    sedeEspecifica ? llamar('turno_faltantes_por_sector', { fecha: hoy, sede }) : Promise.resolve({ ok: false })
   ]);
   if (!data.ok) { alert(data.error); return; }
 
@@ -160,8 +174,8 @@ async function cargar() {
   const nFrecuencia = pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
   const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede, gestionesAbiertas);
   const nPlatosBajos = pintarTilesPlatos_(data.data.platos);
-  pintarEstadoTurno_(sede);
-  const nPendientes = await pintarPendientes_();
+  pintarEstadoTurno_(sede, dataCierre, dataSector);
+  const nPendientes = await pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierre, dataFaltantes);
   actualizarResumenDia_({ pendientes: nPendientes, frecuencia: nFrecuencia, platosBajos: nPlatosBajos, insumos: nInsumos });
 
   // stock_ingredientes viene indexado por una llave normalizada interna (Catalogo.gs) — el
@@ -436,16 +450,11 @@ function sedeAlcanzable_(sede) {
  * aparte de "abrir", así que el aviso manda directo ahí. Solo aplica con una sede específica
  * elegida (no "Ambas": el turno se abre/cierra por sede, no de forma agregada).
  */
-async function pintarEstadoTurno_(sede) {
+function pintarEstadoTurno_(sede, dataCierre, dataSector) {
   const cont = document.getElementById('estado-turno');
   const usuario = Sesion.usuario();
   if (!usuario || !sede || sede === 'Ambas') { cont.style.display = 'none'; return; }
 
-  const hoy = fechaLocalHoy_();
-  const [dataCierre, dataSector] = await Promise.all([
-    llamar('turno_cierre_estado', { fecha: hoy, sede }),
-    llamar('turno_sector_hoy', { fecha: hoy })
-  ]);
   const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
 
   let icono, clase, texto;
@@ -471,17 +480,15 @@ async function pintarEstadoTurno_(sede) {
  * Encargado/Administrador, qué sectores de la sede seleccionada arriba siguen con conteo
  * pendiente hoy, con el botón para cerrar el turno cuando ya no falte nada (ver Turnos.gs).
  */
-async function pintarPendientes_() {
+async function pintarPendientes_(sede, hoy, dataTraslados, dataSector, dataCierre, dataFaltantes) {
   const card = document.getElementById('card-pendientes');
   const cont = document.getElementById('pendientes-contenido');
   const usuario = Sesion.usuario();
   if (!usuario) { card.style.display = 'none'; return 0; }
-  const hoy = fechaLocalHoy_();
   const bloques = [];
   let pendientesReales = 0; // solo lo accionable — no cuenta "ya cerrado" ni "listo para cerrar"
   let tituloCard = '⏳ Pendientes antes de cerrar turno'; // se ajusta abajo según el estado real
 
-  const dataTraslados = await llamar('traslados_listar', { filtro: { estado: 'Enviado' } });
   if (dataTraslados.ok) {
     const pendientes = dataTraslados.data.filter(t => sedeAlcanzable_(t.sede_destino));
     if (pendientes.length) {
@@ -495,7 +502,6 @@ async function pintarPendientes_() {
   const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
   let sectorHoyUsuario = '';
   if (sectoresPermitidos.length) {
-    const dataSector = await llamar('turno_sector_hoy', { fecha: hoy });
     if (dataSector.ok) sectorHoyUsuario = dataSector.sector || '';
     if (dataSector.ok && !dataSector.sector) {
       pendientesReales += 1;
@@ -510,12 +516,7 @@ async function pintarPendientes_() {
   // para no mostrarle a Cocina/Café un botón que de todas formas les va a fallar.
   const puedeCerrarTurno = usuario.rol === 'Administrador' || usuario.rol === 'Encargado' || sectorHoyUsuario === 'Caja';
   if (puedeCerrarTurno) {
-    const sede = document.getElementById('sede-corte').value;
     if (sede && sede !== 'Ambas') {
-      const [dataFaltantes, dataCierre] = await Promise.all([
-        llamar('turno_faltantes_por_sector', { fecha: hoy, sede }),
-        llamar('turno_cierre_estado', { fecha: hoy, sede })
-      ]);
       if (dataCierre.ok && dataCierre.cerrado) {
         tituloCard = '✅ Turno de hoy ya cerrado';
         // Resumen guardado al momento de cerrar (docs/modelo-inventario.md, sección 6.F) — no se
@@ -639,7 +640,7 @@ async function pintarPendientes_() {
       if (inEfectivo && inEfectivo.value.trim() !== '') datosCierre.efectivo_contado = parseFloat(inEfectivo.value.replace(',', '.'));
       if (inObservaciones && inObservaciones.value.trim()) datosCierre.observaciones = inObservaciones.value.trim();
       const data = await llamar('turno_cerrar', { fecha: hoy, sede: btnCerrar.dataset.sede, datos_cierre: datosCierre });
-      if (data.ok) { avisarGuardado('Turno cerrado.'); pintarPendientes_(); } else { alert(data.error); }
+      if (data.ok) { avisarGuardado('Turno cerrado.'); cargar(); } else { alert(data.error); }
     }));
   }
   return pendientesReales;
