@@ -113,6 +113,20 @@
       <pre id="resultado-migracion-pagos" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
     </div>
 
+    <div class="card" id="card-descuentos-propinas">
+      <h2>Descuentos y propinas (Fudo_Descuentos / Fudo_Propinas)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Se extraen de cada sync de ventas vía API — no hay tabla plana previa. Útil para conciliación
+        de caja y análisis futuro.
+      </p>
+      <p id="estado-descuentos-propinas" class="vacio">Cargando…</p>
+      <p id="acciones-descuentos-propinas" style="display:none; margin:12px 0 0">
+        <span style="font-size:.85rem; color:var(--grey)">Re-extraer de la API (mismo rango que sync rápida):</span><br>
+        <button class="btn fantasma" id="btn-migrar-descuentos-propinas" type="button" style="margin-top:8px">Extraer histórico desde API</button>
+      </p>
+      <pre id="resultado-migracion-descuentos-propinas" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
+    </div>
+
     <div class="card" id="card-sync-rapida" style="display:none">
       <h2>Sincronización rápida</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">Solo Administrador. Ventas primero, pagos después — mismo criterio que en Importar.</p>
@@ -142,6 +156,7 @@ if (esAdmin) {
   document.getElementById('acciones-stock-admin').style.display = 'block';
   document.getElementById('acciones-ventas-normalizadas').style.display = 'block';
   document.getElementById('acciones-pagos-normalizados').style.display = 'block';
+  document.getElementById('acciones-descuentos-propinas').style.display = 'block';
 }
 
 const hoy = fechaLocalHoy_();
@@ -165,6 +180,7 @@ async function cargar() {
   pintarSinCatalogo(data.productos_sin_catalogo);
   pintarVentasNormalizadas(data.ventas_normalizadas);
   pintarPagosNormalizados(data.pagos_normalizados);
+  pintarDescuentosPropinas(data.descuentos_propinas);
 }
 
 function pintarCredenciales(data) {
@@ -262,6 +278,14 @@ function pintarPagosNormalizados(pn) {
     `<p style="margin:4px 0 0">Efectivo acumulado (no cancelado): <strong>$${escapeHtml(Number(pn.efectivo_total || 0).toLocaleString('es-CO'))}</strong></p>`;
 }
 
+function pintarDescuentosPropinas(dp) {
+  const el = document.getElementById('estado-descuentos-propinas');
+  if (!dp) { el.textContent = 'Sin datos.'; return; }
+  el.innerHTML =
+    `<p style="margin:0">Descuentos (Fudo_Descuentos): <strong>${escapeHtml(dp.descuentos)}</strong> — total no cancelado: <strong>$${escapeHtml(Number(dp.monto_descuentos || 0).toLocaleString('es-CO'))}</strong></p>` +
+    `<p style="margin:8px 0 0">Propinas (Fudo_Propinas): <strong>${escapeHtml(dp.propinas)}</strong> — total no cancelado: <strong>$${escapeHtml(Number(dp.monto_propinas || 0).toLocaleString('es-CO'))}</strong></p>`;
+}
+
 function pintarSinCatalogo(sc) {
   const card = document.getElementById('card-sin-catalogo');
   if (!sc || !sc.total) { card.style.display = 'none'; return; }
@@ -289,6 +313,21 @@ document.getElementById('btn-migrar-pagos-flat').addEventListener('click', conBo
   pre.textContent = JSON.stringify(data, null, 2);
   if (data.ok) { avisarGuardado(`Migración: ${data.creados || 0} nuevos, ${data.actualizados || 0} actualizados.`); cargar(); }
   else alert(data.error || 'Error en la migración');
+}));
+
+document.getElementById('btn-migrar-descuentos-propinas').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-descuentos-propinas'), async () => {
+  const desde = document.getElementById('sync-desde').value;
+  const hasta = document.getElementById('sync-hasta').value;
+  if (!desde || !hasta) { alert('Indica el rango de fechas en Sincronización rápida.'); return; }
+  if (!confirm(`¿Extraer descuentos y propinas de la API para ${desde} → ${hasta}? Es idempotente.`)) return;
+  const data = await llamar('fudo_descuentos_propinas_migrar', { fecha_desde: desde, fecha_hasta: hasta });
+  const pre = document.getElementById('resultado-migracion-descuentos-propinas');
+  pre.style.display = 'block';
+  pre.textContent = JSON.stringify(data, null, 2);
+  if (data.ok) {
+    avisarGuardado(`Extraídos: ${data.descuentos_creados || 0} descuentos nuevos, ${data.propinas_creadas || 0} propinas nuevas.`);
+    cargar();
+  } else alert(data.error || 'Error en la extracción');
 }));
 
 document.getElementById('btn-sync-hoy').addEventListener('click', conBotonProtegido(document.getElementById('btn-sync-hoy'), sincronizarRango));
