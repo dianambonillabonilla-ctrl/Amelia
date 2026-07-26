@@ -78,7 +78,8 @@ function configurarHojas() {
     Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
       'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado'],
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
-    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp'],
+    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
+      'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones'],
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
@@ -266,9 +267,12 @@ function handleRequest_(e, method) {
         // Mismo motivo: el filtro fino de "solo Caja (o Admin/Encargado) puede cerrar" vive dentro
         // de turnoCerrar_, no aquí — este solo exige que la sesión sea de un rol operativo válido.
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
+        return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario, params.datos_cierre));
       case 'turno_cierre_estado':
         return jsonOut_(turnoCierreEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'turno_resumen_cierre':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(turnoResumenCierre_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));

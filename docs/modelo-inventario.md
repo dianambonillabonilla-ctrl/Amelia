@@ -315,9 +315,22 @@ los cálculos existentes):
   ese detalle cuando existe. `evidencia_url` y `hora_inicio`/`hora_fin` quedan en el backend pero
   todavía sin campo en esta pantalla (ver pendientes).
 
+- **Cierres_Turno ampliado** (sección 6.F) — `Turnos.gs`: `turnoResumenCierre_(fecha, sede)` calcula
+  ventas Fudo del día (total y cantidad, ya sin canceladas), traslados de/hacia esa sede sin
+  Confirmar/Resolver, y producciones registradas. `turnoCerrar_` guarda ese resumen como snapshot en
+  Cierres_Turno al momento de cerrar (no se recalcula después, así el histórico no cambia si se edita
+  algo de ese día más tarde) y acepta `datosCierre.efectivo_contado`/`observaciones` opcionales. El
+  dashboard muestra el resumen antes de cerrar (con los dos campos opcionales) y lo ya guardado
+  cuando el turno ya está cerrado.
+
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
 
+- `pagos_esperados`/`diferencia_caja`/`inventario_contado`/`diferencia_inventario` de la sección
+  6.F siguen sin implementar — necesitan sincronizar pagos de Fudo (hoy solo se sincronizan ventas)
+  y un valor agregado único de inventario teórico vs. contado por sede, que hoy no existe (calcular
+  contra qué comparar el efectivo o qué "un solo número" de diferencia de inventario significaría
+  requiere una decisión de producto, no solo código).
 - Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten `movimientosInventarioListar_`/
   `calcularInventarioTeorico_` en vez de combinar las hojas por su cuenta — deliberadamente no se
   hizo en esta pasada para no arriesgar su lógica ya probada (comparación por hora exacta,

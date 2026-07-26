@@ -189,17 +189,65 @@ function turnoOportuno_(fecha, sede, usuario) {
 }
 
 /**
+ * Resumen de lo que hay para revisar ANTES de cerrar el turno (docs/modelo-inventario.md, sección
+ * 6.F): total vendido según Fudo, traslados de/hacia esta sede que todavía no quedaron Confirmados/
+ * Resueltos, y cuánta producción se registró — para que quien cierra vea de un vistazo si falta
+ * algo antes de confirmar. Es de solo lectura (se puede pedir las veces que haga falta sin efecto
+ * alguno); turnoCerrar_ vuelve a calcular lo mismo y lo guarda como snapshot al momento de cerrar.
+ *
+ * Deliberadamente NO incluye "pagos esperados"/"diferencia de caja" ni "diferencia de inventario"
+ * todavía: la app no sincroniza pagos de Fudo (solo ventas) ni tiene un valor agregado único de
+ * inventario teórico vs. contado por sede — inventarlos ahora sería mostrar un número que no
+ * significa nada real. `efectivo_contado` y `observaciones` quedan como campos manuales que quien
+ * cierra puede llenar, sin comparar contra nada calculado todavía.
+ */
+function turnoResumenCierre_(fecha, sede) {
+  if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+
+  const ventasDelDia = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+    return formatearFecha_(v.creacion) === fecha && v.sede === sede &&
+      !(v.cancelada === true || normalizar_(v.cancelada) === 'si');
+  });
+  const ventasFudoTotal = ventasDelDia.reduce(function (acc, v) {
+    return acc + (Number(v.precio) || 0) * (Number(v.cantidad) || 0);
+  }, 0);
+
+  const trasladosPendientes = leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
+    return (t.sede_origen === sede || t.sede_destino === sede) &&
+      ['Enviado', 'Con observación'].indexOf(t.estado) !== -1;
+  }).length;
+
+  // Se lee Producciones directamente (no produccionListar_ de Produccion.gs) por el mismo motivo
+  // que sedeDesdeCreadaPor_ (Fudo.gs) no llama a fudoMapeoSedeIndice_: en Apps Script real todos los
+  // .gs comparten un mismo scope, pero en las pruebas cada archivo se carga en un contexto aislado —
+  // así no hace falta mockear una función de otro archivo solo para esto.
+  const produccionesRegistradas = leerTabla_(SHEET_NAMES.PRODUCCIONES).filter(function (p) {
+    return formatearFecha_(p.fecha) === fecha && p.sede === sede;
+  }).length;
+
+  return {
+    ok: true,
+    ventas_fudo_total: ventasFudoTotal,
+    ventas_fudo_cantidad: ventasDelDia.length,
+    traslados_pendientes: trasladosPendientes,
+    producciones_registradas: produccionesRegistradas
+  };
+}
+
+/**
  * Bloquea cerrar el turno si algún sector asignado hoy en `sede` todavía tiene productos
  * obligatorios de hoy sin contar — primero el de INICIO si hace falta (ver
  * requiereConteoInicioTurno_/turnoFaltantesPorSector_), y solo después el de CIERRE. Si pasa, deja
- * un registro en Cierres_Turno (auditoría de quién cerró y cuándo) — no bloquea nada más del
- * sistema, es la confirmación que pedía Diana.
+ * un registro en Cierres_Turno (auditoría de quién cerró y cuándo, más el resumen de
+ * turnoResumenCierre_ y lo que haya llegado en `datosCierre.efectivo_contado`/`observaciones`) —
+ * no bloquea nada más del sistema, es la confirmación que pedía Diana.
  *
  * Quién puede cerrar: Administrador/Encargado siempre (supervisión), o quien tenga el sector
  * "Caja" elegido hoy — pedido real: "caja es el responsable final de que todo quede bien". El
  * resto del personal (Cocina/Café ese día) no puede cerrar el turno aunque tenga acceso a la app.
  */
-function turnoCerrar_(fecha, sede, usuario) {
+function turnoCerrar_(fecha, sede, usuario, datosCierre) {
+  datosCierre = datosCierre || {};
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   if (usuario.rol !== 'Administrador' && usuario.rol !== 'Encargado') {
     const sectorHoy = turnoSectorDeHoy_(usuario, fecha).sector;
@@ -232,14 +280,21 @@ function turnoCerrar_(fecha, sede, usuario) {
       pendientes: pendientesCierre
     };
   }
+  const resumen = turnoResumenCierre_(fecha, sede);
   appendRowFromObj_(SHEET_NAMES.CIERRES_TURNO, {
     id: Utilities.getUuid(),
     fecha: fecha,
     sede: sede,
     usuario: usuario.nombre,
-    timestamp: new Date()
+    timestamp: new Date(),
+    ventas_fudo_total: resumen.ventas_fudo_total,
+    traslados_pendientes: resumen.traslados_pendientes,
+    producciones_registradas: resumen.producciones_registradas,
+    efectivo_contado: datosCierre.efectivo_contado !== undefined && datosCierre.efectivo_contado !== ''
+      ? Number(datosCierre.efectivo_contado) : '',
+    observaciones: datosCierre.observaciones || ''
   });
-  return { ok: true };
+  return { ok: true, resumen: resumen };
 }
 
 function turnoCierreEstado_(fecha, sede) {
@@ -247,5 +302,15 @@ function turnoCierreEstado_(fecha, sede) {
   const fila = leerTabla_(SHEET_NAMES.CIERRES_TURNO).find(function (r) {
     return formatearFecha_(r.fecha) === fecha && r.sede === sede;
   });
-  return { ok: true, cerrado: !!fila, usuario: fila ? fila.usuario : '', timestamp: fila ? fila.timestamp : '' };
+  return {
+    ok: true,
+    cerrado: !!fila,
+    usuario: fila ? fila.usuario : '',
+    timestamp: fila ? fila.timestamp : '',
+    ventas_fudo_total: fila ? fila.ventas_fudo_total : '',
+    traslados_pendientes: fila ? fila.traslados_pendientes : '',
+    producciones_registradas: fila ? fila.producciones_registradas : '',
+    efectivo_contado: fila ? fila.efectivo_contado : '',
+    observaciones: fila ? fila.observaciones : ''
+  };
 }

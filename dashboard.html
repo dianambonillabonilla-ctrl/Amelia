@@ -463,7 +463,22 @@ async function pintarPendientes_() {
         llamar('turno_cierre_estado', { fecha: hoy, sede })
       ]);
       if (dataCierre.ok && dataCierre.cerrado) {
-        bloques.push(`<p style="margin:0 0 10px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>`);
+        // Resumen guardado al momento de cerrar (docs/modelo-inventario.md, sección 6.F) — no se
+        // vuelve a calcular, es el snapshot de ESE momento, para que el histórico no cambie si
+        // después se editan ventas/traslados/producción de ese día.
+        const detalleCierre = [
+          `Ventas Fudo: $${escapeHtml(Number(dataCierre.ventas_fudo_total || 0).toLocaleString('es-CO'))}`,
+          `Traslados pendientes: ${escapeHtml(dataCierre.traslados_pendientes || 0)}`,
+          `Producciones registradas: ${escapeHtml(dataCierre.producciones_registradas || 0)}`
+        ];
+        if (dataCierre.efectivo_contado !== '' && dataCierre.efectivo_contado !== undefined) {
+          detalleCierre.push(`Efectivo contado: $${escapeHtml(Number(dataCierre.efectivo_contado).toLocaleString('es-CO'))}`);
+        }
+        bloques.push(
+          `<p style="margin:0 0 6px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>` +
+          `<p style="margin:0 0 6px; font-size:.85rem; color:var(--grey)">${detalleCierre.join(' · ')}</p>` +
+          (dataCierre.observaciones ? `<p style="margin:0 0 10px; font-size:.85rem"><strong>Observaciones:</strong> ${escapeHtml(dataCierre.observaciones)}</p>` : '')
+        );
       } else if (dataFaltantes.ok) {
         const requiereInicio = dataFaltantes.data.length && dataFaltantes.data[0].requiere_inicio;
         const pendientesInicio = requiereInicio ? dataFaltantes.data.filter(s => (s.faltantes_inicio || []).length) : [];
@@ -488,12 +503,34 @@ async function pintarPendientes_() {
         const avisoInicio = requiereInicio
           ? `<p style="margin:0 0 6px; color:var(--red)"><strong>Ayer no se cerró el turno de ${escapeHtml(sede)}</strong> — hoy hace falta completar el conteo de INICIO antes que el de cierre cuente para cerrar.</p>`
           : '';
+        // Resumen ANTES de cerrar (docs/modelo-inventario.md, sección 6.F) — ventas Fudo del día,
+        // traslados de/hacia esta sede sin confirmar, y producción registrada, para que quien
+        // cierra vea de un vistazo qué falta sin tener que ir a otra pantalla. Efectivo contado y
+        // observaciones son opcionales: la app no compara el efectivo contra nada calculado
+        // todavía (no sincroniza pagos de Fudo), solo lo deja anotado para consulta futura.
+        let bloqueResumenYBoton = '';
+        if (!pendientesInicio.length && !pendientesSector.length) {
+          const dataResumen = await llamar('turno_resumen_cierre', { fecha: hoy, sede });
+          const resumen = dataResumen.ok ? dataResumen : { ventas_fudo_total: 0, traslados_pendientes: 0, producciones_registradas: 0 };
+          bloqueResumenYBoton =
+            `<p style="margin:0 0 6px; font-size:.85rem; color:var(--grey)">` +
+            `Ventas Fudo: $${escapeHtml(Number(resumen.ventas_fudo_total || 0).toLocaleString('es-CO'))} · ` +
+            `Traslados pendientes: ${escapeHtml(resumen.traslados_pendientes || 0)} · ` +
+            `Producciones registradas: ${escapeHtml(resumen.producciones_registradas || 0)}` +
+            (resumen.traslados_pendientes ? ` — revisa <a href="traslados.html">Traslados</a> antes de cerrar si corresponde` : '') +
+            `</p>` +
+            `<div class="grid grid-2" style="gap:10px; margin-bottom:10px; max-width:420px">` +
+            `<div class="campo"><label>Efectivo contado (opcional)</label><input type="number" step="1" id="in-efectivo-contado"></div>` +
+            `<div class="campo"><label>Observaciones (opcional)</label><input type="text" id="in-observaciones-cierre"></div>` +
+            `</div>` +
+            `<p style="margin:0 0 10px"><button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`;
+        }
         bloques.push(
           avisoInicio +
           (dataFaltantes.data.length
             ? '<p style="margin:0 0 6px"><strong>Sectores de hoy en ' + escapeHtml(sede) + ':</strong></p><ul style="margin:0 0 10px">' + listaSectores + '</ul>'
             : `<p style="margin:0 0 10px">Nadie ha elegido sector hoy en ${escapeHtml(sede)} (o el catálogo no tiene productos asignados por sector).</p>`) +
-          ((pendientesInicio.length || pendientesSector.length) ? '' : `<p style="margin:0 0 10px"><button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`)
+          bloqueResumenYBoton
         );
       }
     }
@@ -508,7 +545,12 @@ async function pintarPendientes_() {
   const btnCerrar = document.getElementById('btn-cerrar-turno');
   if (btnCerrar) {
     btnCerrar.addEventListener('click', conBotonProtegido(btnCerrar, async () => {
-      const data = await llamar('turno_cerrar', { fecha: hoy, sede: btnCerrar.dataset.sede });
+      const inEfectivo = document.getElementById('in-efectivo-contado');
+      const inObservaciones = document.getElementById('in-observaciones-cierre');
+      const datosCierre = {};
+      if (inEfectivo && inEfectivo.value.trim() !== '') datosCierre.efectivo_contado = parseFloat(inEfectivo.value.replace(',', '.'));
+      if (inObservaciones && inObservaciones.value.trim()) datosCierre.observaciones = inObservaciones.value.trim();
+      const data = await llamar('turno_cerrar', { fecha: hoy, sede: btnCerrar.dataset.sede, datos_cierre: datosCierre });
       if (data.ok) { avisarGuardado('Turno cerrado.'); pintarPendientes_(); } else { alert(data.error); }
     }));
   }
