@@ -130,7 +130,32 @@ El comando principal es:
 npm test
 ```
 
-Actualmente ejecuta:
+Corre entero sin red y sin Google: cada prueba carga los `.gs` de verdad y les inyecta
+`SpreadsheetApp`, `PropertiesService`, etc. simulados. La lista completa está en el script `test` de
+`package.json`; hay tres grupos:
 
-- `tests/recipe-engine.test.js`
-- `tests/syntax.test.js`
+- **Por módulo** (la mayoría): cargan uno o dos `.gs` con datos de ejemplo y comprueban una regla de
+  negocio concreta (recetas, conteos, traslados, conciliación FUDO, auditoría, seguridad…).
+- **`tests/integracion-api.test.js`**: carga TODOS los `.gs` en un mismo espacio global, como los une
+  Apps Script, sobre un Google Sheet simulado en memoria. Ejerce `configurarHojas()` (instalación
+  nueva y actualización de un Sheet viejo con columnas de antes), el login por `doPost` y las ~53
+  acciones de lectura del router. Detecta lo que las pruebas por módulo no pueden ver: una hoja o una
+  constante de `SHEET_NAMES` que un módulo usa y `Code.gs` no declara — la causa real del error
+  `No existe la hoja "undefined"`.
+- **`tests/rendimiento-lecturas.test.js`**: fija un presupuesto de llamadas al Sheet por cálculo.
+  Cada `leerTabla_` es una llamada a la API de Sheets y Apps Script corta cualquier ejecución a los 6
+  minutos, así que un cálculo que pide el Sheet una vez por día de calendario deja la pantalla sin
+  poder abrir aunque el resultado sea correcto. Si tocas `DisponibleHoy.gs`, `MovimientosInventario.gs`
+  o `FudoLectores.gs`, esta prueba es la que avisa.
+
+### Rendimiento: por qué se cuentan las lecturas
+
+En Apps Script el coste dominante no es el cálculo, son las llamadas a Sheets. Dos reglas que
+conviene respetar al agregar código:
+
+- No recorras un rango de fechas día por día pidiendo tablas dentro del bucle. Usa
+  `fudoFechasConVentas_` / `fechasConVentasParaRango_` (`FudoLectores.gs`,
+  `MovimientosInventario.gs`), que leen una vez y devuelven solo los días con datos.
+- Si un cálculo de **solo lectura** consulta varias veces las mismas hojas, envuélvelo en
+  `conCacheDeTablas_` (`Code.gs`). No lo uses en funciones que escriben: varias actualizan una celda
+  y releen la hoja enseguida para devolver la fila ya actualizada (ej. `trasladoConfirmar_`).
