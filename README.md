@@ -7,7 +7,9 @@ Dilana OS es una aplicación interna para Amelia Café / La Wafflería que ayuda
 - **Frontend estático:** archivos HTML en la raíz del repositorio, con estilos y utilidades compartidas en `assets/`.
 - **Backend:** Google Apps Script en `apps-script/`, desplegado como Web App.
 - **Base de datos:** un Google Sheet vinculado al Apps Script.
-- **Integración FUDO:** importación de archivos/exportaciones FUDO hacia hojas del spreadsheet.
+- **Integración FUDO:** sincronización automática de ventas y pagos vía la API real de FUDO
+  (`apps-script/FudoApi.gs`, cada 15 min una vez configuradas las credenciales — ver abajo), más
+  importación manual de archivos/exportaciones FUDO como respaldo.
 
 El frontend llama al despliegue `/exec` de Apps Script mediante `fetch()` y envía un `token` de sesión en cada solicitud autenticada.
 
@@ -67,7 +69,12 @@ Después de vincular Apps Script al Google Sheet, ejecuta manualmente desde el e
 
 1. `configurarHojas()` para crear o actualizar las hojas esperadas.
 2. `crearAdministradorInicial_(nombre, usuario, password, email)` para crear el primer administrador.
-3. `configurarTriggers()` para activar limpieza de sesiones y alertas programadas.
+3. `configurarTriggers()` para activar limpieza de sesiones, alertas programadas y, si ya corriste
+   `fudoApiConfigurarCredenciales_(apiKey, apiSecret)`, la sincronización automática de ventas/pagos
+   de FUDO cada 15 minutos (`fudoSincronizacionAutomatica_`) y el snapshot diario de stock. Sin
+   credenciales de FUDO configuradas todavía, estos triggers no hacen nada — no falla, solo esperan.
+   Vuelve a correr `configurarTriggers()` una vez si actualizas una instalación que ya existía, para
+   que el trigger de sincronización automática quede activo.
 
 No se crea una contraseña predeterminada por seguridad.
 

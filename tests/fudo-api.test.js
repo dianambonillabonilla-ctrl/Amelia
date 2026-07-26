@@ -619,4 +619,97 @@ function ctxAutenticadoConDatos_(paginas) {
   console.log('fudoApiSincronizarPagos_ arma filtros y delega en pagosFudoImportar_: OK');
 })();
 
+// --- fudoSincronizacionAutomatica_ / fudoSincronizacionStockDiaria_ (trigger automático) ----------
+// Estas dos son el handler que quita la dependencia de que un Administrador entre a importar.html y
+// sincronice a mano — ver configurarTriggers_ (Code.gs). A diferencia de llamar
+// fudoApiSincronizarVentas_/Pagos_/fudoApiTomarSnapshotStock_ directo, deben dejar SIEMPRE un
+// registro en el panel (fudoApiSyncRegistrar_), incluso cuando la API de FUDO lanza una excepción.
+
+(function () {
+  reiniciarProps_();
+  llamadas = [];
+  const ctx = cargarFudoApi_();
+  ctx.fudoSincronizacionAutomatica_();
+  assert.equal(llamadas.length, 0, 'sin credenciales configuradas no debe llamar a la API de FUDO');
+  console.log('fudoSincronizacionAutomatica_ sin credenciales no hace nada: OK');
+})();
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = (url) => {
+    if (url.indexOf('/sales') !== -1) return respuesta_(200, { data: [], included: [] });
+    if (url.indexOf('/payments') !== -1) return respuesta_(200, { data: [], included: [] });
+    return respuesta_(200, { data: [] });
+  };
+  const registros = [];
+  const ctx = cargarFudoApi_({ fudoApiSyncRegistrar_: (tipo, payload) => registros.push({ tipo, payload }) });
+  ctx.fudoSincronizacionAutomatica_();
+  assert.ok(llamadas.some((l) => l.url.indexOf('/sales') !== -1), 'debe consultar ventas solo');
+  assert.ok(llamadas.some((l) => l.url.indexOf('/payments') !== -1), 'debe consultar pagos también, sin que nadie haga clic en nada');
+  const tipos = registros.map((r) => r.tipo);
+  assert.ok(tipos.includes('ventas') && tipos.includes('pagos'), 'debe dejar registro en el panel de ambos tipos');
+  assert.ok(registros.every((r) => r.payload.usuario === 'Sincronización automática'));
+  console.log('fudoSincronizacionAutomatica_ sincroniza ventas y pagos sin intervención manual: OK');
+})();
+
+(function () {
+  // Si /sales falla con una excepción real (fu.do caído, token vencido), debe registrar el error en
+  // el panel Y seguir intentando pagos — un fallo de ventas no debe dejar el ciclo entero sin rastro
+  // ni bloquear el intento de pagos.
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = (url) => {
+    if (url.indexOf('/sales') !== -1) return respuesta_(500, { error: 'fu.do caído' });
+    if (url.indexOf('/payments') !== -1) return respuesta_(200, { data: [], included: [] });
+    return respuesta_(200, { data: [] });
+  };
+  const registros = [];
+  const ctx = cargarFudoApi_({ fudoApiSyncRegistrar_: (tipo, payload) => registros.push({ tipo, payload }) });
+  ctx.fudoSincronizacionAutomatica_();
+  const ventasReg = registros.find((r) => r.tipo === 'ventas');
+  assert.ok(ventasReg, 'un fallo en ventas igual debe dejar un registro en el panel');
+  assert.equal(ventasReg.payload.ok, false);
+  assert.match(ventasReg.payload.error, /código FUDO-/);
+  const pagosReg = registros.find((r) => r.tipo === 'pagos');
+  assert.ok(pagosReg, 'un fallo en ventas no debe cancelar el intento de pagos');
+  assert.equal(pagosReg.payload.ok, true);
+  console.log('fudoSincronizacionAutomatica_ registra el error si ventas falla y sigue con pagos: OK');
+})();
+
+(function () {
+  reiniciarProps_();
+  llamadas = [];
+  const ctx = cargarFudoApi_();
+  ctx.fudoSincronizacionStockDiaria_();
+  assert.equal(llamadas.length, 0, 'sin credenciales configuradas no debe llamar a la API de FUDO');
+  console.log('fudoSincronizacionStockDiaria_ sin credenciales no hace nada: OK');
+})();
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(500, { error: 'fu.do caído' });
+  const registros = [];
+  const ctx = cargarFudoApi_({ fudoApiSyncRegistrar_: (tipo, payload) => registros.push({ tipo, payload }) });
+  ctx.fudoSincronizacionStockDiaria_();
+  assert.equal(registros.length, 1);
+  assert.equal(registros[0].tipo, 'stock');
+  assert.equal(registros[0].payload.ok, false);
+  assert.match(registros[0].payload.error, /código FUDO-/);
+  console.log('fudoSincronizacionStockDiaria_ registra el error en el panel si la API falla: OK');
+})();
+
 console.log('fudo-api: OK');

@@ -546,6 +546,83 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
   return importado;
 }
 
+/**
+ * Handler del trigger automático (ver configurarTriggers() en Code.gs) — sincroniza ventas y pagos
+ * de FUDO sin depender de que alguien entre a importar.html y haga clic. Sincroniza HOY y AYER en
+ * cada corrida (no solo hoy) a propósito: una venta cerrada tarde, cancelada después, o una corrida
+ * que falló hace unas horas quedan cubiertas solas en la siguiente — es seguro repetir el mismo
+ * rango una y otra vez porque ventas y pagos se deduplican por su id real de FUDO (claveVenta_ /
+ * upsert por id_pago en pagosFudoImportar_), nunca por rango de fechas.
+ *
+ * A diferencia de llamar fudoApiSincronizarVentas_/Pagos_ directo, esto SIEMPRE deja un registro en
+ * el panel (fudoApiSyncRegistrar_) aunque la API de FUDO falle con una excepción (token vencido,
+ * fu.do caído, etc.) — así "Panel Fudo" (fudo.html) puede avisar que la sincronización automática
+ * lleva rato fallando, en vez de quedarse con el último éxito manual como si todo siguiera bien.
+ * Pagos depende de que ventas haya corrido antes en el mismo rango (resuelve sede por id de venta ya
+ * sincronizado) — por eso se intenta ventas primero, pero un fallo en ventas NO cancela el intento
+ * de pagos: pueden traer sedes en "Sin identificar" ese ciclo, se corrigen solas en el siguiente.
+ * Sin credenciales configuradas (instalación nueva, o ambiente de pruebas) no hace nada — no es un
+ * error, todavía no se corrió fudoApiConfigurarCredenciales_.
+ */
+function fudoSincronizacionAutomatica_() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty(FUDO_API_PROP_KEY_) || !props.getProperty(FUDO_API_PROP_SECRET_)) {
+    return;
+  }
+  const usuarioAutomatico = { nombre: 'Sincronización automática' };
+  const hoy = new Date();
+  const ayer = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
+  const fechaDesde = formatearFecha_(ayer);
+  const fechaHasta = formatearFecha_(hoy);
+
+  try {
+    fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuarioAutomatico, {});
+  } catch (err) {
+    Logger.log('fudoSincronizacionAutomatica_ (ventas) falló: ' + err.message);
+    if (typeof fudoApiSyncRegistrar_ === 'function') {
+      fudoApiSyncRegistrar_('ventas', {
+        ok: false, fecha_desde: fechaDesde, fecha_hasta: fechaHasta,
+        usuario: usuarioAutomatico.nombre, error: err.message
+      });
+    }
+  }
+
+  try {
+    fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuarioAutomatico, {});
+  } catch (err) {
+    Logger.log('fudoSincronizacionAutomatica_ (pagos) falló: ' + err.message);
+    if (typeof fudoApiSyncRegistrar_ === 'function') {
+      fudoApiSyncRegistrar_('pagos', {
+        ok: false, fecha_desde: fechaDesde, fecha_hasta: fechaHasta,
+        usuario: usuarioAutomatico.nombre, error: err.message
+      });
+    }
+  }
+}
+
+/**
+ * Snapshot diario de stock consolidado (ver tareaDiaria_ en Code.gs) — mismo patrón de
+ * try/catch + registro en el panel que fudoSincronizacionAutomatica_, para que un fallo de la API de
+ * FUDO no truene el resto de la tarea diaria (limpieza de sesiones, alertas) ni desaparezca en
+ * silencio: queda como "Error" en la tarjeta "Stock (snapshot)" de fudo.html.
+ */
+function fudoSincronizacionStockDiaria_() {
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty(FUDO_API_PROP_KEY_) || !props.getProperty(FUDO_API_PROP_SECRET_)) {
+    return;
+  }
+  try {
+    fudoApiTomarSnapshotStock_({ nombre: 'Sincronización automática' });
+  } catch (err) {
+    Logger.log('fudoSincronizacionStockDiaria_ falló: ' + err.message);
+    if (typeof fudoApiSyncRegistrar_ === 'function') {
+      fudoApiSyncRegistrar_('stock', {
+        ok: false, usuario: 'Sincronización automática', error: err.message
+      });
+    }
+  }
+}
+
 function fudoApiProbarConexion_() {
   const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: FUDO_API_SALES_INCLUDE_ });
   const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);
