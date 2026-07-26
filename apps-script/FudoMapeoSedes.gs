@@ -22,20 +22,14 @@
  */
 
 const FUDO_MAPEO_SEDES_TIPOS_ = ['Sala', 'Caja', 'Identificador', 'Usuario'];
-// Mismo orden de prioridad de fudoResolverSedeVenta_ — se declara aparte para no repetirlo.
 const FUDO_MAPEO_SEDES_PRIORIDAD_ = ['Sala', 'Caja', 'Identificador', 'Usuario'];
 const FUDO_SEDE_SIN_IDENTIFICAR_ = 'Sin identificar';
+const FUDO_PENDIENTE_VENTA_PREFIJO_ = 'Venta FUDO #';
 
 function fudoMapeoSedeListar_() {
   return leerTabla_(SHEET_NAMES.FUDO_MAPEO_SEDES);
 }
 
-/**
- * Crea o actualiza (por tipo_referencia + nombre, sin distinguir mayúsculas/tildes) el mapeo de una
- * referencia de Fudo hacia una sede. id_fudo es opcional: hoy la cuenta real solo confirma nombres
- * (de sala), no ids estables de caja/usuario/identificador — se guarda si se manda, para el día que
- * se confirme contra la cuenta real.
- */
 function fudoMapeoSedeGuardar_(item, usuario) {
   if (!item || !item.tipo_referencia || !item.nombre || !item.sede) {
     return { ok: false, error: 'Faltan tipo_referencia, nombre o sede' };
@@ -93,7 +87,6 @@ function fudoMapeoSedeEliminar_(id) {
   return { ok: false, error: 'No existe ese mapeo' };
 }
 
-/** tipo_referencia normalizado + nombre normalizado -> fila de Fudo_Mapeo_Sedes, para resolver rápido. */
 function fudoMapeoSedeIndice_() {
   const indice = {};
   fudoMapeoSedeListar_().forEach(function (m) {
@@ -102,13 +95,6 @@ function fudoMapeoSedeIndice_() {
   return indice;
 }
 
-/**
- * referencias = { sala, caja, identificador, usuario } — cualquiera puede venir vacío/ausente si
- * esa venta no trae ese dato (ej. sin mesa no hay sala; hoy la cuenta real tampoco trae caja).
- * Devuelve { sede, resuelto_por } con resuelto_por en FUDO_MAPEO_SEDES_PRIORIDAD_, o
- * { sede: FUDO_SEDE_SIN_IDENTIFICAR_, resuelto_por: null } si ninguna referencia tiene mapeo — en
- * ese caso NUNCA se inventa una sede: la venta queda pendiente para que un administrador la asigne.
- */
 function fudoResolverSedeVenta_(referencias, indiceOpcional) {
   const indice = indiceOpcional || fudoMapeoSedeIndice_();
   const referenciasPorTipo = {
@@ -128,22 +114,55 @@ function fudoResolverSedeVenta_(referencias, indiceOpcional) {
 }
 
 /**
- * BANDEJA "VENTAS PENDIENTES DE SEDE" (docs/modelo-inventario.md, sección 8: "Las ventas no
- * identificadas aparecerán en una bandeja... El administrador las asigna una vez y el sistema
- * aprende la regla cuando sea posible"). Agrupa por `creada_por` (el nombre de sala/caja tal como
- * llegó de Fudo, ver sedeDesdeCreadaPor_ en Fudo.gs) porque casi siempre muchas ventas comparten la
- * misma referencia sin mapear — así el administrador la resuelve UNA vez para todas, no venta por
- * venta.
+ * Convierte el valor que ya usa la API (`creada_por`) en un selector seguro.
+ * - Referencias reales (sala/caja/usuario) siguen agrupándose y aprendiendo una regla.
+ * - Cuando FUDO no trae ninguna referencia, la bandeja usa la etiqueta "Venta FUDO #<id>" y la
+ *   asignación se limita exclusivamente a ese id_venta. Así dos domicilios sin mesa nunca se mandan
+ *   juntos a una sede solo porque ambos tienen `creada_por` vacío.
+ * También acepta un objeto { creada_por, id_venta } para clientes futuros sin romper la API actual.
+ */
+function ventasPendientesSedeSelector_(valor) {
+  if (valor && typeof valor === 'object') {
+    return {
+      creada_por: String(valor.creada_por || ''),
+      id_venta: valor.id_venta === null || valor.id_venta === undefined ? '' : String(valor.id_venta)
+    };
+  }
+  const texto = String(valor || '');
+  if (texto.indexOf(FUDO_PENDIENTE_VENTA_PREFIJO_) === 0) {
+    return { creada_por: '', id_venta: texto.slice(FUDO_PENDIENTE_VENTA_PREFIJO_.length) };
+  }
+  return { creada_por: texto, id_venta: '' };
+}
+
+/**
+ * BANDEJA "VENTAS PENDIENTES DE SEDE".
+ * Las filas con una referencia real se agrupan por `creada_por`, para aprender una regla reutilizable.
+ * Las filas sin referencia se agrupan por `id_venta`, porque varias ventas de domicilio pueden tener
+ * `creada_por` vacío y pertenecer a sedes distintas.
  */
 function ventasPendientesSedeListar_() {
   const grupos = {};
   const filas = (typeof ventasFudoLineasTodas_ === 'function'
     ? ventasFudoLineasTodas_({ sin_canceladas: false }).lineas
-    : leerTabla_(SHEET_NAMES.VENTAS_FUDO)); // fallback solo si Fudo_Items vacío
+    : leerTabla_(SHEET_NAMES.VENTAS_FUDO));
   filas.forEach(function (v) {
     if (v.sede !== FUDO_SEDE_SIN_IDENTIFICAR_) return;
-    const clave = v.creada_por || '';
-    if (!grupos[clave]) grupos[clave] = { creada_por: clave, cantidad: 0, primera_fecha: v.creacion, ultima_fecha: v.creacion };
+    const referencia = String(v.creada_por || '').trim();
+    const idVenta = v.id_venta === null || v.id_venta === undefined ? '' : String(v.id_venta).trim();
+    const porVenta = !referencia && !!idVenta;
+    const clave = porVenta ? 'venta|' + idVenta : 'referencia|' + normalizar_(referencia);
+    const etiqueta = porVenta ? FUDO_PENDIENTE_VENTA_PREFIJO_ + idVenta : referencia;
+    if (!grupos[clave]) {
+      grupos[clave] = {
+        creada_por: etiqueta,
+        id_venta: porVenta ? idVenta : '',
+        tipo_asignacion: porVenta ? 'venta' : 'referencia',
+        cantidad: 0,
+        primera_fecha: v.creacion,
+        ultima_fecha: v.creacion
+      };
+    }
     grupos[clave].cantidad++;
     if (formatearFecha_(v.creacion) < formatearFecha_(grupos[clave].primera_fecha)) grupos[clave].primera_fecha = v.creacion;
     if (formatearFecha_(v.creacion) > formatearFecha_(grupos[clave].ultima_fecha)) grupos[clave].ultima_fecha = v.creacion;
@@ -153,23 +172,26 @@ function ventasPendientesSedeListar_() {
 }
 
 /**
- * Asigna `sede` a TODAS las ventas "Sin identificar" que comparten `creadaPor`, y — la parte de
- * "el sistema aprende la regla" — si `creadaPor` trae un valor real (no vacío), crea/actualiza el
- * mapeo tipo "Sala" en Fudo_Mapeo_Sedes para que sedeDesdeCreadaPor_ (Fudo.gs) resuelva sola
- * cualquier venta futura con esa misma referencia, sin que el administrador tenga que repetir esto.
+ * Asigna una sede por referencia reutilizable o, cuando no existe referencia, por id_venta.
+ * En el segundo caso no crea una regla de mapeo: la decisión solo aplica a esa venta concreta.
  */
 function ventasPendientesSedeAsignar_(creadaPor, sede, usuario) {
   if (!sede) return { ok: false, error: 'Falta la sede a asignar' };
+  const selector = ventasPendientesSedeSelector_(creadaPor);
   const sh = sheet_(SHEET_NAMES.VENTAS_FUDO);
   const data = sh.getDataRange().getValues();
   const headers = data[0];
   const creadaPorCol = headers.indexOf('creada_por');
   const sedeCol = headers.indexOf('sede');
   const idVentaCol = headers.indexOf('id_venta');
+  if (selector.id_venta && idVentaCol < 0) return { ok: false, error: 'Ventas_FUDO no tiene columna id_venta' };
   const idVentasTocadas = {};
   let actualizadas = 0;
   for (let r = 1; r < data.length; r++) {
-    if ((data[r][creadaPorCol] || '') === (creadaPor || '') && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
+    const coincide = selector.id_venta
+      ? String(data[r][idVentaCol] || '') === selector.id_venta
+      : (data[r][creadaPorCol] || '') === selector.creada_por;
+    if (coincide && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
       sh.getRange(r + 1, sedeCol + 1).setValue(sede);
       actualizadas++;
       if (idVentaCol >= 0 && data[r][idVentaCol]) idVentasTocadas[String(data[r][idVentaCol])] = true;
@@ -177,19 +199,27 @@ function ventasPendientesSedeAsignar_(creadaPor, sede, usuario) {
   }
   let actualizadasNorm = 0;
   if (typeof ventasPendientesSedeActualizarItems_ === 'function') {
-    const resItems = ventasPendientesSedeActualizarItems_(creadaPor, sede);
+    const resItems = ventasPendientesSedeActualizarItems_(selector.creada_por, sede, selector.id_venta);
     actualizadasNorm = resItems.actualizadas || 0;
     (resItems.id_ventas || []).forEach(function (id) { idVentasTocadas[String(id)] = true; });
   }
   if (typeof fudoVentasRecalcularCabecera_ === 'function') {
     Object.keys(idVentasTocadas).forEach(function (idVenta) { fudoVentasRecalcularCabecera_(idVenta); });
   }
-  const reglaCreada = creadaPor ? fudoMapeoSedeGuardar_({ tipo_referencia: 'Sala', nombre: creadaPor, sede: sede }, usuario) : null;
-  return { ok: true, actualizadas: actualizadas, actualizadas_items: actualizadasNorm, regla_creada: !!(reglaCreada && reglaCreada.ok) };
+  const reglaCreada = !selector.id_venta && selector.creada_por
+    ? fudoMapeoSedeGuardar_({ tipo_referencia: 'Sala', nombre: selector.creada_por, sede: sede }, usuario)
+    : null;
+  return {
+    ok: true,
+    actualizadas: actualizadas,
+    actualizadas_items: actualizadasNorm,
+    id_venta: selector.id_venta || '',
+    regla_creada: !!(reglaCreada && reglaCreada.ok)
+  };
 }
 
-/** Actualiza sede en Fudo_Items para ventas pendientes con el mismo creada_por. */
-function ventasPendientesSedeActualizarItems_(creadaPor, sede) {
+/** Actualiza sede en Fudo_Items usando la misma selección segura que Ventas_FUDO. */
+function ventasPendientesSedeActualizarItems_(creadaPor, sede, idVentaObjetivo) {
   const sh = sheet_(SHEET_NAMES.FUDO_ITEMS);
   const data = sh.getDataRange().getValues();
   if (!data.length) return { actualizadas: 0, id_ventas: [] };
@@ -198,10 +228,14 @@ function ventasPendientesSedeActualizarItems_(creadaPor, sede) {
   const sedeCol = headers.indexOf('sede');
   const idVentaCol = headers.indexOf('id_venta');
   if (creadaPorCol < 0 || sedeCol < 0) return { actualizadas: 0, id_ventas: [] };
+  if (idVentaObjetivo && idVentaCol < 0) return { actualizadas: 0, id_ventas: [] };
   const idVentas = {};
   let actualizadas = 0;
   for (let r = 1; r < data.length; r++) {
-    if ((data[r][creadaPorCol] || '') === (creadaPor || '') && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
+    const coincide = idVentaObjetivo
+      ? String(data[r][idVentaCol] || '') === String(idVentaObjetivo)
+      : (data[r][creadaPorCol] || '') === (creadaPor || '');
+    if (coincide && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
       sh.getRange(r + 1, sedeCol + 1).setValue(sede);
       actualizadas++;
       if (idVentaCol >= 0 && data[r][idVentaCol]) idVentas[String(data[r][idVentaCol])] = true;
