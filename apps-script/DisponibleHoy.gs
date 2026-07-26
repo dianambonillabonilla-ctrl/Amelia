@@ -373,6 +373,15 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
   });
   producciones.forEach(function (p) { asegurarSinConteo_(p.item, p.sede || 'Sin sede'); });
 
+  // Ajustes, traslados y producciones se agrupan UNA vez por (producto, sede). Antes cada una de las
+  // tres funciones de abajo recibía la tabla completa y la recorría entera para cada producto y cada
+  // sede: con 300 productos y un año de movimientos eso son cientos de miles de comparaciones de
+  // nombre repetidas. Las funciones siguen comprobando producto y sede por su cuenta, así que
+  // pasarles solo su grupo no cambia el resultado.
+  const idxAjustes = agruparMovimientosPorClaveYSede_(ajustes, 'producto', function (a) { return a.sede || 'Sin sede'; }, indice);
+  const idxTraslados = agruparMovimientosPorClaveYSede_(traslados, 'producto', function (t) { return t.sede_destino; }, indice);
+  const idxProducciones = agruparMovimientosPorClaveYSede_(producciones, 'item', function (p) { return p.sede || 'Sin sede'; }, indice);
+
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
     // `soloClave` (opcional) limita el cálculo a UN producto: Tendencia.gs recalcula el stock una
@@ -388,9 +397,10 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
       const hayConteo = fechasSede.length > 0;
       const ultimaFecha = hayConteo ? fechasSede[fechasSede.length - 1] : '';
       const base = hayConteo ? entrada.porSede[sedeItem].fechas[ultimaFecha] : { cantidad: 0, unidad: '', timestamp: '' };
-      const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
-      const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
-      const resProduccion = netoProduccionDesdeConteo_(producciones, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
+      const grupo = clave + '|' + sedeItem;
+      const resAjustes = netoAjustesDesdeConteo_(idxAjustes[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
+      const resTraslados = trasladosRecibidosDesdeConteo_(idxTraslados[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
+      const resProduccion = netoProduccionDesdeConteo_(idxProducciones[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
       const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad, cacheVentas);
       const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad || resVentas.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
@@ -402,6 +412,22 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
     resultado[clave] = { producto: entrada.nombre, cantidad: total, unidad: unidadFinal, fecha_conteo: fechaMasReciente || 'sin conteo aún' };
   });
   return resultado;
+}
+
+/**
+ * Agrupa filas de movimiento por "clave de producto|sede", calculando la clave UNA vez por fila.
+ * `campoProducto` es el nombre de la columna con el producto (en Producciones se llama `item`), y
+ * `sedeDe` extrae la sede que corresponde a ese tipo de movimiento (en Traslados es la de destino,
+ * porque un traslado suma al llegar).
+ */
+function agruparMovimientosPorClaveYSede_(filas, campoProducto, sedeDe, indice) {
+  const idx = {};
+  (filas || []).forEach(function (fila) {
+    const grupo = claveProducto_(fila[campoProducto], indice) + '|' + sedeDe(fila);
+    if (!idx[grupo]) idx[grupo] = [];
+    idx[grupo].push(fila);
+  });
+  return idx;
 }
 
 /** Convierte un timestamp (objeto Date o string) en un string comparable lexicográficamente
@@ -520,22 +546,47 @@ function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInc
   let neto = 0;
   let unidad = unidadEsperada || '';
   if (!fechaCorteInclusive) return { neto: 0, unidad: unidad };
-  // Solo los días que de verdad tienen ventas (ver fudoFechasConVentasEnRango_ en FudoLectores.gs).
-  // Recorrer el calendario día por día hacía que un producto sin conteo físico previo arrancara en
-  // 1970 y pidiera las tablas de Fudo completas ~20.000 veces — la pantalla nunca alcanzaba a
-  // responder dentro del límite de 6 minutos de Apps Script.
-  const fechas = typeof fudoFechasConVentasEnRango_ === 'function'
-    ? fudoFechasConVentasEnRango_(sede, fechaConteoExclusive, fechaCorteInclusive, cacheVentas)
-    : fechasEnRangoMovimientos_(fechaConteoExclusive || fechaCorteInclusive, fechaCorteInclusive)
-      .filter(function (f) { return !fechaConteoExclusive || f > fechaConteoExclusive; });
-  fechas.forEach(function (f) {
-    movimientosDesdeVentas_(f, sede, indice, cacheVentas).forEach(function (m) {
-      if (claveProducto_(m.producto, indice) !== clave) return;
-      const base = aUnidadBase_(Math.abs(m.cantidad), m.unidad);
-      if (!unidad) unidad = base.unidad;
-      if (base.unidad !== unidad) return;
-      neto += m.cantidad;
-    });
+
+  // El consumo de TODO el rango se explota una sola vez y queda indexado por producto (ver
+  // consumoVentasPorProducto_): cada producto solo suma sus propias líneas. Antes cada producto
+  // recorría, por cada día con ventas, la lista completa de movimientos de ese día — con 300
+  // productos y un año de historia eso eran ~2,5 millones de comparaciones de nombre, el 91% del
+  // tiempo de "Disponible Hoy".
+  const lineas = consumoVentasPorProducto_(sede, fechaCorteInclusive, indice, cacheVentas)[clave] || [];
+  lineas.forEach(function (l) {
+    if (fechaConteoExclusive && l.fecha <= fechaConteoExclusive) return;
+    const base = aUnidadBase_(Math.abs(l.cantidad), l.unidad);
+    if (!unidad) unidad = base.unidad;
+    if (base.unidad !== unidad) return;
+    neto += l.cantidad;
   });
   return { neto: neto, unidad: unidad };
+}
+
+/**
+ * Consumo por ventas de todos los días con ventas hasta `hasta`, agrupado por clave de producto:
+ * { clave: [{ fecha, cantidad, unidad }, ...] }. Se calcula una vez por (sede, hasta) y se guarda en
+ * el mismo objeto de caché que comparten los cálculos de consumo por venta.
+ *
+ * Cada producto tiene su propia fecha de último conteo, así que el recorte por fecha se hace al
+ * sumar (en netoVentasDesdeConteo_) y no al construir el índice — construirlo completo cuesta lo
+ * mismo que lo que antes pagaba el primer producto sin conteo previo.
+ */
+function consumoVentasPorProducto_(sede, hasta, indice, cacheVentas) {
+  const claveCache = '__consumo_por_producto__|' + sede + '|' + hasta;
+  if (cacheVentas && cacheVentas[claveCache]) return cacheVentas[claveCache];
+
+  const fechas = typeof fudoFechasConVentasEnRango_ === 'function'
+    ? fudoFechasConVentasEnRango_(sede, '', hasta, cacheVentas)
+    : fechasEnRangoMovimientos_(hasta, hasta);
+  const porClave = {};
+  fechas.forEach(function (f) {
+    movimientosDesdeVentas_(f, sede, indice, cacheVentas).forEach(function (m) {
+      const clave = claveProducto_(m.producto, indice);
+      if (!porClave[clave]) porClave[clave] = [];
+      porClave[clave].push({ fecha: f, cantidad: m.cantidad, unidad: m.unidad });
+    });
+  });
+  if (cacheVentas) cacheVentas[claveCache] = porClave;
+  return porClave;
 }

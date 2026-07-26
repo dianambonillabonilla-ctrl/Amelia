@@ -900,6 +900,25 @@ function conCacheDeTablas_(fn) {
   }
 }
 
+/**
+ * Memoiza un cálculo DERIVADO de las hojas (índices, agrupaciones) dentro del mismo alcance de solo
+ * lectura de conCacheDeTablas_. Fuera de ese alcance simplemente ejecuta `fn` y no guarda nada, así
+ * que los flujos que escriben nunca ven un valor viejo.
+ *
+ * Existe para poder construir un índice UNA vez en lugar de recorrer la tabla completa en cada
+ * iteración. El caso que lo motivó: leer las líneas de venta de un día filtraba las ~55.000 filas de
+ * Fudo_Items enteras, y "Disponible Hoy" hace eso una vez por cada día con ventas — un año de
+ * historia son 20 millones de comparaciones de fecha.
+ */
+function memoEnCacheDeTablas_(clave, fn) {
+  if (!TABLAS_CACHE_) return fn();
+  const claveMemo = '__memo__' + clave;
+  if (!Object.prototype.hasOwnProperty.call(TABLAS_CACHE_, claveMemo)) {
+    TABLAS_CACHE_[claveMemo] = fn();
+  }
+  return TABLAS_CACHE_[claveMemo];
+}
+
 function leerTabla_(nombreHoja) {
   if (TABLAS_CACHE_ && Object.prototype.hasOwnProperty.call(TABLAS_CACHE_, nombreHoja)) {
     // Copia superficial del arreglo: varias funciones hacen `let rows = leerTabla_(...)` y luego
