@@ -34,7 +34,7 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Registrar conteo de cierre</h1>
+      <h1 id="titulo-conteo">Registrar conteo de cierre</h1>
       <div id="barra-usuario"></div>
     </div>
 
@@ -296,8 +296,9 @@ inicializarSectorHoy_();
 // por qué puede tocar contar dos veces el mismo día.
 async function mostrarEstadoTurnoInicio_() {
   const card = document.getElementById('card-turno-inicio');
+  const titulo = document.getElementById('titulo-conteo');
   const sede = document.getElementById('sede').value;
-  if (!sede || sede === 'Ambas') { card.style.display = 'none'; return; }
+  if (!sede || sede === 'Ambas') { card.style.display = 'none'; titulo.textContent = 'Registrar conteo de cierre'; return; }
   const hoy = fechaLocalHoy_();
   const [dataFaltantes, dataSector] = await Promise.all([
     llamar('turno_faltantes_por_sector', { fecha: hoy, sede }),
@@ -305,12 +306,17 @@ async function mostrarEstadoTurnoInicio_() {
   ]);
   if (!dataFaltantes.ok || !dataFaltantes.data.length || !dataFaltantes.data[0].requiere_inicio) {
     card.style.display = 'none';
+    titulo.textContent = 'Registrar conteo de cierre';
     return;
   }
   const estadoMiSector = dataSector.ok && dataSector.sector
     ? dataFaltantes.data.find(s => s.sector === dataSector.sector)
     : null;
   const yaHiceInicio = estadoMiSector && (!estadoMiSector.faltantes_inicio || !estadoMiSector.faltantes_inicio.length);
+  // El título refleja qué conteo se está pidiendo en realidad — antes decía siempre "de cierre"
+  // aunque el sistema estuviera pidiendo el de INICIO, lo cual confundía a quien apenas abre la
+  // página sin haber leído todavía la tarjeta roja de aviso.
+  titulo.textContent = yaHiceInicio ? 'Registrar conteo de cierre' : 'Registrar conteo de inicio de turno';
   document.getElementById('turno-inicio-texto').textContent = yaHiceInicio
     ? 'Ya completaste tu conteo de inicio de hoy — lo que guardes ahora cuenta como el conteo de cierre normal.'
     : 'El turno de ayer en esta sede quedó sin cerrar. Antes de que Caja pueda cerrar hoy, hace falta completar un conteo de INICIO de turno con los mismos productos obligatorios de siempre — guarda este conteo normal y el sistema lo registra como el de inicio automáticamente.';

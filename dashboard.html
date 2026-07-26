@@ -179,7 +179,7 @@ function actualizarResumenDia_(n) {
   // por comprar son "critico" (rojo) ahí abajo, por contar hoy y platos bajos son "aviso" (ámbar).
   const items = [
     { valor: n.pendientes, etiqueta: 'Pendientes de cierre', href: '#card-pendientes', severidad: 'critico' },
-    { valor: n.frecuencia, etiqueta: 'Por contar hoy', href: '#card-alerta-frecuencia', severidad: 'aviso' },
+    { valor: n.frecuencia, etiqueta: 'Extra por contar hoy', href: '#card-alerta-frecuencia', severidad: 'aviso' },
     { valor: n.platosBajos, etiqueta: 'Platos con alcance bajo', tab: 'platos', severidad: 'aviso' },
     { valor: n.insumos, etiqueta: 'Insumos por comprar', tab: 'comprar', severidad: 'critico' }
   ];
