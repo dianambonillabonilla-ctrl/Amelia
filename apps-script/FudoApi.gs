@@ -36,7 +36,7 @@ const FUDO_API_AUTH_URL_ = 'https://auth.fu.do/api';
 // no es el mismo host de autenticación (auth.fu.do), lleva el prefijo de versión /v1alpha1.
 const FUDO_API_BASE_URL_POR_DEFECTO_ = 'https://api.fu.do/v1alpha1';
 // Incluidos válidos para GET /sales según apps-script/fudo-openapi.yml (jul 2026).
-const FUDO_API_SALES_INCLUDE_ = 'items.product,items.subitems.product,table.room,waiter,saleIdentifier,cashRegister,payments.paymentMethod';
+const FUDO_API_SALES_INCLUDE_ = 'items.product,items.subitems.product,table.room,waiter,saleIdentifier,payments.paymentMethod,discounts.discountTemplate,tips';
 
 /** Correr UNA vez desde el editor de Apps Script (Extensiones > Apps Script) — nunca desde la app web. */
 function fudoApiConfigurarCredenciales_(apiKey, apiSecret, baseUrl) {
@@ -326,6 +326,13 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
     filas.push.apply(filas, fudoApiFilasVentaDesdeSale_(sale, resultado.incluidos, indiceMapeo));
   });
 
+  const archivoSync = 'API FUDO ' + fechaDesde + ' a ' + fechaHasta;
+  if (typeof fudoDescuentosPropinasEscribirDesdeSales_ === 'function' && resultado.registros.length) {
+    fudoDescuentosPropinasEscribirDesdeSales_(resultado.registros, resultado.incluidos, indiceMapeo, {
+      archivo_origen: archivoSync
+    });
+  }
+
   if (!filas.length) {
     const vacio = { ok: true, importados: 0, omitidos_duplicados: 0, tipo: 'ventas', ventas_encontradas: resultado.registros.length };
     if (typeof fudoApiSyncRegistrar_ === 'function') {
@@ -337,7 +344,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
     return vacio;
   }
 
-  const importado = importarFudo_('ventas', filas, usuario, Object.assign({ archivo: 'API FUDO ' + fechaDesde + ' a ' + fechaHasta }, opciones));
+  const importado = importarFudo_('ventas', filas, usuario, Object.assign({ archivo: archivoSync }, opciones));
   if (typeof fudoApiSyncRegistrar_ === 'function') {
     fudoApiSyncRegistrar_('ventas', {
       ok: importado.ok !== false,
