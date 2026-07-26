@@ -40,13 +40,17 @@ function fudoSubitemALineaPlana_(subitem) {
   };
 }
 
+function ventaFudoCancelada_(v) {
+  return typeof ventaCancelada_ === 'function' ? ventaCancelada_(v)
+    : (v.cancelada === true || normalizar_(v.cancelada) === 'si');
+}
+
 function ventasFudoLineasFiltrar_(lineas, opciones, fuente) {
   opciones = opciones || {};
-  if (opciones.sin_canceladas !== false) {
-    lineas = lineas.filter(function (v) {
-      return typeof ventaCancelada_ === 'function' ? !ventaCancelada_(v)
-        : !(v.cancelada === true || normalizar_(v.cancelada) === 'si');
-    });
+  if (opciones.solo_canceladas) {
+    lineas = lineas.filter(function (v) { return ventaFudoCancelada_(v); });
+  } else if (opciones.sin_canceladas !== false) {
+    lineas = lineas.filter(function (v) { return !ventaFudoCancelada_(v); });
   }
   if (opciones.sede) {
     lineas = lineas.filter(function (v) { return v.sede === opciones.sede; });
@@ -81,6 +85,11 @@ function subitemsFudoParaFecha_(fecha, opciones) {
   if (!lineas.length) return { lineas: [], fuente: null };
   lineas = lineas.map(fudoSubitemALineaPlana_);
   return ventasFudoLineasFiltrar_(lineas, opciones, 'Fudo_Subitems');
+}
+
+/** Líneas canceladas de un día — Fudo_Items con fallback a Ventas_FUDO. */
+function ventasFudoLineasCanceladasParaFecha_(fecha, opciones) {
+  return ventasFudoLineasParaFecha_(fecha, Object.assign({}, opciones || {}, { solo_canceladas: true, sin_canceladas: false }));
 }
 
 /**

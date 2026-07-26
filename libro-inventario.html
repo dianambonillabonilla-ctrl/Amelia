@@ -26,6 +26,7 @@
       <a href="fudo.html" data-solo-rol="Administrador,Encargado">Panel Fudo</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Libro de inventario</a>
+      <a href="inventario-ubicacion.html" data-solo-rol="Administrador,Encargado,Lectura">Inventario por ubicación</a>
       <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
       <a href="historial-cierres-turno.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de cierres</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
@@ -68,7 +69,12 @@
           <input type="checkbox" id="filtro-incluir-ventas">
           Incluir consumo por ventas en la vista calculada
         </label>
+        <label style="font-size:.88rem; display:flex; align-items:center; gap:8px; margin:0">
+          <input type="checkbox" id="filtro-incluir-cancelaciones">
+          Incluir cancelaciones de venta (reversa)
+        </label>
       </div>
+      <p style="margin:8px 0 0; font-size:.85rem"><a href="inventario-ubicacion.html">Ver resumen por ubicación/punto</a></p>
       <button class="btn dorado" id="btn-cargar">Cargar</button>
       <p id="estado-libro" style="margin:10px 0 0; font-size:.85rem; color:var(--grey)"></p>
     </div>
@@ -246,6 +252,7 @@ async function cargar() {
   const punto = document.getElementById('filtro-punto').value;
   if (punto) filtros.punto = punto;
   if (document.getElementById('filtro-incluir-ventas').checked) filtros.incluir_consumo_ventas = true;
+  if (document.getElementById('filtro-incluir-cancelaciones').checked) filtros.incluir_cancelaciones_ventas = true;
   const fechaDia = filtros.fecha_hasta || hoy;
 
   document.getElementById('fecha-ventas-label').textContent = fechaDia;

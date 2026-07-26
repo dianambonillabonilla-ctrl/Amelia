@@ -469,6 +469,18 @@ function calcularCambioFisico_(fecha, sede, indice) {
 }
 
 function trasladosNetosPorItem_(fecha, sede, indice) {
+  if (typeof movimientosInventarioListar_ === 'function') {
+    const totales = {};
+    movimientosInventarioListar_({ fecha_desde: fecha, fecha_hasta: fecha, sede: sede, indice: indice }).forEach(function (m) {
+      if (m.tipo_movimiento !== 'Traslado enviado' && m.tipo_movimiento !== 'Traslado recibido') return;
+      const clave = claveProducto_(m.producto, indice);
+      const base = aUnidadBase_(Math.abs(m.cantidad), m.unidad);
+      if (!totales[clave]) totales[clave] = { cantidad: 0, unidad: base.unidad };
+      if (totales[clave].unidad !== base.unidad) return;
+      totales[clave].cantidad += m.cantidad;
+    });
+    if (Object.keys(totales).length) return totales;
+  }
   const totales = {};
   leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
     const fechaRecepcion = t.timestamp_recibe ? formatearFecha_(t.timestamp_recibe) : formatearFecha_(t.fecha);

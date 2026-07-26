@@ -139,7 +139,7 @@ function ventasPendientesSedeListar_() {
   const grupos = {};
   const filas = (typeof ventasFudoLineasTodas_ === 'function'
     ? ventasFudoLineasTodas_({ sin_canceladas: false }).lineas
-    : leerTabla_(SHEET_NAMES.VENTAS_FUDO));
+    : leerTabla_(SHEET_NAMES.VENTAS_FUDO)); // fallback solo si Fudo_Items vacío
   filas.forEach(function (v) {
     if (v.sede !== FUDO_SEDE_SIN_IDENTIFICAR_) return;
     const clave = v.creada_por || '';

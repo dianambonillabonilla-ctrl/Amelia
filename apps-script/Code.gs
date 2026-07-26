@@ -431,6 +431,15 @@ function handleRequest_(e, method) {
       case 'movimientos_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: movimientosInventarioListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'inventario_ubicacion_resumen':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(inventarioUbicacionResumen_(
+          params.fecha_desde,
+          params.fecha_hasta,
+          sedeConsultaPermitida_(sesion.usuario, params.sede),
+          params.punto,
+          params.opciones || {}
+        ));
       case 'movimientos_inventario_libro_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: inventarioMovimientosLibroListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
