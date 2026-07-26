@@ -85,7 +85,11 @@ function produccionRegistrar_(items, usuario, opciones) {
         insumo_cantidad: it.insumo_cantidad !== undefined && it.insumo_cantidad !== '' ? Number(it.insumo_cantidad) : '',
         insumo_unidad: it.insumo_unidad || '',
         merma_cantidad: it.merma_cantidad !== undefined && it.merma_cantidad !== '' ? Number(it.merma_cantidad) : '',
-        merma_unidad: it.merma_unidad || it.unidad || '',
+        // La merma de proceso normalmente es masa cruda perdida (ver movimientosDesdeProduccion_ en
+        // MovimientosInventario.gs) — su unidad debería ser la del insumo, no la del terminado
+        // (pueden diferir, ej. terminado en "porciones" e insumo en "kg"). Se cae a la unidad del
+        // terminado solo si tampoco hay insumo declarado.
+        merma_unidad: it.merma_unidad || it.insumo_unidad || it.unidad || '',
         rendimiento_porcentaje: it.rendimiento_porcentaje !== undefined && it.rendimiento_porcentaje !== '' ? Number(it.rendimiento_porcentaje) : '',
         receta_referencia: it.receta_referencia || '',
         hora_inicio: it.hora_inicio || '',

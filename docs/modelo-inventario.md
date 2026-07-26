@@ -308,6 +308,13 @@ los cálculos existentes):
   la diferencia entre insumo consumido y lo efectivamente producido. Sin insumo/merma (como todas
   las producciones registradas antes de jul 2026), sigue funcionando exactamente igual que antes.
 
+- **UI de producir.html para insumo/merma/rendimiento/observación** — cada ítem de producción tiene
+  ahora un "+ Detalle de lote" opcional y colapsado por defecto (insumo crudo consumido + cantidad +
+  unidad, merma de proceso, rendimiento %, observación) que manda esos campos a
+  `produccion_con_obligatorios_registrar` solo si se llenaron. La tabla "Producción de hoy" muestra
+  ese detalle cuando existe. `evidencia_url` y `hora_inicio`/`hora_fin` quedan en el backend pero
+  todavía sin campo en esta pantalla (ver pendientes).
+
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
 
@@ -317,8 +324,10 @@ antes de tocar código en producción):
   proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón concreta.
 - "Consumo por venta"/"Cancelación de venta" todavía no están en el libro — requieren explotar la
   receta vigente de cada venta (ya resuelto en DisponibleHoy.gs, se conecta cuando se consolide).
-- UI de producir.html para cargar insumo/merma/rendimiento/evidencia (hoy solo existe el campo en
-  el backend; la pantalla sigue mandando solo el producto terminado).
+- Foto/evidencia de pesaje (`evidencia_url`) y hora de inicio/fin del lote: el backend ya tiene las
+  columnas pero no hay flujo de subida de imágenes en todo el repositorio todavía (no es solo
+  agregar un campo — hace falta decidir dónde se guardan las fotos, ej. Google Drive vía Apps
+  Script) ni un input de hora en producir.html.
 - Refactor de `Ventas_FUDO` en `Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Pagos`/
   `Fudo_Descuentos`/`Fudo_Propinas`.
 - Ampliación de `Cierres_Turno` con los campos de sincronización/pagos/inventario del punto 6.F.
