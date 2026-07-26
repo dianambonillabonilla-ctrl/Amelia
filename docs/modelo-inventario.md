@@ -282,10 +282,15 @@ los cálculos existentes):
 - Snapshot automático de `/products` y `/ingredients` vía API hacia `Stock_FUDO_Base` (reutilizando
   el upsert que ya existía para la carga manual por Excel) — ver `fudoApiTomarSnapshotStock_` en
   `FudoApi.gs`.
-- **Ubicaciones (sub-zonas por sede)** — `Ubicaciones.gs`: catálogo de los puntos de la sección 4
-  (Cocina/Barra/Almacén/Caja, etc.) por sede, para que la app pueda ofrecer un desplegable en vez de
-  texto libre en los campos `punto`/`punto_conteo`/`punto_origen`/`punto_destino` que ya existían en
-  Ajustes_Inventario/Conteos_Manuales/Traslados. No valida ni migra retroactivamente lo ya guardado.
+- ~~Ubicaciones (sub-zonas por sede) — `Ubicaciones.gs`~~ **revertido (jul 2026).** Se había agregado
+  como catálogo nuevo sin buscar primero si ya existía algo — sí existía: `assets/config.js` ya
+  tiene `PUNTOS_POR_SEDE` con los puntos REALES que usan `conteo.html`/`traslados.html`/
+  `producir.html` (ej. "Cocina terraza", "Bodega segundo piso"), con nombres distintos a los que
+  `Ubicaciones.gs` inventó. `Ubicaciones.gs` y la acción `ubicaciones_listar` eran código muerto —
+  nada los llamaba desde ninguna pantalla. Se eliminaron en vez de dejarlos convivir con
+  `PUNTOS_POR_SEDE` como una tercera fuente. Si en el futuro se necesita una hoja `Ubicaciones` con
+  ids estables (como propone el modelo de arquitectura), debe construirse SOBRE `PUNTOS_POR_SEDE`
+  (unificando primero), no en paralelo.
 - **Libro de movimientos, como VISTA de solo lectura** — `MovimientosInventario.gs`:
   `movimientosInventarioListar_(filtros)` normaliza Ajustes_Inventario, Producciones y Traslados a
   un único formato con signo (`MOVIMIENTO_TIPOS_SIGNO_`), y `calcularInventarioTeorico_(producto,
@@ -335,6 +340,30 @@ los cálculos existentes):
   grupo de una vez y, si `creadaPor` tiene un valor real, crea el mapeo tipo "Sala" correspondiente
   — "el sistema aprende la regla", así las próximas ventas con esa misma referencia se identifican
   solas. UI nueva en `importar.html` (se recarga tras sincronizar y tras cada asignación).
+
+### Correcciones (jul 2026, tras una revisión externa del código real)
+
+Una revisión de otra IA (verificada contra el repo real, a diferencia de una anterior que
+describía una rama/commit inexistentes) encontró dos gaps reales en lo ya construido:
+
+- **`fudoApiTomarSnapshotStock_` pedía `include=unit` pero nunca lo usaba** — `fudoApiObtenerTodo_`
+  descarta el arreglo `included` de cada página, así que `unidad` siempre quedaba en `''`. Se
+  cambió a `fudoApiObtenerTodoCompleto_` (que sí conserva `included`) y se resuelve
+  `relationships.unit` contra ese arreglo.
+- **`fudoResolverSedeVenta_` (mesa→sala, identificador, mesero) existía pero no estaba conectada al
+  sync real** — `fudoApiFilasVentaDesdeSale_` solo extraía la sala. Ahora también extrae `waiter` y
+  `saleIdentifier` (agregados al `include` de `fudoApiSincronizarVentas_`) y llama a
+  `fudoResolverSedeVenta_` con las tres referencias, mandando una columna `Sede` adicional que
+  `importarFudoConLock_` (Fudo.gs) prioriza sobre `sedeDesdeCreadaPor_` — pero solo si esa
+  resolución encontró algo (si da "Sin identificar", se le sigue dando su oportunidad a
+  `sedeDesdeCreadaPor_`, que tiene su propia lista histórica). NO se intenta extraer "caja
+  registradora": la especificación OpenAPI oficial completa confirma que `/sales` no tiene ninguna
+  relación `cashRegister` (solo la tienen los Usuarios) — la prioridad "Caja" de
+  `FUDO_MAPEO_SEDES_PRIORIDAD_` queda sin una fuente real por ahora, no es un bug, es una limitación
+  de la API misma.
+
+La misma revisión señaló, correctamente, que `Ubicaciones.gs` (arriba) duplicaba
+`PUNTOS_POR_SEDE` — ver la nota tachada más arriba.
 
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
