@@ -33,7 +33,8 @@ const SHEET_NAMES = {
   AUDITORIA: 'Auditoria_Eventos',
   STOCK_FUDO_BASE: 'Stock_FUDO_Base',
   CATALOGO_ALIAS: 'Catalogo_Alias',
-  FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes'
+  FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes',
+  MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario'
 };
 
 function ss_() {
@@ -86,7 +87,11 @@ function configurarHojas() {
       'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo'],
     Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en'],
     Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp'],
-    Fudo_Mapeo_Sedes: ['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp']
+    Fudo_Mapeo_Sedes: ['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp'],
+    Movimientos_Inventario: ['id', 'fecha', 'timestamp', 'catalogo_id', 'producto', 'cantidad', 'unidad', 'signo',
+      'tipo_movimiento', 'ubicacion_origen', 'ubicacion_destino', 'sede_origen', 'sede_destino', 'sede', 'fuente',
+      'entidad_tipo', 'entidad_id', 'clave_idempotencia', 'estado', 'usuario_id', 'usuario_nombre', 'observacion',
+      'evidencia_url', 'requiere_aprobacion', 'aprobado_por', 'aprobado_en', 'reversa_movimiento_id', 'creado_en']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {

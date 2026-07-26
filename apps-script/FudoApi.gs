@@ -35,6 +35,8 @@ const FUDO_API_AUTH_URL_ = 'https://auth.fu.do/api';
 // Confirmado contra la documentación real de dev.fu.do/api (sección "Get sales" > "API Server"):
 // no es el mismo host de autenticación (auth.fu.do), lleva el prefijo de versión /v1alpha1.
 const FUDO_API_BASE_URL_POR_DEFECTO_ = 'https://api.fu.do/v1alpha1';
+// Incluidos válidos para GET /sales según apps-script/fudo-openapi.yml (jul 2026).
+const FUDO_API_SALES_INCLUDE_ = 'items.product,items.subitems.product,table.room,waiter,saleIdentifier,cashRegister,payments.paymentMethod';
 
 /** Correr UNA vez desde el editor de Apps Script (Extensiones > Apps Script) — nunca desde la app web. */
 function fudoApiConfigurarCredenciales_(apiKey, apiSecret, baseUrl) {
@@ -200,6 +202,54 @@ function fudoApiObtenerTodoCompleto_(recurso, opciones) {
   return { registros: registros, incluidos: incluidosPorClave };
 }
 
+function fudoApiIncluidoPorPtr_(ptr, incluidos) {
+  return ptr ? incluidos[ptr.type + ':' + ptr.id] : null;
+}
+
+function fudoApiNombreIncluido_(recurso) {
+  return recurso && recurso.attributes && recurso.attributes.name ? recurso.attributes.name : '';
+}
+
+/**
+ * Extrae de una venta las referencias que Fudo_Mapeo_Sedes puede usar para inferir sede: sala (mesa
+ * → room), caja registradora, identificador de venta y mesero/usuario. Cualquiera puede venir vacía
+ * si la venta no trae ese dato (ej. delivery sin mesa no tiene sala).
+ */
+function fudoApiReferenciasSedeDesdeSale_(sale, incluidos) {
+  const rel = sale.relationships || {};
+  const table = fudoApiIncluidoPorPtr_(rel.table && rel.table.data, incluidos);
+  const room = fudoApiIncluidoPorPtr_(
+    table && table.relationships && table.relationships.room && table.relationships.room.data,
+    incluidos
+  );
+  const sala = fudoApiNombreIncluido_(room);
+
+  const cashRegister = fudoApiIncluidoPorPtr_(rel.cashRegister && rel.cashRegister.data, incluidos);
+  let caja = fudoApiNombreIncluido_(cashRegister);
+  if (!caja && rel.payments && rel.payments.data) {
+    const paymentsPtr = Array.isArray(rel.payments.data) ? rel.payments.data : [rel.payments.data];
+    for (let i = 0; i < paymentsPtr.length && !caja; i++) {
+      const payment = fudoApiIncluidoPorPtr_(paymentsPtr[i], incluidos);
+      const payCrPtr = payment && payment.relationships && payment.relationships.cashRegister &&
+        payment.relationships.cashRegister.data;
+      caja = fudoApiNombreIncluido_(fudoApiIncluidoPorPtr_(payCrPtr, incluidos));
+    }
+  }
+
+  const saleIdentifier = fudoApiIncluidoPorPtr_(rel.saleIdentifier && rel.saleIdentifier.data, incluidos);
+  const identificador = fudoApiNombreIncluido_(saleIdentifier);
+
+  const waiter = fudoApiIncluidoPorPtr_(rel.waiter && rel.waiter.data, incluidos);
+  const usuario = fudoApiNombreIncluido_(waiter);
+
+  return { sala: sala, caja: caja, identificador: identificador, usuario: usuario };
+}
+
+/** Mejor referencia disponible para "Creada por" / bandeja de ventas sin sede (mismo orden que el mapeo). */
+function fudoApiCreadaPorDesdeReferencias_(referencias) {
+  return referencias.sala || referencias.caja || referencias.identificador || referencias.usuario || '';
+}
+
 /**
  * Una venta (con sus relationships.items ya resueltos vía "incluidos") → una fila por ítem vendido,
  * con las MISMAS columnas que trae el export CSV "detallado" de FUDO (ver importarFudoConLock_ en
@@ -220,15 +270,11 @@ function fudoApiObtenerTodoCompleto_(recurso, opciones) {
  * identificar". El atributo exacto de SaleIdentifier no está confirmado contra una cuenta real
  * (no tiene endpoint propio en el spec) — se intenta `attributes.name` a falta de algo mejor.
  */
-function fudoApiFilasVentaDesdeSale_(sale, incluidos) {
+function fudoApiFilasVentaDesdeSale_(sale, incluidos, indiceMapeoOpcional) {
+  const referencias = fudoApiReferenciasSedeDesdeSale_(sale, incluidos);
+  const sedeResuelta = fudoResolverSedeVenta_(referencias, indiceMapeoOpcional);
+  const creadaPor = fudoApiCreadaPorDesdeReferencias_(referencias);
   const itemsPtr = (sale.relationships && sale.relationships.items && sale.relationships.items.data) || [];
-  const tablePtr = sale.relationships && sale.relationships.table && sale.relationships.table.data;
-  const table = tablePtr ? incluidos[tablePtr.type + ':' + tablePtr.id] : null;
-  const roomPtr = table && table.relationships && table.relationships.room && table.relationships.room.data;
-  const room = roomPtr ? incluidos[roomPtr.type + ':' + roomPtr.id] : null;
-  // Ventas sin mesa (delivery/take away/menú online) no tienen sala — sedeDesdeCreadaPor_ (Fudo.gs)
-  // las deja "Sin identificar" igual que antes, no hay otro dato de sede disponible para esos casos.
-  const creadaPor = (room && room.attributes && room.attributes.name) || '';
 
   const waiterPtr = sale.relationships && sale.relationships.waiter && sale.relationships.waiter.data;
   const waiter = waiterPtr ? incluidos[waiterPtr.type + ':' + waiterPtr.id] : null;
@@ -274,6 +320,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
   opciones = opciones || {};
   if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
 
+  const indiceMapeo = fudoMapeoSedeIndice_();
   const resultado = fudoApiObtenerTodoCompleto_('sales', {
     filtros: {
       createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
@@ -290,7 +337,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
 
   const filas = [];
   resultado.registros.forEach(function (sale) {
-    filas.push.apply(filas, fudoApiFilasVentaDesdeSale_(sale, resultado.incluidos));
+    filas.push.apply(filas, fudoApiFilasVentaDesdeSale_(sale, resultado.incluidos, indiceMapeo));
   });
 
   if (!filas.length) {
@@ -342,6 +389,14 @@ function fudoApiProbarConexionRecursoSeguro_(recurso, opciones) {
  * lo descarta. Antes de este cambio se pedía include=unit pero nunca se leía, y unidad quedaba
  * siempre en blanco (auditoría jul 2026).
  */
+function fudoApiUnidadDesdeItem_(item, incluidos) {
+  const unitPtr = item.relationships && item.relationships.unit && item.relationships.unit.data;
+  const desdeIncluido = fudoApiNombreIncluido_(fudoApiIncluidoPorPtr_(unitPtr, incluidos));
+  if (desdeIncluido) return desdeIncluido;
+  const attrs = item.attributes || {};
+  return typeof attrs.unit === 'string' ? attrs.unit : '';
+}
+
 function fudoApiTomarSnapshotStock_(usuario) {
   const productos = fudoApiObtenerTodoCompleto_('products', { include: 'unit' });
   const ingredientes = fudoApiObtenerTodoCompleto_('ingredients', { include: 'unit' });
@@ -364,14 +419,14 @@ function fudoApiTomarSnapshotStock_(usuario) {
       });
     });
   }
-  agregar(productos, 'Producto');
-  agregar(ingredientes, 'Ingrediente');
+  agregar(productos.registros, 'Producto');
+  agregar(ingredientes.registros, 'Ingrediente');
   if (!filas.length) return { ok: true, actualizados: 0, creados: 0, sin_nombre: 0, sin_stock: 0 };
   return stockFudoBaseImportar_(filas, usuario);
 }
 
 function fudoApiProbarConexion_() {
-  const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: 'items.product,table,waiter,payments' });
+  const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: FUDO_API_SALES_INCLUDE_ });
   const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);
   return {
     ok: true,

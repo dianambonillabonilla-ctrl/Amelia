@@ -30,7 +30,7 @@ function trasladoCrear_(item, usuario) {
   }
   requiereSedeTraslado_(usuario, item.sede_origen, 'enviar');
 
-  appendRowFromObj_(SHEET_NAMES.TRASLADOS, {
+  const fila = {
     id: Utilities.getUuid(),
     fecha: item.fecha || formatearFecha_(new Date()),
     producto: item.producto,
@@ -50,8 +50,12 @@ function trasladoCrear_(item, usuario) {
     resuelto_por: '',
     timestamp_resuelto: '',
     nota_resolucion: ''
-  });
-  return { ok: true };
+  };
+  appendRowFromObj_(SHEET_NAMES.TRASLADOS, fila);
+  if (typeof inventarioLibroIntentarDesdeTraslado_ === 'function') {
+    inventarioLibroIntentarDesdeTraslado_(fila, usuario, 'enviado');
+  }
+  return { ok: true, id: fila.id };
 }
 
 function trasladosListar_(filtro, usuario) {
@@ -106,6 +110,13 @@ function trasladoActualizar_(id, cambios, usuario) {
       { estado: estadoAnterior },
       { estado: estadoNuevo, cantidad_recibida: cambiosLimpios.cantidad_recibida, observacion: cambiosLimpios.observacion, nota_resolucion: cambiosLimpios.nota_resolucion },
       encontrado.valores[encontrado.headers.indexOf('sede_destino')]);
+    if (['Confirmado', 'Resuelto'].indexOf(estadoNuevo) !== -1 &&
+        ['Confirmado', 'Resuelto'].indexOf(estadoAnterior) === -1) {
+      const filaActualizada = leerTabla_(SHEET_NAMES.TRASLADOS).find(function (r) { return r.id === id; });
+      if (filaActualizada && typeof inventarioLibroIntentarDesdeTraslado_ === 'function') {
+        inventarioLibroIntentarDesdeTraslado_(filaActualizada, usuario, 'recibido');
+      }
+    }
   }
 
   return { ok: true, estado: estadoNuevo };

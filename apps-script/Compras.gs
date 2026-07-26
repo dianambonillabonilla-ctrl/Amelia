@@ -113,8 +113,11 @@ function compraRegistrarFactura_(factura, usuario, opciones) {
     // líneas ya guardadas y otras no, sin ningún registro de que pasó. Con todas las líneas ya
     // validadas arriba, esta escritura es la única que puede fallar, y falla completa o no falla.
     appendRowsFromObjs_(SHEET_NAMES.AJUSTES_INVENTARIO, filasNuevas);
+    if (typeof inventarioLibroIntentarDesdeAjuste_ === 'function') {
+      filasNuevas.forEach(function (fila) { inventarioLibroIntentarDesdeAjuste_(fila, usuario); });
+    }
 
-    // Si había una gestión abierta (ver Gestiones.gs) para alguno de estos productos en la misma
+    // Si había una gestión abierta
     // sede, esta compra la resuelve sola — así el que reportó el faltante no tiene que además ir a
     // cerrar la gestión a mano cuando ya se sabe que llegó por factura.
     gestionAutoResolverPorCompra_(
