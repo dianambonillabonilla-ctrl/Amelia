@@ -27,6 +27,7 @@ const SHEET_NAMES = {
   FUDO_PAGOS: 'Fudo_Pagos',
   FUDO_DESCUENTOS: 'Fudo_Descuentos',
   FUDO_PROPINAS: 'Fudo_Propinas',
+  FUDO_SUBITEMS: 'Fudo_Subitems',
   SESIONES: 'Sesiones',
   PRODUCCIONES: 'Producciones',
   ALERTAS_ENVIADAS: 'AlertasEnviadas',
@@ -83,6 +84,8 @@ function configurarHojas() {
     Fudo_Descuentos: ['id_descuento', 'id_venta', 'creacion', 'monto', 'porcentaje', 'monto_max', 'cancelado',
       'plantilla_nombre', 'sede', 'archivo_origen', 'importado_en'],
     Fudo_Propinas: ['id_propina', 'id_venta', 'creacion', 'monto', 'cancelado', 'sede', 'archivo_origen', 'importado_en'],
+    Fudo_Subitems: ['id_subitem', 'clave_subitem', 'id_item', 'id_venta', 'creacion', 'producto', 'cantidad', 'precio',
+      'cancelado', 'sede', 'archivo_origen', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
       'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
@@ -388,6 +391,15 @@ function handleRequest_(e, method) {
       case 'fudo_propinas_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: fudoPropinasListar_(params.filtros || {}) });
+      case 'fudo_subitems_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoSubitemsEstado_() });
+      case 'fudo_subitems_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoSubitemsMigrarDesdeApi_(params.fecha_desde, params.fecha_hasta));
+      case 'fudo_subitems_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoSubitemsListar_(params.filtros || {}) });
       case 'fudo_mapeo_sede_listar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });

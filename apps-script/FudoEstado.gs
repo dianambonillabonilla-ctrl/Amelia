@@ -121,6 +121,7 @@ function fudoApiEstadoPanel_() {
     productos_sin_catalogo: sinCatalogo,
     ventas_normalizadas: typeof fudoVentasEstado_ === 'function' ? fudoVentasEstado_() : null,
     pagos_normalizados: typeof fudoPagosEstado_ === 'function' ? fudoPagosEstado_() : null,
-    descuentos_propinas: typeof fudoDescuentosPropinasEstado_ === 'function' ? fudoDescuentosPropinasEstado_() : null
+    descuentos_propinas: typeof fudoDescuentosPropinasEstado_ === 'function' ? fudoDescuentosPropinasEstado_() : null,
+    subitems_normalizados: typeof fudoSubitemsEstado_ === 'function' ? fudoSubitemsEstado_() : null
   };
 }

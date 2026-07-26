@@ -127,6 +127,19 @@
       <pre id="resultado-migracion-descuentos-propinas" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
     </div>
 
+    <div class="card" id="card-subitems-normalizados">
+      <h2>Subítems / modificadores (Fudo_Subitems)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Extras y modificadores de cada línea de venta — se extraen en cada sync de ventas vía API
+        (<code>items.subitems.product</code>). Sin tabla plana previa.
+      </p>
+      <p id="estado-subitems-normalizados" class="vacio">Cargando…</p>
+      <p id="acciones-subitems-normalizados" style="display:none; margin:12px 0 0">
+        <button class="btn fantasma" id="btn-migrar-subitems-api" type="button">Extraer histórico desde API</button>
+      </p>
+      <pre id="resultado-migracion-subitems" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
+    </div>
+
     <div class="card" id="card-sync-rapida" style="display:none">
       <h2>Sincronización rápida</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">Solo Administrador. Ventas primero, pagos después — mismo criterio que en Importar.</p>
@@ -157,6 +170,7 @@ if (esAdmin) {
   document.getElementById('acciones-ventas-normalizadas').style.display = 'block';
   document.getElementById('acciones-pagos-normalizados').style.display = 'block';
   document.getElementById('acciones-descuentos-propinas').style.display = 'block';
+  document.getElementById('acciones-subitems-normalizados').style.display = 'block';
 }
 
 const hoy = fechaLocalHoy_();
@@ -181,6 +195,7 @@ async function cargar() {
   pintarVentasNormalizadas(data.ventas_normalizadas);
   pintarPagosNormalizados(data.pagos_normalizados);
   pintarDescuentosPropinas(data.descuentos_propinas);
+  pintarSubitemsNormalizados(data.subitems_normalizados);
 }
 
 function pintarCredenciales(data) {
@@ -286,6 +301,13 @@ function pintarDescuentosPropinas(dp) {
     `<p style="margin:8px 0 0">Propinas (Fudo_Propinas): <strong>${escapeHtml(dp.propinas)}</strong> — total no cancelado: <strong>$${escapeHtml(Number(dp.monto_propinas || 0).toLocaleString('es-CO'))}</strong></p>`;
 }
 
+function pintarSubitemsNormalizados(sn) {
+  const el = document.getElementById('estado-subitems-normalizados');
+  if (!sn) { el.textContent = 'Sin datos.'; return; }
+  el.innerHTML =
+    `<p style="margin:0">Subítems / modificadores (Fudo_Subitems): <strong>${escapeHtml(sn.subitems)}</strong></p>`;
+}
+
 function pintarSinCatalogo(sc) {
   const card = document.getElementById('card-sin-catalogo');
   if (!sc || !sc.total) { card.style.display = 'none'; return; }
@@ -313,6 +335,21 @@ document.getElementById('btn-migrar-pagos-flat').addEventListener('click', conBo
   pre.textContent = JSON.stringify(data, null, 2);
   if (data.ok) { avisarGuardado(`Migración: ${data.creados || 0} nuevos, ${data.actualizados || 0} actualizados.`); cargar(); }
   else alert(data.error || 'Error en la migración');
+}));
+
+document.getElementById('btn-migrar-subitems-api').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-subitems-api'), async () => {
+  const desde = document.getElementById('sync-desde').value;
+  const hasta = document.getElementById('sync-hasta').value;
+  if (!desde || !hasta) { alert('Indica el rango de fechas en Sincronización rápida.'); return; }
+  if (!confirm(`¿Extraer subítems de la API para ${desde} → ${hasta}? Es idempotente.`)) return;
+  const data = await llamar('fudo_subitems_migrar', { fecha_desde: desde, fecha_hasta: hasta });
+  const pre = document.getElementById('resultado-migracion-subitems');
+  pre.style.display = 'block';
+  pre.textContent = JSON.stringify(data, null, 2);
+  if (data.ok) {
+    avisarGuardado(`Extraídos: ${data.creados || 0} subítems nuevos, ${data.actualizados || 0} actualizados.`);
+    cargar();
+  } else alert(data.error || 'Error en la extracción');
 }));
 
 document.getElementById('btn-migrar-descuentos-propinas').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-descuentos-propinas'), async () => {
