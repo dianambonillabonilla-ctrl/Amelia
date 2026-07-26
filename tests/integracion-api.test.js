@@ -77,8 +77,7 @@ function parametrosPorAccion() {
     fudo_descuentos_listar: { filtros: {} },
     fudo_propinas_listar: { filtros: {} },
     fudo_subitems_listar: { filtros: {} },
-    base_caja_dia: { fecha: HOY, sede: SEDE },
-    base_caja_listar: { filtros: { fecha_desde: '2026-07-01', fecha_hasta: HOY } }
+    base_caja_dia: { fecha: HOY, sede: SEDE }
   };
 }
 

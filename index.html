@@ -10,6 +10,7 @@
 <div class="login-shell">
   <div class="login-card">
     <div class="marca"><h1>Dilana <span>OS</span></h1></div>
+    <p style="text-align:center;color:var(--grey);font-size:.85rem;margin:-10px 0 20px">Ingresa para comenzar tu turno.</p>
     <form id="form-login">
       <div class="campo">
         <label for="usuario">Usuario</label>
@@ -37,7 +38,7 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
   const data = await llamar('login', { usuario, password });
   if (data.ok) {
     Sesion.guardar(data.token, data.usuario);
-    window.location.href = 'dashboard.html';
+    window.location.href = 'inicio.html';
   } else {
     errorEl.textContent = data.error || 'No se pudo iniciar sesión';
     errorEl.style.display = 'block';
