@@ -25,6 +25,17 @@
  * muestre lo que no cuadra o lo que esta desfasado aparte".
  */
 function conciliacionHistorialDesfases_(fechaDesde, fechaHasta, usuario) {
+  // Recorre hasta ~62 días y reconcilia cada uno: sin memoizar las hojas, cada día volvía a pedir
+  // conteos, ventas y recetas completas.
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () {
+      return conciliacionHistorialDesfasesSinCache_(fechaDesde, fechaHasta, usuario);
+    });
+  }
+  return conciliacionHistorialDesfasesSinCache_(fechaDesde, fechaHasta, usuario);
+}
+
+function conciliacionHistorialDesfasesSinCache_(fechaDesde, fechaHasta, usuario) {
   if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
   if (fechaDesde > fechaHasta) return { ok: false, error: 'La fecha "desde" no puede ser posterior a la fecha "hasta"' };
 

@@ -322,7 +322,7 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  * Disponible Hoy hasta el primer conteo físico de ese producto, que es justo lo contrario de lo
  * que se pidió.
  */
-function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
+function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
   indice = indice || indiceCatalogo_();
   const cacheVentas = {};
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
@@ -375,6 +375,10 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
 
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
+    // `soloClave` (opcional) limita el cálculo a UN producto: Tendencia.gs recalcula el stock una
+    // vez por cada día del rango, y sin esto cada uno de esos días recorría los ajustes, traslados,
+    // producciones y ventas de todos los productos del catálogo para quedarse con uno solo.
+    if (soloClave && clave !== soloClave) return;
     const entrada = porProducto[clave];
     let total = 0;
     let unidadFinal = '';

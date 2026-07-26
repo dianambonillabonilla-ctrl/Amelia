@@ -31,7 +31,7 @@ function calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede) {
   // un usuario limitado a una sola sede podía ver la tendencia combinada, que revela por resta el
   // dato de la otra sede. Ahora respeta la misma sede que el resto de "Disponible Hoy".
   const stockPorFecha = fechas.map(function (fecha) {
-    const s = obtenerUltimoStockPorIngrediente_(fecha, indice, sede)[clave];
+    const s = obtenerUltimoStockPorIngrediente_(fecha, indice, sede, clave)[clave];
     return s ? s.cantidad : 0;
   });
 
