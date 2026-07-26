@@ -363,35 +363,21 @@ describía una rama/commit inexistentes) encontró dos gaps reales en lo ya cons
   de la API misma.
 
 La misma revisión señaló, correctamente, que `Ubicaciones.gs` (arriba) duplicaba
-`PUNTOS_POR_SEDE` — ver la nota tachada más arriba.
+`PUNTOS_POR_SEDE` — ver la nota tachada más arriba. **Corrección jul 2026:** la PR #93 intentó
+unificar ubicaciones vía `ubicaciones_listar`, pero esa acción ya no existía; se restauró
+`PUNTOS_POR_SEDE` en `assets/config.js` como única fuente de puntos de conteo/traslado.
 
-Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
-antes de tocar código en producción):
+### Hecho en jul 2026 (Pasos 6–18)
 
-- `pagos_esperados`/`diferencia_caja`/`inventario_contado`/`diferencia_inventario` de la sección
-  6.F siguen sin implementar — necesitan sincronizar pagos de Fudo (hoy solo se sincronizan ventas)
-  y un valor agregado único de inventario teórico vs. contado por sede, que hoy no existe (calcular
-  contra qué comparar el efectivo o qué "un solo número" de diferencia de inventario significaría
-  requiere una decisión de producto, no solo código).
-- Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten `movimientosInventarioListar_`/
-  `calcularInventarioTeorico_`/`movimientosDesdeVentas_` en vez de combinar las hojas por su
-  cuenta — deliberadamente no se hizo en esta pasada para no arriesgar su lógica ya probada
-  (comparación por hora exacta, proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón
-  concreta.
-- "Cancelación de venta" (el tipo de movimiento en sí) no está implementado — hoy una venta
-  cancelada simplemente se excluye del cálculo (no genera ningún movimiento), igual que ya hacía
-  Conciliacion.gs. Si en el futuro se necesita registrar la reversa de un consumo ya contabilizado
-  (ej. una venta que se cancela DESPUÉS de haberse preparado/servido), hace falta una regla de
-  negocio nueva sobre el momento de la cancelación, no solo código.
-- `movimientosDesdeVentas_` no está conectado a ninguna pantalla todavía (sí a la acción
-  `movimientos_venta_dia_listar`) — falta decidir dónde mostrarlo (¿una vista nueva del libro?
-  ¿dentro de Conciliación?).
-- Foto/evidencia de pesaje (`evidencia_url`) y hora de inicio/fin del lote: el backend ya tiene las
-  columnas pero no hay flujo de subida de imágenes en todo el repositorio todavía (no es solo
-  agregar un campo — hace falta decidir dónde se guardan las fotos, ej. Google Drive vía Apps
-  Script) ni un input de hora en producir.html.
-- Refactor de `Ventas_FUDO` en `Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Pagos`/
-  `Fudo_Descuentos`/`Fudo_Propinas`.
-- Ampliación de `Cierres_Turno` con los campos de sincronización/pagos/inventario del punto 6.F.
-- Pantallas nuevas (bandeja "Ventas pendientes de sede", panel Fudo con última sincronización,
-  vista del libro de movimientos/inventario por ubicación).
+- Sincronización de pagos, tablas normalizadas Fudo, panel Fudo, evidencias Drive, cierre enriquecido,
+  conciliación con libro/subítems, lectores con fallback.
+- **Paso 18:** lecturas planas migradas a lectores; libro con consumo por ventas integrado y filtro
+  por punto; filtro API pagos corregido; `pagosFudoImportar_` con test directo.
+
+Pendiente (decisiones de producto o fuera de alcance inmediato):
+
+- **Disponible Hoy** con lógica por hora exacta sigue separado del libro por fecha (Fase 6).
+- **Cancelación de venta** como movimiento de reversa — requiere regla de negocio.
+- Activar **dual-write del libro físico** en producción — flag y migración listos en libro-inventario.html.
+- **Recetas Fase 3:** UI de aprobación, subrecetas, vínculo por ID Fudo.
+- Dejar de **escribir** tablas planas como respaldo — los lectores ya prefieren normalizadas para lectura.

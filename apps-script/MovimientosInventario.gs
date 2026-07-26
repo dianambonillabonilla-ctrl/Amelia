@@ -179,10 +179,21 @@ function movimientosDesdeTraslados_() {
   return movimientos;
 }
 
+function fechasEnRangoMovimientos_(fechaDesde, fechaHasta) {
+  if (!fechaDesde || !fechaHasta) return [];
+  const fechas = [];
+  const d = new Date(fechaDesde + 'T12:00:00');
+  const fin = new Date(fechaHasta + 'T12:00:00');
+  while (d <= fin) {
+    fechas.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 1);
+  }
+  return fechas;
+}
+
 /**
  * Libro completo, normalizado y filtrable — filtros = { fecha_desde, fecha_hasta, sede, producto,
- * indice (índice de Catalogo_Alias, opcional) }. `producto` filtra por claveProducto_ (mismo
- * agrupamiento que usan Conteos/Recetas/Producción, sin importar mayúsculas/tildes/alias).
+ * punto, incluir_consumo_ventas, indice (índice de Catalogo_Alias, opcional) }.
  */
 function movimientosInventarioListar_(filtros) {
   filtros = filtros || {};
@@ -192,9 +203,24 @@ function movimientosInventarioListar_(filtros) {
     movimientosDesdeProduccion_(),
     movimientosDesdeTraslados_()
   );
+  if (filtros.incluir_consumo_ventas && filtros.sede && filtros.sede !== 'Ambas') {
+    const desde = filtros.fecha_desde || filtros.fecha_hasta;
+    const hasta = filtros.fecha_hasta || filtros.fecha_desde;
+    fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
+      movimientos.push.apply(movimientos, movimientosDesdeVentas_(fecha, filtros.sede, indice));
+    });
+  }
   if (filtros.fecha_desde) movimientos = movimientos.filter(function (m) { return m.fecha >= filtros.fecha_desde; });
   if (filtros.fecha_hasta) movimientos = movimientos.filter(function (m) { return m.fecha <= filtros.fecha_hasta; });
   if (filtros.sede && filtros.sede !== 'Ambas') movimientos = movimientos.filter(function (m) { return m.sede === filtros.sede; });
+  if (filtros.punto) {
+    const puntoNorm = normalizar_(filtros.punto);
+    movimientos = movimientos.filter(function (m) {
+      const orig = normalizar_(m.ubicacion_origen || '');
+      const dest = normalizar_(m.ubicacion_destino || '');
+      return orig.indexOf(puntoNorm) !== -1 || dest.indexOf(puntoNorm) !== -1;
+    });
+  }
   if (filtros.producto) {
     const clave = claveProducto_(filtros.producto, indice);
     movimientos = movimientos.filter(function (m) { return claveProducto_(m.producto, indice) === clave; });

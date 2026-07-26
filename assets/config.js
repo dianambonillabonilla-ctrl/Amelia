@@ -125,28 +125,19 @@ function frecuenciasDelDia_(fechaStr) {
   return frecuencias;
 }
 
-// Catálogo único de ubicaciones por sede — viene del backend (Ubicaciones.gs vía ubicaciones_listar).
-// Antes cada pantalla tenía su propia lista fija en este archivo (PUNTOS_POR_SEDE) y no coincidía con
-// el catálogo del servidor; ahora conteos, traslados, producción e históricos leen la misma fuente.
-let ubicacionesCatalogo_ = null;
-
-const UBICACIONES_FALLBACK_ = {
-  'Centro de Producción': [
-    'Materia prima cruda', 'Productos en proceso', 'Productos terminados',
-    'Despachos pendientes', 'Mermas de producción'
-  ],
-  'San Antonio': ['Cocina', 'Barra o bebidas', 'Almacén', 'Terraza o servicio', 'Caja'],
-  'Capri': ['Cocina', 'Café y barra', 'Waflería', 'Almacén', 'Caja']
+// Puntos de conteo disponibles por sede — fuente única compartida entre conteo, traslados,
+// producción e históricos. Los nombres deben coincidir con el histórico operativo real.
+const PUNTOS_POR_SEDE = {
+  'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],
+  'Capri': ['Cocina terraza', 'Nevera terraza', 'Neveras Primer piso', 'Cocina primer piso', 'Bodega segundo piso', 'Bodega Cocina'],
+  'Centro de Producción': ['General']
 };
+
+let ubicacionesCatalogo_ = null;
 
 async function cargarUbicaciones_() {
   if (ubicacionesCatalogo_) return ubicacionesCatalogo_;
-  const data = await llamar('ubicaciones_listar');
-  if (data.ok && data.data && typeof data.data === 'object') {
-    ubicacionesCatalogo_ = data.data;
-    return ubicacionesCatalogo_;
-  }
-  ubicacionesCatalogo_ = UBICACIONES_FALLBACK_;
+  ubicacionesCatalogo_ = PUNTOS_POR_SEDE;
   return ubicacionesCatalogo_;
 }
 
@@ -162,9 +153,9 @@ async function ubicacionesTodasFlat_() {
 
 function ubicacionPredeterminada_(sede, lista) {
   const preferidas = {
-    'San Antonio': 'Cocina',
-    'Capri': 'Cocina',
-    'Centro de Producción': 'Productos terminados'
+    'San Antonio': 'Cocina terraza',
+    'Capri': 'Cocina terraza',
+    'Centro de Producción': 'General'
   };
   const pref = preferidas[sede];
   if (pref && lista.includes(pref)) return pref;

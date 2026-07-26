@@ -137,7 +137,10 @@ function fudoResolverSedeVenta_(referencias, indiceOpcional) {
  */
 function ventasPendientesSedeListar_() {
   const grupos = {};
-  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) {
+  const filas = (typeof ventasFudoLineasTodas_ === 'function'
+    ? ventasFudoLineasTodas_({ sin_canceladas: false }).lineas
+    : leerTabla_(SHEET_NAMES.VENTAS_FUDO));
+  filas.forEach(function (v) {
     if (v.sede !== FUDO_SEDE_SIN_IDENTIFICAR_) return;
     const clave = v.creada_por || '';
     if (!grupos[clave]) grupos[clave] = { creada_por: clave, cantidad: 0, primera_fecha: v.creacion, ultima_fecha: v.creacion };
@@ -169,6 +172,29 @@ function ventasPendientesSedeAsignar_(creadaPor, sede, usuario) {
       actualizadas++;
     }
   }
+  let actualizadasNorm = 0;
+  if (typeof ventasPendientesSedeActualizarItems_ === 'function') {
+    actualizadasNorm = ventasPendientesSedeActualizarItems_(creadaPor, sede);
+  }
   const reglaCreada = creadaPor ? fudoMapeoSedeGuardar_({ tipo_referencia: 'Sala', nombre: creadaPor, sede: sede }, usuario) : null;
-  return { ok: true, actualizadas: actualizadas, regla_creada: !!(reglaCreada && reglaCreada.ok) };
+  return { ok: true, actualizadas: actualizadas, actualizadas_items: actualizadasNorm, regla_creada: !!(reglaCreada && reglaCreada.ok) };
+}
+
+/** Actualiza sede en Fudo_Items para ventas pendientes con el mismo creada_por. */
+function ventasPendientesSedeActualizarItems_(creadaPor, sede) {
+  const sh = sheet_(SHEET_NAMES.FUDO_ITEMS);
+  const data = sh.getDataRange().getValues();
+  if (!data.length) return 0;
+  const headers = data[0];
+  const creadaPorCol = headers.indexOf('creada_por');
+  const sedeCol = headers.indexOf('sede');
+  if (creadaPorCol < 0 || sedeCol < 0) return 0;
+  let actualizadas = 0;
+  for (let r = 1; r < data.length; r++) {
+    if ((data[r][creadaPorCol] || '') === (creadaPor || '') && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
+      sh.getRange(r + 1, sedeCol + 1).setValue(sede);
+      actualizadas++;
+    }
+  }
+  return actualizadas;
 }

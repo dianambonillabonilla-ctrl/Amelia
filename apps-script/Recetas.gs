@@ -156,9 +156,11 @@ function platosFudoSinReceta_() {
     .forEach(function (c) { bebidas[claveProducto_(c.nombre_estandar, indice)] = true; });
 
   const vistos = {};
-  const ventasPlatos = (typeof ventasFudoLineasTodas_ === 'function'
-    ? ventasFudoLineasTodas_({ sin_canceladas: true })
-    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) { return !ventaCancelada_(v); }) }).lineas;
+  const ventasPlatos = (typeof ventasFudoLineasTodasParaConsumo_ === 'function'
+    ? ventasFudoLineasTodasParaConsumo_({ sin_canceladas: true })
+    : typeof ventasFudoLineasTodas_ === 'function'
+      ? ventasFudoLineasTodas_({ sin_canceladas: true })
+      : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) { return !ventaCancelada_(v); }) }).lineas;
   ventasPlatos.forEach(function (v) {
     const clave = claveProducto_(v.producto, indice);
     if (productosConReceta[clave] || bebidas[clave]) return;

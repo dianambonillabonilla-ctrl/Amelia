@@ -6,6 +6,9 @@
  */
 
 function pagosFudoIndiceSedePorVenta_() {
+  if (typeof ventasFudoIndiceSedePorVenta_ === 'function') {
+    return ventasFudoIndiceSedePorVenta_();
+  }
   const indice = {};
   leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) {
     const id = String(v.id_venta || '');

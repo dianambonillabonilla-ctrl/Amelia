@@ -615,7 +615,7 @@ function ctxAutenticadoConDatos_(paginas) {
   const url = llamadas[0].url;
   assert.ok(url.includes('/payments?'));
   assert.ok(url.includes('filter[canceled]=' + encodeURIComponent('neq.true')));
-  assert.ok(url.includes('filter[sales.saleState]=' + encodeURIComponent('in.(CLOSED)')));
+  assert.ok(url.includes('filter[sales][saleState]=' + encodeURIComponent('in.(CLOSED)')));
   console.log('fudoApiSincronizarPagos_ arma filtros y delega en pagosFudoImportar_: OK');
 })();
 

@@ -103,6 +103,34 @@ function normalizarSimple_(s) {
 
 (function () {
   const items = [
+    { id_venta: '100', creacion: '2026-07-21', sede: 'Capri', producto: 'Waffle', cancelada: false }
+  ];
+  const flat = [
+    { id_venta: '200', creacion: '2026-07-21', sede: 'San Antonio', producto: 'Plano', cancelada: false }
+  ];
+  const mod = cargar('apps-script/FudoLectores.gs', {
+    SHEET_NAMES: { FUDO_ITEMS: 'items', VENTAS_FUDO: 'flat', FUDO_SUBITEMS: 'sub', FUDO_PAGOS: 'p', PAGOS_FUDO: 'pf' },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    normalizar_: normalizarSimple_,
+    ventaCancelada_: (v) => v.cancelada === true,
+    leerTabla_: (h) => {
+      if (h === 'items') return items;
+      if (h === 'flat') return flat;
+      return [];
+    }
+  });
+  const idx = mod.ventasFudoIndiceSedePorVenta_();
+  assert.equal(idx['100'], 'Capri');
+  assert.equal(idx['200'], undefined, 'con Fudo_Items no lee la plana');
+
+  const todo = mod.ventasFudoLineasTodasParaConsumo_({ sin_canceladas: true });
+  assert.equal(todo.lineas.length, 1);
+  assert.equal(todo.lineas[0].producto, 'Waffle');
+  console.log('ventasFudoIndiceSedePorVenta_ y ventasFudoLineasTodasParaConsumo_: OK');
+})();
+
+(function () {
+  const items = [
     { id_venta: '10', creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', categoria: 'Bebidas', cantidad: 3, precio: 5000, cancelada: false }
   ];
   const mod = cargar('apps-script/Conciliacion.gs', {

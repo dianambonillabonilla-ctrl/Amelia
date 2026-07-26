@@ -308,6 +308,20 @@ function cargarMovimientosVentas_(fx) {
 })();
 
 (function () {
+  const fx = fixtures_();
+  fx.ventas = [{ creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', cantidad: 2, cancelada: false }];
+  const mod = cargarMovimientos_(fx);
+  mod.movimientosDesdeVentas_ = (fecha, sede) => fecha === '2026-07-21' && sede === 'Capri'
+    ? [{ fecha: '2026-07-21', producto: 'Poker', cantidad: -2, unidad: 'u', sede: 'Capri', tipo_movimiento: 'Consumo por venta', usuario: '', documento_relacionado: '', estado: 'Registrado', ubicacion_origen: 'Capri', ubicacion_destino: '' }]
+    : [];
+  const sinVentas = mod.movimientosInventarioListar_({ fecha_desde: '2026-07-21', fecha_hasta: '2026-07-21', sede: 'Capri' });
+  const conVentas = mod.movimientosInventarioListar_({ fecha_desde: '2026-07-21', fecha_hasta: '2026-07-21', sede: 'Capri', incluir_consumo_ventas: true });
+  assert.ok(sinVentas.every((m) => m.tipo_movimiento !== 'Consumo por venta'));
+  assert.ok(conVentas.some((m) => m.tipo_movimiento === 'Consumo por venta'));
+  console.log('movimientosInventarioListar_ incluir_consumo_ventas: OK');
+})();
+
+(function () {
   const conteos = [
     { fecha: '2026-07-10', sede: 'Capri', producto: 'Costilla', cantidad: 8, unidad: 'u' },
     { fecha: '2026-07-10', sede: 'Capri', producto: 'Aceite', cantidad: 2, unidad: 'u' }
