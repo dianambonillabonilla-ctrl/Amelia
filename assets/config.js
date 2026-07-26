@@ -126,7 +126,8 @@ function frecuenciasDelDia_(fechaStr) {
 }
 
 // Puntos de conteo disponibles por sede — fuente única compartida entre conteo, traslados,
-// producción e históricos. Los nombres deben coincidir con el histórico operativo real.
+// producción e históricos. Los nombres deben coincidir con el histórico operativo real
+// ("Cocina terraza", "Bodega segundo piso", etc.) — no usar listas genéricas del modelo.
 const PUNTOS_POR_SEDE = {
   'San Antonio': ['Cocina terraza', 'Primer piso', 'Bodega'],
   'Capri': ['Cocina terraza', 'Nevera terraza', 'Neveras Primer piso', 'Cocina primer piso', 'Bodega segundo piso', 'Bodega Cocina'],

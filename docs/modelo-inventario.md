@@ -364,20 +364,37 @@ describía una rama/commit inexistentes) encontró dos gaps reales en lo ya cons
 
 La misma revisión señaló, correctamente, que `Ubicaciones.gs` (arriba) duplicaba
 `PUNTOS_POR_SEDE` — ver la nota tachada más arriba. **Corrección jul 2026:** la PR #93 intentó
-unificar ubicaciones vía `ubicaciones_listar`, pero esa acción ya no existía; se restauró
-`PUNTOS_POR_SEDE` en `assets/config.js` como única fuente de puntos de conteo/traslado.
+unificar ubicaciones vía `ubicaciones_listar`, pero esa acción ya no existía (eliminada en #92);
+el frontend caía a un fallback con nombres ficticios. Se restauró `PUNTOS_POR_SEDE` en
+`assets/config.js` como única fuente de puntos de conteo/traslado.
 
-### Hecho en jul 2026 (Pasos 6–18)
+### Hecho en jul 2026 (Pasos 6–17, además de lo listado arriba)
 
-- Sincronización de pagos, tablas normalizadas Fudo, panel Fudo, evidencias Drive, cierre enriquecido,
-  conciliación con libro/subítems, lectores con fallback.
-- **Paso 18:** lecturas planas migradas a lectores; libro con consumo por ventas integrado y filtro
-  por punto; filtro API pagos corregido; `pagosFudoImportar_` con test directo.
+- Sincronización de **pagos** Fudo (`Pagos_FUDO` + dual-write `Fudo_Pagos`).
+- Tablas normalizadas **`Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Descuentos`/`Fudo_Propinas`** con dual-write desde sync/API.
+- **Panel Fudo** (`fudo.html`) con última sincronización, migraciones históricas y estado de tablas normalizadas.
+- **Evidencias** en Drive (`Evidencias.gs`) conectadas a compras, conteo, producción y ajustes.
+- **Cierre de turno enriquecido:** `turnoResumenCierre_` incluye pagos esperados, descuentos, propinas, diferencia de caja (efectivo contado vs esperado) y resumen de inventario teórico vs contado.
+- **Conciliación:** inventario teórico de referencia, consumo por ventas (libro), subítems en consumo por receta (paso 17).
+- **Lectores con fallback** (`FudoLectores.gs`): `Fudo_Items`/`Fudo_Pagos` primero, tablas planas si no hay datos.
 
-Pendiente (decisiones de producto o fuera de alcance inmediato):
+Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
+antes de tocar código en producción):
 
-- **Disponible Hoy** con lógica por hora exacta sigue separado del libro por fecha (Fase 6).
-- **Cancelación de venta** como movimiento de reversa — requiere regla de negocio.
-- Activar **dual-write del libro físico** en producción — flag y migración listos en libro-inventario.html.
-- **Recetas Fase 3:** UI de aprobación, subrecetas, vínculo por ID Fudo.
-- Dejar de **escribir** tablas planas como respaldo — los lectores ya prefieren normalizadas para lectura.
+- Dejar de depender de **`Ventas_FUDO`/`Pagos_FUDO` planas** como fuente principal en todo el código
+  (hoy los lectores ya prefieren normalizadas, pero escritura y algunos módulos siguen en plano).
+- Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten **solo** `movimientosInventarioListar_`/
+  `calcularInventarioTeorico_`/`movimientosDesdeVentas_` en vez de combinar las hojas por su
+  cuenta — deliberadamente no se hizo en esta pasada para no arriesgar su lógica ya probada
+  (comparación por hora exacta, proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón
+  concreta.
+- "Cancelación de venta" (el tipo de movimiento en sí) no está implementado — hoy una venta
+  cancelada simplemente se excluye del cálculo (no genera ningún movimiento), igual que ya hacía
+  Conciliacion.gs. Si en el futuro se necesita registrar la reversa de un consumo ya contabilizado
+  (ej. una venta que se cancela DESPUÉS de haberse preparado/servido), hace falta una regla de
+  negocio nueva sobre el momento de la cancelación, no solo código.
+- Hora de inicio/fin del lote en producir.html (el backend ya guarda las columnas).
+- **Dual-write del libro central** (`Movimientos_Inventario`): flag `inventarioLibroActivo_` existe
+  pero sigue inactivo por defecto — activar en producción requiere migración y validación.
+- Disponible Hoy conectado a ventas/subítems normalizados (Fase 6).
+- Vista del libro de movimientos/inventario por ubicación (pantalla dedicada más allá de conciliación).
