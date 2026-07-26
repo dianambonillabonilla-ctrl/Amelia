@@ -96,6 +96,7 @@ El backend crea o actualiza estas hojas:
 - `Turnos_Sector`
 - `Cierres_Turno`
 - `Fudo_Mapeo_Sedes`
+- `Base_Caja`
 
 `MovimientosInventario.gs` no crea hojas nuevas: lee `Ajustes_Inventario`, `Producciones`,
 `Traslados` y `Conteos_Manuales` (ya existentes) y las normaliza a un único formato de movimiento

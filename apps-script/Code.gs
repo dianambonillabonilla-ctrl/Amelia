@@ -41,7 +41,8 @@ const SHEET_NAMES = {
   CATALOGO_ALIAS: 'Catalogo_Alias',
   FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes',
   MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario',
-  PAGOS_FUDO: 'Pagos_FUDO'
+  PAGOS_FUDO: 'Pagos_FUDO',
+  BASE_CAJA: 'Base_Caja'
 };
 
 function ss_() {
@@ -120,7 +121,9 @@ function configurarHojas() {
       'entidad_tipo', 'entidad_id', 'clave_idempotencia', 'estado', 'usuario_id', 'usuario_nombre', 'observacion',
       'evidencia_url', 'requiere_aprobacion', 'aprobado_por', 'aprobado_en', 'reversa_movimiento_id', 'creado_en'],
     Pagos_FUDO: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo',
-      'sede', 'archivo_origen', 'importado_por', 'importado_en']
+      'sede', 'archivo_origen', 'importado_por', 'importado_en'],
+    Base_Caja: ['id', 'fecha', 'sede', 'efectivo_fudo', 'caja_fuerte', 'efectivo_caja_menor', 'pendiente',
+      'gastos', 'cuadre', 'usuario', 'timestamp', 'observacion']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -374,6 +377,15 @@ function handleRequest_(e, method) {
       case 'gestion_actualizar_estado':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(gestionActualizarEstado_(params.id, params.estado, params.nota, sesion.usuario));
+      case 'base_caja_guardar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(baseCajaGuardar_(params.item, sesion.usuario));
+      case 'base_caja_dia':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(baseCajaDia_(params.fecha, params.sede));
+      case 'base_caja_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
+        return jsonOut_({ ok: true, data: baseCajaListar_(params.filtros, sesion.usuario) });
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
