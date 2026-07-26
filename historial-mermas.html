@@ -171,9 +171,7 @@ async function cargar() {
       : '—';
     const accion = esAdmin && esMerma && r.avalado !== true
       ? `<button class="btn fantasma btn-avalar" data-id="${escapeHtml(r.id)}" type="button">Avalar</button>` : '';
-    const evidencia = r.evidencia_url
-      ? `<a href="${escapeHtml(r.evidencia_url)}" target="_blank" rel="noopener">Foto</a>`
-      : '—';
+    const evidencia = r.evidencia_url ? evidenciaEnlaceHtml_(r.evidencia_url, 'Foto') : '—';
     return `<tr>
       <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
       <td>${escapeHtml(r.sede)}</td>

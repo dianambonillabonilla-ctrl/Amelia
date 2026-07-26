@@ -390,9 +390,7 @@ async function cargarAjustes_() {
       : '—';
     const accion = esAdmin && esMerma && a.avalado !== true
       ? `<button class="btn fantasma btn-avalar" data-id="${escapeHtml(a.id)}" type="button">Avalar</button>` : '';
-    const evidencia = a.evidencia_url
-      ? `<a href="${escapeHtml(a.evidencia_url)}" target="_blank" rel="noopener">Ver foto</a>`
-      : '—';
+    const evidencia = a.evidencia_url ? evidenciaEnlaceHtml_(a.evidencia_url, 'Ver foto') : '—';
     return `<tr><td>${escapeHtml(a.tipo)}</td><td>${escapeHtml(a.producto)}</td><td>${escapeHtml(a.cantidad)} ${escapeHtml(a.unidad)}</td><td>${escapeHtml(a.motivo || '')}</td><td>${evidencia}</td><td>${escapeHtml(a.usuario)}</td><td>${avalado}</td><td>${accion}</td></tr>`;
   }).join('');
 

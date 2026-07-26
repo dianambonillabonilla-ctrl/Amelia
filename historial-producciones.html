@@ -132,7 +132,7 @@ async function cargar() {
   tabla.innerHTML = data.data.map(r => {
     const extras = [];
     if (r.hora_inicio || r.hora_fin) extras.push(`Lote ${r.hora_inicio || '—'} – ${r.hora_fin || '—'}`);
-    if (r.evidencia_url) extras.push(`<a href="${escapeHtml(r.evidencia_url)}" target="_blank" rel="noopener">Foto</a>`);
+    if (r.evidencia_url) extras.push(evidenciaEnlaceHtml_(r.evidencia_url, 'Foto'));
     if (r.insumo_producto) extras.push(`${escapeHtml(r.insumo_cantidad)} ${escapeHtml(r.insumo_unidad)} de ${escapeHtml(r.insumo_producto)}`);
     return `
     <tr>

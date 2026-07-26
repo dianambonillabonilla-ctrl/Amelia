@@ -282,7 +282,7 @@ function toggleDetalleFactura_(fila) {
   const detalle = document.createElement('tr');
   detalle.className = 'fila-detalle-factura';
   detalle.innerHTML = `<td></td><td colspan="7" style="background:var(--cream); padding:12px">
-    ${factura.evidencia_url ? `<p style="margin:0 0 10px"><a href="${escapeHtml(factura.evidencia_url)}" target="_blank" rel="noopener">Ver foto de la factura</a></p>` : ''}
+    ${factura.evidencia_url ? `<p style="margin:0 0 10px">${evidenciaEnlaceHtml_(factura.evidencia_url, 'Ver foto de la factura')}</p>` : ''}
     <table style="margin:0">
       <thead><tr><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Costo</th></tr></thead>
       <tbody>
