@@ -1,0 +1,819 @@
+openapi: 3.1.0
+info:
+  version: v1alpha1
+  title: Fudo API
+  description: "# Overview\n\n## Introduction\nThis document describes how to make
+    use of the Fudo API. In order to use\nthe API, you must first have created an
+    account in Fudo.\n\nYou can access the openapi spec yaml file\n[here](https://api.fu.do/v1alpha1/openapi.yml).\n\
+    \n## Authentication\nAuthentication is through an access token, sending the token
+    in each\nrequest within the `Authorization` header. In order to obtain the token,\n\
+    you must first have the access credentials `apiKey` and `apiSecret`.\n\n### Access
+    credentials\nIf you do not yet have an `apiKey` and `apiSecret`, write to soporte@fu.do\n\
+    indicating the name of the account in Fudo and the user of the account to\nwhich
+    you want to give API access.\n\nWe recommend creating a user especially for API
+    access , in order to keep\nregular system users separated from users used for
+    API access. E.g.\napi@mirestaurante. Keep in mind that the actions that can be
+    done through\nthe API will depend on the role assigned to the user associated
+    to the\ntoken.\n\n### Obtaining the token\nTo obtain the token, a request must
+    be sent to the authentication endpoint\nwith the access credentials. It is important
+    to send the `Content-Type`\nheader as `application/json`.\n\nThe authentication
+    endpoint is `https://auth.fu.do/api`.\n\nExample:\n\n```terminal\ncurl -X POST
+    https://auth.fu.do/api \\\n     -d '{\"apiKey\":\"123456\",\"apiSecret\":\"654321\"\
+    }' \\\n     -H \"Accept: application/json\" \\\n     -H \"Content-Type: application/json\"\
+    \n```\n\nAs a response, the access token will be obtained.\n\n```json\n{\"token\"\
+    :\"1234567890\", exp: \"1645387452\"}\n```\n\nThe returned token will be the one
+    that must be sent later in each request\nmade to the API, within the `Authorization`
+    header, prefixed with the\n`Bearer` value, for example, `Authorization: Bearer
+    1234567890`.\n\n### Token expiration\nThe token lasts for 24 hours, after this
+    time it can no longer be used and\na new token must be obtained. The expiration
+    date is included in the `exp`\nattribute in the json response as an integer number
+    of seconds since the\nEpoch.\n\nThis makes possible to know in advance when the
+    token will expire and to\nrenew it if it has already expired at the time of using
+    it again, or the\nexpiration date is approaching.\n\n## Pagination\nMost collection
+    endpoints accept two query parameters for paging:\n\n| Parameter      | Description\
+    \                       | Default | Max |\n| -------------- | ---------------------------------
+    | ------- | --- |\n| `page[size]`   | Items per page                    | 250\
+    \     | 500 |\n| `page[number]` | Page number, starting at 1        | 1      \
+    \ | — |\n\nThe response does **not** include a total item count. To iterate the\n\
+    full collection, request successive pages and stop when the number of\nitems returned
+    is **less than** `page[size]` — that indicates the last\npage.\n\nExample — fetch
+    all sales 500 at a time:\n\n```\nGET /sales?page[size]=500&page[number]=1\nGET
+    /sales?page[size]=500&page[number]=2\nGET /sales?page[size]=500&page[number]=3\
+    \   # 412 items returned -> done\n```\n\n## Filtering\nMost collection endpoints
+    accept query parameters of the form\n`filter[<column>]=<operator>.<value>`. The
+    operators are:\n\n| Operator             | Meaning                           \
+    \                   | Example                                                \
+    \                    |\n| -------------------- | ----------------------------------------------------
+    | -------------------------------------------------------------------------- |\n\
+    | `eq.<v>`             | Equals                                              \
+    \ | `filter[active]=eq.true`                                                 \
+    \  |\n| `neq.<v>`            | Not equals                                    \
+    \       | `filter[name]=neq.demo`                                            \
+    \        |\n| `gt.<v>`, `gte.<v>`  | Greater than / greater-or-equal         \
+    \             | `filter[salesCount]=gte.5`                                   \
+    \              |\n| `lt.<v>`, `lte.<v>`  | Less than / less-or-equal         \
+    \                   | `filter[lastSaleDate]=lte.2026-01-01T00:00:00Z`        \
+    \                    |\n| `is.null`            | Column is null              \
+    \                         | `filter[email]=is.null`                          \
+    \                          |\n| `isdistinct.null`    | Column is **not** null\
+    \                               | `filter[email]=isdistinct.null`            \
+    \                                |\n| `in.(v1,v2,...)`     | Column matches any
+    value in the list                 | `filter[saleType]=in.(EAT-IN,TAKEAWAY)`  \
+    \                                  |\n| `ilike.<pattern>`    | Case-insensitive
+    pattern match (`%` is the wildcard) | `filter[name]=ilike.%stew%`            \
+    \                                    |\n| `fts.<text>`         | Full-text search,
+    only on the virtual `@all` column  | `filter[@all]=fts.john%20doe`           \
+    \                                   |\n| `and(<op1>,<op2>)`   | Combine two operators
+    on the same column (ranges)    | `filter[createdAt]=and(gte.2026-01-01T00:00:00Z,lte.2026-02-01T00:00:00Z)`
+    |\n\nThe set of operators accepted by each column varies by endpoint — check\n\
+    the `pattern:` of the `filter` query parameter in each operation for the\nauthoritative
+    list of column-operator combinations.\n\nExample — list customers with 5 or more
+    sales that originated from a reservation:\n\n```\nGET /customers?filter[salesCount]=gte.5&filter[origin]=eq.RESERVATION\n\
+    ```\n\nMultiple `filter[<column>]` parameters in the same request are combined\n\
+    with logical AND.\n\n## Sorting\nCollection endpoints accept a `sort` query parameter
+    — a comma-separated\nlist of columns, with `-` prefix for descending order. The
+    whitelist of\nsortable columns is per-endpoint (see the `pattern:` of the `sort`\n\
+    parameter in each operation).\n\nExample — customers ordered by sales count (descending),
+    then by name:\n\n```\nGET /customers?sort=-salesCount,name\n```\n"
+servers:
+- url: https://api.fu.do/v1alpha1
+  description: Production
+tags:
+- name: Customers
+- name: Discounts
+- name: Expenses
+- name: Expense Categories
+- name: Ingredients
+- name: Items
+- name: Kitchens
+- name: Payments
+- name: Payment Methods
+- name: Product Categories
+- name: Product Modifiers
+- name: Products
+- name: Providers
+- name: Roles
+- name: Rooms
+- name: Sales
+- name: Subitems
+- name: Tables
+- name: Users
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      summary: Get customers
+      tags:
+      - Customers
+      parameters:
+      - name: filter
+        in: query
+        description: Object in the form of filter[column]=value.
+        schema: &id006
+          type: object
+          additionalProperties: false
+          properties:
+            active:
+              type: string
+              pattern: ^eq\.(true|false)$
+              example: eq.true
+            firstSaleDate:
+              type: string
+              pattern:
+                (^(gte|lte)\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z)?)|(^and\(gte\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z)?\,lte.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z)?\))
+              example: and(gte.2020-05-11T23:15:00Z,lte.2020-05-11T23:15:00Z)
+            houseAccountEnabled:
+              type: string
+              pattern: ^eq\.(true|false)$
+              example: eq.true
+            lastSaleDate:
+              type: string
+              pattern:
+                (^(gte|lte)\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z)?)|(^and\(gte\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z)?\,lte.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z)?\))
+              example: and(gte.2020-05-11T23:15:00Z,lte.2020-05-11T23:15:00Z)
+            origin:
+              type: string
+              pattern: ^(eq\.(ONLINE-MENU|RESERVATION)|is\.null)$
+              example: eq.ONLINE-MENU
+            salesCount:
+              type: string
+              pattern:
+                (^(eq|gte|lte|gt|lt)\.\d+$)|(^and\((gte|gt)\.\d+,(lte|lt)\.\d+\))
+              example: and(gte.5,lte.20)
+            '@all':
+              type: string
+              pattern: ^fts\..{1,255}$
+      - name: page
+        in: query
+        description: Page number and size.
+        schema: &id012
+          type: object
+          additionalProperties: false
+          properties:
+            number:
+              type: string
+              pattern: ^\d+$
+            size:
+              type: string
+              pattern: ^\d+$
+      - name: sort
+        in: query
+        description: Comma-separated list. See pattern for possible values.
+        schema:
+          type: string
+          pattern: ^((-?id|-?name|-?salesCount)(,(?!$))?)+$
+          example:
+          - id
+          - -id
+          - name
+          - -name
+          - salesCount
+          - -salesCount
+      responses:
+        '200':
+          description: A list of resources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: &id002
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: \d{1,10}
+                          example: '1'
+                        type:
+                          type: string
+                          enum:
+                          - Customer
+                          example: Customer
+                        attributes:
+                          type: object
+                          properties:
+                            active:
+                              type: boolean
+                              example: true
+                            address:
+                              type: string
+                              example: '["Calle falsa", "123", "", "Springfield"]'
+                            birthDate:
+                              type: string
+                              format: date
+                              example: '1990-05-15'
+                            comment:
+                              type: string
+                              example: comment
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: '2020-05-11T23:15:00.000Z'
+                            discountPercentage:
+                              type: number
+                              example: 100.5
+                            email:
+                              type: string
+                              example: paula@example.com
+                            fiscalAddress:
+                              type: object
+                              properties:
+                                postalCode:
+                                  type: string
+                                  example: 12345-678
+                                addressType:
+                                  type: string
+                                  example: Commercial
+                                state:
+                                  type: string
+                                  example: SP
+                                municipality:
+                                  type: string
+                                  example: São Paulo
+                                city:
+                                  type: string
+                                  example: São Paulo
+                                neighborhood:
+                                  type: string
+                                  example: Centro
+                                street:
+                                  type: string
+                                  example: Avenida Paulista
+                                number:
+                                  type: string
+                                  example: '1000'
+                                economicActivity:
+                                  type: string
+                                  example: Comercio al por menor
+                                countryEntity:
+                                  type: string
+                                  example: '11'
+                                countrySubentity:
+                                  type: string
+                                  example: '11001'
+                            firstSaleDate:
+                              type: string
+                              format: date-time
+                              example: '2020-05-11T23:15:00.000Z'
+                            historicalSalesCount:
+                              type: integer
+                              example: 25
+                            historicalTotalSpent:
+                              type: number
+                              example: 1250.75
+                            houseAccountBalance:
+                              type: number
+                              example: 100.5
+                            houseAccountEnabled:
+                              type: boolean
+                              example: true
+                            lastSaleDate:
+                              type: string
+                              format: date-time
+                              example: '2020-05-11T23:15:00.000Z'
+                            name:
+                              type: string
+                              example: Paula
+                            origin:
+                              type: string
+                              example: ONLINE-MENU
+                            phone:
+                              type: string
+                              example: +54 11 1234 1234
+                            salesCount:
+                              type: integer
+                              example: 12
+                            vatNumber:
+                              type: string
+                              example: 30-3312341234-9
+                        relationships:
+                          type: object
+                          properties:
+                            paymentMethod:
+                              type: object
+                              properties:
+                                data:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: string
+                                      pattern: \d{1,10}
+                                      example: '1'
+                                    type:
+                                      type: string
+                                      enum:
+                                      - PaymentMethod
+                                      example: PaymentMethod
+        '401': &id003
+          description: Authentication is missing or the token is
+            invalid/expired.
+          content:
+            application/json:
+              schema: &id001
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items: &id069
+                      type: object
+                      required:
+                      - status
+                      properties:
+                        status:
+                          type: string
+                          example: '422'
+                        code:
+                          type: string
+                          example: invalid-attribute
+                        title:
+                          type: string
+                          example: Unprocessable Entity
+                        detail:
+                          type: string
+                          example: name can't be blank
+                        source:
+                          type: object
+                          properties:
+                            pointer:
+                              type: string
+                              example: /data/attributes/name
+                            parameter:
+                              type: string
+                        meta:
+                          type: object
+                          additionalProperties: true
+              examples:
+                unauthorized:
+                  value:
+                    errors:
+                    - status: '401'
+                      code: unauthorized
+        '403': &id004
+          description: "The authenticated user does not have permission to perform\n\
+            this action.\n"
+          content:
+            application/json:
+              schema: *id001
+              examples:
+                forbidden:
+                  value:
+                    errors:
+                    - status: '403'
+                      code: forbidden
+        '429': &id005
+          description: "Rate limit exceeded. Retry after the number of seconds indicated\n\
+            by the Retry-After header. The body is currently plain text, not\na JSON:API
+            error.\n"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Retry later
+    post:
+      operationId: createCustomer
+      summary: Create customer
+      tags:
+      - Customers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - type
+                  - attributes
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                      - Customer
+                      example: Customer
+                    attributes:
+                      type: object
+                      additionalProperties: false
+                      required:
+                      - name
+                      properties:
+                        active:
+                          type: boolean
+                          example: true
+                        address:
+                          type: string
+                          example: '["Calle falsa", "123", "", "Springfield"]'
+                        birthDate:
+                          type: string
+                          format: date
+                          example: '1990-05-15'
+                        comment:
+                          type: string
+                          minLength: 1
+                          maxLength: 90
+                          example: Comentario
+                        discountPercentage:
+                          type: number
+                          minimum: 1
+                          maximum: 100
+                          example: 100
+                        houseAccountEnabled:
+                          type: boolean
+                          example: true
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 90
+                          example: Paula
+                        email:
+                          type: string
+                          minLength: 1
+                          maxLength: 90
+                          format: email
+                          example: paula@example.com
+                        origin:
+                          type: string
+                          enum:
+                          - RESERVATION
+                          example: RESERVATION
+                        fiscalAddress:
+                          type: object
+                          additionalProperties: false
+                          properties:
+                            postalCode:
+                              type: string
+                              maxLength: 20
+                              example: 12345-678
+                            addressType:
+                              type: string
+                              maxLength: 50
+                              example: Commercial
+                            state:
+                              type: string
+                              maxLength: 50
+                              example: SP
+                            municipality:
+                              type: string
+                              maxLength: 100
+                              example: São Paulo
+                            city:
+                              type: string
+                              maxLength: 100
+                              example: São Paulo
+                            neighborhood:
+                              type: string
+                              maxLength: 100
+                              example: Centro
+                            street:
+                              type: string
+                              maxLength: 200
+                              example: Avenida Paulista
+                            number:
+                              type: string
+                              maxLength: 20
+                              example: '1000'
+                            economicActivity:
+                              type: string
+                              maxLength: 100
+                              example: Comercio al por menor
+                            countryEntity:
+                              type: string
+                              maxLength: 50
+                              example: '11'
+                            countrySubentity:
+                              type: string
+                              maxLength: 50
+                              example: '11001'
+                        phone:
+                          type: string
+                          minLength: 1
+                          maxLength: 45
+                          example: +54 11 1234 1234
+                        vatNumber:
+                          type: string
+                          minLength: 1
+                          maxLength: 45
+                          example: 30-3312341234-9
+                    relationships:
+                      type: object
+                      additionalProperties: false
+                      required:
+                      - paymentMethod
+                      properties:
+                        paymentMethod:
+                          type: object
+                          additionalProperties: false
+                          required:
+                          - data
+                          properties:
+                            data:
+                              type: object
+                              additionalProperties: false
+                              required:
+                              - id
+                              - type
+                              properties:
+                                id:
+                                  type: string
+                                  pattern: \d{1,10}
+                                  example: '1'
+                                type:
+                                  type: string
+                                  enum:
+                                  - PaymentMethod
+                                  example: PaymentMethod
+      responses:
+        '201':
+          description: The created resource
+          content:
+            application/json:
+              schema: &id007
+                type: object
+                properties:
+                  data: *id002
+        '400': &id009
+          description: "The request was malformed or a referenced relationship is
+            missing.\n"
+          content:
+            application/json:
+              schema: *id001
+              examples:
+                invalidBody:
+                  value:
+                    errors:
+                    - status: '400'
+                      code: bad-request
+                noMatchingRelationship:
+                  value:
+                    errors:
+                    - status: '400'
+                      code: no-matching-relationship
+                      detail: Relationship customer with id 5 is not present
+        '401': *id003
+        '403': *id004
+        '422': &id011
+          description: "A resource attribute or business rule failed validation. The\n\
+            title and detail are localized (default es).\n"
+          content:
+            application/json:
+              schema: *id001
+              examples:
+                invalidAttribute:
+                  value:
+                    errors:
+                    - status: '422'
+                      code: invalid_attribute
+                      title: Atributo inválido
+                      detail: El valor de Nombre ya está tomado
+        '429': *id005
+  /customers/{id}:
+    get:
+      operationId: getCustomer
+      summary: Get customer
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: &id008
+          type: string
+          pattern: \d{1,10}
+          example: '1'
+      - name: filter
+        in: query
+        description: Object in the form of filter[column]=value.
+        schema: *id006
+      responses:
+        '200':
+          description: A single resource
+          content:
+            application/json:
+              schema: *id007
+        '401': *id003
+        '403': *id004
+        '404': &id010
+          description: Resource not found.
+          content:
+            application/json:
+              schema: *id001
+              examples:
+                notFound:
+                  value:
+                    errors:
+                    - status: '404'
+                      code: not-found
+        '429': *id005
+    patch:
+      operationId: updateCustomer
+      summary: Update customer
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id008
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - id
+                  - type
+                  - attributes
+                  properties:
+                    id:
+                      type: string
+                      pattern: ^\d{1,10}$
+                      example: '1'
+                    type:
+                      type: string
+                      enum:
+                      - Customer
+                      example: Customer
+                    attributes:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        active:
+                          type: boolean
+                          example: true
+                        address:
+                          type: string
+                          example: Address
+                        birthDate:
+                          anyOf:
+                          - type: string
+                            format: date
+                            example: '1990-05-15'
+                          - type: 'null'
+                        comment:
+                          anyOf:
+                          - type: string
+                            minLength: 1
+                            maxLength: 90
+                            example: Comentario
+                          - type: 'null'
+                        discountPercentage:
+                          anyOf:
+                          - type: number
+                            minimum: 1
+                            maximum: 100
+                            example: 100
+                          - type: 'null'
+                        houseAccountEnabled:
+                          type: boolean
+                          example: true
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 90
+                          example: Paula
+                        email:
+                          anyOf:
+                          - type: string
+                            minLength: 1
+                            maxLength: 90
+                            format: email
+                            example: paula@example.com
+                          - type: 'null'
+                        fiscalAddress:
+                          anyOf:
+                          - type: object
+                            additionalProperties: false
+                            properties:
+                              postalCode:
+                                type: string
+                                maxLength: 20
+                                example: 12345-678
+                              addressType:
+                                type: string
+                                maxLength: 50
+                                example: Commercial
+                              state:
+                                type: string
+                                maxLength: 50
+                                example: SP
+                              municipality:
+                                type: string
+                                maxLength: 100
+                                example: São Paulo
+                              city:
+                                type: string
+                                maxLength: 100
+                                example: São Paulo
+                              neighborhood:
+                                type: string
+                                maxLength: 100
+                                example: Centro
+                              street:
+                                type: string
+                                maxLength: 200
+                                example: Avenida Paulista
+                              number:
+                                type: string
+                                maxLength: 20
+                                example: '1000'
+                              economicActivity:
+                                type: string
+                                maxLength: 100
+                                example: Comercio al por menor
+                              countryEntity:
+                                type: string
+                                maxLength: 50
+                                example: '11'
+                              countrySubentity:
+                                type: string
+                                maxLength: 50
+                                example: '11001'
+                          - type: 'null'
+                        phone:
+                          anyOf:
+                          - type: string
+                            maxLength: 45
+                            example: +54 11 1234 1234
+                          - type: 'null'
+                        vatNumber:
+                          anyOf:
+                          - type: string
+                            minLength: 1
+                            maxLength: 45
+                            example: 30-3312341234-9
+                          - type: 'null'
+                    relationships:
+                      type: object
+                      additionalProperties: false
+                      required:
+                      - paymentMethod
+                      properties:
+                        paymentMethod:
+                          type: object
+                          additionalProperties: false
+                          required:
+                          - data
+                          properties:
+                            data:
+                              type: object
+                              additionalProperties: false
+                              required:
+                              - id
+                              - type
+                              properties:
+                                id:
+                                  type: string
+                                  pattern: \d{1,10}
+                                  example: '1'
+                                type:
+                                  type: string
+                                  enum:
+                                  - PaymentMethod
+                                  example: PaymentMethod
+      responses:
+        '200':
+          description: The updated resource
+          content:
+            application/json:
+              schema: *id007
+        '400': *id009
+        '401': *id003
+        '403': *id004
+        '404': *id010
+        '422': *id011
+        '429': *id005
+    delete:
+      operationId: deleteCustomer
+      summary: Delete customer
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id008
+      responses:
+        '200':
+          description: A customer
+          content:
+            application/json:
+              schema: *id007
+        '401': *id003
+        '403': *id004
+        '404': *id010
+        '429': *id005
