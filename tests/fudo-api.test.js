@@ -685,6 +685,60 @@ function ctxAutenticadoConDatos_(paginas) {
   console.log('fudoSincronizacionAutomatica_ registra el error si ventas falla y sigue con pagos: OK');
 })();
 
+// Negocio recién empezando (jul 2026): mientras no haya un sync EXITOSO de ventas registrado en el
+// panel, fudoSincronizacionAutomatica_ debe traer todo el histórico desde FUDO_FECHA_INICIO_OPERACION_
+// ('2026-07-01'), no solo "ayer" — para que nadie tenga que entrar a importar.html a sincronizar el
+// mes completo a mano.
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, { data: [], included: [] });
+  const ctx = cargarFudoApi_({ fudoApiSyncLeer_: () => null });
+  ctx.fudoSincronizacionAutomatica_();
+  const urlVentas = llamadas.find((l) => l.url.indexOf('/sales') !== -1).url;
+  assert.ok(urlVentas.includes(encodeURIComponent('gte.2026-07-01T00:00:00')), 'sin sync previo exitoso, debe traer desde el inicio de operación, no solo ayer');
+  console.log('fudoSincronizacionAutomatica_ sin sync previo exitoso trae todo el histórico desde el inicio de operación: OK');
+})();
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, { data: [], included: [] });
+  const ctx = cargarFudoApi_({ fudoApiSyncLeer_: () => ({ ok: true, timestamp: new Date().toISOString() }) });
+  ctx.fudoSincronizacionAutomatica_();
+  const urlVentas = llamadas.find((l) => l.url.indexOf('/sales') !== -1).url;
+  const ayerEsperado = ctx.formatearFecha_(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  assert.ok(urlVentas.includes(encodeURIComponent('gte.' + ayerEsperado + 'T00:00:00')), 'con sync previo exitoso, debe volver al rango normal ayer→hoy');
+  assert.ok(!urlVentas.includes(encodeURIComponent('gte.2026-07-01')), 'no debe seguir trayendo desde el inicio de operación una vez puesto al día');
+  console.log('fudoSincronizacionAutomatica_ con sync previo exitoso vuelve al rango ayer→hoy: OK');
+})();
+
+(function () {
+  // Un registro previo FALLIDO (ok:false) no cuenta como sync exitoso — debe seguir reintentando el
+  // histórico completo, no rendirse y pasar a "ayer" con el mes a medio sincronizar.
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, { data: [], included: [] });
+  const ctx = cargarFudoApi_({ fudoApiSyncLeer_: () => ({ ok: false, error: 'fu.do caído' }) });
+  ctx.fudoSincronizacionAutomatica_();
+  const urlVentas = llamadas.find((l) => l.url.indexOf('/sales') !== -1).url;
+  assert.ok(urlVentas.includes(encodeURIComponent('gte.2026-07-01T00:00:00')), 'un intento previo fallido no cuenta como sync exitoso — debe reintentar el histórico completo');
+  console.log('fudoSincronizacionAutomatica_ con sync previo fallido reintenta el histórico completo: OK');
+})();
+
 (function () {
   reiniciarProps_();
   llamadas = [];

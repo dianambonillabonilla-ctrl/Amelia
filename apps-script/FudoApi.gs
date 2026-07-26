@@ -38,6 +38,14 @@ const FUDO_API_BASE_URL_POR_DEFECTO_ = 'https://api.fu.do/v1alpha1';
 // Incluidos válidos para GET /sales según apps-script/fudo-openapi.yml (jul 2026).
 const FUDO_API_SALES_INCLUDE_ = 'items.product,items.subitems.product,table.room,waiter,saleIdentifier,payments.paymentMethod,discounts.discountTemplate,tips';
 
+// Negocio recién empezando (jul 2026): no hay nada previo que sincronizar antes de esta fecha.
+// fudoSincronizacionAutomatica_ la usa como piso SOLO en su primera corrida exitosa (o mientras
+// todas las corridas anteriores hayan fallado) — así el histórico completo del mes se trae solo,
+// sin que alguien tenga que entrar a importar.html a sincronizarlo a mano una vez. Si el negocio ya
+// lleva operando más tiempo cuando se lea esto, no hace falta tocar esta constante: una vez que haya
+// un registro de sincronización EXITOSA de ventas en el panel, esta fecha deja de usarse.
+const FUDO_FECHA_INICIO_OPERACION_ = '2026-07-01';
+
 /** Correr UNA vez desde el editor de Apps Script (Extensiones > Apps Script) — nunca desde la app web. */
 function fudoApiConfigurarCredenciales_(apiKey, apiSecret, baseUrl) {
   if (!apiKey || !apiSecret) {
@@ -548,16 +556,25 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
 
 /**
  * Handler del trigger automático (ver configurarTriggers() en Code.gs) — sincroniza ventas y pagos
- * de FUDO sin depender de que alguien entre a importar.html y haga clic. Sincroniza HOY y AYER en
- * cada corrida (no solo hoy) a propósito: una venta cerrada tarde, cancelada después, o una corrida
- * que falló hace unas horas quedan cubiertas solas en la siguiente — es seguro repetir el mismo
- * rango una y otra vez porque ventas y pagos se deduplican por su id real de FUDO (claveVenta_ /
- * upsert por id_pago en pagosFudoImportar_), nunca por rango de fechas.
+ * de FUDO sin depender de que alguien entre a importar.html y haga clic.
+ *
+ * Rango: mientras NO haya un registro de sincronización EXITOSA de ventas en el panel (instalación
+ * nueva, negocio recién empezando, o todos los intentos previos fallaron), sincroniza desde
+ * FUDO_FECHA_INICIO_OPERACION_ hasta hoy — trae el histórico completo solo, sin que nadie tenga que
+ * entrar a importar.html a sincronizar el mes a mano. Una vez que hay al menos una corrida exitosa,
+ * vuelve al rango normal "ayer → hoy" (no tiene sentido re-consultar el mes completo cada 15
+ * minutos una vez que ya se puso al día). Repetir el mismo rango una y otra vez es seguro porque
+ * ventas y pagos se deduplican por su id real de FUDO (claveVenta_ / upsert por id_pago en
+ * pagosFudoImportar_), nunca por rango de fechas — así una venta cerrada tarde, cancelada después,
+ * o una corrida que falló hace unas horas quedan cubiertas solas en la siguiente.
  *
  * A diferencia de llamar fudoApiSincronizarVentas_/Pagos_ directo, esto SIEMPRE deja un registro en
  * el panel (fudoApiSyncRegistrar_) aunque la API de FUDO falle con una excepción (token vencido,
  * fu.do caído, etc.) — así "Panel Fudo" (fudo.html) puede avisar que la sincronización automática
- * lleva rato fallando, en vez de quedarse con el último éxito manual como si todo siguiera bien.
+ * lleva rato fallando, en vez de quedarse con el último éxito manual como si todo siguiera bien. Y
+ * como ese registro de error NO cuenta como "corrida exitosa", el histórico completo se reintenta en
+ * la siguiente corrida en vez de rendirse y pasar solo a "ayer" con el mes a medio sincronizar.
+ *
  * Pagos depende de que ventas haya corrido antes en el mismo rango (resuelve sede por id de venta ya
  * sincronizado) — por eso se intenta ventas primero, pero un fallo en ventas NO cancela el intento
  * de pagos: pueden traer sedes en "Sin identificar" ese ciclo, se corrigen solas en el siguiente.
@@ -571,8 +588,11 @@ function fudoSincronizacionAutomatica_() {
   }
   const usuarioAutomatico = { nombre: 'Sincronización automática' };
   const hoy = new Date();
-  const ayer = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
-  const fechaDesde = formatearFecha_(ayer);
+  const registroVentasPrevio = typeof fudoApiSyncLeer_ === 'function' ? fudoApiSyncLeer_('ventas') : null;
+  const yaHuboSyncExitoso = !!(registroVentasPrevio && registroVentasPrevio.ok === true);
+  const fechaDesde = yaHuboSyncExitoso
+    ? formatearFecha_(new Date(hoy.getTime() - 24 * 60 * 60 * 1000))
+    : FUDO_FECHA_INICIO_OPERACION_;
   const fechaHasta = formatearFecha_(hoy);
 
   try {

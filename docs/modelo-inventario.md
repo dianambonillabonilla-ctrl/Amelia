@@ -411,13 +411,21 @@ de fechas y hacía clic — nada las llamaba solas. El único trigger programado
 pero dependía de que alguien se acordara de sincronizar todos los días.
 
 - **`fudoSincronizacionAutomatica_`** (`FudoApi.gs`) — nuevo handler de trigger que sincroniza
-  ventas y pagos de FUDO solo, sin ningún clic. Sincroniza el rango "ayer → hoy" en cada corrida (no
-  solo hoy) a propósito: es seguro repetir el mismo rango una y otra vez porque ventas y pagos se
-  deduplican por su id real de FUDO (`claveVenta_` / upsert por `id_pago`), nunca por rango de
-  fechas — así una venta cerrada tarde, cancelada después, o una corrida que falló hace unas horas
-  quedan cubiertas solas en la siguiente. A diferencia de llamar las funciones de sync directo, esto
-  **siempre** deja un registro en el panel (`fudoApiSyncRegistrar_`) aunque la API de FUDO lance una
-  excepción (token vencido, fu.do caído) — antes esos fallos no dejaban ningún rastro visible.
+  ventas y pagos de FUDO solo, sin ningún clic. Rango: mientras no haya un registro de
+  sincronización **exitosa** de ventas en el panel (negocio recién empezando, instalación nueva, o
+  todos los intentos previos fallaron), sincroniza desde `FUDO_FECHA_INICIO_OPERACION_`
+  (`'2026-07-01'`, Amelia empezó a operar/usar FUDO en jul 2026) hasta hoy — trae el histórico
+  completo del mes solo, sin que un Administrador tenga que entrar a `importar.html` y sincronizarlo
+  a mano. Una vez que hay al menos una corrida exitosa, vuelve al rango normal "ayer → hoy" (no
+  tiene sentido re-consultar el mes completo cada 15 minutos una vez puesto al día). Es seguro
+  repetir el mismo rango una y otra vez porque ventas y pagos se deduplican por su id real de FUDO
+  (`claveVenta_` / upsert por `id_pago`), nunca por rango de fechas — así una venta cerrada tarde,
+  cancelada después, o una corrida que falló hace unas horas quedan cubiertas solas en la siguiente.
+  A diferencia de llamar las funciones de sync directo, esto **siempre** deja un registro en el
+  panel (`fudoApiSyncRegistrar_`) aunque la API de FUDO lance una excepción (token vencido, fu.do
+  caído) — antes esos fallos no dejaban ningún rastro visible, y como un registro fallido NO cuenta
+  como "corrida exitosa", el histórico completo se reintenta solo en la siguiente corrida en vez de
+  rendirse y pasar a "ayer" con el mes a medio sincronizar.
 - **`fudoSincronizacionStockDiaria_`** (`FudoApi.gs`) — mismo patrón para el snapshot de stock
   consolidado (`fudoApiTomarSnapshotStock_`), llamado desde `tareaDiaria_` una vez al día.
 - **`configurarTriggers()`** (`Code.gs`) ahora crea también un trigger cada 15 minutos para
