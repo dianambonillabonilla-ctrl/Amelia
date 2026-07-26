@@ -400,7 +400,43 @@ Pendiente (requiere migración de datos reales en producción o decisiones de pr
 - Migración completa de `Conciliacion.gs`/`DisponibleHoy.gs` al motor único con comparación por hora exacta (Disponible Hoy conserva lógica horaria propia).
 - **Activar dual-write del libro central** en producción (`inventarioLibroActivo_`) — requiere migración histórica validada en la hoja real. Sigue apagado a propósito (jul 2026): no se activó junto con la sincronización automática de abajo para no mezclar dos cambios de riesgo distinto en el mismo despliegue.
 - Regla de negocio avanzada: cancelación después de servido vs. antes del cierre (hoy todas las canceladas generan reversa en el libro).
-- Consolidar las ~20 pantallas de navegación actuales hacia las ~7 de la sección 12 (Inicio · Operación diaria · Conteo y cierre · Inventario · Recetas · Fudo · Conciliación) — rediseño de UI pendiente, no se tocó junto con este cambio.
+- Seguir consolidando pantallas hacia el modelo de ~7 de la sección 12 (Inicio · Operación diaria ·
+  Conteo y cierre · Inventario · Recetas · Fudo · Conciliación). Ya se hizo un primer recorte de bajo
+  riesgo (ver "Consolidación de pantallas" más abajo: 5 históricos de solo lectura → 1). Falta lo más
+  grande y de más riesgo: fusionar pantallas de REGISTRO (conteo/producción/traslados/compras) y
+  reducir hojas del spreadsheet — esto último requiere activar el libro central primero (punto de
+  arriba), no es solo UI.
+
+### Hecho en jul 2026 (importar histórico manual desde Excel + consolidar pantallas de solo lectura)
+
+Dos pedidos del negocio recién empezando: (1) traer al sistema lo que ya llevaban a mano en Excel
+antes de usar Dilana OS, y (2) que la aplicación se sintiera con menos pantallas, no más.
+
+- **`apps-script/ImportarHistorico.gs`** (nuevo) — `historicoImportarFilas_(tipoDestino, filas,
+  usuario, opciones)` importa filas históricas de Compras, Mermas/ajustes, Producción, Traslados o
+  Conteos hacia las MISMAS hojas y con las MISMAS reglas de validación que las pantallas manuales
+  (reutiliza `ajusteInventarioRegistrar_`, `produccionRegistrar_`, `trasladoCrear_`/
+  `trasladoConfirmar_`, `conteoRegistrar_` — no duplica esa lógica). Dedupe por contenido (no hay id
+  externo como en Fudo) usando el mismo `contadorClaves_` de `Fudo.gs`, así subir el mismo Excel dos
+  veces no duplica filas. Acciones nuevas: `historico_tipos_listar` / `historico_importar` (solo
+  Administrador, ver `Code.gs`).
+- **UI en `importar.html`** (sección "Datos históricos manuales (Excel)", NO una pestaña nueva) — sube
+  un `.xls`/`.xlsx`/`.csv` con `XLSX.js` (ya vendorizado, mismo que usa la importación de Fudo),
+  arma un mapeo de columnas con adivinado automático por nombre parecido, vista previa, y confirma en
+  lotes de 100 filas con barra de progreso — mismo patrón que la importación de Fudo, para que las
+  columnas reales del Excel del negocio (que casi nunca calzan con los nombres de campo del backend)
+  no bloqueen nada.
+- **Consolidación de pantallas** — `historial.html` (nuevo) reemplaza `historial-conteos.html`,
+  `historial-mermas.html`, `historial-producciones.html`, `historial-conciliacion.html` y
+  `historial-cierres-turno.html` (eliminados): un selector de tipo muestra/oculta cada sección, cada
+  una carga sus datos solo la primera vez que se abre. Mismas llamadas al backend, mismos filtros y
+  columnas que las 5 pantallas originales — no se tocó ninguna lógica de negocio, solo se unificó el
+  contenedor. El menú de navegación pasó de 20 a 16 pantallas. También se renombró "Importar de
+  FUDO" a solo "Importar" (ya no es solo Fudo).
+- No tocado a propósito: pantallas de REGISTRO (conteo.html, producir.html, traslados.html,
+  compras.html) siguen separadas — fusionarlas es un cambio de flujo diario para el personal, más
+  arriesgado que unificar vistas de solo lectura, y no se hizo sin mockups/validación con el equipo
+  real (ver "Pendiente" arriba).
 
 ### Hecho en jul 2026 (sincronización automática de Fudo — cierra el gap "por qué es manual")
 

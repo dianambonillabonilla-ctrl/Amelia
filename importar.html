@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Importar de FUDO</title>
+<title>Dilana OS — Importar</title>
 <link rel="stylesheet" href="assets/styles.css">
 <script src="assets/vendor/xlsx.full.min.js"></script>
 </head>
@@ -14,21 +14,17 @@
     <nav>
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
-      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
-      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
-      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de producción</a>
       <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
       <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
       <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
       <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
-      <a href="importar.html" class="activo" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="importar.html" class="activo" data-solo-rol="Administrador">Importar</a>
       <a href="fudo.html" data-solo-rol="Administrador,Encargado">Panel Fudo</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
       <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura">Libro de inventario</a>
-      <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
-      <a href="historial-cierres-turno.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de cierres</a>
+      <a href="historial.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
@@ -36,7 +32,7 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Importar reportes de FUDO</h1>
+      <h1>Importar</h1>
       <div id="barra-usuario"></div>
     </div>
 
@@ -152,6 +148,43 @@
       <div id="aviso-diagnostico" class="card" style="display:none; margin-top:14px; border-color:var(--red); background:#FEF4F3">
         <strong style="color:var(--red)">⚠ Se importaron 0 filas</strong>
         <p id="aviso-diagnostico-texto" style="margin:8px 0 0; font-size:.88rem; white-space:pre-line"></p>
+      </div>
+    </div>
+
+    <div class="card" style="border-color:var(--navy); margin-top:24px">
+      <h2>Datos históricos manuales (Excel)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Para traer al sistema lo que ya llevaban a mano antes de usar Dilana OS: compras, producción,
+        traslados, conteos físicos o mermas/ajustes. Cada fila queda sujeta a las mismas reglas que si
+        se hubiera registrado desde la pantalla normal (sede, cantidades válidas, tipo de ajuste,
+        etc.) — esto no se salta esas validaciones, solo evita escribirlas una por una.
+      </p>
+      <div class="grid grid-3">
+        <label>¿Qué vas a traer? <select id="historico-tipo"></select></label>
+        <label>Archivo <input type="file" id="historico-input-archivo" accept=".xls,.xlsx,.csv"></label>
+      </div>
+
+      <div id="historico-mapeo" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid #E5E5E5">
+        <h3 style="margin:0 0 8px">Columnas del archivo</h3>
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Ya se adivinó el mapeo por nombre de columna parecido — revisa y corrige lo que no haya
+          quedado bien antes de ver la vista previa. Los campos marcados con * son obligatorios.
+        </p>
+        <div id="historico-mapeo-campos" class="grid grid-3"></div>
+        <button class="btn" id="btn-historico-vista-previa" style="margin-top:14px">Ver vista previa</button>
+      </div>
+
+      <div id="historico-preview" style="display:none; margin-top:16px">
+        <h3 style="margin:0 0 8px">Vista previa (<span id="historico-n-filas"></span> filas)</h3>
+        <div style="overflow-x:auto"><table id="historico-tabla-preview"></table></div>
+        <button class="btn dorado" id="btn-historico-confirmar" style="margin-top:16px">Confirmar e importar</button>
+        <div id="historico-progreso" style="display:none; margin-top:16px">
+          <div style="background:#EEE; border-radius:8px; overflow:hidden; height:18px">
+            <div id="historico-progreso-barra" style="background:var(--navy); height:100%; width:0%; transition:width .2s"></div>
+          </div>
+          <p id="historico-progreso-texto" style="margin:8px 0 0; font-size:.85rem; color:var(--grey)"></p>
+        </div>
+        <pre id="historico-resultado" style="display:none; margin-top:12px; max-height:260px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
       </div>
     </div>
   </main>
@@ -476,6 +509,157 @@ document.getElementById('btn-confirmar').addEventListener('click', conBotonProte
       'Revisa que el archivo tenga columnas de fecha/producto/cantidad con esos nombres exactos (o muy parecidos) — ' +
       'si FUDO cambió el nombre de alguna columna, hay que agregarlo a valorFudo_() en Fudo.gs.';
     avisoDiag.style.display = 'block';
+  }
+}));
+
+// --- Datos históricos manuales (Excel) ----------------------------------------------------------
+// Traer al sistema lo que ya se llevaba a mano antes de usar Dilana OS (compras, producción,
+// traslados, conteos, mermas/ajustes) sin tener que volver a teclearlo fila por fila. Reutiliza el
+// mismo parser XLSX y el mismo patrón de lotes con barra de progreso que la importación de FUDO de
+// arriba — la diferencia es que aquí las columnas del Excel del usuario casi nunca calzan con los
+// nombres de campo que espera el backend, así que hace falta un mapeo antes de la vista previa.
+
+let historicoTiposCache_ = [];
+let historicoTipoActual_ = null;
+let historicoFilasCrudas_ = [];
+let historicoFilasMapeadas_ = [];
+
+async function historicoCargarTipos_() {
+  const data = await llamar('historico_tipos_listar', {});
+  if (!data.ok) return;
+  historicoTiposCache_ = data.data;
+  const select = document.getElementById('historico-tipo');
+  select.innerHTML = historicoTiposCache_.map(t => `<option value="${escapeHtml(t.tipo)}">${escapeHtml(t.etiqueta)}</option>`).join('');
+  select.addEventListener('change', () => { if (historicoFilasCrudas_.length) historicoRenderMapeo_(); });
+}
+historicoCargarTipos_();
+
+document.getElementById('historico-input-archivo').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const hoja = wb.Sheets[wb.SheetNames[0]];
+  historicoFilasCrudas_ = XLSX.utils.sheet_to_json(hoja, { defval: null });
+  document.getElementById('historico-preview').style.display = 'none';
+  if (!historicoFilasCrudas_.length) {
+    alert('El archivo no trajo filas — revisa que la primera pestaña tenga encabezados en la primera fila.');
+    return;
+  }
+  historicoRenderMapeo_();
+});
+
+// Adivina qué columna del archivo corresponde a cada campo del backend comparando por nombre
+// normalizado (sin tildes/mayúsculas) — exacto primero, luego "una contiene a la otra". Nunca es
+// obligatorio: es solo un punto de partida que el usuario corrige a mano si quedó mal.
+function historicoAdivinarColumna_(campo, columnas) {
+  const normCampo = normalizarTexto(campo.clave.replace(/_/g, ' '));
+  const normEtiqueta = normalizarTexto(campo.etiqueta.replace(/[().*]/g, ''));
+  let mejor = columnas.find(c => normalizarTexto(c) === normCampo || normalizarTexto(c) === normEtiqueta);
+  if (mejor) return mejor;
+  mejor = columnas.find(c => {
+    const nc = normalizarTexto(c);
+    return nc.includes(normCampo) || normCampo.includes(nc) || nc.includes(normEtiqueta) || normEtiqueta.includes(nc);
+  });
+  return mejor || '';
+}
+
+function historicoRenderMapeo_() {
+  const tipo = document.getElementById('historico-tipo').value;
+  historicoTipoActual_ = historicoTiposCache_.find(t => t.tipo === tipo);
+  if (!historicoTipoActual_) return;
+  const columnas = Object.keys(historicoFilasCrudas_[0]);
+  const cont = document.getElementById('historico-mapeo-campos');
+  cont.innerHTML = historicoTipoActual_.campos.map(c => `
+    <label>${escapeHtml(c.etiqueta)}${c.obligatorio ? ' *' : ''}
+      <select data-campo="${escapeHtml(c.clave)}" class="historico-mapeo-select">
+        <option value="">— sin usar —</option>
+        ${columnas.map(col => `<option value="${escapeHtml(col)}">${escapeHtml(col)}</option>`).join('')}
+      </select>
+    </label>`).join('');
+  cont.querySelectorAll('.historico-mapeo-select').forEach(select => {
+    const campo = historicoTipoActual_.campos.find(c => c.clave === select.dataset.campo);
+    const adivinado = historicoAdivinarColumna_(campo, columnas);
+    if (adivinado) select.value = adivinado;
+  });
+  document.getElementById('historico-mapeo').style.display = 'block';
+  document.getElementById('historico-preview').style.display = 'none';
+}
+
+document.getElementById('btn-historico-vista-previa').addEventListener('click', () => {
+  const mapeo = {};
+  document.querySelectorAll('.historico-mapeo-select').forEach(select => { mapeo[select.dataset.campo] = select.value; });
+
+  const faltanObligatorios = historicoTipoActual_.campos.filter(c => c.obligatorio && !mapeo[c.clave]);
+  if (faltanObligatorios.length) {
+    alert('Falta mapear una columna para: ' + faltanObligatorios.map(c => c.etiqueta).join(', '));
+    return;
+  }
+
+  historicoFilasMapeadas_ = historicoFilasCrudas_.map(fila => {
+    const obj = {};
+    historicoTipoActual_.campos.forEach(c => {
+      const col = mapeo[c.clave];
+      obj[c.clave] = col ? fila[col] : '';
+    });
+    return obj;
+  });
+
+  document.getElementById('historico-n-filas').textContent = historicoFilasMapeadas_.length;
+  const camposPreview = historicoTipoActual_.campos.slice(0, 7);
+  const tabla = document.getElementById('historico-tabla-preview');
+  tabla.innerHTML = '<thead><tr>' + camposPreview.map(c => `<th>${escapeHtml(c.etiqueta)}</th>`).join('') + '</tr></thead>' +
+    '<tbody>' + historicoFilasMapeadas_.slice(0, 8).map(f => '<tr>' + camposPreview.map(c => `<td>${escapeHtml(f[c.clave] ?? '')}</td>`).join('') + '</tr>').join('') + '</tbody>';
+  document.getElementById('historico-resultado').style.display = 'none';
+  document.getElementById('historico-preview').style.display = 'block';
+});
+
+const HISTORICO_FILAS_POR_LOTE_ = 100;
+
+document.getElementById('btn-historico-confirmar').addEventListener('click', conBotonProtegido(document.getElementById('btn-historico-confirmar'), async () => {
+  if (!historicoFilasMapeadas_.length) return;
+  const tipo = historicoTipoActual_.tipo;
+  const total = historicoFilasMapeadas_.length;
+  const progreso = document.getElementById('historico-progreso');
+  const barra = document.getElementById('historico-progreso-barra');
+  const texto = document.getElementById('historico-progreso-texto');
+  progreso.style.display = 'block';
+
+  let importados = 0, omitidos = 0, actualizados = 0;
+  const erroresTotales = [];
+
+  for (let inicio = 0; inicio < total; inicio += HISTORICO_FILAS_POR_LOTE_) {
+    const lote = historicoFilasMapeadas_.slice(inicio, inicio + HISTORICO_FILAS_POR_LOTE_);
+    let data;
+    try {
+      data = await llamar('historico_importar', { tipo_destino: tipo, filas: lote });
+    } catch (err) {
+      alert(`No se pudo conectar con el servidor en la fila ${inicio + 1}. Ya se importaron ${importados} filas antes de esto — puedes volver a subir el mismo archivo, las que ya se guardaron se reconocen como duplicadas y no se repiten. Detalle: ${err.message}`);
+      progreso.style.display = 'none';
+      return;
+    }
+    if (!data.ok) {
+      alert(`Error en la fila ${inicio + 1}: ${data.error}`);
+      progreso.style.display = 'none';
+      return;
+    }
+    importados += data.importados || 0;
+    omitidos += data.omitidos_duplicados || 0;
+    actualizados += data.actualizados || 0;
+    if (data.errores) erroresTotales.push.apply(erroresTotales, data.errores);
+
+    const hechas = Math.min(inicio + HISTORICO_FILAS_POR_LOTE_, total);
+    barra.style.width = Math.round((hechas / total) * 100) + '%';
+    texto.textContent = `Importando… ${hechas} de ${total} filas (${importados} importadas, ${omitidos} duplicadas)`;
+  }
+
+  progreso.style.display = 'none';
+  avisarGuardado(`Importadas ${importados} filas${actualizados ? ` (${actualizados} corregidas sobre un conteo ya existente)` : ''}. ${omitidos} duplicadas fueron omitidas.`);
+  if (erroresTotales.length) {
+    const pre = document.getElementById('historico-resultado');
+    pre.style.display = 'block';
+    pre.textContent = `${erroresTotales.length} fila(s) no se pudieron importar:\n` + erroresTotales.slice(0, 30).join('\n') +
+      (erroresTotales.length > 30 ? `\n… y ${erroresTotales.length - 30} más.` : '');
   }
 }));
 </script>

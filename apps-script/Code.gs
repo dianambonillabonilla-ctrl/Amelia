@@ -371,6 +371,12 @@ function handleRequest_(e, method) {
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
+      case 'historico_tipos_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: historicoTiposListar_() });
+      case 'historico_importar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(historicoImportarFilas_(params.tipo_destino, params.filas, sesion.usuario, params.opciones));
       case 'fudo_api_probar_conexion':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoApiProbarConexion_());

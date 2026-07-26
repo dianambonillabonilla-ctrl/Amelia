@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Histórico</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar</a>
+      <a href="fudo.html" data-solo-rol="Administrador,Encargado">Panel Fudo</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura">Libro de inventario</a>
+      <a href="historial.html" class="activo" data-solo-rol="Administrador,Encargado,Lectura">Histórico</a>
+      <a href="inventario-ubicacion.html" data-solo-rol="Administrador,Encargado,Lectura">Inventario por ubicación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Histórico</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card" style="border-color:var(--navy)">
+      <label style="max-width:340px">¿Qué histórico quieres ver?
+        <select id="historial-tipo">
+          <option value="conteos">Conteos</option>
+          <option value="mermas">Mermas y ajustes</option>
+          <option value="produccion">Producción</option>
+          <option value="conciliacion">Conciliación — lo que no cuadra</option>
+          <option value="cierres">Cierres de turno</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- ================= CONTEOS ================= -->
+    <div id="seccion-conteos">
+      <div class="card" id="card-stats-agotados-conteos" style="display:none">
+        <h3 style="margin:0 0 10px">📊 Lo que más se agota en este rango</h3>
+        <p style="color:var(--grey); font-size:.85rem; margin:0 0 10px">
+          Cuántas veces se abrió una gestión de faltante (ver <a href="gestiones.html">Gestiones</a>)
+          para cada producto, en las fechas y sede filtradas.
+        </p>
+        <ol id="stats-agotados-conteos" style="margin:0; padding-left:20px"></ol>
+      </div>
+
+      <div class="card">
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Todos los conteos registrados — por sede, por punto de conteo o todos juntos — con quién
+          los registró y a qué hora. Para revisar/corregir el conteo del día en curso usa
+          <a href="conteo.html">Registrar conteo</a>; esta página es solo de consulta.
+        </p>
+        <div class="grid grid-4" style="margin-bottom:10px">
+          <div class="campo"><label>Desde</label><input type="date" id="filtro-desde-conteos"></div>
+          <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta-conteos"></div>
+          <div class="campo">
+            <label>Sede</label>
+            <select id="filtro-sede-conteos">
+              <option value="Ambas">Ambas (todas)</option>
+              <option>San Antonio</option>
+              <option>Capri</option>
+              <option>Centro de Producción</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label>Punto de conteo</label>
+            <select id="filtro-punto-conteos"><option value="">Todos</option></select>
+          </div>
+        </div>
+        <div class="grid grid-4" style="margin-bottom:14px">
+          <div class="campo"><label>Buscar producto</label><input type="text" id="filtro-producto-conteos" placeholder="ej. costilla"></div>
+        </div>
+        <button class="btn dorado" id="btn-filtrar-conteos">Filtrar</button>
+        <p id="contador-resultados-conteos" class="vacio" style="display:none"></p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Sede</th><th>Punto de conteo</th><th>Turno</th><th>Producto</th><th>Cantidad</th><th>Registrado por</th><th>Registrado el</th></tr>
+            </thead>
+            <tbody id="tabla-historial-conteos"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MERMAS Y AJUSTES ================= -->
+    <div id="seccion-mermas" style="display:none">
+      <div class="card" id="card-stats-mermas" style="display:none">
+        <h3 style="margin:0 0 10px">📊 Lo que más se pierde en este rango</h3>
+        <p style="color:var(--grey); font-size:.85rem; margin:0 0 10px">
+          Suma de "Merma / desperdicio" por producto en las fechas y sede filtradas, sin importar el
+          filtro de "Tipo" que estés usando abajo para la tabla.
+        </p>
+        <ol id="stats-mermas" style="margin:0; padding-left:20px"></ol>
+      </div>
+
+      <div class="card">
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Todas las mermas y ajustes registrados — por sede, por tipo o todos juntos — con quién los
+          registró y a qué hora. Las mermas ("Merma / desperdicio") además muestran si el
+          Administrador ya las avaló: eso no cambia el inventario (la merma ya se descontó de
+          "Disponible Hoy" desde que se registró), es solo para llevar el control de qué se ha
+          revisado. Las compras con proveedor/factura se ven mejor detalladas en
+          <a href="compras.html">Compras</a>; para registrar una merma nueva ve a
+          <a href="conteo.html">Registrar conteo</a>.
+        </p>
+        <div class="grid grid-4" style="margin-bottom:10px">
+          <div class="campo"><label>Desde</label><input type="date" id="filtro-desde-mermas"></div>
+          <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta-mermas"></div>
+          <div class="campo">
+            <label>Sede</label>
+            <select id="filtro-sede-mermas">
+              <option value="Ambas">Ambas (todas)</option>
+              <option>San Antonio</option>
+              <option>Capri</option>
+              <option>Centro de Producción</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label>Tipo</label>
+            <select id="filtro-tipo-mermas">
+              <option value="Merma / desperdicio">Merma / desperdicio</option>
+              <option value="">Todos los tipos</option>
+              <option value="Ajuste operativo">Ajuste operativo</option>
+              <option value="Consumo interno">Consumo interno</option>
+              <option value="Compra cruda">Compra cruda</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-4" style="margin-bottom:14px">
+          <div class="campo"><label>Buscar producto</label><input type="text" id="filtro-producto-mermas" placeholder="ej. costilla"></div>
+          <div class="campo" id="campo-solo-sin-avalar" style="display:flex; align-items:flex-end; gap:6px">
+            <label style="margin:0; display:flex; align-items:center; gap:6px; font-size:.85rem; color:var(--ink)">
+              <input type="checkbox" id="filtro-solo-sin-avalar" style="width:auto"> Solo mermas sin avalar
+            </label>
+          </div>
+        </div>
+        <button class="btn dorado" id="btn-filtrar-mermas">Filtrar</button>
+        <p id="contador-resultados-mermas" class="vacio" style="display:none"></p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Sede</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Evidencia</th><th>Registrado por</th><th>Registrado el</th><th>Avalado</th><th></th></tr>
+            </thead>
+            <tbody id="tabla-historial-mermas"><tr><td colspan="10" class="vacio">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= PRODUCCIÓN ================= -->
+    <div id="seccion-produccion" style="display:none">
+      <div class="card" id="card-stats-produccion" style="display:none">
+        <h3 style="margin:0 0 10px">📊 Lo que más se produce en este rango</h3>
+        <ol id="stats-produccion" style="margin:0; padding-left:20px"></ol>
+      </div>
+
+      <div class="card">
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Todo lo registrado en <a href="producir.html">Registrar producción</a> — por sede o todo
+          junto, con quién lo registró y a qué hora. Esta página es solo de consulta.
+        </p>
+        <div class="grid grid-4" style="margin-bottom:10px">
+          <div class="campo"><label>Desde</label><input type="date" id="filtro-desde-produccion"></div>
+          <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta-produccion"></div>
+          <div class="campo">
+            <label>Sede</label>
+            <select id="filtro-sede-produccion">
+              <option value="Ambas">Ambas (todas)</option>
+              <option>San Antonio</option>
+              <option>Capri</option>
+              <option>Centro de Producción</option>
+            </select>
+          </div>
+          <div class="campo"><label>Buscar producto</label><input type="text" id="filtro-producto-produccion" placeholder="ej. costilla"></div>
+        </div>
+        <button class="btn dorado" id="btn-filtrar-produccion">Filtrar</button>
+        <p id="contador-resultados-produccion" class="vacio" style="display:none"></p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Sede</th><th>Producto</th><th>Cantidad</th><th>Registrado por</th><th>Registrado el</th><th>Detalle</th></tr>
+            </thead>
+            <tbody id="tabla-historial-produccion"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= CONCILIACIÓN ================= -->
+    <div id="seccion-conciliacion" style="display:none">
+      <div id="aviso-sede-restringida" class="card" style="display:none; border-color:var(--amber); background:#FFFBF0">
+        <strong style="color:var(--amber)">⚠ Vista limitada a tu sede</strong>
+        <p style="margin:8px 0 0; font-size:.88rem">Tu usuario solo ve los desfases de <strong id="aviso-sede-restringida-nombre"></strong> — no se muestran datos de las otras sedes.</p>
+      </div>
+
+      <div class="card">
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Recorre cada día del rango elegido y trae SOLO lo que no cuadró — no repite el detalle
+          completo de cada día (para eso está <a href="conciliacion.html">Conciliación</a>, día por
+          día). Diferencias muy chicas de redondeo (menos de 1 g/ml/u) no se muestran aquí.
+        </p>
+        <div class="grid grid-3" style="margin-bottom:14px">
+          <div class="campo"><label>Desde</label><input type="date" id="filtro-desde-conciliacion"></div>
+          <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta-conciliacion"></div>
+          <div class="campo" style="display:flex; align-items:flex-end">
+            <button class="btn dorado" id="btn-buscar-conciliacion" style="width:100%">Buscar desfases</button>
+          </div>
+        </div>
+        <p style="color:var(--grey); font-size:.8rem">Usa rangos cortos (un par de semanas) — un rango muy largo tarda más y por ahora tiene un tope de ~2 meses de una vez.</p>
+        <p id="resumen-dias-conciliacion" class="vacio" style="display:none"></p>
+      </div>
+
+      <div class="card">
+        <h2>Bebidas — diferencia contra el cierre de FUDO</h2>
+        <p style="color:var(--grey); font-size:.85rem">Cierre de FUDO menos la suma de tu conteo manual (San Antonio + Capri) ese día. Positivo = FUDO reporta más de lo que se contó; negativo = se contó más de lo que FUDO reporta.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Conteo manual</th><th>Cierre FUDO</th><th>Diferencia</th></tr></thead>
+            <tbody id="tabla-bebidas-desfases"><tr><td colspan="5" class="vacio">Elige un rango y presiona "Buscar desfases".</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Comida y demás ingredientes — lo que ningún registro explica</h2>
+        <p style="color:var(--grey); font-size:.85rem">"Implícito" = cambio físico del ingrediente (hoy vs. ayer) menos compras/ajustes/traslados/producción y ventas esperadas por receta. Si no da cero, algo pasó que no quedó registrado (una merma no anotada, una receta desactualizada, un conteo mal tomado...). "Sin receta" avisa cuando la venta no se pudo cruzar con ninguna receta — revisa el nombre en <a href="recetas.html">Recetas</a>.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Fecha</th><th>Sede</th><th>Ingrediente</th><th>Implícito sin explicar</th><th></th></tr></thead>
+            <tbody id="tabla-comida-desfases"><tr><td colspan="5" class="vacio">Elige un rango y presiona "Buscar desfases".</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= CIERRES DE TURNO ================= -->
+    <div id="seccion-cierres" style="display:none">
+      <div class="card">
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Snapshot guardado al momento de cerrar cada turno — ventas y pagos Fudo, caja, traslados
+          pendientes y diferencias de inventario (teórico vs. contado ese día). No se recalcula después.
+        </p>
+        <div class="grid grid-4" style="margin-bottom:14px">
+          <div class="campo"><label>Desde</label><input type="date" id="filtro-desde-cierres"></div>
+          <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta-cierres"></div>
+          <div class="campo">
+            <label>Sede</label>
+            <select id="filtro-sede-cierres">
+              <option value="Ambas">Ambas (todas)</option>
+              <option>San Antonio</option>
+              <option>Capri</option>
+              <option>Centro de Producción</option>
+            </select>
+          </div>
+          <div class="campo" style="display:flex; align-items:flex-end">
+            <button class="btn dorado" id="btn-filtrar-cierres" style="width:100%">Filtrar</button>
+          </div>
+        </div>
+        <p id="contador-cierres" class="vacio" style="display:none"></p>
+      </div>
+
+      <div id="lista-cierres"></div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Lectura']);
+montarBarraUsuario();
+
+// Un solo "Histórico" en vez de las 5 pestañas de antes (Conteos/Mermas/Producción/Conciliación/
+// Cierres) — mismo contenido y llamadas al backend de cada una, solo que ahora cada sección vive en
+// su propio <div> que se muestra/oculta según el selector de arriba, en vez de ser un archivo .html
+// aparte con su propia copia del menú lateral. Cada sección solo pide sus datos la primera vez que
+// se abre (no las 5 de una al cargar la página).
+const SECCIONES_HISTORIAL_ = ['conteos', 'mermas', 'produccion', 'conciliacion', 'cierres'];
+const historialCargado_ = {};
+const historialIniciar_ = {};
+
+document.getElementById('historial-tipo').addEventListener('change', mostrarSeccionHistorial_);
+function mostrarSeccionHistorial_() {
+  const tipo = document.getElementById('historial-tipo').value;
+  SECCIONES_HISTORIAL_.forEach(t => { document.getElementById('seccion-' + t).style.display = t === tipo ? 'block' : 'none'; });
+  if (!historialCargado_[tipo]) { historialCargado_[tipo] = true; historialIniciar_[tipo](); }
+}
+
+function formatearHoraHistorial_(valor) {
+  if (!valor) return '—';
+  const d = new Date(valor);
+  if (isNaN(d)) return String(valor);
+  return d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function hDiasAtras_(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* ============================= CONTEOS ============================= */
+(function () {
+  restringirSelectorSede_(document.getElementById('filtro-sede-conteos'));
+  document.getElementById('filtro-desde-conteos').value = hDiasAtras_(7);
+  document.getElementById('filtro-hasta-conteos').value = fechaLocalHoy_();
+
+  async function poblarPuntos_() {
+    const sede = document.getElementById('filtro-sede-conteos').value;
+    await poblarSelectUbicaciones_(
+      document.getElementById('filtro-punto-conteos'),
+      sede,
+      { todasLasSedes: sede === 'Ambas', opcionVacia: 'Todos' }
+    );
+  }
+  document.getElementById('filtro-sede-conteos').addEventListener('change', async () => { await poblarPuntos_(); cargar(); });
+  poblarPuntos_();
+
+  async function cargar() {
+    const tabla = document.getElementById('tabla-historial-conteos');
+    const contador = document.getElementById('contador-resultados-conteos');
+    tabla.innerHTML = '<tr><td colspan="8" class="vacio">Cargando…</td></tr>';
+    contador.style.display = 'none';
+
+    const filtros = {
+      fecha_desde: document.getElementById('filtro-desde-conteos').value,
+      fecha_hasta: document.getElementById('filtro-hasta-conteos').value,
+      sede: document.getElementById('filtro-sede-conteos').value,
+      punto_conteo: document.getElementById('filtro-punto-conteos').value,
+      producto: document.getElementById('filtro-producto-conteos').value.trim()
+    };
+    const data = await llamar('conteos_historial', { filtros });
+    if (!data.ok) { tabla.innerHTML = `<tr><td colspan="8" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+
+    if (!data.data.length) {
+      tabla.innerHTML = '<tr><td colspan="8" class="vacio">Sin conteos que coincidan con el filtro.</td></tr>';
+      return;
+    }
+
+    contador.style.display = 'block';
+    contador.textContent = `${data.data.length} conteo(s) encontrado(s).`;
+    tabla.innerHTML = data.data.map(r => `
+      <tr>
+        <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
+        <td>${escapeHtml(r.sede)}</td>
+        <td>${escapeHtml(r.punto_conteo)}</td>
+        <td>${escapeHtml(r.turno)}</td>
+        <td>${escapeHtml(r.producto)}</td>
+        <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
+        <td>${escapeHtml(r.usuario)}</td>
+        <td style="color:var(--grey); font-size:.85rem">${formatearHoraHistorial_(r.timestamp)}</td>
+      </tr>`).join('');
+
+    pintarEstadisticasAgotados_(filtros);
+  }
+
+  // "Lo que más se agota" = cuántas veces se abrió una gestión de faltante para cada producto en
+  // este mismo rango de fechas/sede — el dato más directo de "esto de verdad faltó" (ver
+  // Gestiones.gs), no un conteo en cero que puede ser normal para ciertos productos.
+  async function pintarEstadisticasAgotados_(filtros) {
+    const card = document.getElementById('card-stats-agotados-conteos');
+    const cont = document.getElementById('stats-agotados-conteos');
+    const data = await llamar('gestiones_listar', { filtro: { sede: filtros.sede !== 'Ambas' ? filtros.sede : undefined } });
+    if (!data.ok) { card.style.display = 'none'; return; }
+
+    const enRango = data.data.filter(g => g.fecha >= filtros.fecha_desde && g.fecha <= filtros.fecha_hasta);
+    const porProducto = {};
+    enRango.forEach(g => {
+      const clave = normalizarTexto(g.producto);
+      if (!porProducto[clave]) porProducto[clave] = { producto: g.producto, veces: 0 };
+      porProducto[clave].veces++;
+    });
+    const top = Object.values(porProducto).sort((a, b) => b.veces - a.veces).slice(0, 5);
+
+    card.style.display = 'block';
+    cont.innerHTML = top.length
+      ? top.map(p => `<li>${escapeHtml(p.producto)} — ${p.veces} ${p.veces === 1 ? 'vez' : 'veces'}</li>`).join('')
+      : '<li style="color:var(--grey); list-style:none; margin-left:-20px">Sin gestiones de faltantes en este rango.</li>';
+  }
+
+  document.getElementById('btn-filtrar-conteos').addEventListener('click', cargar);
+  document.getElementById('filtro-punto-conteos').addEventListener('change', cargar);
+  historialIniciar_.conteos = cargar;
+})();
+
+/* ============================= MERMAS Y AJUSTES ============================= */
+(function () {
+  restringirSelectorSede_(document.getElementById('filtro-sede-mermas'));
+  document.getElementById('filtro-desde-mermas').value = hDiasAtras_(30);
+  document.getElementById('filtro-hasta-mermas').value = fechaLocalHoy_();
+
+  const esAdmin = !!Sesion.usuario() && Sesion.usuario().rol === 'Administrador';
+
+  async function cargar() {
+    const tabla = document.getElementById('tabla-historial-mermas');
+    const contador = document.getElementById('contador-resultados-mermas');
+    tabla.innerHTML = '<tr><td colspan="11" class="vacio">Cargando…</td></tr>';
+    contador.style.display = 'none';
+
+    const filtros = {
+      fecha_desde: document.getElementById('filtro-desde-mermas').value,
+      fecha_hasta: document.getElementById('filtro-hasta-mermas').value,
+      sede: document.getElementById('filtro-sede-mermas').value,
+      tipo: document.getElementById('filtro-tipo-mermas').value,
+      producto: document.getElementById('filtro-producto-mermas').value.trim()
+    };
+    // La estadística de mermas se pide aparte, siempre con tipo "Merma / desperdicio" fijo — así el
+    // ranking no cambia si arriba se está mirando otro tipo de movimiento (ej. "Compra cruda").
+    const [data, datosMerma] = await Promise.all([
+      llamar('ajustes_inventario_historial', { filtros }),
+      llamar('ajustes_inventario_historial', { filtros: Object.assign({}, filtros, { tipo: 'Merma / desperdicio', producto: '' }) })
+    ]);
+    pintarEstadisticasMermas_(datosMerma);
+    if (!data.ok) { tabla.innerHTML = `<tr><td colspan="11" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+
+    const soloSinAvalar = document.getElementById('filtro-solo-sin-avalar').checked;
+    const filas = soloSinAvalar
+      ? data.data.filter(r => r.tipo === 'Merma / desperdicio' && r.avalado !== true)
+      : data.data;
+
+    if (!filas.length) {
+      tabla.innerHTML = '<tr><td colspan="11" class="vacio">Sin movimientos que coincidan con el filtro.</td></tr>';
+      return;
+    }
+
+    contador.style.display = 'block';
+    contador.textContent = `${filas.length} movimiento(s) encontrado(s).`;
+    tabla.innerHTML = filas.map(r => {
+      const esMerma = r.tipo === 'Merma / desperdicio';
+      const avalado = esMerma
+        ? (r.avalado === true ? `<span class="badge ok">Avalada${r.avalado_por ? ' — ' + escapeHtml(r.avalado_por) : ''}</span>` : '<span class="badge aviso">Sin avalar</span>')
+        : '—';
+      const accion = esAdmin && esMerma && r.avalado !== true
+        ? `<button class="btn fantasma btn-avalar" data-id="${escapeHtml(r.id)}" type="button">Avalar</button>` : '';
+      const evidencia = r.evidencia_url ? evidenciaEnlaceHtml_(r.evidencia_url, 'Foto') : '—';
+      return `<tr>
+        <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
+        <td>${escapeHtml(r.sede)}</td>
+        <td>${escapeHtml(r.tipo)}</td>
+        <td>${escapeHtml(r.producto)}</td>
+        <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
+        <td>${escapeHtml(r.motivo || '')}</td>
+        <td>${evidencia}</td>
+        <td>${escapeHtml(r.usuario)}</td>
+        <td style="color:var(--grey); font-size:.85rem">${formatearHoraHistorial_(r.timestamp)}</td>
+        <td>${avalado}</td>
+        <td>${accion}</td>
+      </tr>`;
+    }).join('');
+
+    tabla.querySelectorAll('.btn-avalar').forEach(boton => {
+      boton.addEventListener('click', conBotonProtegido(boton, async () => {
+        const data = await llamar('ajuste_inventario_avalar', { id: boton.dataset.id });
+        if (data.ok) { avisarGuardado('Merma avalada.'); cargar(); } else { alert(data.error); }
+      }));
+    });
+  }
+
+  function pintarEstadisticasMermas_(datosMerma) {
+    const card = document.getElementById('card-stats-mermas');
+    const cont = document.getElementById('stats-mermas');
+    if (!datosMerma.ok) { card.style.display = 'none'; return; }
+
+    const porProducto = {};
+    datosMerma.data.forEach(r => {
+      const clave = normalizarTexto(r.producto) + '|' + r.unidad;
+      if (!porProducto[clave]) porProducto[clave] = { producto: r.producto, unidad: r.unidad, cantidad: 0 };
+      porProducto[clave].cantidad += Number(r.cantidad) || 0;
+    });
+    const top = Object.values(porProducto).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5);
+
+    card.style.display = 'block';
+    cont.innerHTML = top.length
+      ? top.map(p => `<li>${escapeHtml(p.producto)} — ${escapeHtml(p.cantidad.toFixed(2))} ${escapeHtml(p.unidad)}</li>`).join('')
+      : '<li style="color:var(--grey); list-style:none; margin-left:-20px">Sin mermas en este rango.</li>';
+  }
+
+  document.getElementById('btn-filtrar-mermas').addEventListener('click', cargar);
+  document.getElementById('filtro-solo-sin-avalar').addEventListener('change', cargar);
+  historialIniciar_.mermas = cargar;
+})();
+
+/* ============================= PRODUCCIÓN ============================= */
+(function () {
+  restringirSelectorSede_(document.getElementById('filtro-sede-produccion'));
+  document.getElementById('filtro-desde-produccion').value = hDiasAtras_(30);
+  document.getElementById('filtro-hasta-produccion').value = fechaLocalHoy_();
+
+  async function cargar() {
+    const tabla = document.getElementById('tabla-historial-produccion');
+    const contador = document.getElementById('contador-resultados-produccion');
+    tabla.innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
+    contador.style.display = 'none';
+
+    const filtros = {
+      fecha_desde: document.getElementById('filtro-desde-produccion').value,
+      fecha_hasta: document.getElementById('filtro-hasta-produccion').value,
+      sede: document.getElementById('filtro-sede-produccion').value,
+      producto: document.getElementById('filtro-producto-produccion').value.trim()
+    };
+    const data = await llamar('produccion_historial', { filtros });
+    if (!data.ok) {
+      tabla.innerHTML = `<tr><td colspan="7" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+      document.getElementById('card-stats-produccion').style.display = 'none';
+      return;
+    }
+
+    pintarEstadisticasProduccion_(data.data);
+
+    if (!data.data.length) {
+      tabla.innerHTML = '<tr><td colspan="7" class="vacio">Sin producción registrada que coincida con el filtro.</td></tr>';
+      return;
+    }
+
+    contador.style.display = 'block';
+    contador.textContent = `${data.data.length} registro(s) encontrado(s).`;
+    tabla.innerHTML = data.data.map(r => {
+      const extras = [];
+      if (r.hora_inicio || r.hora_fin) extras.push(`Lote ${r.hora_inicio || '—'} – ${r.hora_fin || '—'}`);
+      if (r.evidencia_url) extras.push(evidenciaEnlaceHtml_(r.evidencia_url, 'Foto'));
+      if (r.insumo_producto) extras.push(`${escapeHtml(r.insumo_cantidad)} ${escapeHtml(r.insumo_unidad)} de ${escapeHtml(r.insumo_producto)}`);
+      return `
+      <tr>
+        <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
+        <td>${escapeHtml(r.sede)}</td>
+        <td>${escapeHtml(r.item)}</td>
+        <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
+        <td>${escapeHtml(r.usuario)}</td>
+        <td style="color:var(--grey); font-size:.85rem">${formatearHoraHistorial_(r.timestamp)}</td>
+        <td style="font-size:.85rem">${extras.length ? extras.join('<br>') : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function pintarEstadisticasProduccion_(filas) {
+    const card = document.getElementById('card-stats-produccion');
+    const cont = document.getElementById('stats-produccion');
+    if (!filas.length) { card.style.display = 'none'; return; }
+
+    const porItem = {};
+    filas.forEach(r => {
+      const clave = normalizarTexto(r.item) + '|' + r.unidad;
+      if (!porItem[clave]) porItem[clave] = { item: r.item, unidad: r.unidad, cantidad: 0 };
+      porItem[clave].cantidad += Number(r.cantidad) || 0;
+    });
+    const top = Object.values(porItem).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5);
+
+    card.style.display = 'block';
+    cont.innerHTML = top.map(p => `<li>${escapeHtml(p.item)} — ${escapeHtml(p.cantidad.toFixed(2))} ${escapeHtml(p.unidad)}</li>`).join('');
+  }
+
+  document.getElementById('btn-filtrar-produccion').addEventListener('click', cargar);
+  historialIniciar_.produccion = cargar;
+})();
+
+/* ============================= CONCILIACIÓN ============================= */
+(function () {
+  document.getElementById('filtro-desde-conciliacion').value = hDiasAtras_(7);
+  document.getElementById('filtro-hasta-conciliacion').value = fechaLocalHoy_();
+
+  async function buscar() {
+    const tablaBebidas = document.getElementById('tabla-bebidas-desfases');
+    const tablaComida = document.getElementById('tabla-comida-desfases');
+    const resumen = document.getElementById('resumen-dias-conciliacion');
+    tablaBebidas.innerHTML = '<tr><td colspan="5" class="vacio">Buscando…</td></tr>';
+    tablaComida.innerHTML = '<tr><td colspan="5" class="vacio">Buscando…</td></tr>';
+    resumen.style.display = 'none';
+
+    const fecha_desde = document.getElementById('filtro-desde-conciliacion').value;
+    const fecha_hasta = document.getElementById('filtro-hasta-conciliacion').value;
+    const data = await llamar('conciliacion_historial_desfases', { fecha_desde, fecha_hasta });
+    if (!data.ok) {
+      tablaBebidas.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+      tablaComida.innerHTML = `<tr><td colspan="5" class="vacio">${escapeHtml(data.error)}</td></tr>`;
+      return;
+    }
+
+    const sedeRestringida = Sesion.usuario() && Sesion.usuario().rol !== 'Administrador' && Sesion.usuario().sede !== 'Ambas' ? Sesion.usuario().sede : null;
+    const aviso = document.getElementById('aviso-sede-restringida');
+    if (sedeRestringida) {
+      document.getElementById('aviso-sede-restringida-nombre').textContent = sedeRestringida;
+      aviso.style.display = 'block';
+    } else {
+      aviso.style.display = 'none';
+    }
+
+    resumen.style.display = 'block';
+    resumen.textContent = `${data.dias_revisados} día(s) revisado(s): ${data.bebidas.length} desfase(s) de bebida, ${data.comida.length} de comida/ingredientes.`;
+
+    tablaBebidas.innerHTML = data.bebidas.length
+      ? data.bebidas.map(b => `<tr>
+          <td>${escapeHtml(b.fecha)}</td><td>${escapeHtml(b.producto)}</td>
+          <td>${escapeHtml(b.suma_manual)}</td><td>${escapeHtml(b.fudo_cierre)}</td>
+          <td style="color:${b.diferencia > 0 ? 'var(--red)' : 'var(--amber)'}; font-weight:600">${b.diferencia > 0 ? '+' : ''}${escapeHtml(b.diferencia)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="vacio">Ninguna bebida se desfasó contra FUDO en este rango.</td></tr>';
+
+    tablaComida.innerHTML = data.comida.length
+      ? data.comida.map(c => `<tr>
+          <td>${escapeHtml(c.fecha)}</td><td>${escapeHtml(c.sede)}</td><td>${escapeHtml(c.ingrediente)}</td>
+          <td style="color:${c.implicito > 0 ? 'var(--red)' : 'var(--amber)'}; font-weight:600">${c.implicito > 0 ? '+' : ''}${escapeHtml(c.implicito)} ${escapeHtml(c.unidad)}</td>
+          <td>${c.sin_receta ? '<span class="badge aviso">Sin receta</span>' : ''}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="vacio">Ningún ingrediente quedó sin explicar en este rango.</td></tr>';
+  }
+
+  document.getElementById('btn-buscar-conciliacion').addEventListener('click', conBotonProtegido(document.getElementById('btn-buscar-conciliacion'), buscar));
+  historialIniciar_.conciliacion = buscar;
+})();
+
+/* ============================= CIERRES DE TURNO ============================= */
+(function () {
+  restringirSelectorSede_(document.getElementById('filtro-sede-cierres'));
+  document.getElementById('filtro-desde-cierres').value = hDiasAtras_(30);
+  document.getElementById('filtro-hasta-cierres').value = fechaLocalHoy_();
+
+  function formatoMoneda_(n) {
+    if (n === '' || n === undefined || n === null) return '—';
+    return '$' + Number(n).toLocaleString('es-CO');
+  }
+  function formatearFechaLocal_(v) {
+    if (!v) return '';
+    if (typeof v === 'string') return v.slice(0, 10);
+    try { return new Date(v).toISOString().slice(0, 10); } catch (e) { return String(v); }
+  }
+
+  function pintar(filas) {
+    const cont = document.getElementById('lista-cierres');
+    if (!filas.length) {
+      cont.innerHTML = '<div class="card"><p class="vacio">No hay cierres de turno en este rango.</p></div>';
+      return;
+    }
+    cont.innerHTML = filas.map(f => {
+      const ts = f.timestamp ? new Date(f.timestamp).toLocaleString('es-CO') : '—';
+      const diffs = f.diferencias_inventario || [];
+      const tablaDiffs = diffs.length
+        ? `<table style="margin-top:10px; font-size:.85rem"><thead><tr><th>Producto</th><th>Contado</th><th>Teórico</th><th>Diferencia</th></tr></thead><tbody>` +
+          diffs.map(d => `<tr>
+            <td>${escapeHtml(d.producto)}</td>
+            <td>${escapeHtml(d.contado)} ${escapeHtml(d.unidad || '')}</td>
+            <td>${escapeHtml(d.teorico)} ${escapeHtml(d.unidad || '')}</td>
+            <td>${Math.abs(d.diferencia) < 0.001 ? '<span class="badge ok">OK</span>' : escapeHtml(d.diferencia)}</td>
+          </tr>`).join('') + '</tbody></table>'
+        : (Number(f.diferencia_inventario) > 0
+          ? '<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Detalle no guardado (cierre anterior a jul 2026) — <a href="libro-inventario.html">ver libro</a>.</p>'
+          : '<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Sin diferencias de inventario ese día.</p>');
+      return `<div class="card">
+        <h3 style="margin:0 0 6px">${escapeHtml(formatearFechaLocal_(f.fecha))} — ${escapeHtml(f.sede)}</h3>
+        <p style="margin:0 0 8px; font-size:.85rem; color:var(--grey)">Cerrado por ${escapeHtml(f.usuario)} · ${escapeHtml(ts)}</p>
+        <p style="margin:0; font-size:.88rem">
+          Ventas Fudo: ${formatoMoneda_(f.ventas_fudo_total)} ·
+          Pagos Fudo: ${formatoMoneda_(f.pagos_fudo_total)} ·
+          Efectivo esperado: ${formatoMoneda_(f.pagos_efectivo_esperado)} ·
+          Efectivo contado: ${formatoMoneda_(f.efectivo_contado)} ·
+          Diferencia caja: ${formatoMoneda_(f.diferencia_caja)}
+        </p>
+        <p style="margin:6px 0 0; font-size:.88rem">
+          Traslados pendientes: ${escapeHtml(f.traslados_pendientes ?? 0)} ·
+          Producciones: ${escapeHtml(f.producciones_registradas ?? 0)} ·
+          Productos contados: ${escapeHtml(f.inventario_contado ?? '—')} ·
+          Con diferencia inventario: ${escapeHtml(f.diferencia_inventario ?? 0)}
+        </p>
+        ${(Number(f.descuentos_total) > 0 || Number(f.propinas_total) > 0 || f.fuente_ventas || f.fuente_pagos)
+          ? `<p style="margin:6px 0 0; font-size:.85rem; color:var(--grey)">` +
+            (Number(f.descuentos_total) > 0 ? `Descuentos: ${formatoMoneda_(f.descuentos_total)} · ` : '') +
+            (Number(f.propinas_total) > 0 ? `Propinas: ${formatoMoneda_(f.propinas_total)} · ` : '') +
+            (f.fuente_ventas ? `Ventas desde ${escapeHtml(f.fuente_ventas)} · ` : '') +
+            (f.fuente_pagos ? `Pagos desde ${escapeHtml(f.fuente_pagos)} · ` : '') +
+            (f.sync_ventas_en ? `Sync ventas: ${escapeHtml(new Date(f.sync_ventas_en).toLocaleString('es-CO'))} · ` : '') +
+            (f.sync_pagos_en ? `Sync pagos: ${escapeHtml(new Date(f.sync_pagos_en).toLocaleString('es-CO'))}` : '') +
+            `</p>` : ''}
+        ${f.observaciones ? `<p style="margin:6px 0 0; font-size:.85rem"><strong>Observaciones:</strong> ${escapeHtml(f.observaciones)}</p>` : ''}
+        ${tablaDiffs}
+      </div>`;
+    }).join('');
+  }
+
+  async function cargar() {
+    const filtros = {
+      fecha_desde: document.getElementById('filtro-desde-cierres').value,
+      fecha_hasta: document.getElementById('filtro-hasta-cierres').value,
+      sede: document.getElementById('filtro-sede-cierres').value
+    };
+    const data = await llamar('cierres_turno_listar', { filtros });
+    if (!data.ok) { alert(data.error); return; }
+    const filas = data.data || [];
+    document.getElementById('contador-cierres').style.display = 'block';
+    document.getElementById('contador-cierres').textContent = filas.length
+      ? `${filas.length} cierre(s) en el rango`
+      : 'No hay cierres en este rango.';
+    pintar(filas);
+  }
+
+  document.getElementById('btn-filtrar-cierres').addEventListener('click', cargar);
+  historialIniciar_.cierres = cargar;
+})();
+
+mostrarSeccionHistorial_();
+</script>
+</body>
+</html>
