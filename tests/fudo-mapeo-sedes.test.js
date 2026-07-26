@@ -216,6 +216,14 @@ function cargarVentasPendientes_(ventasFudo, mapeoSedes) {
   assert.equal(fudo.sedeDesdeCreadaPor_('Terraza Capri'), 'Capri', 'sin mapeo para esa sala, debe seguir usando la lista fija de siempre');
   assert.equal(fudo.sedeDesdeCreadaPor_('Sala Desconocida'), 'Sin identificar');
 
+  const mapeosCaja = [{ tipo_referencia: 'Caja', nombre: 'Caja Capri', sede: 'Capri' }];
+  const fudoCaja = cargar('apps-script/Fudo.gs', {
+    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
+    normalizar_: normalizarSimple_,
+    leerTabla_: (hoja) => hoja === 'mapeo' ? mapeosCaja : []
+  });
+  assert.equal(fudoCaja.sedeDesdeCreadaPor_('Caja Capri'), 'Capri', 'CSV con nombre de caja en Creada por debe resolver vía mapeo tipo Caja');
+
   // Un mapeo puede incluso CORREGIR lo que la lista fija diría por defecto.
   const mapeosQueCorrigen = [{ tipo_referencia: 'Sala', nombre: 'Terraza Capri', sede: 'San Antonio' }];
   const fudoCorregido = cargar('apps-script/Fudo.gs', {

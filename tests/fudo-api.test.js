@@ -45,12 +45,20 @@ function respuesta_(code, bodyObj) {
 let logueado = [];
 const fakeLogger = { log: (msg) => { logueado.push(msg); } };
 
-function cargarFudoApi_() {
-  return cargar('apps-script/FudoApi.gs', {
+function cargarFudoApi_(extras = {}) {
+  const base = {
+    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
+    normalizar_: (s) => String(s || '').trim().toLowerCase(),
+    leerTabla_: (h) => h === 'mapeo' ? (extras.mapeos || []) : [],
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
     Logger: fakeLogger
-  });
+  };
+  const ctx = Object.assign(base, extras);
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync('apps-script/FudoMapeoSedes.gs', 'utf8'), ctx, { filename: 'FudoMapeoSedes.gs' });
+  vm.runInContext(fs.readFileSync('apps-script/FudoApi.gs', 'utf8'), ctx, { filename: 'FudoApi.gs' });
+  return ctx;
 }
 
 // --- fudoApiConfigurarCredenciales_ ------------------------------------------------------------
@@ -261,7 +269,8 @@ function ctxAutenticadoConDatos_(paginas) {
 // --- fudoApiFilasVentaDesdeSale_ ------------------------------------------------------------------
 
 (function () {
-  const ctx = cargarFudoApi_();
+  const mapeos = [{ tipo_referencia: 'Sala', nombre: 'Terraza Capri', sede: 'Capri' }];
+  const ctx = cargarFudoApi_({ mapeos: mapeos });
   const incluidos = {
     'Item:1': { type: 'Item', id: '1', attributes: { createdAt: '2026-07-20T12:00:00Z', quantity: 2, price: 15000, canceled: false }, relationships: { product: { data: { type: 'Product', id: '10' } } } },
     'Item:2': { type: 'Item', id: '2', attributes: { createdAt: '2026-07-20T12:01:00Z', quantity: 1, price: 8000, canceled: true }, relationships: { product: { data: { type: 'Product', id: '11' } } } },
@@ -286,12 +295,36 @@ function ctxAutenticadoConDatos_(paginas) {
   assert.equal(filas[0]['Precio'], 15000);
   assert.equal(filas[0]['Cancelada'], false);
   assert.equal(filas[0]['Creada por'], 'Terraza Capri');
+  assert.equal(filas[0]['Sede'], 'Capri');
   // instanceof Date falla entre contextos de vm distintos (el Date de FudoApi.gs no es el mismo
   // constructor que el de este archivo de test) — se verifica por forma en vez de por instancia.
   assert.equal(Object.prototype.toString.call(filas[0]['Creación']), '[object Date]');
   assert.equal(filas[1]['Producto'], 'Limonada');
   assert.equal(filas[1]['Cancelada'], true);
   console.log('fudoApiFilasVentaDesdeSale_ mapea ítems con producto/sala resueltos: OK');
+})();
+
+(function () {
+  const mapeos = [{ tipo_referencia: 'Caja', nombre: 'Caja Capri', sede: 'Capri' }];
+  const ctx = cargarFudoApi_({ mapeos: mapeos });
+  const incluidos = {
+    'Item:1': { type: 'Item', id: '1', attributes: { createdAt: '2026-07-20T12:00:00Z', quantity: 1, price: 5000, canceled: false }, relationships: { product: { data: { type: 'Product', id: '10' } } } },
+    'Product:10': { type: 'Product', id: '10', attributes: { name: 'Delivery' } },
+    'CashRegister:5': { type: 'CashRegister', id: '5', attributes: { name: 'Caja Capri' } }
+  };
+  const sale = {
+    id: '300',
+    attributes: { createdAt: '2026-07-20T11:55:00Z' },
+    relationships: {
+      items: { data: [{ type: 'Item', id: '1' }] },
+      cashRegister: { data: { type: 'CashRegister', id: '5' } }
+    }
+  };
+  const filas = ctx.fudoApiFilasVentaDesdeSale_(sale, incluidos);
+  assert.equal(filas.length, 1);
+  assert.equal(filas[0]['Creada por'], 'Caja Capri');
+  assert.equal(filas[0]['Sede'], 'Capri');
+  console.log('fudoApiFilasVentaDesdeSale_ resuelve sede por caja sin mesa: OK');
 })();
 
 (function () {
@@ -338,6 +371,11 @@ function ctxAutenticadoConDatos_(paginas) {
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
     Logger: fakeLogger,
+    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
+    normalizar_: (s) => String(s || '').trim().toLowerCase(),
+    leerTabla_: () => [],
+    fudoResolverSedeVenta_: () => ({ sede: 'Sin identificar', resuelto_por: null }),
+    fudoMapeoSedeIndice_: () => ({}),
     importarFudo_: importarFudoMock_
   });
 
@@ -355,6 +393,7 @@ function ctxAutenticadoConDatos_(paginas) {
   const url = llamadas[0].url;
   assert.ok(url.includes('filter[createdAt]=' + encodeURIComponent('and(gte.2026-07-20T00:00:00,lte.2026-07-20T23:59:59)')));
   assert.ok(url.includes('filter[saleState]=' + encodeURIComponent('in.(CLOSED)')));
+  assert.ok(url.includes('include=' + encodeURIComponent('items.product,items.subitems.product,table.room,waiter,saleIdentifier,cashRegister,payments.paymentMethod')));
   console.log('fudoApiSincronizarVentas_ arma filtros y delega en importarFudo_: OK');
 })();
 
@@ -372,6 +411,11 @@ function ctxAutenticadoConDatos_(paginas) {
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
     Logger: fakeLogger,
+    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
+    normalizar_: (s) => String(s || '').trim().toLowerCase(),
+    leerTabla_: () => [],
+    fudoResolverSedeVenta_: () => ({ sede: 'Sin identificar', resuelto_por: null }),
+    fudoMapeoSedeIndice_: () => ({}),
     importarFudo_: () => { seLlamoImportarFudo = true; }
   });
 
@@ -404,19 +448,22 @@ function ctxAutenticadoConDatos_(paginas) {
   llamadas = [];
   fetchImpl = (url) => {
     if (url.indexOf('/products') !== -1) {
-      return respuesta_(200, { data: [{ id: '1', attributes: { name: 'Costilla Preparada', stock: 12.5 } }] });
+      return respuesta_(200, {
+        data: [{ id: '1', type: 'Product', attributes: { name: 'Costilla Preparada', stock: 12.5 }, relationships: { unit: { data: { type: 'Unit', id: '7' } } } }],
+        included: [{ type: 'Unit', id: '7', attributes: { name: 'kg' } }]
+      });
     }
     if (url.indexOf('/ingredients') !== -1) {
-      return respuesta_(200, { data: [{ id: '2', attributes: { name: 'Costilla cruda', stock: 40 } }] });
+      return respuesta_(200, {
+        data: [{ id: '2', type: 'Ingredient', attributes: { name: 'Costilla cruda', stock: 40 }, relationships: { unit: { data: { type: 'Unit', id: '8' } } } }],
+        included: [{ type: 'Unit', id: '8', attributes: { name: 'g' } }]
+      });
     }
     return respuesta_(200, { data: [] });
   };
 
   let llamadaStockFudoBase = null;
-  const ctx = cargar('apps-script/FudoApi.gs', {
-    PropertiesService: fakePropertiesService,
-    UrlFetchApp: fakeUrlFetchApp,
-    Logger: fakeLogger,
+  const ctx = cargarFudoApi_({
     stockFudoBaseImportar_: (filas, usuario) => {
       llamadaStockFudoBase = { filas, usuario };
       return { ok: true, actualizados: 0, creados: filas.length, sin_nombre: 0, sin_stock: 0 };
@@ -432,8 +479,10 @@ function ctxAutenticadoConDatos_(paginas) {
   llamadaStockFudoBase.filas.forEach((f) => { porTipo[f.tipo] = f; });
   assert.equal(porTipo['Producto'].nombre_fudo, 'Costilla Preparada');
   assert.equal(porTipo['Producto'].stock, 12.5);
+  assert.equal(porTipo['Producto'].unidad, 'kg');
   assert.equal(porTipo['Ingrediente'].nombre_fudo, 'Costilla cruda');
   assert.equal(porTipo['Ingrediente'].stock, 40);
+  assert.equal(porTipo['Ingrediente'].unidad, 'g');
   console.log('fudoApiTomarSnapshotStock_ arma filas de /products e /ingredients y delega en stockFudoBaseImportar_: OK');
 })();
 
@@ -449,10 +498,7 @@ function ctxAutenticadoConDatos_(paginas) {
   fetchImpl = () => respuesta_(200, { data: [] });
 
   let seLlamo = false;
-  const ctx = cargar('apps-script/FudoApi.gs', {
-    PropertiesService: fakePropertiesService,
-    UrlFetchApp: fakeUrlFetchApp,
-    Logger: fakeLogger,
+  const ctx = cargarFudoApi_({
     stockFudoBaseImportar_: () => { seLlamo = true; return { ok: true }; }
   });
   const resultado = ctx.fudoApiTomarSnapshotStock_({ nombre: 'Admin' });

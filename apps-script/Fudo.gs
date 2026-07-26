@@ -127,9 +127,10 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
 
     filas.forEach(function (f, i) {
       const creadaPor = valorFudo_(f, ['Creada por', 'Usuario', 'Caja']);
+      const sedePreResuelta = valorFudo_(f, ['Sede']);
       const sede = opciones.sede && opciones.sede !== 'Automática'
         ? opciones.sede
-        : sedeDesdeCreadaPor_(creadaPor);
+        : (sedePreResuelta || sedeDesdeCreadaPor_(creadaPor));
       const obj = esResumen ? {
         id_venta: 'RESUMEN-' + String(valorFudo_(f, ['Fecha']) || '') + '-' + (i + 1),
         creacion: valorFudo_(f, ['Fecha']),
@@ -261,17 +262,19 @@ function formatearFechaHoraFudo_(valor) {
  */
 function sedeDesdeCreadaPor_(creadaPor) {
   const valor = normalizar_(creadaPor);
-  // Fudo_Mapeo_Sedes (ver FudoMapeoSedes.gs) deja configurar/editar esta relación sala->sede desde
-  // la app en vez de depender solo de la lista fija de abajo — un mapeo tipo "Sala" para el nombre
-  // real de esa sala tiene prioridad. Se lee la tabla acá mismo (sin llamar a fudoMapeoSedeIndice_,
-  // que vive en otro archivo) para no sumar una dependencia entre módulos que en Apps Script real
-  // no hace falta (todos los .gs comparten scope) pero sí importa en las pruebas, que cargan cada
-  // .gs en un contexto aislado — así una hoja Fudo_Mapeo_Sedes vacía o no configurada aún se
-  // comporta exactamente igual que antes.
+  if (!valor) return 'Sin identificar';
+  // Fudo_Mapeo_Sedes (ver FudoMapeoSedes.gs) deja configurar/editar esta relación desde la app.
+  // Se revisan todos los tipos de referencia (Sala, Caja, Identificador, Usuario) en el mismo orden
+  // de prioridad que fudoResolverSedeVenta_ — así un CSV que trae el nombre de caja en "Creada por"
+  // también puede resolverse sin pasar por la API.
   const mapeos = leerTabla_(SHEET_NAMES.FUDO_MAPEO_SEDES);
-  for (let i = 0; i < mapeos.length; i++) {
-    if (normalizar_(mapeos[i].tipo_referencia) === 'sala' && normalizar_(mapeos[i].nombre) === valor) {
-      return mapeos[i].sede;
+  const prioridad = ['Sala', 'Caja', 'Identificador', 'Usuario'];
+  for (let i = 0; i < prioridad.length; i++) {
+    const tipo = normalizar_(prioridad[i]);
+    for (let j = 0; j < mapeos.length; j++) {
+      if (normalizar_(mapeos[j].tipo_referencia) === tipo && normalizar_(mapeos[j].nombre) === valor) {
+        return mapeos[j].sede;
+      }
     }
   }
   const capri = ['cajacapri', 'terrazacapri', 'caja capri', 'terraza capri', 'la waffleria - capri'];
