@@ -137,6 +137,11 @@
       </p>
       <p id="admin-estado-libro" style="font-size:.9rem"></p>
       <button class="btn fantasma" id="btn-simular-migracion">Simular migración</button>
+      <button class="btn dorado" id="btn-ejecutar-migracion" style="margin-left:8px">Ejecutar migración histórica</button>
+      <p style="margin:8px 0 0; font-size:.8rem; color:var(--grey)">
+        La ejecución copia movimientos de la vista calculada a <code>Movimientos_Inventario</code>.
+        Es idempotente — no duplica filas que ya existan. No activa el dual-write para registros nuevos.
+      </p>
       <pre id="admin-migracion-resultado" style="display:none; margin-top:10px; font-size:.8rem; white-space:pre-wrap"></pre>
     </div>
   </main>
@@ -290,6 +295,29 @@ document.getElementById('btn-simular-migracion').addEventListener('click', async
   const pre = document.getElementById('admin-migracion-resultado');
   pre.style.display = 'block';
   pre.textContent = data.ok ? JSON.stringify(data.reporte || data, null, 2) : (data.error || 'Error');
+});
+
+document.getElementById('btn-ejecutar-migracion').addEventListener('click', async () => {
+  if (!confirm('¿Copiar el histórico de movimientos a Movimientos_Inventario? Solo se agregan filas que falten — no borra nada.')) return;
+  const btn = document.getElementById('btn-ejecutar-migracion');
+  btn.disabled = true;
+  try {
+    const data = await llamar('migracion_inventario_ejecutar', {});
+    const pre = document.getElementById('admin-migracion-resultado');
+    pre.style.display = 'block';
+    if (data.ok) {
+      pre.textContent = JSON.stringify(data.reporte || data, null, 2);
+      avisarGuardado(`Migración completada: ${data.reporte.creados || 0} movimientos creados.`);
+      document.getElementById('btn-cargar').click();
+    } else {
+      pre.textContent = (data.errores && data.errores.length)
+        ? JSON.stringify({ reporte: data.reporte, errores: data.errores }, null, 2)
+        : (data.error || 'Error en la migración');
+      alert('La migración terminó con errores — revisa el detalle abajo.');
+    }
+  } finally {
+    btn.disabled = false;
+  }
 });
 </script>
 </body>

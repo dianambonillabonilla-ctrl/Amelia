@@ -371,6 +371,9 @@ function handleRequest_(e, method) {
       case 'migracion_inventario_simular':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migracionInventarioSimular_());
+      case 'migracion_inventario_ejecutar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migracionInventarioEjecutar_(sesion.usuario));
       case 'inventario_teorico_calcular':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
