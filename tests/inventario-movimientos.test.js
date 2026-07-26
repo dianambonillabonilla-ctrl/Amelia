@@ -190,33 +190,41 @@ function itemBase_(overrides) {
 
 (function () {
   reiniciar_();
+  const movimientosVista = [
+    { fecha: '2026-07-01', producto: 'Aceite', cantidad: 3, unidad: 'L', sede: 'Capri', tipo_movimiento: 'Compra recibida', documento_relacionado: 'a1', usuario: 'Ana', estado: 'Registrado' },
+    { fecha: '2026-07-02', producto: 'Aioli', cantidad: 2, unidad: 'kg', sede: 'Capri', tipo_movimiento: 'Entrada por producción', documento_relacionado: 'p1', usuario: 'Ana', estado: 'Registrado' },
+    { fecha: '2026-07-03', producto: 'Costilla', cantidad: -4, unidad: 'kg', sede: 'Centro de Producción', tipo_movimiento: 'Traslado enviado', documento_relacionado: 't1', usuario: 'Juan', estado: 'Confirmado' },
+    { fecha: '2026-07-03', producto: 'Costilla', cantidad: 4, unidad: 'kg', sede: 'Capri', tipo_movimiento: 'Traslado recibido', documento_relacionado: 't1', usuario: 'Ana', estado: 'Confirmado' }
+  ];
+  const escritos = [];
   const mod = cargar('apps-script/InventarioMovimientos.gs', {
-    SHEET_NAMES: { MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario', AJUSTES_INVENTARIO: 'ajustes', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados' },
+    SHEET_NAMES: { MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario' },
     MOVIMIENTO_TIPOS_SIGNO_: { 'Compra recibida': 1, 'Traslado enviado': -1, 'Traslado recibido': 1, 'Entrada por producción': 1 },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) },
     Utilities: { getUuid: () => 'x' },
     formatearFecha_: (v) => String(v).slice(0, 10),
-    leerTabla_: (hoja) => {
-      if (hoja === 'Movimientos_Inventario') return [];
-      if (hoja === 'ajustes') return [{ id: 'a1', tipo: 'Compra cruda', producto: 'Aceite', sede: 'Capri', cantidad: 3, fecha: '2026-07-01' }];
-      if (hoja === 'producciones') return [{ id: 'p1', item: 'Aioli', sede: 'Capri', cantidad: 2, unidad: 'kg', fecha: '2026-07-02' }];
-      if (hoja === 'traslados') return [{
-        id: 't1', producto: 'Costilla', sede_origen: 'Centro de Producción', sede_destino: 'Capri',
-        cantidad_enviada: 4, cantidad_recibida: 4, estado: 'Confirmado', fecha: '2026-07-03'
-      }];
-      return [];
-    },
+    leerTabla_: (hoja) => hoja === 'Movimientos_Inventario' ? escritos : [],
     inventarioLibroClave_: (t, id, tipo, s) => [t, id, tipo, s].join('|'),
-    movimientosDesdeProduccion_: () => [],
-    movimientosDesdeTraslados_: () => []
+    movimientosInventarioListar_: () => movimientosVista.slice(),
+    inventarioLibroItemDesdeVista_: (vista, meta) => Object.assign({}, vista, meta)
   });
+  mod.inventarioMovimientoCrear_ = (item) => {
+    escritos.push({ clave_idempotencia: item.clave_idempotencia, producto: item.producto });
+    return { ok: true, id: 'm' + escritos.length };
+  };
   const sim = mod.migracionInventarioSimular_();
   assert.equal(sim.ok, true);
-  assert.ok(sim.reporte.encontrados >= 3);
-  assert.ok(sim.reporte.migrables >= 3);
+  assert.equal(sim.reporte.encontrados, 4);
+  assert.equal(sim.reporte.migrables, 4);
   const sim2 = mod.migracionInventarioSimular_();
-  assert.equal(sim2.reporte.omitidos_duplicado, 0);
-  console.log('migración en modo simulación: OK');
+  assert.equal(sim2.reporte.omitidos_duplicado, 0, 'simular dos veces sin escribir no debe marcar duplicados');
+  const ejec = mod.migracionInventarioEjecutar_({ id: 'admin', nombre: 'Admin' });
+  assert.equal(ejec.ok, true);
+  assert.equal(ejec.reporte.creados, 4);
+  assert.equal(escritos.length, 4);
+  const sim3 = mod.migracionInventarioSimular_();
+  assert.equal(sim3.reporte.omitidos_duplicado, 4, 'tras ejecutar, todo debe figurar como ya migrado');
+  console.log('migración simulación y ejecución: OK');
 })();
 
 (function () {

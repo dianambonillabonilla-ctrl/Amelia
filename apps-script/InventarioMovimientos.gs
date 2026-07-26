@@ -394,7 +394,23 @@ function inventarioLibroIntentarDesdeTraslado_(filaTraslado, usuario, evento) {
  * Simula migrar el histórico de la vista calculada al libro físico — NO escribe nada.
  * Idempotente: detecta claves que ya existirían en Movimientos_Inventario.
  */
-function migracionInventarioSimular_() {
+function migracionInventarioEntidadTipo_(tipoMovimiento) {
+  if (['Compra recibida', 'Merma en sede', 'Ajuste autorizado'].indexOf(tipoMovimiento) !== -1) return 'Ajuste';
+  if (['Entrada por producción', 'Consumo de producción', 'Merma de producción'].indexOf(tipoMovimiento) !== -1) return 'Produccion';
+  if (['Traslado enviado', 'Traslado recibido'].indexOf(tipoMovimiento) !== -1) return 'Traslado';
+  return 'Movimiento';
+}
+
+function migracionInventarioClaveDesdeMovimiento_(mov) {
+  return inventarioLibroClave_(migracionInventarioEntidadTipo_(mov.tipo_movimiento), mov.documento_relacionado, mov.tipo_movimiento, 0);
+}
+
+/**
+ * Planifica qué movimientos de la vista calculada faltan en el libro físico.
+ * Usa movimientosInventarioListar_ como única fuente — misma lógica que verá el usuario en
+ * libro-inventario.html y la que usará migracionInventarioEjecutar_.
+ */
+function migracionInventarioPlanificar_() {
   const clavesExistentes = {};
   leerTabla_(SHEET_NAMES.MOVIMIENTOS_INVENTARIO).forEach(function (m) {
     if (m.clave_idempotencia) clavesExistentes[m.clave_idempotencia] = true;
@@ -408,23 +424,25 @@ function migracionInventarioSimular_() {
     error: 0,
     detalle_errores: []
   };
+  const pendientes = [];
 
-  function registrar(clave, vista) {
+  movimientosInventarioListar_({}).forEach(function (mov) {
     reporte.encontrados++;
+    const clave = migracionInventarioClaveDesdeMovimiento_(mov);
     if (clavesExistentes[clave]) {
       reporte.omitidos_duplicado++;
       return;
     }
-    if (!vista.producto || !String(vista.producto).trim()) {
+    if (!mov.producto || !String(mov.producto).trim()) {
       reporte.error++;
       reporte.detalle_errores.push({ clave: clave, motivo: 'Sin producto' });
       return;
     }
-    if (!vista.sede) {
+    if (!mov.sede) {
       reporte.pendiente_mapeo++;
       return;
     }
-    const c = Number(vista.cantidad);
+    const c = Number(mov.cantidad);
     if (isNaN(c) || c === 0) {
       reporte.error++;
       reporte.detalle_errores.push({ clave: clave, motivo: 'Cantidad inválida' });
@@ -432,50 +450,51 @@ function migracionInventarioSimular_() {
     }
     reporte.migrables++;
     clavesExistentes[clave] = true;
-  }
-
-  const TIPO_A_MOV = { 'Compra cruda': 'Compra recibida', 'Merma / desperdicio': 'Merma en sede', 'Ajuste operativo': 'Ajuste autorizado' };
-  leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO).forEach(function (a) {
-    const tipo = TIPO_A_MOV[a.tipo] || 'Ajuste autorizado';
-    const esSalida = tipo === 'Merma en sede';
-    registrar(inventarioLibroClave_('Ajuste', a.id, tipo, 0), {
-      producto: a.producto,
-      sede: a.sede,
-      cantidad: esSalida ? -Number(a.cantidad) : Number(a.cantidad)
+    pendientes.push({
+      clave: clave,
+      mov: mov,
+      entidadTipo: migracionInventarioEntidadTipo_(mov.tipo_movimiento)
     });
   });
 
-  leerTabla_(SHEET_NAMES.PRODUCCIONES).forEach(function (p) {
-    let sec = 0;
-    registrar(inventarioLibroClave_('Produccion', p.id, 'Entrada por producción', sec++), {
-      producto: p.item, sede: p.sede, cantidad: Number(p.cantidad)
+  return { pendientes: pendientes, reporte: reporte };
+}
+
+function migracionInventarioSimular_() {
+  const plan = migracionInventarioPlanificar_();
+  return { ok: true, simulacion: true, reporte: plan.reporte };
+}
+
+/**
+ * Migra el histórico de la vista calculada al libro físico Movimientos_Inventario.
+ * Idempotente por clave_idempotencia — se puede volver a correr sin duplicar filas.
+ * Solo Administrador (vía Code.gs). NO activa el dual-write automático.
+ */
+function migracionInventarioEjecutar_(usuario) {
+  const plan = migracionInventarioPlanificar_();
+  const resultado = { creados: 0, repetidos: 0, errores: [] };
+
+  plan.pendientes.forEach(function (p) {
+    const item = inventarioLibroItemDesdeVista_(p.mov, {
+      entidad_tipo: p.entidadTipo,
+      entidad_id: p.mov.documento_relacionado,
+      clave_idempotencia: p.clave,
+      fuente: 'Migración histórica'
     });
-    if (p.insumo_producto && p.insumo_cantidad !== '' && p.insumo_cantidad != null) {
-      registrar(inventarioLibroClave_('Produccion', p.id, 'Consumo de producción', sec++), {
-        producto: p.insumo_producto, sede: p.sede, cantidad: -Number(p.insumo_cantidad)
-      });
-    }
-    if (p.merma_cantidad !== '' && p.merma_cantidad != null && Number(p.merma_cantidad) > 0) {
-      registrar(inventarioLibroClave_('Produccion', p.id, 'Merma de producción', sec++), {
-        producto: (p.insumo_producto || p.item) + ' — merma de producción',
-        sede: p.sede,
-        cantidad: -Number(p.merma_cantidad)
-      });
-    }
+    const r = inventarioMovimientoCrear_(item, usuario);
+    if (r.repetido) resultado.repetidos++;
+    else if (r.ok) resultado.creados++;
+    else resultado.errores.push(r.error || 'Error desconocido');
   });
 
-  leerTabla_(SHEET_NAMES.TRASLADOS).forEach(function (t) {
-    registrar(inventarioLibroClave_('Traslado', t.id, 'Traslado enviado', 0), {
-      producto: t.producto, sede: t.sede_origen, cantidad: -Number(t.cantidad_enviada)
-    });
-    if (['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1) {
-      const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida != null
-        ? Number(t.cantidad_recibida) : Number(t.cantidad_enviada);
-      registrar(inventarioLibroClave_('Traslado', t.id, 'Traslado recibido', 0), {
-        producto: t.producto, sede: t.sede_destino, cantidad: recibida
-      });
-    }
-  });
-
-  return { ok: true, simulacion: true, reporte: reporte };
+  return {
+    ok: resultado.errores.length === 0,
+    simulacion: false,
+    reporte: Object.assign({}, plan.reporte, {
+      creados: resultado.creados,
+      repetidos: resultado.repetidos,
+      errores_ejecucion: resultado.errores.length
+    }),
+    errores: resultado.errores
+  };
 }
