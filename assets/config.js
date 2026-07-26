@@ -46,15 +46,25 @@ async function llamar(action, params = {}) {
   const body = Object.assign({ action, token: Sesion.token() }, params);
   let res;
   try {
-    res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body) });
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
   } catch (err) {
     return { ok: false, error: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
   }
+  const texto = await res.text();
   let data;
   try {
-    data = await res.json();
+    data = JSON.parse(texto);
   } catch (err) {
-    // Ej. la sesión venció y Apps Script devolvió una página de login en vez del JSON esperado.
+    // Apps Script devuelve una página HTML cuando el proyecto no arranca (ej. const duplicado
+    // en FudoEstado.gs pegado dos veces en el editor). Mostrar el error real ayuda a diagnosticar.
+    const syntax = texto.match(/SyntaxError:[^<]+/);
+    if (syntax) {
+      return { ok: false, error: 'El backend de Apps Script no arranca: ' + syntax[0].replace(/&#39;/g, "'") + '. Abre el editor de Apps Script, busca el archivo indicado y elimina código duplicado; luego Implementar > Nueva implementación.' };
+    }
     return { ok: false, error: 'El servidor respondió algo que no se pudo leer. Vuelve a intentarlo; si sigue igual, cierra sesión y entra de nuevo.' };
   }
   if (!data.ok && data.codigo === 'SESION_INVALIDA') {
