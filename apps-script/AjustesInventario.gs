@@ -65,8 +65,12 @@ function ajusteInventarioFila_(item, usuario) {
 function ajusteInventarioRegistrar_(item, usuario) {
   const validacion = ajusteInventarioValidar_(item, usuario);
   if (!validacion.ok) return validacion;
-  appendRowFromObj_(SHEET_NAMES.AJUSTES_INVENTARIO, ajusteInventarioFila_(item, usuario));
-  return { ok: true };
+  const fila = ajusteInventarioFila_(item, usuario);
+  appendRowFromObj_(SHEET_NAMES.AJUSTES_INVENTARIO, fila);
+  if (typeof inventarioLibroIntentarDesdeAjuste_ === 'function') {
+    inventarioLibroIntentarDesdeAjuste_(fila, usuario);
+  }
+  return { ok: true, id: fila.id };
 }
 
 function ajustesInventarioListar_(fecha, sede) {

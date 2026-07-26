@@ -71,7 +71,7 @@ function produccionRegistrar_(items, usuario, opciones) {
 
     const ahora = new Date();
     items.forEach(function (it) {
-      appendRowFromObj_(SHEET_NAMES.PRODUCCIONES, {
+      const fila = {
         id: Utilities.getUuid(),
         fecha: it.fecha,
         sede: it.sede,
@@ -85,10 +85,6 @@ function produccionRegistrar_(items, usuario, opciones) {
         insumo_cantidad: it.insumo_cantidad !== undefined && it.insumo_cantidad !== '' ? Number(it.insumo_cantidad) : '',
         insumo_unidad: it.insumo_unidad || '',
         merma_cantidad: it.merma_cantidad !== undefined && it.merma_cantidad !== '' ? Number(it.merma_cantidad) : '',
-        // La merma de proceso normalmente es masa cruda perdida (ver movimientosDesdeProduccion_ en
-        // MovimientosInventario.gs) — su unidad debería ser la del insumo, no la del terminado
-        // (pueden diferir, ej. terminado en "porciones" e insumo en "kg"). Se cae a la unidad del
-        // terminado solo si tampoco hay insumo declarado.
         merma_unidad: it.merma_unidad || it.insumo_unidad || it.unidad || '',
         rendimiento_porcentaje: it.rendimiento_porcentaje !== undefined && it.rendimiento_porcentaje !== '' ? Number(it.rendimiento_porcentaje) : '',
         receta_referencia: it.receta_referencia || '',
@@ -96,7 +92,11 @@ function produccionRegistrar_(items, usuario, opciones) {
         hora_fin: it.hora_fin || '',
         observacion: it.observacion || '',
         evidencia_url: it.evidencia_url || ''
-      });
+      };
+      appendRowFromObj_(SHEET_NAMES.PRODUCCIONES, fila);
+      if (typeof inventarioLibroIntentarDesdeProduccion_ === 'function') {
+        inventarioLibroIntentarDesdeProduccion_(fila, usuario);
+      }
     });
     return { ok: true, registrados: items.length };
   } finally {
