@@ -162,6 +162,13 @@ Corre entero sin red y sin Google: cada prueba carga los `.gs` de verdad y les i
   acciones de lectura del router. Detecta lo que las pruebas por módulo no pueden ver: una hoja o una
   constante de `SHEET_NAMES` que un módulo usa y `Code.gs` no declara — la causa real del error
   `No existe la hoja "undefined"`.
+- **`tests/flujo-escritura.test.js`**: recorre un día entero de operación por `doPost`, como lo haría
+  la app — crear productos y recetas, contar, comprar, producir, trasladar y recibir, registrar una
+  merma, abrir y resolver una gestión, cerrar turno — y comprueba que "Disponible Hoy" refleje todo
+  lo registrado. Es la contraparte necesaria de las otras dos: `integracion-api` solo lee, y la
+  prueba contra el despliegue real tampoco escribe a propósito, así que sin esto la mitad que más
+  usa el personal quedaría sin cubrir. Incluye idempotencia (doble clic no duplica), permisos por
+  sede y por rol, validaciones y neutralización de fórmulas.
 - **`tests/rendimiento-lecturas.test.js`**: fija un presupuesto de llamadas al Sheet por cálculo.
   Cada `leerTabla_` es una llamada a la API de Sheets y Apps Script corta cualquier ejecución a los 6
   minutos, así que un cálculo que pide el Sheet una vez por día de calendario deja la pantalla sin
