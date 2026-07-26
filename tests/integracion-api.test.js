@@ -326,6 +326,50 @@ function sembrarDatos(env) {
   console.log('sheet_(undefined) explica la causa real: OK');
 })();
 
+// --- 2b. verificarInstalacion(): el autodiagnóstico que se corre desde el editor -----------------
+
+(function () {
+  const env = crearEntorno();
+  env.ctx.configurarHojas();
+  env.ctx.crearAdministradorInicial_('Diana', 'diana', 'contrasegura1', 'diana@example.com');
+  sembrarDatos(env);
+
+  const informe = env.ctx.verificarInstalacion();
+  assert.match(informe, /AUTODIAGNÓSTICO DILANA OS/);
+  assert.match(informe, /OK — están todas las funciones/);
+  assert.match(informe, /OK — existen las \d+ hojas esperadas/);
+  assert.match(informe, /TIEMPO REAL DE "DISPONIBLE HOY"/);
+  assert.match(informe, /San Antonio: \d+\.\d+ s/, 'debe medir el tiempo real de Disponible Hoy');
+  assert.doesNotMatch(informe, /PROBLEMA/, 'una instalación sana no debe reportar problemas');
+
+  // Y con una hoja borrada a mano, tiene que decir cuál falta y qué hacer.
+  const gestiones = env.hoja('Gestiones');
+  env.spreadsheet.deleteSheet(gestiones);
+  const informeRoto = env.ctx.verificarInstalacion();
+  assert.match(informeRoto, /faltan estas hojas: Gestiones/);
+  assert.match(informeRoto, /configurarHojas\(\)/);
+  console.log('verificarInstalacion() informa el estado y detecta una hoja faltante: OK');
+})();
+
+// --- 2c. El autodiagnóstico detecta un Code.gs desactualizado ------------------------------------
+
+(function () {
+  const env = crearEntorno();
+  env.ctx.configurarHojas();
+  env.ctx.crearAdministradorInicial_('Diana', 'diana', 'contrasegura1', 'diana@example.com');
+  sembrarDatos(env);
+
+  // Simula el caso real: el proyecto desplegado tiene los módulos nuevos pero un Code.gs viejo,
+  // sin las funciones que esos módulos esperan encontrar. Se sobrescribe en vez de borrar porque
+  // una función declarada en el ámbito global no es configurable y `delete` no la quita.
+  env.ctx.conCacheDeTablas_ = undefined;
+  const informe = env.ctx.verificarInstalacion();
+  assert.match(informe, /faltan estas funciones/);
+  assert.match(informe, /conCacheDeTablas_/);
+  assert.match(informe, /clasp push/, 'debe decir cómo se arregla, no solo que falta algo');
+  console.log('verificarInstalacion() detecta un Code.gs desactualizado: OK');
+})();
+
 // --- 3. Ruta de actualización: hojas viejas, con datos y con menos columnas ----------------------
 
 (function () {

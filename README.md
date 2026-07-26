@@ -115,6 +115,26 @@ npm run clasp:open
 npm run clasp:deploy
 ```
 
+## Cuando algo no funciona: `verificarInstalacion()`
+
+Antes de investigar datos, revisa la instalación. Hay dos formas de correr el mismo autodiagnóstico
+(no modifica nada, solo lee):
+
+- **Desde la app:** Diagnóstico → *Estado de la instalación* → **Revisar instalación**.
+- **Desde el editor de Apps Script:** elige `verificarInstalacion` en la lista de funciones, Ejecutar,
+  y mira *Registro de ejecución*. Sirve incluso si la app web no carga.
+
+Informa: si el `Code.gs` desplegado está al día con el resto de los archivos, si existe cada hoja que
+el código espera, cuántas filas tiene cada una, **cuánto tarda de verdad "Disponible Hoy" en cada
+sede** (Apps Script corta a los 6 minutos) y el estado de la sincronización con FUDO.
+
+Los dos síntomas más comunes y qué significan:
+
+| Lo que ves | Qué pasa realmente | Qué hacer |
+| --- | --- | --- |
+| `No existe la hoja "undefined"` | Un módulo usa una constante de `SHEET_NAMES` que el `Code.gs` desplegado no declara. No falta ninguna hoja llamada "undefined". | `npm run clasp:push` de **todo** el proyecto y volver a desplegar la Web App. |
+| `No existe la hoja "Nombre_Real"` | Esa hoja no está creada en el Sheet. | `configurarHojas()` desde el editor. |
+
 ## Seguridad y buenas prácticas
 
 - Los datos del backend que se insertan con `innerHTML` deben pasar por `escapeHtml()`.

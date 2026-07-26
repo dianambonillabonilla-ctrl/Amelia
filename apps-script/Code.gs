@@ -565,6 +565,9 @@ function handleRequest_(e, method) {
         // primeras líneas (Traslados.gs), esto es redundante pero mantiene el patrón consistente.
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
+      case 'verificar_instalacion':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, informe: verificarInstalacion() });
       case 'diagnostico_recetas':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarRecetas_(params.umbral) });
