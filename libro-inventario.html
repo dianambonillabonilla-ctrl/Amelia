@@ -156,14 +156,29 @@ requerirRol_(['Administrador', 'Encargado', 'Lectura']);
 montarBarraUsuario();
 restringirSelectorSede_(document.getElementById('filtro-sede'));
 
+const paramsUrl = new URLSearchParams(window.location.search);
+const productoUrl = paramsUrl.get('producto') || '';
+const sedeUrl = paramsUrl.get('sede') || '';
+const fechaUrl = paramsUrl.get('fecha') || '';
+const tabUrl = paramsUrl.get('tab') || '';
+
 const hoy = fechaLocalHoy_();
 const hace7dias = (() => {
   const d = new Date();
   d.setDate(d.getDate() - 7);
   return d.toISOString().slice(0, 10);
 })();
-document.getElementById('filtro-desde').value = hace7dias;
-document.getElementById('filtro-hasta').value = hoy;
+document.getElementById('filtro-desde').value = fechaUrl || hace7dias;
+document.getElementById('filtro-hasta').value = fechaUrl || hoy;
+if (productoUrl) document.getElementById('filtro-producto').value = productoUrl;
+if (sedeUrl) {
+  const selSede = document.getElementById('filtro-sede');
+  if (Array.from(selSede.options).some(o => o.value === sedeUrl)) selSede.value = sedeUrl;
+}
+if (tabUrl) {
+  const btnTab = document.querySelector(`.tab-btn[data-tab="${tabUrl}"]`);
+  if (btnTab) btnTab.click();
+}
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {

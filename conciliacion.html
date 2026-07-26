@@ -83,6 +83,16 @@
       <p style="color:var(--grey); font-size:.85rem">No compara contra el stock de FUDO (para comida no cuadra) — compara el cambio físico (hoy vs. ayer) contra lo que las ventas debieron consumir: por receta, o 1 a 1 si no tiene (ej. una bebida). Ya incluye compras, traslados, producción y mermas de esa sede.</p>
       <div id="bloques-comida"></div>
     </div>
+
+    <div class="card">
+      <h2>Inventario teórico al cierre — vista del libro</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Para los mismos ingredientes de la conciliación de comida, muestra el stock teórico que
+        calcula el libro central (<code>calcularInventarioTeorico_</code>): último conteo + movimientos
+        hasta el fin del día. No altera la lógica de conciliación — es solo referencia cruzada.
+      </p>
+      <div id="bloques-inventario-teorico"><p class="vacio">Cargando…</p></div>
+    </div>
   </main>
 </div>
 
@@ -118,6 +128,7 @@ async function cargar() {
   pintarBebidas(data.data.bebidas, sedeRestringida);
   pintarComida(data.data.comida);
   pintarConsumoVentasLibro_(fecha, sedeRestringida, Object.keys(data.data.comida || {}));
+  pintarInventarioTeorico_(fecha, sedeRestringida, data.data.comida);
 }
 
 async function pintarConsumoVentasLibro_(fecha, sedeRestringida, sedesComida) {
@@ -200,6 +211,41 @@ function pintarBebidas(filas, sedeRestringida) {
   }).join('');
 }
 
+async function pintarInventarioTeorico_(fecha, sedeRestringida, porSede) {
+  const cont = document.getElementById('bloques-inventario-teorico');
+  const sedes = sedeRestringida ? [sedeRestringida] : Object.keys(porSede || {});
+  if (!sedes.length) {
+    cont.innerHTML = '<p class="vacio">Sin ingredientes de comida para mostrar.</p>';
+    return;
+  }
+  const resultados = await Promise.all(sedes.map(async sede => {
+    const ingredientes = (porSede[sede] || []).map(f => f.ingrediente).filter(Boolean);
+    if (!ingredientes.length) return { sede, filas: [] };
+    const r = await llamar('inventario_teorico_resumen', { fecha, sede, productos: ingredientes });
+    return { sede, filas: r.ok ? (r.filas || []) : [] };
+  }));
+  let html = '';
+  resultados.forEach(({ sede, filas }) => {
+    html += `<h3 style="margin:16px 0 8px">${escapeHtml(sede)}</h3>`;
+    if (!filas.length) {
+      html += '<p class="vacio">Sin datos teóricos para los ingredientes de esta sede.</p>';
+      return;
+    }
+    html += '<table><thead><tr><th>Producto</th><th>Teórico al cierre</th><th>Último conteo</th><th></th></tr></thead><tbody>';
+    filas.forEach(f => {
+      const linkLibro = `libro-inventario.html?producto=${encodeURIComponent(f.producto)}&sede=${encodeURIComponent(sede)}&fecha=${encodeURIComponent(fecha)}&tab=teorico`;
+      html += `<tr>
+        <td>${escapeHtml(f.producto)}</td>
+        <td>${escapeHtml(f.cantidad)} ${escapeHtml(f.unidad)}</td>
+        <td>${f.ultimo_conteo_fecha ? escapeHtml(f.ultimo_conteo_fecha) : '—'}</td>
+        <td><a href="${linkLibro}">Ver en libro</a></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  });
+  cont.innerHTML = html || '<p class="vacio">Sin datos.</p>';
+}
+
 function pintarComida(porSede) {
   const cont = document.getElementById('bloques-comida');
   cont.innerHTML = '';
@@ -230,7 +276,6 @@ function pintarComida(porSede) {
   });
 }
 
-cargar();
 </script>
 </body>
 </html>
