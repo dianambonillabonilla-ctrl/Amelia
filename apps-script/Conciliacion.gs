@@ -93,13 +93,22 @@ function calcularConciliacion_(fecha, usuario) {
     : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
       return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
     }), fuente: 'Ventas_FUDO' };
+  const subitemsData = typeof subitemsFudoParaFecha_ === 'function'
+    ? subitemsFudoParaFecha_(fecha, { sin_canceladas: true })
+    : { lineas: [], fuente: null };
+  let subitemsFiltrados = subitemsData.lineas;
+  if (sedeRestringida) {
+    subitemsFiltrados = subitemsFiltrados.filter(function (s) { return s.sede === sedeRestringida; });
+  }
   return {
     fecha: fecha,
     // El frontend usa esto para saber si debe mostrar los controles/columnas de "toda la
     // empresa" (Administrador o sede "Ambas") o solo lo de su propia sede.
     sede_restringida: sedeRestringida,
     fuente_ventas: ventasData.fuente,
+    fuente_subitems: subitemsData.fuente,
     ventas: resumirVentasFudo_(fecha, ventasData.lineas).filter(function (v) { return !sedeRestringida || v.sede === sedeRestringida; }),
+    subitems: resumirSubitemsFudo_(subitemsFiltrados),
     bebidas: conciliarBebidas_(fecha, sedeRestringida),
     comida: conciliarComidaPorSede_(fecha, sedeRestringida)
   };
@@ -139,6 +148,18 @@ function resumirVentasFudo_(fecha, lineasPrecargadas) {
   });
   return Object.keys(grupos).map(function (k) { return grupos[k]; }).sort(function (a, b) {
     return String(a.sede).localeCompare(String(b.sede)) || String(a.categoria).localeCompare(String(b.categoria)) || String(a.producto).localeCompare(String(b.producto));
+  });
+}
+
+function resumirSubitemsFudo_(lineas) {
+  const grupos = {};
+  (lineas || []).forEach(function (v) {
+    const clave = [v.sede || 'Sin identificar', v.producto].join('|');
+    if (!grupos[clave]) grupos[clave] = { sede: v.sede || 'Sin identificar', producto: v.producto, cantidad: 0 };
+    grupos[clave].cantidad += Number(v.cantidad) || 0;
+  });
+  return Object.keys(grupos).map(function (k) { return grupos[k]; }).sort(function (a, b) {
+    return String(a.sede).localeCompare(String(b.sede)) || String(a.producto).localeCompare(String(b.producto));
   });
 }
 
@@ -325,11 +346,13 @@ function filaBebidaRestringida_(fila, sede) {
 // --- COMIDA: por sede, ventas x receta vs. cambio físico --------------------
 function conciliarComidaPorSede_(fecha, sedeRestringida) {
   const indice = indiceCatalogo_();
-  const ventas = (typeof ventasFudoLineasParaFecha_ === 'function'
-    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true })
-    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-      return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
-    }) }).lineas;
+  const ventas = (typeof ventasFudoLineasParaConsumo_ === 'function'
+    ? ventasFudoLineasParaConsumo_(fecha, { sin_canceladas: true })
+    : typeof ventasFudoLineasParaFecha_ === 'function'
+      ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true })
+      : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+        return formatearFecha_(v.creacion) === fecha && !ventaCancelada_(v);
+      }) }).lineas;
 
   // Con sede restringida, solo se calcula (y se devuelve) el bloque de esa sede — las otras dos
   // ni siquiera se procesan, así nunca hay nada de otra sede en la respuesta.
