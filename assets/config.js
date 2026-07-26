@@ -52,7 +52,7 @@ async function llamar(action, params = {}) {
       body: JSON.stringify(body)
     });
   } catch (err) {
-    return { ok: false, error: 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
+    return { ok: false, error: 'No se pudo conectar con el servidor. Revisa que API_URL en config.js termine en /exec y que abras la app con http(s), no como archivo local (file://).' };
   }
   const texto = await res.text();
   let data;

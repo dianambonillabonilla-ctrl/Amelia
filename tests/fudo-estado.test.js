@@ -30,7 +30,7 @@ const fakePropertiesService = {
 (function () {
   props = { FUDO_API_KEY: 'k', FUDO_API_SECRET: 's' };
   const hoy = '2026-07-26';
-  const mod = cargar('apps-script/FudoEstado.gs', {
+  const mod = cargar('apps-script/FudoPanelSync.gs', {
     PropertiesService: fakePropertiesService,
     formatearFecha_: (v) => {
       if (v && typeof v === 'object' && typeof v.getTime === 'function') return hoy;
