@@ -46,9 +46,16 @@ async function llamar(action, params = {}) {
   const body = Object.assign({ action, token: Sesion.token() }, params);
   let res;
   try {
+    // Content-Type 'text/plain' a propósito (no 'application/json'): un Content-Type que no sea
+    // "simple" (application/json lo es) hace que el navegador mande antes una solicitud CORS
+    // preflight (OPTIONS) — y el /exec de Apps Script no responde OPTIONS, así que ese preflight
+    // siempre falla con "Response to preflight request doesn't pass access control check", aunque
+    // el propio backend y el deploy estén perfectamente bien configurados. El backend igual lee el
+    // cuerpo con JSON.parse(e.postData.contents) sin mirar el Content-Type declarado (handleRequest_
+    // en Code.gs), así que el cambio no le afecta en nada.
     res = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body)
     });
   } catch (err) {
