@@ -134,3 +134,48 @@ function pagosFudoCantidadFecha_(fecha) {
   });
   return { registros: count, fuente: 'Pagos_FUDO' };
 }
+
+/** Índice id_venta → sede — Fudo_Items si hay datos, si no Ventas_FUDO. */
+function ventasFudoIndiceSedePorVenta_() {
+  const indice = {};
+  const items = leerTabla_(SHEET_NAMES.FUDO_ITEMS);
+  if (items.length) {
+    items.forEach(function (it) {
+      const id = String(it.id_venta || '');
+      if (!id || indice[id] || !it.sede) return;
+      indice[id] = it.sede;
+    });
+    return indice;
+  }
+  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) {
+    const id = String(v.id_venta || '');
+    if (!id || indice[id] || !v.sede) return;
+    indice[id] = v.sede;
+  });
+  return indice;
+}
+
+/**
+ * Todas las líneas para consumo por receta — ítems + subítems si Fudo_Subitems tiene datos.
+ */
+function ventasFudoLineasTodasParaConsumo_(opciones) {
+  const base = ventasFudoLineasTodas_(opciones);
+  const subData = subitemsFudoTodas_(opciones);
+  if (!subData.lineas.length) {
+    return { lineas: base.lineas, fuente: base.fuente, fuente_subitems: null };
+  }
+  return {
+    lineas: base.lineas.concat(subData.lineas),
+    fuente: base.fuente,
+    fuente_subitems: subData.fuente
+  };
+}
+
+/** Subítems de todo el histórico — solo Fudo_Subitems. */
+function subitemsFudoTodas_(opciones) {
+  opciones = opciones || {};
+  let lineas = leerTabla_(SHEET_NAMES.FUDO_SUBITEMS);
+  if (!lineas.length) return { lineas: [], fuente: null };
+  lineas = lineas.map(fudoSubitemALineaPlana_);
+  return ventasFudoLineasFiltrar_(lineas, opciones, 'Fudo_Subitems');
+}

@@ -222,17 +222,20 @@ function turnoVentasTotalesSedeFecha_(fecha, sede) {
       };
     }
   }
-  const ventasDelDia = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-    return formatearFecha_(v.creacion) === fecha && v.sede === sede &&
-      !(v.cancelada === true || normalizar_(v.cancelada) === 'si');
-  });
+  const ventasData = typeof ventasFudoLineasParaFecha_ === 'function'
+    ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true, sede: sede })
+    : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+      return formatearFecha_(v.creacion) === fecha && v.sede === sede &&
+        !(v.cancelada === true || normalizar_(v.cancelada) === 'si');
+    }), fuente: 'Ventas_FUDO' };
+  const ventasDelDia = ventasData.lineas;
   const total = ventasDelDia.reduce(function (acc, v) {
     return acc + (Number(v.precio) || 0) * (Number(v.cantidad) || 0);
   }, 0);
   return {
-    ventas_fudo_total: total,
+    ventas_fudo_total: Number(total.toFixed(2)),
     ventas_fudo_cantidad: ventasDelDia.length,
-    fuente_ventas: 'Ventas_FUDO'
+    fuente_ventas: ventasData.fuente || 'Ventas_FUDO'
   };
 }
 

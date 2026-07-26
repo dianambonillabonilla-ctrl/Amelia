@@ -59,6 +59,16 @@
         </div>
         <div class="campo"><label>Producto (opcional)</label><input type="text" id="filtro-producto" placeholder="ej. costilla"></div>
       </div>
+      <div class="grid grid-2" style="margin-top:10px; align-items:end">
+        <div class="campo">
+          <label>Punto / ubicación (opcional)</label>
+          <select id="filtro-punto"><option value="">Todas</option></select>
+        </div>
+        <label style="font-size:.88rem; display:flex; align-items:center; gap:8px; margin:0">
+          <input type="checkbox" id="filtro-incluir-ventas">
+          Incluir consumo por ventas en la vista calculada
+        </label>
+      </div>
       <button class="btn dorado" id="btn-cargar">Cargar</button>
       <p id="estado-libro" style="margin:10px 0 0; font-size:.85rem; color:var(--grey)"></p>
     </div>
@@ -77,8 +87,8 @@
         <p style="color:var(--grey); font-size:.85rem">Lee las hojas operativas (Ajustes, Producción, Traslados) y las normaliza.</p>
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Sede</th><th>Usuario</th><th>Documento</th></tr></thead>
-            <tbody id="tabla-calculada"><tr><td colspan="8" class="vacio">Elige filtros y presiona Cargar.</td></tr></tbody>
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Sede</th><th>Ubicación</th><th>Usuario</th><th>Documento</th></tr></thead>
+            <tbody id="tabla-calculada"><tr><td colspan="9" class="vacio">Elige filtros y presiona Cargar.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -198,7 +208,17 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 document.getElementById('btn-cargar').addEventListener('click', cargar);
+document.getElementById('filtro-sede').addEventListener('change', poblarPuntosLibro_);
+poblarPuntosLibro_();
 cargar();
+
+async function poblarPuntosLibro_() {
+  const sede = document.getElementById('filtro-sede').value;
+  const sel = document.getElementById('filtro-punto');
+  const anterior = sel.value;
+  await poblarSelectUbicaciones_(sel, sede, { opcionVacia: 'Todas', seleccionarPrimera: false });
+  if (anterior && Array.from(sel.options).some(o => o.value === anterior)) sel.value = anterior;
+}
 
 async function actualizarEstadoLibroAdmin_() {
   const estado = await llamar('inventario_libro_estado', {});
@@ -223,6 +243,9 @@ async function cargar() {
   };
   const producto = document.getElementById('filtro-producto').value.trim();
   if (producto) filtros.producto = producto;
+  const punto = document.getElementById('filtro-punto').value;
+  if (punto) filtros.punto = punto;
+  if (document.getElementById('filtro-incluir-ventas').checked) filtros.incluir_consumo_ventas = true;
   const fechaDia = filtros.fecha_hasta || hoy;
 
   document.getElementById('fecha-ventas-label').textContent = fechaDia;
@@ -249,17 +272,21 @@ async function cargar() {
 
 function pintarCalculada(filas) {
   const body = document.getElementById('tabla-calculada');
-  if (!filas.length) { body.innerHTML = '<tr><td colspan="8" class="vacio">No hay movimientos en este rango.</td></tr>'; return; }
-  body.innerHTML = filas.map(m => `<tr>
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="9" class="vacio">No hay movimientos en este rango.</td></tr>'; return; }
+  body.innerHTML = filas.map(m => {
+    const ubic = m.ubicacion_origen || m.ubicacion_destino || '';
+    return `<tr>
     <td>${escapeHtml(m.fecha)}</td>
     <td>${escapeHtml(m.tipo_movimiento)}</td>
     <td>${escapeHtml(m.producto)}</td>
     <td>${escapeHtml(m.cantidad)}</td>
     <td>${escapeHtml(m.unidad)}</td>
     <td>${escapeHtml(m.sede)}</td>
+    <td>${escapeHtml(ubic)}</td>
     <td>${escapeHtml(m.usuario || '')}</td>
     <td>${escapeHtml(m.documento_relacionado || '')}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 }
 
 function pintarVentas(filas) {

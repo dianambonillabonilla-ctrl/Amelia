@@ -116,12 +116,16 @@ function diagnosticarConteosDuplicados_() {
   return { total_filas: filas.length, grupos_duplicados: duplicados, filas_de_sobra: totalFilasDeSobra };
 }
 
-/** Revisa qué tan completos están los datos importados de Ventas_FUDO. */
+/** Revisa qué tan completos están los datos importados de ventas Fudo (plana y normalizada). */
 function diagnosticarVentasFudo_() {
-  const filas = leerTabla_(SHEET_NAMES.VENTAS_FUDO);
+  const flat = leerTabla_(SHEET_NAMES.VENTAS_FUDO);
+  const items = leerTabla_(SHEET_NAMES.FUDO_ITEMS);
+  const ventasNorm = leerTabla_(SHEET_NAMES.FUDO_VENTAS);
+  const fuente = items.length ? 'Fudo_Items' : 'Ventas_FUDO';
+  const filas = items.length ? items : flat;
   if (!filas.length) {
-    Logger.log('Ventas_FUDO: la hoja está vacía, no se ha importado nada todavía.');
-    return { total_filas: 0, vacios: {} };
+    Logger.log('Ventas Fudo: sin datos en ' + fuente + ' ni en Ventas_FUDO.');
+    return { total_filas: 0, fuente: fuente, flat_lineas: flat.length, items: items.length, ventas: ventasNorm.length, vacios: {} };
   }
 
   const campos = ['id_venta', 'creacion', 'producto', 'cantidad', 'precio', 'sede', 'creada_por'];
@@ -134,7 +138,8 @@ function diagnosticarVentasFudo_() {
     });
   });
 
-  Logger.log('Ventas_FUDO: ' + filas.length + ' filas totales. Campos vacíos:');
+  Logger.log('Ventas Fudo (' + fuente + '): ' + filas.length + ' filas. Plana: ' + flat.length +
+    ', Fudo_Items: ' + items.length + ', Fudo_Ventas: ' + ventasNorm.length + '. Campos vacíos:');
   campos.forEach(function (c) {
     if (vacios[c] > 0) Logger.log('  - ' + c + ': ' + vacios[c] + ' de ' + filas.length + ' filas vacías');
   });
@@ -147,7 +152,7 @@ function diagnosticarVentasFudo_() {
     Logger.log('archivo .xls que exporta FUDO y compáralo con esos nombres.');
   }
 
-  return { total_filas: filas.length, vacios: vacios };
+  return { total_filas: filas.length, fuente: fuente, flat_lineas: flat.length, items: items.length, ventas: ventasNorm.length, vacios: vacios };
 }
 
 /**
