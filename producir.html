@@ -326,9 +326,7 @@ async function cargarHistorial() {
     const horas = (p.hora_inicio || p.hora_fin)
       ? `<br><span style="color:var(--grey); font-size:.8rem">Lote: ${escapeHtml(p.hora_inicio || '—')} – ${escapeHtml(p.hora_fin || '—')}</span>`
       : '';
-    const evidencia = p.evidencia_url
-      ? `<br><a href="${escapeHtml(p.evidencia_url)}" target="_blank" rel="noopener">Ver foto</a>`
-      : '';
+    const evidencia = p.evidencia_url ? `<br>${evidenciaEnlaceHtml_(p.evidencia_url, 'Ver foto')}` : '';
     return `<tr><td>${escapeHtml(p.item)}</td><td>${escapeHtml(p.sede)}</td><td>${escapeHtml(p.cantidad)}</td><td>${escapeHtml(p.unidad)}</td><td>${escapeHtml(p.usuario)}</td><td>${detalle}${horas}${evidencia}</td></tr>`;
   }).join('');
 }

@@ -208,12 +208,28 @@ function doPost(e) {
   return handleRequest_(e, 'POST');
 }
 
+/**
+ * Registra el detalle completo en el registro de ejecución y devuelve un Error con solo un código
+ * corto — el mensaje interno (stack, SQL, rutas, etc.) nunca debe llegar tal cual al navegador.
+ */
+function apiErrorConIncidente_(resumen, detalle) {
+  const incidente = 'API-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000);
+  Logger.log('[' + incidente + '] ' + resumen + ': ' + detalle);
+  return new Error(resumen + ' (código ' + incidente + ' — revisa el registro de ejecución de Apps Script para el detalle completo).');
+}
+
 function handleRequest_(e, method) {
+  // La API solo acepta POST: GET con ?action=login&password=... dejaría credenciales en logs,
+  // historial del navegador y proxies — auditoría de seguridad, jul 2026.
+  if (method === 'GET') {
+    return jsonOut_({ ok: false, error: 'La API de Dilana OS solo acepta solicitudes POST. Actualiza la página si ves este mensaje.' });
+  }
+
   let body = {};
   try {
     if (e.postData && e.postData.contents) body = JSON.parse(e.postData.contents);
   } catch (err) {
-    return jsonOut_({ ok: false, error: 'JSON inválido: ' + err.message });
+    return jsonOut_({ ok: false, error: 'JSON inválido en el cuerpo de la solicitud' });
   }
   const params = Object.assign({}, e.parameter || {}, body || {});
   const action = params.action;
@@ -482,6 +498,9 @@ function handleRequest_(e, method) {
       case 'evidencia_subir':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(evidenciaSubir_(params.archivo));
+      case 'evidencia_obtener':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
+        return jsonOut_(evidenciaObtener_(params.file_id));
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
@@ -553,7 +572,11 @@ function handleRequest_(e, method) {
         return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
     }
   } catch (err) {
-    return jsonOut_({ ok: false, error: 'Error de servidor: ' + err.message });
+    const detalle = err && err.message ? err.message : String(err);
+    if (/código (API|FUDO)-/.test(detalle)) {
+      return jsonOut_({ ok: false, error: detalle });
+    }
+    return jsonOut_({ ok: false, error: apiErrorConIncidente_('Error de servidor', detalle).message });
   }
 }
 

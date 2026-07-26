@@ -98,6 +98,52 @@ function leerArchivoBase64_(input) {
   });
 }
 
+/** Extrae el ID de Drive de una referencia interna (evidencia:ID) o de una URL legacy de Drive. */
+function evidenciaExtraerId_(ref) {
+  if (!ref) return '';
+  const s = String(ref);
+  if (s.indexOf('evidencia:') === 0) return s.slice(10);
+  const m = s.match(/\/file\/d\/([^/]+)/);
+  if (m) return m[1];
+  const m2 = s.match(/[?&]id=([^&]+)/);
+  if (m2) return m2[1];
+  return '';
+}
+
+/** HTML seguro para enlazar una evidencia (abre vía API autenticada si hay ID conocido). */
+function evidenciaEnlaceHtml_(ref, texto) {
+  if (!ref) return '—';
+  const etiqueta = texto || 'Ver foto';
+  const id = evidenciaExtraerId_(ref);
+  if (id) {
+    return `<a href="#" class="evidencia-enlace" data-evidencia-id="${escapeHtml(id)}">${escapeHtml(etiqueta)}</a>`;
+  }
+  return `<a href="${escapeHtml(ref)}" target="_blank" rel="noopener">${escapeHtml(etiqueta)}</a>`;
+}
+
+/** Abre una evidencia en una pestaña nueva (descarga vía evidencia_obtener con sesión). */
+async function evidenciaAbrir_(refOrId) {
+  const id = evidenciaExtraerId_(refOrId) || refOrId;
+  if (!id) { alert('Enlace de evidencia inválido'); return; }
+  const data = await llamar('evidencia_obtener', { file_id: id });
+  if (!data.ok) { alert(data.error || 'No se pudo abrir la evidencia'); return; }
+  const mime = data.mime_type || 'application/octet-stream';
+  const bin = atob(data.contenido_base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+document.addEventListener('click', (e) => {
+  const enlace = e.target.closest('.evidencia-enlace');
+  if (!enlace) return;
+  e.preventDefault();
+  evidenciaAbrir_(enlace.dataset.evidenciaId);
+});
+
 // Espejo de normalizar_() en Catalogo.gs — para comparar nombres de producto en el navegador
 // (sin tildes, minúsculas, espacios colapsados) antes de mandar nada al backend.
 function normalizarTexto(s) {
