@@ -41,43 +41,9 @@ function fudoSubitemsFilasDesdeSale_(sale, incluidos, indiceMapeo, opciones) {
   return filas;
 }
 
+/** Misma lógica que fudoDescuentosPropinasUpsert_ (FudoDescuentosPropinas.js), fijada a Fudo_Subitems. */
 function fudoSubitemsUpsert_(filas) {
-  if (!filas || !filas.length) return { creados: 0, actualizados: 0, omitidos: 0 };
-
-  const sh = sheet_(SHEET_NAMES.FUDO_SUBITEMS);
-  const data = sh.getDataRange().getValues();
-  const headers = data[0];
-  const idCol = headers.indexOf('id_subitem');
-  const filaPorId = {};
-  for (let r = 1; r < data.length; r++) {
-    filaPorId[String(data[r][idCol] || '')] = r + 1;
-  }
-
-  let creados = 0;
-  let actualizados = 0;
-  let omitidos = 0;
-  const nuevasFilas = [];
-
-  filas.forEach(function (f) {
-    const id = String(f.id_subitem || '');
-    if (!id) { omitidos++; return; }
-    const filaExistente = filaPorId[id];
-    if (filaExistente && filaExistente > 0) {
-      headers.forEach(function (h, c) {
-        if (f[h] !== undefined) sh.getRange(filaExistente, c + 1).setValue(f[h]);
-      });
-      actualizados++;
-    } else if (!filaPorId[id]) {
-      nuevasFilas.push(f);
-      filaPorId[id] = -1;
-      creados++;
-    } else {
-      omitidos++;
-    }
-  });
-
-  if (nuevasFilas.length) appendRowsFromObjs_(SHEET_NAMES.FUDO_SUBITEMS, nuevasFilas);
-  return { creados: creados, actualizados: actualizados, omitidos: omitidos };
+  return fudoDescuentosPropinasUpsert_(SHEET_NAMES.FUDO_SUBITEMS, 'id_subitem', filas, 'id_subitem');
 }
 
 function fudoSubitemsEscribirDesdeSales_(sales, incluidos, indiceMapeo, opciones) {
