@@ -7,11 +7,15 @@
  * único formato de movimiento con signo, para poder mostrar/auditar "el libro" completo en un solo
  * lugar y tener UNA fórmula reusable de inventario teórico.
  *
- * Deliberadamente NO incluye "Consumo por venta" todavía: eso requiere explotar la receta vigente
- * de cada venta de Fudo (ver construirRecetaMap_/cantidadDisponibleDetallada_ en DisponibleHoy.gs),
- * que ya existe y está probado — duplicarlo aquí sin necesidad real sería el tipo de trabajo extra
- * que este proyecto pide evitar. Cuando se decida consolidar Conciliacion.gs/DisponibleHoy.gs sobre
- * este libro (pendiente, ver docs/modelo-inventario.md), esa lógica se conecta aquí, no se copia.
+ * "Consumo por venta" SÍ está (jul 2026), pero como función APARTE — movimientosDesdeVentas_(fecha,
+ * sede, indice) — no integrada a movimientosInventarioListar_/calcularInventarioTeorico_ de arriba.
+ * Motivo: toda la explosión de receta en este repo (Conciliacion.gs, DisponibleHoy.gs) opera por UN
+ * día y UNA sede a la vez (recetasVigentes_ necesita una fecha para elegir la versión vigente); las
+ * demás fuentes de este archivo se combinan libremente en cualquier rango de fechas. Mezclar ambos
+ * patrones en una sola función habría significado reconstruir el mapa de recetas una vez por cada
+ * combinación fecha×sede de un rango, quedando lento y confuso sin necesidad real. Reutiliza
+ * construirRecetaMap_/explotarReceta_/claveRecetaVenta_ (DisponibleHoy.gs/Recetas.gs) — no se
+ * duplica esa lógica aquí.
  *
  * "Consumo de producción" y "Merma de producción" SÍ están (jul 2026): Producciones ahora admite
  * insumo_producto/insumo_cantidad/insumo_unidad/merma_cantidad opcionales (ver produccionRegistrar_
@@ -239,4 +243,58 @@ function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional) 
   });
 
   return { cantidad: cantidad, unidad: unidad, ultimo_conteo: ultimoConteo };
+}
+
+/**
+ * "Consumo por venta" de UN día en UNA sede: para cada venta de Fudo no cancelada, explota su
+ * receta vigente (o se autoconsume 1:1 si no tiene receta, ej. una bebida) y devuelve un movimiento
+ * negativo por cada ingrediente/preparado consumido — mismo criterio EXACTO que usa
+ * conciliarComidaPorSede_ (Conciliacion.gs), reutilizando sus mismas piezas
+ * (construirRecetaMap_/explotarReceta_/claveRecetaVenta_) para no arriesgar que los dos cálculos se
+ * desincronicen con el tiempo (ver comentario de claveRecetaVenta_ en Recetas.gs sobre el bug real
+ * que causó justo eso una vez).
+ *
+ * Simplificación consciente frente a Conciliacion.gs: un producto sin receta se autoconsume en
+ * unidad 'u' siempre (Conciliacion.gs intenta adivinar la unidad real del conteo físico vía
+ * calcularCambioFisico_, que es más específico de esa pantalla) — suficiente para un movimiento de
+ * auditoría, no para la comparación fina de Conciliación.
+ */
+function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
+  if (!fecha || !sede) return [];
+  const indice = indiceOpcional || indiceCatalogo_();
+  const ventasDelDia = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+    return formatearFecha_(v.creacion) === fecha && v.sede === sede && !ventaCancelada_(v);
+  });
+  if (!ventasDelDia.length) return [];
+
+  const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+  const consumoEsperado = {};
+  ventasDelDia.forEach(function (v) {
+    const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
+    if (recetaMap[claveProd]) {
+      explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumoEsperado, indice);
+    } else {
+      if (!consumoEsperado[claveProd]) {
+        consumoEsperado[claveProd] = { nombre: nombreCanonico_(v.producto, indice), cantidad: 0, unidad: 'u' };
+      }
+      consumoEsperado[claveProd].cantidad += Number(v.cantidad) || 0;
+    }
+  });
+
+  return Object.keys(consumoEsperado).map(function (clave) {
+    const c = consumoEsperado[clave];
+    return {
+      fecha: fecha,
+      producto: c.nombre,
+      cantidad: -Math.abs(c.cantidad),
+      unidad: c.unidad,
+      sede: sede,
+      ubicacion_origen: movimientoUbicacion_(sede, ''),
+      ubicacion_destino: '',
+      tipo_movimiento: 'Consumo por venta',
+      usuario: '',
+      documento_relacionado: '',
+      estado: 'Registrado'
+    };
+  });
 }

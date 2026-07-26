@@ -354,6 +354,9 @@ function handleRequest_(e, method) {
       case 'inventario_teorico_calcular':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
+      case 'movimientos_venta_dia_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: movimientosDesdeVentas_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
