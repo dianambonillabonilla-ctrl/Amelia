@@ -137,20 +137,19 @@ document.getElementById('env-fecha').value = fechaLocalHoy_();
 // que sirve esta pantalla, y elegir un destino no revela nada de esa otra sede.
 restringirSelectorSede_(document.getElementById('env-sede-origen'));
 
-function poblarPuntosEnvio_(sedeSelectId, puntoSelectId) {
-  const sede = document.getElementById(sedeSelectId).value;
-  const select = document.getElementById(puntoSelectId);
-  const anterior = select.value;
-  const opciones = PUNTOS_POR_SEDE[sede] || [];
-  select.innerHTML = opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
-  if (opciones.includes(anterior)) select.value = anterior;
+async function poblarPuntosEnvio_(sedeSelectId, puntoSelectId) {
+  await poblarSelectUbicaciones_(
+    document.getElementById(puntoSelectId),
+    document.getElementById(sedeSelectId).value
+  );
 }
 document.getElementById('env-sede-origen').addEventListener('change', () => poblarPuntosEnvio_('env-sede-origen', 'env-punto-origen'));
 document.getElementById('env-sede-destino').addEventListener('change', () => poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino'));
-poblarPuntosEnvio_('env-sede-origen', 'env-punto-origen');
-poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino');
-document.getElementById('env-sede-destino').value = 'Capri';
-poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino');
+(async () => {
+  await poblarPuntosEnvio_('env-sede-origen', 'env-punto-origen');
+  document.getElementById('env-sede-destino').value = 'Capri';
+  await poblarPuntosEnvio_('env-sede-destino', 'env-punto-destino');
+})();
 
 async function cargarSugerenciasProductos_() {
   const data = await llamar('catalogo_listar');

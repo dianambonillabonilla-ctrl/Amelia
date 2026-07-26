@@ -103,17 +103,15 @@ const hace7dias = (() => {
 document.getElementById('filtro-desde').value = hace7dias;
 document.getElementById('filtro-hasta').value = hoy;
 
-function poblarPuntos_() {
+async function poblarPuntos_() {
   const sede = document.getElementById('filtro-sede').value;
-  const select = document.getElementById('filtro-punto');
-  const anterior = select.value;
-  const opciones = sede === 'Ambas'
-    ? Array.from(new Set(Object.values(PUNTOS_POR_SEDE).flat()))
-    : (PUNTOS_POR_SEDE[sede] || []);
-  select.innerHTML = '<option value="">Todos</option>' + opciones.map(p => `<option>${escapeHtml(p)}</option>`).join('');
-  if (opciones.includes(anterior)) select.value = anterior;
+  await poblarSelectUbicaciones_(
+    document.getElementById('filtro-punto'),
+    sede,
+    { todasLasSedes: sede === 'Ambas', opcionVacia: 'Todos' }
+  );
 }
-document.getElementById('filtro-sede').addEventListener('change', () => { poblarPuntos_(); cargar(); });
+document.getElementById('filtro-sede').addEventListener('change', async () => { await poblarPuntos_(); cargar(); });
 poblarPuntos_();
 
 function formatearHora_(valor) {
