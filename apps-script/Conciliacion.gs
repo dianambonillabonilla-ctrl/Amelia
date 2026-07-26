@@ -87,6 +87,13 @@ function rangoDeFechas_(desde, hasta) {
 }
 
 function calcularConciliacion_(fecha, usuario) {
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () { return calcularConciliacionSinCache_(fecha, usuario); });
+  }
+  return calcularConciliacionSinCache_(fecha, usuario);
+}
+
+function calcularConciliacionSinCache_(fecha, usuario) {
   const sedeRestringida = sedeRestringidaConciliacion_(usuario);
   const ventasData = typeof ventasFudoLineasParaFecha_ === 'function'
     ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true })

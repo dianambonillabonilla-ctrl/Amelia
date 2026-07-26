@@ -853,18 +853,63 @@ function sedeEscrituraPermitida_(usuario, sede) {
 // ---------------------------------------------------------------------------
 // HELPERS DE LECTURA/ESCRITURA GENÉRICOS
 // ---------------------------------------------------------------------------
+// Caché de tablas ya leídas, activo SOLO dentro de conCacheDeTablas_ (ver abajo). Fuera de ese
+// alcance vale null y leerTabla_ se comporta exactamente como siempre.
+var TABLAS_CACHE_ = null;
+var TABLAS_CACHE_NIVEL_ = 0;
+
+/**
+ * Corre `fn` con las lecturas de hojas memoizadas: dentro de este alcance, pedir dos veces la misma
+ * hoja cuesta una sola llamada a Sheets.
+ *
+ * Solo se debe envolver cálculo de SOLO LECTURA. Varias funciones que escriben (ej.
+ * trasladoConfirmar_) actualizan una celda y enseguida releen la misma hoja para devolver la fila
+ * ya actualizada; si el caché estuviera activo ahí, verían el valor viejo. Por eso el caché es
+ * explícito y acotado en vez de global.
+ *
+ * Cuenta niveles de anidamiento para que envolver una función que ya viene envuelta por otra (ej.
+ * resumenDiferenciasInventarioFechaSede_ dentro de turnoResumenCierre_) reutilice el mismo caché en
+ * vez de vaciarlo al salir del interno.
+ */
+function conCacheDeTablas_(fn) {
+  TABLAS_CACHE_NIVEL_++;
+  if (TABLAS_CACHE_NIVEL_ === 1) TABLAS_CACHE_ = {};
+  try {
+    return fn();
+  } finally {
+    TABLAS_CACHE_NIVEL_--;
+    if (TABLAS_CACHE_NIVEL_ <= 0) {
+      TABLAS_CACHE_NIVEL_ = 0;
+      TABLAS_CACHE_ = null;
+    }
+  }
+}
+
 function leerTabla_(nombreHoja) {
+  if (TABLAS_CACHE_ && Object.prototype.hasOwnProperty.call(TABLAS_CACHE_, nombreHoja)) {
+    // Copia superficial del arreglo: varias funciones hacen `let rows = leerTabla_(...)` y luego
+    // `rows.sort(...)`, que ordena en el sitio. Sin la copia, ese sort reordenaría el arreglo
+    // guardado en caché y cambiaría el orden que ve el siguiente lector.
+    return TABLAS_CACHE_[nombreHoja].slice();
+  }
   const sh = sheet_(nombreHoja);
   const values = sh.getDataRange().getValues();
-  if (values.length < 2) return [];
-  const headers = values[0];
-  return values.slice(1)
-    .filter(function (row) { return row.some(function (v) { return v !== '' && v !== null; }); })
-    .map(function (row) {
-      const obj = {};
-      headers.forEach(function (h, i) { obj[h] = row[i]; });
-      return obj;
-    });
+  let filas = [];
+  if (values.length >= 2) {
+    const headers = values[0];
+    filas = values.slice(1)
+      .filter(function (row) { return row.some(function (v) { return v !== '' && v !== null; }); })
+      .map(function (row) {
+        const obj = {};
+        headers.forEach(function (h, i) { obj[h] = row[i]; });
+        return obj;
+      });
+  }
+  if (TABLAS_CACHE_) {
+    TABLAS_CACHE_[nombreHoja] = filas;
+    return filas.slice();
+  }
+  return filas;
 }
 
 /**

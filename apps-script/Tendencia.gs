@@ -6,6 +6,15 @@
  */
 
 function calcularTendenciaIngrediente_(ingrediente, dias, sede) {
+  // Solo lectura, y recalcula el stock completo una vez por cada día del rango: sin memoizar las
+  // hojas, un rango de 30 días leía las mismas tablas 30 veces enteras.
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () { return calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede); });
+  }
+  return calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede);
+}
+
+function calcularTendenciaIngredienteSinCache_(ingrediente, dias, sede) {
   if (!ingrediente) return { error: 'Falta el ingrediente' };
   dias = Number(dias) || 30;
   const indice = indiceCatalogo_();

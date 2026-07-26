@@ -25,6 +25,15 @@
  */
 
 function calcularDisponibleHoy_(fecha, sede) {
+  // Solo lectura: se memoizan las hojas durante todo el cálculo (ver conCacheDeTablas_ en Code.gs).
+  // Sin esto, cada día con ventas volvía a pedir Fudo_Items/Ventas_FUDO/Fudo_Subitems completas.
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(function () { return calcularDisponibleHoySinCache_(fecha, sede); });
+  }
+  return calcularDisponibleHoySinCache_(fecha, sede);
+}
+
+function calcularDisponibleHoySinCache_(fecha, sede) {
   const indice = indiceCatalogo_();
   const recetas = recetasVigentes_(fecha, sede);
   const stockContado = obtenerUltimoStockPorIngrediente_(fecha, indice, sede);
@@ -506,13 +515,16 @@ function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInc
   if (typeof movimientosDesdeVentas_ !== 'function') return { neto: 0, unidad: unidadEsperada || '' };
   let neto = 0;
   let unidad = unidadEsperada || '';
-  const desde = fechaConteoExclusive || '1970-01-01';
-  const hasta = fechaCorteInclusive || desde;
-  const fechas = typeof fechasEnRangoMovimientos_ === 'function'
-    ? fechasEnRangoMovimientos_(desde, hasta)
-    : [hasta];
+  if (!fechaCorteInclusive) return { neto: 0, unidad: unidad };
+  // Solo los días que de verdad tienen ventas (ver fudoFechasConVentasEnRango_ en FudoLectores.gs).
+  // Recorrer el calendario día por día hacía que un producto sin conteo físico previo arrancara en
+  // 1970 y pidiera las tablas de Fudo completas ~20.000 veces — la pantalla nunca alcanzaba a
+  // responder dentro del límite de 6 minutos de Apps Script.
+  const fechas = typeof fudoFechasConVentasEnRango_ === 'function'
+    ? fudoFechasConVentasEnRango_(sede, fechaConteoExclusive, fechaCorteInclusive, cacheVentas)
+    : fechasEnRangoMovimientos_(fechaConteoExclusive || fechaCorteInclusive, fechaCorteInclusive)
+      .filter(function (f) { return !fechaConteoExclusive || f > fechaConteoExclusive; });
   fechas.forEach(function (f) {
-    if (fechaConteoExclusive && f <= fechaConteoExclusive) return;
     movimientosDesdeVentas_(f, sede, indice, cacheVentas).forEach(function (m) {
       if (claveProducto_(m.producto, indice) !== clave) return;
       const base = aUnidadBase_(Math.abs(m.cantidad), m.unidad);

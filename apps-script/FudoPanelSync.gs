@@ -61,6 +61,13 @@ function fudoProductosFudoSinCatalogo_(limite) {
 
 /** Resumen para fudo.html — solo lectura, no ejecuta sync. */
 function fudoApiEstadoPanel_() {
+  if (typeof conCacheDeTablas_ === 'function') {
+    return conCacheDeTablas_(fudoApiEstadoPanelSinCache_);
+  }
+  return fudoApiEstadoPanelSinCache_();
+}
+
+function fudoApiEstadoPanelSinCache_() {
   const props = PropertiesService.getScriptProperties();
   const tieneCredenciales = !!(props.getProperty('FUDO_API_KEY') && props.getProperty('FUDO_API_SECRET'));
 
