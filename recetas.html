@@ -80,8 +80,8 @@
         <div style="display:flex;gap:8px"><input id="buscar" placeholder="Buscar producto o ingrediente"><select id="filtro-estado"><option value="">Todos los estados</option><option>activo</option><option>revisar</option><option>pendiente</option><option>referencia</option><option>borrador</option><option>inactivo</option><option>archivado</option></select></div>
       </div>
       <div style="overflow-x:auto;margin-top:14px"><table>
-        <thead><tr><th>Producto</th><th>Ingrediente</th><th>Cantidad</th><th>Rendimiento</th><th>Tipo</th><th>Versión</th><th>Estado</th><th>Fuente</th></tr></thead>
-        <tbody id="tabla"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
+        <thead><tr><th>Producto</th><th>Ingrediente</th><th>Cantidad</th><th>Rendimiento</th><th>Tipo</th><th>Versión</th><th>Estado</th><th>Fuente</th><th></th></tr></thead>
+        <tbody id="tabla"><tr><td colspan="9" class="vacio">Cargando…</td></tr></tbody>
       </table></div>
     </div>
   </main>
@@ -106,7 +106,19 @@ function pintar() {
     <td>${r.rendimiento_producto ? `${escapeHtml(r.rendimiento_producto)} ${escapeHtml(r.unidad_rendimiento)}` : '1 plato/porción'}</td>
     <td>${escapeHtml(r.tipo || 'plato')}</td><td>${escapeHtml(r.version || 'sin versión')}</td>
     <td><span class="badge ${claseBadgeEstado_(r.estado)}">${escapeHtml(etiquetaEstado_(r.estado))}</span></td>
-    <td>${escapeHtml(r.fuente || '')}</td></tr>`).join('') : '<tr><td colspan="8" class="vacio">No hay líneas con ese filtro.</td></tr>';
+    <td>${escapeHtml(r.fuente || '')}</td>
+    <td>${(r.estado || 'activo') === 'borrador'
+      ? `<button class="btn dorado btn-aprobar-receta" data-producto="${escapeHtml(r.producto)}" type="button">Aprobar</button>`
+      : ''}</td></tr>`).join('') : '<tr><td colspan="9" class="vacio">No hay líneas con ese filtro.</td></tr>';
+  document.querySelectorAll('.btn-aprobar-receta').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      if (!confirm('¿Aprobar todas las líneas en borrador de "' + btn.dataset.producto + '"? Pasarán a activo y afectarán inventario.')) return;
+      const res = await llamar('receta_aprobar', { producto: btn.dataset.producto });
+      if (!res.ok) { alert(res.error); return; }
+      avisarGuardado('Receta aprobada (' + res.actualizadas + ' líneas).');
+      cargar();
+    }));
+  });
 }
 // activo=verde (se usa), revisar=ámbar (se usa, con advertencia), pendiente/referencia=rojo/ámbar
 // (NO se usa en el cálculo — ver recetasVigentes_ en Recetas.gs), borrador/inactivo/archivado=gris.

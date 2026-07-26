@@ -299,13 +299,10 @@ los cálculos existentes):
   las hojas de origen ni cambia cómo Producción/Traslados/Ajustes escriben hoy. Compara por FECHA,
   no por hora exacta como sí hace `DisponibleHoy.gs` para la pantalla operativa — esa lógica más
   fina sigue siendo la que se usa en producción por ahora.
-- **"Consumo por venta"** — `movimientosDesdeVentas_(fecha, sede, indice)`, función APARTE del
-  combinador de arriba (no integrada a `movimientosInventarioListar_`/`calcularInventarioTeorico_`):
-  toda la explosión de receta en este repo opera por un día y una sede a la vez, un patrón distinto
-  al de rango-de-fechas de las demás fuentes. Reutiliza
-  `construirRecetaMap_`/`explotarReceta_`/`claveRecetaVenta_` (`DisponibleHoy.gs`/`Recetas.gs`) —
-  mismo criterio EXACTO que ya usa `conciliarComidaPorSede_` (`Conciliacion.gs`), sin duplicar esa
-  lógica. Ventas canceladas se excluyen (no generan movimiento), igual que en Conciliación.
+- **"Consumo por venta"** — `movimientosDesdeVentas_(fecha, sede, indice)` integrado opcionalmente al libro vía
+  `movimientosInventarioListar_({ incluir_consumo_ventas: true })` y a `calcularInventarioTeorico_` con la
+  misma bandera. Reutiliza `construirRecetaMap_`/`explotarReceta_`/`claveRecetaVenta_` — mismo criterio
+  EXACTO que `conciliarComidaPorSede_` (`Conciliacion.gs`). Ventas canceladas se excluyen.
 
 - **Insumo consumido y merma de proceso en Producción** (sección 6.B) — `Produccion.gs`:
   `produccionRegistrar_` acepta ahora, de forma opcional, `insumo_producto`/`insumo_cantidad`/
@@ -377,6 +374,16 @@ el frontend caía a un fallback con nombres ficticios. Se restauró `PUNTOS_POR_
 - **Cierre de turno enriquecido:** `turnoResumenCierre_` incluye pagos esperados, descuentos, propinas, diferencia de caja (efectivo contado vs esperado) y resumen de inventario teórico vs contado.
 - **Conciliación:** inventario teórico de referencia, consumo por ventas (libro), subítems en consumo por receta (paso 17).
 - **Lectores con fallback** (`FudoLectores.gs`): `Fudo_Items`/`Fudo_Pagos` primero, tablas planas si no hay datos.
+
+### Hecho en jul 2026 (Paso 19 — cierre en un solo PR)
+
+- **Lectores unificados** en Pagos, Recetas, Turnos, Diagnóstico y libro de inventario (contenido del paso 18).
+- **Libro:** checkbox "incluir consumo por ventas", filtro por punto/ubicación, columna Ubicación.
+- **Inventario teórico** con opción `incluir_consumo_ventas` (API + `calcularInventarioTeorico_`).
+- **Mapeo de sedes:** al asignar ventas pendientes, recalcula cabeceras `Fudo_Ventas`.
+- **Consumo interno** como tipo de ajuste (degustación, staff) en conteo y libro.
+- **Aprobar recetas:** botón en `recetas.html` + `receta_aprobar` (borrador → activo).
+- **Catálogo:** columna `id_fudo` en `Catalogo_Maestro` (vínculo estable al ID numérico de Fudo).
 
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):

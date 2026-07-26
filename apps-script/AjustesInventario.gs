@@ -10,7 +10,7 @@
  * entre ayer y hoy cuadra con compras, producción, traslados y ventas.
  */
 
-const TIPOS_AJUSTE_INVENTARIO = ['Compra cruda', 'Merma / desperdicio', 'Ajuste operativo'];
+const TIPOS_AJUSTE_INVENTARIO = ['Compra cruda', 'Merma / desperdicio', 'Ajuste operativo', 'Consumo interno'];
 
 /** Solo valida — no escribe nada. Separado de ajusteInventarioRegistrar_ para que Compras.gs
  * (que registra varias líneas de una factura de una sola vez) pueda validar cada línea con las

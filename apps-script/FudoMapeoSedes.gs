@@ -165,16 +165,24 @@ function ventasPendientesSedeAsignar_(creadaPor, sede, usuario) {
   const headers = data[0];
   const creadaPorCol = headers.indexOf('creada_por');
   const sedeCol = headers.indexOf('sede');
+  const idVentaCol = headers.indexOf('id_venta');
+  const idVentasTocadas = {};
   let actualizadas = 0;
   for (let r = 1; r < data.length; r++) {
     if ((data[r][creadaPorCol] || '') === (creadaPor || '') && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
       sh.getRange(r + 1, sedeCol + 1).setValue(sede);
       actualizadas++;
+      if (idVentaCol >= 0 && data[r][idVentaCol]) idVentasTocadas[String(data[r][idVentaCol])] = true;
     }
   }
   let actualizadasNorm = 0;
   if (typeof ventasPendientesSedeActualizarItems_ === 'function') {
-    actualizadasNorm = ventasPendientesSedeActualizarItems_(creadaPor, sede);
+    const resItems = ventasPendientesSedeActualizarItems_(creadaPor, sede);
+    actualizadasNorm = resItems.actualizadas || 0;
+    (resItems.id_ventas || []).forEach(function (id) { idVentasTocadas[String(id)] = true; });
+  }
+  if (typeof fudoVentasRecalcularCabecera_ === 'function') {
+    Object.keys(idVentasTocadas).forEach(function (idVenta) { fudoVentasRecalcularCabecera_(idVenta); });
   }
   const reglaCreada = creadaPor ? fudoMapeoSedeGuardar_({ tipo_referencia: 'Sala', nombre: creadaPor, sede: sede }, usuario) : null;
   return { ok: true, actualizadas: actualizadas, actualizadas_items: actualizadasNorm, regla_creada: !!(reglaCreada && reglaCreada.ok) };
@@ -184,17 +192,20 @@ function ventasPendientesSedeAsignar_(creadaPor, sede, usuario) {
 function ventasPendientesSedeActualizarItems_(creadaPor, sede) {
   const sh = sheet_(SHEET_NAMES.FUDO_ITEMS);
   const data = sh.getDataRange().getValues();
-  if (!data.length) return 0;
+  if (!data.length) return { actualizadas: 0, id_ventas: [] };
   const headers = data[0];
   const creadaPorCol = headers.indexOf('creada_por');
   const sedeCol = headers.indexOf('sede');
-  if (creadaPorCol < 0 || sedeCol < 0) return 0;
+  const idVentaCol = headers.indexOf('id_venta');
+  if (creadaPorCol < 0 || sedeCol < 0) return { actualizadas: 0, id_ventas: [] };
+  const idVentas = {};
   let actualizadas = 0;
   for (let r = 1; r < data.length; r++) {
     if ((data[r][creadaPorCol] || '') === (creadaPor || '') && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
       sh.getRange(r + 1, sedeCol + 1).setValue(sede);
       actualizadas++;
+      if (idVentaCol >= 0 && data[r][idVentaCol]) idVentas[String(data[r][idVentaCol])] = true;
     }
   }
-  return actualizadas;
+  return { actualizadas: actualizadas, id_ventas: Object.keys(idVentas) };
 }

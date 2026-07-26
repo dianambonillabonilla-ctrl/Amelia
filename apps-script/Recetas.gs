@@ -103,6 +103,53 @@ function recetaGuardar_(item) {
   return { ok: true, creado: true, id: id };
 }
 
+const TRANSICIONES_RECETA_PERMITIDAS_ = {
+  borrador: ['activo', 'inactivo'],
+  revisar: ['activo', 'borrador', 'inactivo'],
+  pendiente: ['borrador', 'activo', 'inactivo'],
+  referencia: ['activo', 'inactivo'],
+  activo: ['revisar', 'inactivo', 'archivado'],
+  inactivo: ['activo', 'archivado'],
+  archivado: []
+};
+
+/**
+ * Cambia el estado de TODAS las líneas de receta de un mismo producto que estén en `estadoDesde`.
+ * Usado para aprobar borradores (borrador → activo) sin tocar línea por línea.
+ */
+function recetaTransicionEstado_(producto, estadoDesde, estadoHasta, usuario) {
+  if (!producto || !estadoDesde || !estadoHasta) {
+    return { ok: false, error: 'Faltan producto, estado origen o destino' };
+  }
+  const desde = normalizar_(estadoDesde);
+  const hasta = normalizar_(estadoHasta);
+  const permitidos = TRANSICIONES_RECETA_PERMITIDAS_[desde] || [];
+  if (permitidos.indexOf(hasta) === -1) {
+    return { ok: false, error: 'Transición no permitida: ' + estadoDesde + ' → ' + estadoHasta };
+  }
+  const claveProducto = normalizar_(producto);
+  const sh = sheet_(SHEET_NAMES.RECETAS);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const productoCol = headers.indexOf('producto');
+  const estadoCol = headers.indexOf('estado');
+  if (productoCol < 0 || estadoCol < 0) return { ok: false, error: 'Hoja Recetas sin columnas producto/estado' };
+  let actualizadas = 0;
+  for (let r = 1; r < data.length; r++) {
+    if (normalizar_(data[r][productoCol]) !== claveProducto) continue;
+    if (normalizar_(data[r][estadoCol] || 'activo') !== desde) continue;
+    sh.getRange(r + 1, estadoCol + 1).setValue(hasta);
+    actualizadas++;
+  }
+  if (!actualizadas) return { ok: false, error: 'No hay líneas en estado "' + estadoDesde + '" para "' + producto + '"' };
+  return { ok: true, actualizadas: actualizadas, estado: hasta, producto: producto };
+}
+
+/** Aprueba un plato completo: todas sus líneas en borrador pasan a activo. */
+function recetaAprobar_(producto, usuario) {
+  return recetaTransicionEstado_(producto, 'borrador', 'activo', usuario);
+}
+
 /**
  * Algunos nombres de venta de FUDO chocan con el nombre del preparado contado. La traducción se
  * aplica solo al buscar una receta de venta; el catálogo de inventario conserva su nombre real.

@@ -127,14 +127,18 @@ function construirVentasFixture_() {
   ];
 }
 
-function cargarVentasPendientes_(ventasFudo, mapeoSedes) {
+function cargarVentasPendientes_(ventasFudo, mapeoSedes, fudoItems, recalcularLlamadas) {
+  fudoItems = fudoItems || [];
+  recalcularLlamadas = recalcularLlamadas || [];
+  const FUDO_ITEMS_HEADERS = ['id', 'clave_item', 'id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'sede', 'creada_por', 'formato_origen', 'archivo_origen', 'importado_en'];
   return cargar('apps-script/FudoMapeoSedes.gs', {
-    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo', VENTAS_FUDO: 'ventas' },
+    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo', VENTAS_FUDO: 'ventas', FUDO_ITEMS: 'items' },
     normalizar_: normalizarSimple_,
     formatearFecha_: (v) => String(v).slice(0, 10),
     neutralizarObjetoFormulas_: (o) => o,
     Utilities: { getUuid: () => 'mapeo-nuevo-' + (mapeoSedes.length + 1) },
-    leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudo : hoja === 'mapeo' ? mapeoSedes : [],
+    fudoVentasRecalcularCabecera_: (idVenta) => recalcularLlamadas.push(idVenta),
+    leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudo : hoja === 'mapeo' ? mapeoSedes : hoja === 'items' ? fudoItems : [],
     appendRowFromObj_: (hoja, fila) => { if (hoja === 'mapeo') mapeoSedes.push(fila); },
     sheet_: (nombre) => {
       if (nombre === 'ventas') {
@@ -144,6 +148,16 @@ function cargarVentasPendientes_(ventasFudo, mapeoSedes) {
           }),
           getRange: (fila, columna) => ({
             setValue: (valor) => { ventasFudo[fila - 2][VENTAS_HEADERS_[columna - 1]] = valor; }
+          })
+        };
+      }
+      if (nombre === 'items') {
+        return {
+          getDataRange: () => ({
+            getValues: () => [FUDO_ITEMS_HEADERS].concat(fudoItems.map((v) => FUDO_ITEMS_HEADERS.map((h) => v[h] !== undefined ? v[h] : '')))
+          }),
+          getRange: (fila, columna) => ({
+            setValue: (valor) => { fudoItems[fila - 2][FUDO_ITEMS_HEADERS[columna - 1]] = valor; }
           })
         };
       }
@@ -201,6 +215,25 @@ function cargarVentasPendientes_(ventasFudo, mapeoSedes) {
   assert.equal(mod.ventasPendientesSedeAsignar_('Terraza Nueva SA', '', { nombre: 'Diana' }).ok, false, 'debe exigir la sede');
 
   console.log('ventasPendientesSedeAsignar_ asigna en bloque y aprende la regla: OK');
+})();
+
+(function () {
+  const ventasFudo = construirVentasFixture_();
+  const mapeoSedes = [];
+  const fudoItems = [
+    { id: 'i1', id_venta: 'v1', creada_por: 'Terraza Nueva SA', sede: 'Sin identificar' },
+    { id: 'i2', id_venta: 'v2', creada_por: 'Terraza Nueva SA', sede: 'Sin identificar' }
+  ];
+  const recalcularLlamadas = [];
+  const mod = cargarVentasPendientes_(ventasFudo, mapeoSedes, fudoItems, recalcularLlamadas);
+
+  const resultado = mod.ventasPendientesSedeAsignar_('Terraza Nueva SA', 'San Antonio', { nombre: 'Diana' });
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.actualizadas_items, 2);
+  assert.equal(fudoItems[0].sede, 'San Antonio');
+  assert.deepEqual(recalcularLlamadas.sort(), ['v1', 'v2'], 'debe recalcular cabeceras Fudo_Ventas de cada venta tocada');
+
+  console.log('ventasPendientesSedeAsignar_ recalcula cabeceras Fudo_Ventas: OK');
 })();
 
 // --- sedeDesdeCreadaPor_ (Fudo.gs) debe preferir el mapeo configurado sobre la lista fija -------

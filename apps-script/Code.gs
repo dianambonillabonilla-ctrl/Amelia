@@ -66,7 +66,7 @@ function sheet_(name) {
 function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email', 'sectores_permitidos'],
-    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion', 'sector', 'sede'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'id_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion', 'sector', 'sede'],
     Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
       'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
       'controla_disponibilidad', 'notas'],
@@ -268,6 +268,9 @@ function handleRequest_(e, method) {
       case 'receta_guardar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(recetaGuardar_(params.item, sesion.usuario));
+      case 'receta_aprobar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(recetaAprobar_(params.producto, sesion.usuario));
       case 'platos_fudo_sin_receta':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: platosFudoSinReceta_() });
@@ -445,10 +448,22 @@ function handleRequest_(e, method) {
         return jsonOut_(migracionInventarioEjecutar_(sesion.usuario));
       case 'inventario_teorico_calcular':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
+        return jsonOut_({ ok: true, data: calcularInventarioTeorico_(
+          params.producto,
+          sedeConsultaPermitida_(sesion.usuario, params.sede),
+          params.fecha_corte,
+          null,
+          { incluir_consumo_ventas: !!params.incluir_consumo_ventas }
+        ) });
       case 'inventario_teorico_resumen':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_(inventarioTeoricoResumen_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), params.productos));
+        return jsonOut_(inventarioTeoricoResumen_(
+          params.fecha,
+          sedeConsultaPermitida_(sesion.usuario, params.sede),
+          params.productos,
+          null,
+          { incluir_consumo_ventas: !!params.incluir_consumo_ventas }
+        ));
       case 'movimientos_venta_dia_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: movimientosDesdeVentas_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
