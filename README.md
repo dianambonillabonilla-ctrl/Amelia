@@ -115,6 +115,26 @@ npm run clasp:open
 npm run clasp:deploy
 ```
 
+## Cuando algo no funciona: `verificarInstalacion()`
+
+Antes de investigar datos, revisa la instalación. Hay dos formas de correr el mismo autodiagnóstico
+(no modifica nada, solo lee):
+
+- **Desde la app:** Diagnóstico → *Estado de la instalación* → **Revisar instalación**.
+- **Desde el editor de Apps Script:** elige `verificarInstalacion` en la lista de funciones, Ejecutar,
+  y mira *Registro de ejecución*. Sirve incluso si la app web no carga.
+
+Informa: si el `Code.gs` desplegado está al día con el resto de los archivos, si existe cada hoja que
+el código espera, cuántas filas tiene cada una, **cuánto tarda de verdad "Disponible Hoy" en cada
+sede** (Apps Script corta a los 6 minutos) y el estado de la sincronización con FUDO.
+
+Los dos síntomas más comunes y qué significan:
+
+| Lo que ves | Qué pasa realmente | Qué hacer |
+| --- | --- | --- |
+| `No existe la hoja "undefined"` | Un módulo usa una constante de `SHEET_NAMES` que el `Code.gs` desplegado no declara. No falta ninguna hoja llamada "undefined". | `npm run clasp:push` de **todo** el proyecto y volver a desplegar la Web App. |
+| `No existe la hoja "Nombre_Real"` | Esa hoja no está creada en el Sheet. | `configurarHojas()` desde el editor. |
+
 ## Seguridad y buenas prácticas
 
 - Los datos del backend que se insertan con `innerHTML` deben pasar por `escapeHtml()`.
@@ -130,7 +150,32 @@ El comando principal es:
 npm test
 ```
 
-Actualmente ejecuta:
+Corre entero sin red y sin Google: cada prueba carga los `.gs` de verdad y les inyecta
+`SpreadsheetApp`, `PropertiesService`, etc. simulados. La lista completa está en el script `test` de
+`package.json`; hay tres grupos:
 
-- `tests/recipe-engine.test.js`
-- `tests/syntax.test.js`
+- **Por módulo** (la mayoría): cargan uno o dos `.gs` con datos de ejemplo y comprueban una regla de
+  negocio concreta (recetas, conteos, traslados, conciliación FUDO, auditoría, seguridad…).
+- **`tests/integracion-api.test.js`**: carga TODOS los `.gs` en un mismo espacio global, como los une
+  Apps Script, sobre un Google Sheet simulado en memoria. Ejerce `configurarHojas()` (instalación
+  nueva y actualización de un Sheet viejo con columnas de antes), el login por `doPost` y las ~53
+  acciones de lectura del router. Detecta lo que las pruebas por módulo no pueden ver: una hoja o una
+  constante de `SHEET_NAMES` que un módulo usa y `Code.gs` no declara — la causa real del error
+  `No existe la hoja "undefined"`.
+- **`tests/rendimiento-lecturas.test.js`**: fija un presupuesto de llamadas al Sheet por cálculo.
+  Cada `leerTabla_` es una llamada a la API de Sheets y Apps Script corta cualquier ejecución a los 6
+  minutos, así que un cálculo que pide el Sheet una vez por día de calendario deja la pantalla sin
+  poder abrir aunque el resultado sea correcto. Si tocas `DisponibleHoy.gs`, `MovimientosInventario.gs`
+  o `FudoLectores.gs`, esta prueba es la que avisa.
+
+### Rendimiento: por qué se cuentan las lecturas
+
+En Apps Script el coste dominante no es el cálculo, son las llamadas a Sheets. Dos reglas que
+conviene respetar al agregar código:
+
+- No recorras un rango de fechas día por día pidiendo tablas dentro del bucle. Usa
+  `fudoFechasConVentas_` / `fechasConVentasParaRango_` (`FudoLectores.gs`,
+  `MovimientosInventario.gs`), que leen una vez y devuelven solo los días con datos.
+- Si un cálculo de **solo lectura** consulta varias veces las mismas hojas, envuélvelo en
+  `conCacheDeTablas_` (`Code.gs`). No lo uses en funciones que escriben: varias actualizan una celda
+  y releen la hoja enseguida para devolver la fila ya actualizada (ej. `trasladoConfirmar_`).
