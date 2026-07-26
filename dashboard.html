@@ -41,6 +41,10 @@
       <div id="barra-usuario"></div>
     </div>
 
+    <!-- Pedido real: "no se entiende que el turno se debe de abrir, cerrar" — de un vistazo, antes
+         de cualquier otra cosa, en qué punto del día está el turno de la sede elegida abajo. -->
+    <div id="estado-turno" style="display:none; margin-bottom:16px"></div>
+
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px;">
       <select id="sede-corte" style="width:auto">
         <option>San Antonio</option><option>Capri</option><option>Centro de Producción</option><option>Ambas</option>
@@ -55,7 +59,7 @@
     <div class="resumen-dia" id="resumen-dia"></div>
 
     <div class="card card-alerta" id="card-pendientes" style="display:none">
-      <h2>⏳ Pendientes antes de cerrar turno</h2>
+      <h2 id="titulo-pendientes">⏳ Pendientes antes de cerrar turno</h2>
       <div id="pendientes-contenido"></div>
     </div>
 
@@ -155,6 +159,7 @@ async function cargar() {
   const nFrecuencia = pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
   const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede, gestionesAbiertas);
   const nPlatosBajos = pintarTilesPlatos_(data.data.platos);
+  pintarEstadoTurno_(sede);
   const nPendientes = await pintarPendientes_();
   actualizarResumenDia_({ pendientes: nPendientes, frecuencia: nFrecuencia, platosBajos: nPlatosBajos, insumos: nInsumos });
 
@@ -423,6 +428,41 @@ function sedeAlcanzable_(sede) {
 }
 
 /**
+ * Pedido real: "no se entiende que el turno se debe de abrir, cerrar" — un indicador único y
+ * bien visible de en qué punto del día está el turno de la sede elegida arriba, para que quien
+ * abre la app no tenga que deducirlo de varias tarjetas más abajo. "Abrir turno" hoy equivale a
+ * elegir el sector del día (ver ¿Qué sector te toca hoy? en conteo.html) — no existe un botón
+ * aparte de "abrir", así que el aviso manda directo ahí. Solo aplica con una sede específica
+ * elegida (no "Ambas": el turno se abre/cierra por sede, no de forma agregada).
+ */
+async function pintarEstadoTurno_(sede) {
+  const cont = document.getElementById('estado-turno');
+  const usuario = Sesion.usuario();
+  if (!usuario || !sede || sede === 'Ambas') { cont.style.display = 'none'; return; }
+
+  const hoy = fechaLocalHoy_();
+  const [dataCierre, dataSector] = await Promise.all([
+    llamar('turno_cierre_estado', { fecha: hoy, sede }),
+    llamar('turno_sector_hoy', { fecha: hoy })
+  ]);
+  const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  let icono, clase, texto;
+  if (dataCierre.ok && dataCierre.cerrado) {
+    icono = '🔒'; clase = 'ok';
+    texto = `Turno de hoy en ${sede} — CERRADO (por ${dataCierre.usuario || '—'})`;
+  } else if (sectoresPermitidos.length && dataSector.ok && !dataSector.sector) {
+    icono = '⚠️'; clase = 'aviso';
+    texto = `Turno de hoy en ${sede} — SIN ABRIR: elige tu sector en Registrar conteo para empezar`;
+  } else {
+    icono = '🔓'; clase = 'ok';
+    texto = `Turno de hoy en ${sede} — ABIERTO`;
+  }
+  cont.style.display = 'block';
+  cont.innerHTML = `<span class="badge ${clase}" style="font-size:.95rem; padding:7px 16px">${icono} ${escapeHtml(texto)}</span>`;
+}
+
+/**
  * Pedido real: "en la primera pantalla le aparezca al usuario lo que tiene pendiente por ejemplo
  * aceptar un traslado, registrar conteo, antes de cerrar turno". Junta tres cosas para el usuario
  * que abre el dashboard: (1) traslados enviados hacia una sede que puede recibir y todavía no
@@ -438,6 +478,7 @@ async function pintarPendientes_() {
   const hoy = fechaLocalHoy_();
   const bloques = [];
   let pendientesReales = 0; // solo lo accionable — no cuenta "ya cerrado" ni "listo para cerrar"
+  let tituloCard = '⏳ Pendientes antes de cerrar turno'; // se ajusta abajo según el estado real
 
   const dataTraslados = await llamar('traslados_listar', { filtro: { estado: 'Enviado' } });
   if (dataTraslados.ok) {
@@ -475,6 +516,7 @@ async function pintarPendientes_() {
         llamar('turno_cierre_estado', { fecha: hoy, sede })
       ]);
       if (dataCierre.ok && dataCierre.cerrado) {
+        tituloCard = '✅ Turno de hoy ya cerrado';
         // Resumen guardado al momento de cerrar (docs/modelo-inventario.md, sección 6.F) — no se
         // vuelve a calcular, es el snapshot de ESE momento, para que el histórico no cambie si
         // después se editan ventas/traslados/producción de ese día.
@@ -540,6 +582,7 @@ async function pintarPendientes_() {
         // cierra vea de un vistazo qué falta sin tener que ir a otra pantalla.
         let bloqueResumenYBoton = '';
         if (!pendientesInicio.length && !pendientesSector.length) {
+          tituloCard = '✅ Todo listo — puedes cerrar el turno';
           const dataResumen = await llamar('turno_resumen_cierre', { fecha: hoy, sede });
           const resumen = dataResumen.ok ? dataResumen : {
             ventas_fudo_total: 0, pagos_fudo_total: 0, pagos_efectivo_esperado: 0,
@@ -583,6 +626,7 @@ async function pintarPendientes_() {
   card.classList.toggle('ok', pendientesReales === 0 && bloques.length > 0);
   if (!bloques.length) { card.style.display = 'none'; return 0; }
   card.style.display = 'block';
+  document.getElementById('titulo-pendientes').textContent = tituloCard;
   cont.innerHTML = bloques.join('');
 
   const btnCerrar = document.getElementById('btn-cerrar-turno');
