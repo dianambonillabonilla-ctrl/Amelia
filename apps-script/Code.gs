@@ -330,6 +330,12 @@ function handleRequest_(e, method) {
       case 'fudo_mapeo_sede_eliminar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoMapeoSedeEliminar_(params.id));
+      case 'ventas_pendientes_sede_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: ventasPendientesSedeListar_() });
+      case 'ventas_pendientes_sede_asignar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ventasPendientesSedeAsignar_(params.creada_por, params.sede, sesion.usuario));
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'tendencia_ingrediente':

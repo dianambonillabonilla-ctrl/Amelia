@@ -126,3 +126,49 @@ function fudoResolverSedeVenta_(referencias, indiceOpcional) {
   }
   return { sede: FUDO_SEDE_SIN_IDENTIFICAR_, resuelto_por: null };
 }
+
+/**
+ * BANDEJA "VENTAS PENDIENTES DE SEDE" (docs/modelo-inventario.md, sección 8: "Las ventas no
+ * identificadas aparecerán en una bandeja... El administrador las asigna una vez y el sistema
+ * aprende la regla cuando sea posible"). Agrupa por `creada_por` (el nombre de sala/caja tal como
+ * llegó de Fudo, ver sedeDesdeCreadaPor_ en Fudo.gs) porque casi siempre muchas ventas comparten la
+ * misma referencia sin mapear — así el administrador la resuelve UNA vez para todas, no venta por
+ * venta.
+ */
+function ventasPendientesSedeListar_() {
+  const grupos = {};
+  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(function (v) {
+    if (v.sede !== FUDO_SEDE_SIN_IDENTIFICAR_) return;
+    const clave = v.creada_por || '';
+    if (!grupos[clave]) grupos[clave] = { creada_por: clave, cantidad: 0, primera_fecha: v.creacion, ultima_fecha: v.creacion };
+    grupos[clave].cantidad++;
+    if (formatearFecha_(v.creacion) < formatearFecha_(grupos[clave].primera_fecha)) grupos[clave].primera_fecha = v.creacion;
+    if (formatearFecha_(v.creacion) > formatearFecha_(grupos[clave].ultima_fecha)) grupos[clave].ultima_fecha = v.creacion;
+  });
+  return Object.keys(grupos).map(function (k) { return grupos[k]; })
+    .sort(function (a, b) { return b.cantidad - a.cantidad; });
+}
+
+/**
+ * Asigna `sede` a TODAS las ventas "Sin identificar" que comparten `creadaPor`, y — la parte de
+ * "el sistema aprende la regla" — si `creadaPor` trae un valor real (no vacío), crea/actualiza el
+ * mapeo tipo "Sala" en Fudo_Mapeo_Sedes para que sedeDesdeCreadaPor_ (Fudo.gs) resuelva sola
+ * cualquier venta futura con esa misma referencia, sin que el administrador tenga que repetir esto.
+ */
+function ventasPendientesSedeAsignar_(creadaPor, sede, usuario) {
+  if (!sede) return { ok: false, error: 'Falta la sede a asignar' };
+  const sh = sheet_(SHEET_NAMES.VENTAS_FUDO);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const creadaPorCol = headers.indexOf('creada_por');
+  const sedeCol = headers.indexOf('sede');
+  let actualizadas = 0;
+  for (let r = 1; r < data.length; r++) {
+    if ((data[r][creadaPorCol] || '') === (creadaPor || '') && data[r][sedeCol] === FUDO_SEDE_SIN_IDENTIFICAR_) {
+      sh.getRange(r + 1, sedeCol + 1).setValue(sede);
+      actualizadas++;
+    }
+  }
+  const reglaCreada = creadaPor ? fudoMapeoSedeGuardar_({ tipo_referencia: 'Sala', nombre: creadaPor, sede: sede }, usuario) : null;
+  return { ok: true, actualizadas: actualizadas, regla_creada: !!(reglaCreada && reglaCreada.ok) };
+}

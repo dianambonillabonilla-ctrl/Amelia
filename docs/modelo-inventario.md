@@ -323,6 +323,14 @@ los cálculos existentes):
   dashboard muestra el resumen antes de cerrar (con los dos campos opcionales) y lo ya guardado
   cuando el turno ya está cerrado.
 
+- **Bandeja "Ventas pendientes de sede"** (sección 8, completa el mecanismo de Fudo_Mapeo_Sedes) —
+  `FudoMapeoSedes.gs`: `ventasPendientesSedeListar_()` agrupa las ventas con `sede === 'Sin
+  identificar'` por `creada_por` (casi siempre muchas comparten la misma referencia sin mapear).
+  `ventasPendientesSedeAsignar_(creadaPor, sede, usuario)` asigna esa sede a TODAS las ventas de ese
+  grupo de una vez y, si `creadaPor` tiene un valor real, crea el mapeo tipo "Sala" correspondiente
+  — "el sistema aprende la regla", así las próximas ventas con esa misma referencia se identifican
+  solas. UI nueva en `importar.html` (se recarga tras sincronizar y tras cada asignación).
+
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
 

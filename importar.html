@@ -63,6 +63,20 @@
       </div>
     </div>
 
+    <div class="card" id="card-ventas-pendientes-sede" style="display:none">
+      <h2>Ventas pendientes de sede</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Fudo no tiene un campo de sede/sucursal — se infiere por la sala de la mesa (o la referencia
+        que haya disponible). Estas ventas no calzaron con ninguna sala/caja/identificador conocido.
+        Asigna la sede una vez por grupo: el sistema recuerda la regla para que las próximas ventas
+        con esa misma referencia se identifiquen solas.
+      </p>
+      <table>
+        <thead><tr><th>Referencia (creada por)</th><th>Cantidad</th><th>Desde</th><th>Hasta</th><th>Asignar a</th></tr></thead>
+        <tbody id="tabla-ventas-pendientes-sede"></tbody>
+      </table>
+    </div>
+
     <div class="card" style="border-color:var(--navy)">
       <h2>Cargar stock base de FUDO</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
@@ -172,10 +186,51 @@ document.getElementById('btn-sincronizar-fudo-api').addEventListener('click', co
   try {
     const data = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
     pre.textContent = data.ok ? JSON.stringify(data, null, 2) : `Error: ${data.error}`;
+    if (data.ok) cargarVentasPendientesSede_();
   } catch (err) {
     pre.textContent = `No se pudo sincronizar: ${err.message}`;
   }
 }));
+
+// Bandeja "Ventas pendientes de sede" (docs/modelo-inventario.md, sección 8) — se recarga después
+// de sincronizar ventas por API y después de asignar un grupo, para que se sienta al día.
+async function cargarVentasPendientesSede_() {
+  const data = await llamar('ventas_pendientes_sede_listar', {});
+  const card = document.getElementById('card-ventas-pendientes-sede');
+  if (!data.ok || !data.data.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  document.getElementById('tabla-ventas-pendientes-sede').innerHTML = data.data.map((g, i) => `
+    <tr>
+      <td>${escapeHtml(g.creada_por || '(sin referencia)')}</td>
+      <td>${escapeHtml(g.cantidad)}</td>
+      <td>${escapeHtml(g.primera_fecha)}</td>
+      <td>${escapeHtml(g.ultima_fecha)}</td>
+      <td>
+        <select id="sede-pendiente-${i}" style="width:auto; display:inline-block">
+          <option value="">Elegir sede…</option>
+          <option>San Antonio</option>
+          <option>Capri</option>
+          <option>Centro de Producción</option>
+        </select>
+        <button class="btn dorado btn-asignar-sede-pendiente" data-i="${i}" style="padding:4px 10px">Asignar</button>
+      </td>
+    </tr>`).join('');
+
+  document.querySelectorAll('.btn-asignar-sede-pendiente').forEach((btn) => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const i = btn.dataset.i;
+      const sede = document.getElementById(`sede-pendiente-${i}`).value;
+      if (!sede) { alert('Elige una sede antes de asignar.'); return; }
+      const grupo = data.data[i];
+      const resultado = await llamar('ventas_pendientes_sede_asignar', { creada_por: grupo.creada_por, sede });
+      if (!resultado.ok) { alert(resultado.error); return; }
+      avisarGuardado(`${resultado.actualizadas} venta(s) asignada(s) a ${sede}.` +
+        (resultado.regla_creada ? ' Las próximas ventas con esta misma referencia se identificarán solas.' : ''));
+      cargarVentasPendientesSede_();
+    }));
+  });
+}
+cargarVentasPendientesSede_();
 
 document.getElementById('stock-base-fecha').value = fechaLocalHoy_();
 document.getElementById('btn-cargar-stock-base').addEventListener('click', conBotonProtegido(document.getElementById('btn-cargar-stock-base'), async () => {

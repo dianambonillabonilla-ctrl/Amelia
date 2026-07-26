@@ -114,6 +114,95 @@ function normalizarSimple_(s) {
   console.log('fudoMapeoSedeGuardar_/Listar_/Eliminar_: OK');
 })();
 
+// --- ventasPendientesSedeListar_/Asignar_: la bandeja de ventas "Sin identificar" ----------------
+
+const VENTAS_HEADERS_ = ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por', 'sede', 'formato_origen', 'archivo_origen', 'importado_en'];
+
+function construirVentasFixture_() {
+  return [
+    { id_venta: 'v1', creacion: '2026-07-20', producto: 'Poker', creada_por: 'Terraza Nueva SA', sede: 'Sin identificar' },
+    { id_venta: 'v2', creacion: '2026-07-21', producto: 'Águila', creada_por: 'Terraza Nueva SA', sede: 'Sin identificar' },
+    { id_venta: 'v3', creacion: '2026-07-21', producto: 'Falafel', creada_por: 'Caja Capri', sede: 'Capri' }, // ya identificada, no debe aparecer
+    { id_venta: 'v4', creacion: '2026-07-22', producto: 'Limonada', creada_por: 'Domicilios', sede: 'Sin identificar' }
+  ];
+}
+
+function cargarVentasPendientes_(ventasFudo, mapeoSedes) {
+  return cargar('apps-script/FudoMapeoSedes.gs', {
+    SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo', VENTAS_FUDO: 'ventas' },
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    neutralizarObjetoFormulas_: (o) => o,
+    Utilities: { getUuid: () => 'mapeo-nuevo-' + (mapeoSedes.length + 1) },
+    leerTabla_: (hoja) => hoja === 'ventas' ? ventasFudo : hoja === 'mapeo' ? mapeoSedes : [],
+    appendRowFromObj_: (hoja, fila) => { if (hoja === 'mapeo') mapeoSedes.push(fila); },
+    sheet_: (nombre) => {
+      if (nombre === 'ventas') {
+        return {
+          getDataRange: () => ({
+            getValues: () => [VENTAS_HEADERS_].concat(ventasFudo.map((v) => VENTAS_HEADERS_.map((h) => v[h] !== undefined ? v[h] : '')))
+          }),
+          getRange: (fila, columna) => ({
+            setValue: (valor) => { ventasFudo[fila - 2][VENTAS_HEADERS_[columna - 1]] = valor; }
+          })
+        };
+      }
+      // Fudo_Mapeo_Sedes: mismo shape que usan las pruebas de fudoMapeoSedeGuardar_ más arriba.
+      const headersMapeo = ['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp'];
+      return {
+        getDataRange: () => ({
+          getValues: () => [headersMapeo].concat(mapeoSedes.map((m) => headersMapeo.map((h) => m[h])))
+        }),
+        getRange: (fila, columna) => ({
+          setValue: (valor) => { mapeoSedes[fila - 2][headersMapeo[columna - 1]] = valor; }
+        })
+      };
+    }
+  });
+}
+
+(function () {
+  const ventasFudo = construirVentasFixture_();
+  const mapeoSedes = [];
+  const mod = cargarVentasPendientes_(ventasFudo, mapeoSedes);
+
+  const bandeja = mod.ventasPendientesSedeListar_();
+  assert.equal(bandeja.length, 2, 'solo deben aparecer los grupos de creada_por con ventas Sin identificar (Terraza Nueva SA y Domicilios)');
+  const terrazaNueva = bandeja.find((g) => g.creada_por === 'Terraza Nueva SA');
+  assert.equal(terrazaNueva.cantidad, 2);
+  assert.equal(terrazaNueva.primera_fecha, '2026-07-20');
+  assert.equal(terrazaNueva.ultima_fecha, '2026-07-21');
+  assert.ok(!bandeja.some((g) => g.creada_por === 'Caja Capri'), 'una venta ya identificada (v3) no debe aparecer en la bandeja');
+
+  console.log('ventasPendientesSedeListar_ agrupa por creada_por: OK');
+})();
+
+(function () {
+  const ventasFudo = construirVentasFixture_();
+  const mapeoSedes = [];
+  const mod = cargarVentasPendientes_(ventasFudo, mapeoSedes);
+
+  const resultado = mod.ventasPendientesSedeAsignar_('Terraza Nueva SA', 'San Antonio', { nombre: 'Diana' });
+  assert.equal(resultado.ok, true);
+  assert.equal(resultado.actualizadas, 2, 'debe asignar la sede a las 2 ventas de esa referencia');
+  assert.equal(ventasFudo.find((v) => v.id_venta === 'v1').sede, 'San Antonio');
+  assert.equal(ventasFudo.find((v) => v.id_venta === 'v2').sede, 'San Antonio');
+  assert.equal(ventasFudo.find((v) => v.id_venta === 'v4').sede, 'Sin identificar', 'Domicilios no debe tocarse, es otra referencia');
+  assert.equal(ventasFudo.find((v) => v.id_venta === 'v3').sede, 'Capri', 'una venta ya identificada no debe tocarse');
+
+  // "El sistema aprende la regla": debe quedar un mapeo tipo Sala para que futuras ventas con esa
+  // misma referencia se resuelvan solas, sin que el administrador tenga que repetir esto.
+  assert.equal(resultado.regla_creada, true);
+  assert.equal(mapeoSedes.length, 1);
+  assert.equal(mapeoSedes[0].tipo_referencia, 'Sala');
+  assert.equal(mapeoSedes[0].nombre, 'Terraza Nueva SA');
+  assert.equal(mapeoSedes[0].sede, 'San Antonio');
+
+  assert.equal(mod.ventasPendientesSedeAsignar_('Terraza Nueva SA', '', { nombre: 'Diana' }).ok, false, 'debe exigir la sede');
+
+  console.log('ventasPendientesSedeAsignar_ asigna en bloque y aprende la regla: OK');
+})();
+
 // --- sedeDesdeCreadaPor_ (Fudo.gs) debe preferir el mapeo configurado sobre la lista fija -------
 
 (function () {
