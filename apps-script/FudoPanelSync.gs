@@ -1,18 +1,19 @@
 /**
- * ESTADO Y PANEL DE SINCRONIZACIÓN FUDO
- * Persiste la última ejecución de cada tipo de sync (ventas, pagos, stock) en Propiedades del
- * Script y expone un resumen para la pantalla fudo.html — sin crear hojas nuevas ni tocar la lógica
- * de importación existente (FudoApi.gs, Fudo.gs, PagosFudo.gs, StockFudoBase.gs).
+ * ESTADO Y PANEL DE SINCRONIZACIÓN FUDO (antes FudoEstado.gs)
+ *
+ * Si ves "FUDO_SYNC_PROP_VENTAS_ has already been declared" en Apps Script:
+ * borra el archivo viejo "FudoEstado" del editor (menú ⋮ → Eliminar) y vuelve a
+ * hacer clasp push — no pegues este código a mano en otro archivo.
  */
 
-const FUDO_SYNC_PROP_VENTAS_ = 'FUDO_SYNC_ULTIMA_VENTAS';
-const FUDO_SYNC_PROP_PAGOS_ = 'FUDO_SYNC_ULTIMA_PAGOS';
-const FUDO_SYNC_PROP_STOCK_ = 'FUDO_SYNC_ULTIMA_STOCK';
+var FUDO_PANEL_SYNC_PROP_VENTAS_ = 'FUDO_SYNC_ULTIMA_VENTAS';
+var FUDO_PANEL_SYNC_PROP_PAGOS_ = 'FUDO_SYNC_ULTIMA_PAGOS';
+var FUDO_PANEL_SYNC_PROP_STOCK_ = 'FUDO_SYNC_ULTIMA_STOCK';
 
 function fudoApiSyncPropKey_(tipo) {
-  if (tipo === 'ventas') return FUDO_SYNC_PROP_VENTAS_;
-  if (tipo === 'pagos') return FUDO_SYNC_PROP_PAGOS_;
-  if (tipo === 'stock') return FUDO_SYNC_PROP_STOCK_;
+  if (tipo === 'ventas') return FUDO_PANEL_SYNC_PROP_VENTAS_;
+  if (tipo === 'pagos') return FUDO_PANEL_SYNC_PROP_PAGOS_;
+  if (tipo === 'stock') return FUDO_PANEL_SYNC_PROP_STOCK_;
   return null;
 }
 
