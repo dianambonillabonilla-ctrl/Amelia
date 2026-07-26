@@ -398,5 +398,40 @@ Pendiente (requiere migración de datos reales en producción o decisiones de pr
 
 - Dejar de **escribir** en `Ventas_FUDO`/`Pagos_FUDO` planas (hoy lectura prioriza normalizadas; escritura sigue en dual-write desde sync).
 - Migración completa de `Conciliacion.gs`/`DisponibleHoy.gs` al motor único con comparación por hora exacta (Disponible Hoy conserva lógica horaria propia).
-- **Activar dual-write del libro central** en producción (`inventarioLibroActivo_`) — requiere migración histórica validada en la hoja real.
+- **Activar dual-write del libro central** en producción (`inventarioLibroActivo_`) — requiere migración histórica validada en la hoja real. Sigue apagado a propósito (jul 2026): no se activó junto con la sincronización automática de abajo para no mezclar dos cambios de riesgo distinto en el mismo despliegue.
 - Regla de negocio avanzada: cancelación después de servido vs. antes del cierre (hoy todas las canceladas generan reversa en el libro).
+- Consolidar las ~20 pantallas de navegación actuales hacia las ~7 de la sección 12 (Inicio · Operación diaria · Conteo y cierre · Inventario · Recetas · Fudo · Conciliación) — rediseño de UI pendiente, no se tocó junto con este cambio.
+
+### Hecho en jul 2026 (sincronización automática de Fudo — cierra el gap "por qué es manual")
+
+Hasta ahora `fudoApiSincronizarVentas_`/`fudoApiSincronizarPagos_` (API real, ya probada contra la
+cuenta, ver arriba) solo corrían cuando un Administrador entraba a `importar.html`, elegía un rango
+de fechas y hacía clic — nada las llamaba solas. El único trigger programado (`tareaDiaria_`, 6am)
+únicamente limpiaba sesiones y revisaba alertas. Es decir: el motor de sincronización funcionaba,
+pero dependía de que alguien se acordara de sincronizar todos los días.
+
+- **`fudoSincronizacionAutomatica_`** (`FudoApi.gs`) — nuevo handler de trigger que sincroniza
+  ventas y pagos de FUDO solo, sin ningún clic. Sincroniza el rango "ayer → hoy" en cada corrida (no
+  solo hoy) a propósito: es seguro repetir el mismo rango una y otra vez porque ventas y pagos se
+  deduplican por su id real de FUDO (`claveVenta_` / upsert por `id_pago`), nunca por rango de
+  fechas — así una venta cerrada tarde, cancelada después, o una corrida que falló hace unas horas
+  quedan cubiertas solas en la siguiente. A diferencia de llamar las funciones de sync directo, esto
+  **siempre** deja un registro en el panel (`fudoApiSyncRegistrar_`) aunque la API de FUDO lance una
+  excepción (token vencido, fu.do caído) — antes esos fallos no dejaban ningún rastro visible.
+- **`fudoSincronizacionStockDiaria_`** (`FudoApi.gs`) — mismo patrón para el snapshot de stock
+  consolidado (`fudoApiTomarSnapshotStock_`), llamado desde `tareaDiaria_` una vez al día.
+- **`configurarTriggers()`** (`Code.gs`) ahora crea también un trigger cada 15 minutos para
+  `fudoSincronizacionAutomatica_`, además del diario de siempre. Hay que volver a correr
+  `configurarTriggers()` una vez desde el editor de Apps Script para que el trigger nuevo quede
+  activo en una instalación que ya existía (no se activa solo con `clasp push`).
+- Sin credenciales de la API configuradas (`fudoApiConfigurarCredenciales_` nunca corrido), los dos
+  handlers no hacen nada — no es un error, es una instalación que aún no conectó FUDO. La
+  sincronización manual de `importar.html` se conserva intacta como respaldo (ej. para rangos de
+  fechas históricos puntuales).
+- **Panel Fudo** (`fudo.html`) ahora marca una tarjeta como "Desactualizado" (no solo "Error") si la
+  última sincronización exitosa de ventas/pagos/stock tiene más de 90 minutos (3 corridas seguidas
+  sin novedad) — antes una corrida automática atascada podía pasar desapercibida porque la tarjeta
+  seguía mostrando el último "OK" manual de hace días.
+- Pendiente real (no resuelto en este cambio): el snapshot de stock sigue siendo diario, no cada 15
+  min, a propósito — es una referencia secundaria (sección 10), no justifica el costo extra de
+  consultar `/products`+`/ingredients` con esa frecuencia.

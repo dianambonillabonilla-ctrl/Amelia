@@ -202,12 +202,30 @@ function pintarCredenciales(data) {
   document.getElementById('aviso-sin-credenciales').style.display = data.credenciales_configuradas ? 'none' : 'block';
 }
 
+// Umbral de "lleva rato sin sincronizar": el trigger automático corre cada 15 min (ventas/pagos) —
+// 3 corridas seguidas sin dejar registro (90 min) ya es señal de que algo se atascó (credenciales
+// vencidas, fu.do caído, el trigger se borró), no solo mala suerte de horario.
+const FUDO_SYNC_MINUTOS_DESACTUALIZADO_ = 90;
+
+function haceTiempo_(fechaMs) {
+  const minutos = Math.max(0, Math.round((Date.now() - fechaMs) / 60000));
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  return `hace ${Math.floor(horas / 24)} d`;
+}
+
 function formatoSync_(s) {
   if (!s) return '<span class="badge aviso">Nunca</span>';
-  const fecha = s.timestamp ? new Date(s.timestamp).toLocaleString('es-CO') : '—';
+  const fechaMs = s.timestamp ? new Date(s.timestamp).getTime() : null;
+  const fecha = fechaMs ? new Date(fechaMs).toLocaleString('es-CO') : '—';
+  const desactualizado = s.ok !== false && fechaMs && (Date.now() - fechaMs) / 60000 > FUDO_SYNC_MINUTOS_DESACTUALIZADO_;
   const badge = s.ok === false
     ? `<span class="badge alerta">Error</span>`
-    : `<span class="badge ok">OK</span>`;
+    : desactualizado
+      ? `<span class="badge aviso">Desactualizado</span>`
+      : `<span class="badge ok">OK</span>`;
   let detalle = '';
   if (s.tipo === 'ventas' || s.fecha_desde) {
     detalle = `Rango: ${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}<br>`;
@@ -222,8 +240,9 @@ function formatoSync_(s) {
     detalle = `Productos API: ${escapeHtml(s.productos_api || 0)} · Creados: ${escapeHtml(s.creados || 0)} · Actualizados: ${escapeHtml(s.actualizados || 0)}<br>`;
   }
   if (s.usuario) detalle += `Por: ${escapeHtml(s.usuario)}<br>`;
+  if (desactualizado) detalle += `<span style="color:var(--amber)">Lleva ${haceTiempo_(fechaMs)} sin sincronizar de nuevo — revisa el trigger fudoSincronizacionAutomatica_ en Apps Script.</span><br>`;
   if (s.error) detalle += `<span style="color:var(--red)">${escapeHtml(s.error)}</span>`;
-  return `${badge} <span style="font-size:.85rem; color:var(--grey)">${fecha}</span><p style="margin:8px 0 0; font-size:.85rem">${detalle}</p>`;
+  return `${badge} <span style="font-size:.85rem; color:var(--grey)">${fecha} (${fechaMs ? haceTiempo_(fechaMs) : '—'})</span><p style="margin:8px 0 0; font-size:.85rem">${detalle}</p>`;
 }
 
 function pintarTarjetasSync(sync) {

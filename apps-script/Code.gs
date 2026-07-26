@@ -177,15 +177,22 @@ function asegurarColumnas_(sh, columnas) {
 }
 
 /**
- * Corre UNA vez (o de nuevo si cambian los triggers) para activar la tarea diaria:
- * limpia sesiones vencidas y revisa alertas de stock bajo.
+ * Corre UNA vez (o de nuevo si cambian los triggers) para activar:
+ * - tareaDiaria_ (diario ~6am): limpia sesiones vencidas, revisa alertas de stock bajo y toma el
+ *   snapshot diario de stock consolidado de FUDO (fudoSincronizacionStockDiaria_).
+ * - fudoSincronizacionAutomatica_ (cada 15 min): sincroniza ventas y pagos de FUDO solos, sin que
+ *   un Administrador tenga que entrar a "Importar de FUDO" y sincronizar a mano. Si no hay
+ *   credenciales de la API configuradas todavía (fudoApiConfigurarCredenciales_), no hace nada —
+ *   la sincronización manual de importar.html sigue disponible igual como respaldo.
  */
 function configurarTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'tareaDiaria_') ScriptApp.deleteTrigger(t);
+    const fn = t.getHandlerFunction();
+    if (fn === 'tareaDiaria_' || fn === 'fudoSincronizacionAutomatica_') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('tareaDiaria_').timeBased().everyDays(1).atHour(6).create();
-  Logger.log('Trigger diario configurado (tareaDiaria_, ~6am hora del script).');
+  ScriptApp.newTrigger('fudoSincronizacionAutomatica_').timeBased().everyMinutes(15).create();
+  Logger.log('Triggers configurados: tareaDiaria_ (diario ~6am) y fudoSincronizacionAutomatica_ (cada 15 min).');
 }
 
 function tareaDiaria_() {
@@ -194,6 +201,11 @@ function tareaDiaria_() {
     revisarAlertas_();
   } catch (err) {
     Logger.log('revisarAlertas_ falló en la tarea diaria: ' + err.message);
+  }
+  try {
+    if (typeof fudoSincronizacionStockDiaria_ === 'function') fudoSincronizacionStockDiaria_();
+  } catch (err) {
+    Logger.log('fudoSincronizacionStockDiaria_ falló en la tarea diaria: ' + err.message);
   }
 }
 
