@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Libro de inventario</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conteos</a>
+      <a href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de mermas</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
+      <a href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de producción</a>
+      <a href="recetas.html" data-solo-rol="Administrador">Recetas</a>
+      <a href="catalogo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producto</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
+      <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Libro de inventario</a>
+      <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+      <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Libro de inventario</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Vista de solo lectura del libro central de movimientos — combina compras, producción, traslados,
+        mermas y ajustes en un solo formato. El consumo por ventas se calcula aparte (explosión de
+        recetas de Fudo). El libro físico (<code>Movimientos_Inventario</code>) solo tiene datos si el
+        administrador activó el dual-write.
+      </p>
+      <div class="grid grid-4" style="margin-bottom:10px">
+        <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
+        <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta"></div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="filtro-sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo"><label>Producto (opcional)</label><input type="text" id="filtro-producto" placeholder="ej. costilla"></div>
+      </div>
+      <button class="btn dorado" id="btn-cargar">Cargar</button>
+      <p id="estado-libro" style="margin:10px 0 0; font-size:.85rem; color:var(--grey)"></p>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab-btn activo" type="button" data-tab="calculada" role="tab">Movimientos (vista calculada)</button>
+      <button class="tab-btn" type="button" data-tab="ventas" role="tab">Consumo por ventas</button>
+      <button class="tab-btn" type="button" data-tab="fisico" role="tab">Libro físico</button>
+      <button class="tab-btn" type="button" data-tab="teorico" role="tab">Inventario teórico</button>
+      <button class="tab-btn" type="button" data-tab="diferencias" role="tab">Diferencias del día</button>
+    </div>
+
+    <div class="tab-panel" data-panel="calculada">
+      <div class="card">
+        <h2>Movimientos — vista calculada</h2>
+        <p style="color:var(--grey); font-size:.85rem">Lee las hojas operativas (Ajustes, Producción, Traslados) y las normaliza.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Sede</th><th>Usuario</th><th>Documento</th></tr></thead>
+            <tbody id="tabla-calculada"><tr><td colspan="8" class="vacio">Elige filtros y presiona Cargar.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="ventas" hidden>
+      <div class="card">
+        <h2>Consumo por ventas — <span id="fecha-ventas-label"></span></h2>
+        <p style="color:var(--grey); font-size:.85rem">Usa la fecha "Hasta" del filtro como el día a consultar.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Producto</th><th>Cantidad consumida</th><th>Unidad</th><th>Sede</th></tr></thead>
+            <tbody id="tabla-ventas"><tr><td colspan="4" class="vacio">Carga los datos para ver el consumo del día.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="fisico" hidden>
+      <div class="card">
+        <h2>Libro físico (Movimientos_Inventario)</h2>
+        <p style="color:var(--grey); font-size:.85rem">Solo se llena si el dual-write está activo en Apps Script.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Sede</th><th>Estado</th><th>Entidad</th></tr></thead>
+            <tbody id="tabla-fisico"><tr><td colspan="8" class="vacio">Carga los datos para ver el libro físico.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="teorico" hidden>
+      <div class="card">
+        <h2>Inventario teórico de un producto</h2>
+        <p style="color:var(--grey); font-size:.85rem">Último conteo en o antes de la fecha "Hasta" + movimientos posteriores.</p>
+        <div id="resultado-teorico" class="vacio">Escribe un producto en el filtro y presiona Cargar.</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="diferencias" hidden>
+      <div class="card">
+        <h2>Diferencias teórico vs. contado — <span id="fecha-diferencias-label"></span></h2>
+        <p style="color:var(--grey); font-size:.85rem">Solo productos que tuvieron al menos un conteo ese día en la sede elegida.</p>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Producto</th><th>Contado</th><th>Teórico</th><th>Diferencia</th><th>Unidad</th></tr></thead>
+            <tbody id="tabla-diferencias"><tr><td colspan="5" class="vacio">Carga los datos para ver las diferencias.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="card-admin-migracion" style="display:none; margin-top:20px">
+      <h2>Administración del libro físico</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Estado del dual-write y simulación de migración histórica (no escribe nada — solo cuenta qué
+        filas se podrían copiar a Movimientos_Inventario).
+      </p>
+      <p id="admin-estado-libro" style="font-size:.9rem"></p>
+      <button class="btn fantasma" id="btn-simular-migracion">Simular migración</button>
+      <pre id="admin-migracion-resultado" style="display:none; margin-top:10px; font-size:.8rem; white-space:pre-wrap"></pre>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Lectura']);
+montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('filtro-sede'));
+
+const hoy = fechaLocalHoy_();
+const hace7dias = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().slice(0, 10);
+})();
+document.getElementById('filtro-desde').value = hace7dias;
+document.getElementById('filtro-hasta').value = hoy;
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('activo'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.hidden = true);
+    btn.classList.add('activo');
+    document.querySelector(`[data-panel="${btn.dataset.tab}"]`).hidden = false;
+  });
+});
+
+document.getElementById('btn-cargar').addEventListener('click', cargar);
+cargar();
+
+async function cargar() {
+  const filtros = {
+    fecha_desde: document.getElementById('filtro-desde').value,
+    fecha_hasta: document.getElementById('filtro-hasta').value,
+    sede: document.getElementById('filtro-sede').value
+  };
+  const producto = document.getElementById('filtro-producto').value.trim();
+  if (producto) filtros.producto = producto;
+  const fechaDia = filtros.fecha_hasta || hoy;
+
+  document.getElementById('fecha-ventas-label').textContent = fechaDia;
+  document.getElementById('fecha-diferencias-label').textContent = fechaDia;
+
+  const [calc, ventas, fisico, teorico, resumenInv] = await Promise.all([
+    llamar('movimientos_inventario_listar', { filtros }),
+    llamar('movimientos_venta_dia_listar', { fecha: fechaDia, sede: filtros.sede }),
+    llamar('movimientos_inventario_libro_listar', { filtros }),
+    producto ? llamar('inventario_teorico_calcular', { producto, sede: filtros.sede, fecha_corte: fechaDia }) : Promise.resolve({ ok: true, data: null }),
+    llamar('resumen_diferencias_inventario', { fecha: fechaDia, sede: filtros.sede })
+  ]);
+
+  pintarCalculada(calc.ok ? calc.data : []);
+  pintarVentas(ventas.ok ? ventas.data : []);
+  pintarFisico(fisico.ok ? fisico.data : []);
+  pintarTeorico(producto, teorico.ok ? teorico.data : null);
+  pintarDiferencias(resumenInv.ok ? (resumenInv.diferencias || []) : []);
+
+  if (Sesion.usuario().rol === 'Administrador') {
+    const estado = await llamar('inventario_libro_estado', {});
+    const card = document.getElementById('card-admin-migracion');
+    card.style.display = 'block';
+    if (estado.ok) {
+      const activo = estado.data.activo;
+      document.getElementById('estado-libro').innerHTML = activo
+        ? `<span class="badge ok">Dual-write activo</span> — ${estado.data.filas_libro} filas en el libro físico.`
+        : '<span class="badge aviso">Dual-write inactivo</span> — solo la vista calculada tiene datos.';
+      document.getElementById('admin-estado-libro').textContent =
+        `Estado: ${activo ? 'ACTIVO' : 'INACTIVO'} · ${estado.data.filas_libro} filas en Movimientos_Inventario`;
+    }
+  }
+}
+
+function pintarCalculada(filas) {
+  const body = document.getElementById('tabla-calculada');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="8" class="vacio">No hay movimientos en este rango.</td></tr>'; return; }
+  body.innerHTML = filas.map(m => `<tr>
+    <td>${escapeHtml(m.fecha)}</td>
+    <td>${escapeHtml(m.tipo_movimiento)}</td>
+    <td>${escapeHtml(m.producto)}</td>
+    <td>${escapeHtml(m.cantidad)}</td>
+    <td>${escapeHtml(m.unidad)}</td>
+    <td>${escapeHtml(m.sede)}</td>
+    <td>${escapeHtml(m.usuario || '')}</td>
+    <td>${escapeHtml(m.documento_relacionado || '')}</td>
+  </tr>`).join('');
+}
+
+function pintarVentas(filas) {
+  const body = document.getElementById('tabla-ventas');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="4" class="vacio">No hay consumo por ventas para este día.</td></tr>'; return; }
+  body.innerHTML = filas.map(m => `<tr>
+    <td>${escapeHtml(m.producto)}</td>
+    <td>${escapeHtml(Math.abs(Number(m.cantidad) || 0))}</td>
+    <td>${escapeHtml(m.unidad)}</td>
+    <td>${escapeHtml(m.sede)}</td>
+  </tr>`).join('');
+}
+
+function pintarFisico(filas) {
+  const body = document.getElementById('tabla-fisico');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="8" class="vacio">El libro físico está vacío o el dual-write no está activo.</td></tr>'; return; }
+  body.innerHTML = filas.map(m => `<tr>
+    <td>${escapeHtml(formatearFechaLocal_(m.fecha))}</td>
+    <td>${escapeHtml(m.tipo_movimiento)}</td>
+    <td>${escapeHtml(m.producto)}</td>
+    <td>${escapeHtml(m.cantidad)}</td>
+    <td>${escapeHtml(m.unidad)}</td>
+    <td>${escapeHtml(m.sede)}</td>
+    <td>${escapeHtml(m.estado || '')}</td>
+    <td>${escapeHtml(m.entidad_tipo || '')} ${escapeHtml(m.entidad_id || '')}</td>
+  </tr>`).join('');
+}
+
+function pintarTeorico(producto, data) {
+  const cont = document.getElementById('resultado-teorico');
+  if (!producto) { cont.innerHTML = '<span class="vacio">Escribe un producto en el filtro y presiona Cargar.</span>'; return; }
+  if (!data) { cont.innerHTML = '<span class="vacio">No se pudo calcular.</span>'; return; }
+  const ultimo = data.ultimo_conteo;
+  cont.innerHTML = `<p style="margin:0"><strong>${escapeHtml(producto)}</strong>: <strong>${escapeHtml(data.cantidad)}</strong> ${escapeHtml(data.unidad || '')}</p>` +
+    (ultimo ? `<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Último conteo: ${escapeHtml(formatearFechaLocal_(ultimo.fecha))} — ${escapeHtml(ultimo.cantidad)} ${escapeHtml(ultimo.unidad)}</p>` : '<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Sin conteo previo — arranca en 0 + movimientos.</p>');
+}
+
+function pintarDiferencias(filas) {
+  const body = document.getElementById('tabla-diferencias');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="5" class="vacio">No hay conteos ese día en esta sede, o todo cuadra.</td></tr>'; return; }
+  body.innerHTML = filas.map(d => {
+    const badge = Math.abs(d.diferencia) < 0.001
+      ? '<span class="badge ok">OK</span>'
+      : `<span class="badge alerta">${d.diferencia > 0 ? '+' : ''}${escapeHtml(d.diferencia)}</span>`;
+    return `<tr>
+      <td>${escapeHtml(d.producto)}</td>
+      <td>${escapeHtml(d.contado)}</td>
+      <td>${escapeHtml(d.teorico)}</td>
+      <td>${badge}</td>
+      <td>${escapeHtml(d.unidad)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function formatearFechaLocal_(v) {
+  if (!v) return '';
+  if (typeof v === 'string') return v.slice(0, 10);
+  try { return new Date(v).toISOString().slice(0, 10); } catch (e) { return String(v); }
+}
+
+document.getElementById('btn-simular-migracion').addEventListener('click', async () => {
+  const data = await llamar('migracion_inventario_simular', {});
+  const pre = document.getElementById('admin-migracion-resultado');
+  pre.style.display = 'block';
+  pre.textContent = data.ok ? JSON.stringify(data.reporte || data, null, 2) : (data.error || 'Error');
+});
+</script>
+</body>
+</html>

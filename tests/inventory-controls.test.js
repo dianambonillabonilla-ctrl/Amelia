@@ -2144,7 +2144,11 @@ assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO
         if (normalizarSimple_(p.metodo_tipo) === 'cash') efectivo += Number(p.monto) || 0;
       });
       return { pagos_fudo_total: total, pagos_efectivo_esperado: efectivo, pagos_fudo_cantidad: cantidad };
-    }
+    },
+    resumenDiferenciasInventarioFechaSede_: () => ({
+      ok: true, productos_contados: 5, productos_con_diferencia: 2,
+      diferencias: [{ producto: 'Costilla', contado: 8, teorico: 7, diferencia: 1, unidad: 'kg' }]
+    })
   });
   const resumen = mod.turnoResumenCierre_('2026-07-21', 'San Antonio');
   assert.equal(resumen.ok, true);
@@ -2155,6 +2159,9 @@ assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO
   assert.equal(resumen.pagos_fudo_total, 80000, '50000 efectivo + 30000 débito de San Antonio, sin el cancelado ni Capri');
   assert.equal(resumen.pagos_efectivo_esperado, 50000);
   assert.equal(resumen.pagos_fudo_cantidad, 2);
+  assert.equal(resumen.inventario_contado, 5);
+  assert.equal(resumen.diferencia_inventario, 2);
+  assert.equal(resumen.diferencias_inventario.length, 1);
   assert.equal(mod.turnoResumenCierre_('', 'San Antonio').ok, false, 'debe exigir fecha y sede');
   console.log('turnoResumenCierre_: OK');
 })();
@@ -2177,7 +2184,8 @@ function cargarTurnosCerrar_(conteosHoy) {
     Utilities: { getUuid: () => 'cierre-1' },
     indiceCatalogo_: indiceCatalogoVacioMock_,
     claveProducto_: claveProductoMock_,
-    pagosFudoTotalesSedeFecha_: () => ({ pagos_fudo_total: 0, pagos_efectivo_esperado: 0, pagos_fudo_cantidad: 0 })
+    pagosFudoTotalesSedeFecha_: () => ({ pagos_fudo_total: 0, pagos_efectivo_esperado: 0, pagos_fudo_cantidad: 0 }),
+    resumenDiferenciasInventarioFechaSede_: () => ({ ok: true, productos_contados: 3, productos_con_diferencia: 1, diferencias: [] })
   });
 }
 
@@ -2197,6 +2205,8 @@ assert.equal(cierresGuardados[0].usuario, 'Diana');
 assert.equal(cierresGuardados[0].ventas_fudo_total, 0, 'sin ventas en el fixture, el snapshot debe quedar en 0, no vacío/undefined');
 assert.equal(cierresGuardados[0].traslados_pendientes, 0);
 assert.equal(cierresGuardados[0].producciones_registradas, 0);
+assert.equal(cierresGuardados[0].inventario_contado, 3);
+assert.equal(cierresGuardados[0].diferencia_inventario, 1);
 assert.equal(cierreOk.resumen.ventas_fudo_total, 0, 'turnoCerrar_ también debe devolver el resumen usado, no solo guardarlo');
 assert.equal(cierresGuardados[0].efectivo_contado, '', 'sin datosCierre, efectivo_contado debe quedar vacío, no forzado a 0');
 assert.equal(cierresGuardados[0].observaciones, '');

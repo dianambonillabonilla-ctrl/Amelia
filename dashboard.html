@@ -25,6 +25,7 @@
       <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Gestiones</a>
       <a href="importar.html" data-solo-rol="Administrador">Importar de FUDO</a>
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura">Libro de inventario</a>
       <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
@@ -479,6 +480,12 @@ async function pintarPendientes_() {
         if (dataCierre.diferencia_caja !== '' && dataCierre.diferencia_caja !== undefined) {
           detalleCierre.push(`Diferencia de caja: $${escapeHtml(Number(dataCierre.diferencia_caja).toLocaleString('es-CO'))}`);
         }
+        if (dataCierre.inventario_contado !== '' && dataCierre.inventario_contado !== undefined) {
+          detalleCierre.push(`Productos contados: ${escapeHtml(dataCierre.inventario_contado)}`);
+        }
+        if (dataCierre.diferencia_inventario !== '' && dataCierre.diferencia_inventario !== undefined && Number(dataCierre.diferencia_inventario) > 0) {
+          detalleCierre.push(`Con diferencia inventario: ${escapeHtml(dataCierre.diferencia_inventario)} — <a href="libro-inventario.html">ver detalle</a>`);
+        }
         bloques.push(
           `<p style="margin:0 0 6px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>` +
           `<p style="margin:0 0 6px; font-size:.85rem; color:var(--grey)">${detalleCierre.join(' · ')}</p>` +
@@ -525,6 +532,8 @@ async function pintarPendientes_() {
             `Efectivo esperado (Fudo): $${escapeHtml(Number(resumen.pagos_efectivo_esperado || 0).toLocaleString('es-CO'))} · ` +
             `Traslados pendientes: ${escapeHtml(resumen.traslados_pendientes || 0)} · ` +
             `Producciones registradas: ${escapeHtml(resumen.producciones_registradas || 0)}` +
+            (resumen.inventario_contado ? ` · Productos contados: ${escapeHtml(resumen.inventario_contado)}` : '') +
+            (resumen.diferencia_inventario ? ` · <span style="color:var(--red)">Con diferencia inventario: ${escapeHtml(resumen.diferencia_inventario)}</span> — <a href="libro-inventario.html">ver detalle</a>` : '') +
             (resumen.traslados_pendientes ? ` — revisa <a href="traslados.html">Traslados</a> antes de cerrar si corresponde` : '') +
             `</p>` +
             `<div class="grid grid-2" style="gap:10px; margin-bottom:10px; max-width:420px">` +

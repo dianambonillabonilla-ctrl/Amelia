@@ -279,4 +279,33 @@ function cargarMovimientosVentas_(fx) {
   console.log('movimientosDesdeVentas_ sin datos/parámetros: OK');
 })();
 
+(function () {
+  const conteos = [
+    { fecha: '2026-07-10', sede: 'Capri', producto: 'Costilla', cantidad: 8, unidad: 'u' },
+    { fecha: '2026-07-10', sede: 'Capri', producto: 'Aceite', cantidad: 2, unidad: 'u' }
+  ];
+  const mod = cargar('apps-script/MovimientosInventario.gs', {
+    SHEET_NAMES: { CONTEOS: 'conteos' },
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    claveProducto_: claveProductoMock_,
+    nombreCanonico_: (t) => t,
+    aUnidadBase_: aUnidadBaseMock_,
+    conteoListar_: (fecha, sede) => conteos.filter((c) => c.fecha === fecha && c.sede === sede),
+    indiceCatalogo_: () => ({})
+  });
+  mod.calcularInventarioTeorico_ = (producto) => {
+    if (producto === 'Costilla') return { cantidad: 7, unidad: 'u' };
+    if (producto === 'Aceite') return { cantidad: 2, unidad: 'u' };
+    return { cantidad: 0, unidad: '' };
+  };
+  const resumen = mod.resumenDiferenciasInventarioFechaSede_('2026-07-10', 'Capri');
+  assert.equal(resumen.ok, true);
+  assert.equal(resumen.productos_contados, 2);
+  assert.equal(resumen.productos_con_diferencia, 1, 'solo Costilla difiere (8 vs 7)');
+  const costilla = resumen.diferencias.find((d) => d.producto === 'Costilla');
+  assert.equal(costilla.diferencia, 1);
+  assert.equal(mod.resumenDiferenciasInventarioFechaSede_('', 'Capri').ok, false);
+  console.log('resumenDiferenciasInventarioFechaSede_: OK');
+})();
+
 console.log('movimientos-inventario: OK');
