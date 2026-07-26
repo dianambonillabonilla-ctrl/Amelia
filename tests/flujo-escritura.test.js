@@ -295,9 +295,15 @@ function exigir(env, cuerpo, queHace) {
 
   const filas = exigir(env, p({ action: 'ajustes_inventario_listar', fecha: HOY, sede: SEDE, filtro: {} }), 'listar ajustes').data;
   assert.equal(filas.length, 1);
-  assert.ok(
-    String(filas[0].motivo).startsWith("'="),
-    `el motivo debía guardarse neutralizado con una comilla delante, se guardó: ${filas[0].motivo}`
+  // neutralizarFormula_ antepone una comilla al escribir para que Sheets guarde texto plano en vez
+  // de evaluar la fórmula — pero esa comilla es solo una marca de entrada que Sheets NUNCA conserva
+  // en el valor de la celda (ni tecleada a mano ni por API), así que leerTabla_/getValues() la
+  // devuelve sin ella. Lo que sí prueba que nunca se evaluó como fórmula es que vuelva EXACTAMENTE
+  // el texto original: una celda con la fórmula de verdad habría devuelto el resultado calculado,
+  // no la fórmula tal cual.
+  assert.equal(
+    filas[0].motivo, '=HYPERLINK("http://malo","clic")',
+    `el motivo debía volver intacto como texto plano (nunca evaluado como fórmula), se guardó: ${filas[0].motivo}`
   );
   console.log('el texto libre se guarda neutralizado y Sheets no lo evalúa: OK');
 })();

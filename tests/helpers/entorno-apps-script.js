@@ -24,6 +24,16 @@ function crearEntorno() {
   const stats = { lecturas: 0, porHoja: {} };
   const hojas = [];
 
+  // Real Sheets nunca guarda la comilla que antepone neutralizarFormula_ — es solo la marca de
+  // "esto es texto plano, no fórmula" (setValue/appendRow se comportan igual que teclear en la
+  // UI). Sin este despojo, un hash/salt en base64 que por azar empiece con +/-/=/@ (~6% de las
+  // veces) queda con la comilla PEGADA en la fila simulada pero NO en el valor recién calculado
+  // para comparar — password_hash nunca vuelve a coincidir y el login falla al azar en las
+  // pruebas, algo que no pasa contra un Sheet real.
+  function despojarApostrofeSiEsTexto_(v) {
+    return (typeof v === 'string' && v.charAt(0) === "'") ? v.slice(1) : v;
+  }
+
   function crearHoja(nombre) {
     const st = { nombre, values: [], maxCols: 0 };
     function asegurar(filas, cols) {
@@ -42,7 +52,7 @@ function crearEntorno() {
       copyTo: () => crearHoja(st.nombre + ' copia'),
       getDataRange: () => sh.getRange(1, 1, Math.max(st.values.length, 1), Math.max(st.maxCols, 1)),
       appendRow: (fila) => {
-        st.values.push(fila.slice());
+        st.values.push(fila.map(despojarApostrofeSiEsTexto_));
         if (fila.length > st.maxCols) st.maxCols = fila.length;
         return sh;
       },
@@ -65,7 +75,9 @@ function crearEntorno() {
           },
           setValues: (vals) => {
             asegurar(fila - 1 + vals.length, col - 1 + (vals[0] ? vals[0].length : 0));
-            vals.forEach((linea, r) => linea.forEach((v, c) => { st.values[fila - 1 + r][col - 1 + c] = v; }));
+            vals.forEach((linea, r) => linea.forEach((v, c) => {
+              st.values[fila - 1 + r][col - 1 + c] = despojarApostrofeSiEsTexto_(v);
+            }));
             return rng;
           },
           setValue: (v) => rng.setValues([[v]]),

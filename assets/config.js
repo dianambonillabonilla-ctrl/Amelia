@@ -303,6 +303,51 @@ function conBotonProtegido(boton, fn) {
   };
 }
 
+// Menú lateral — antes copiado y pegado a mano en cada una de las 21 páginas con <nav>, así que
+// agregar/quitar un enlace significaba editar 21 archivos y, en la práctica, algunas páginas ya
+// habían quedado con la lista desactualizada (faltaban enlaces que otras sí tenían). Ahora es una
+// sola fuente: cada página solo trae `<nav id="menu-nav"></nav>` vacío y montarMenu_() lo llena
+// según el rol de quien entró, marcando como activo el enlace de la página actual.
+const MENU_PRINCIPAL = [
+  { href: 'dashboard.html', texto: 'Disponible Hoy' },
+  { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'conteo.html', texto: 'Registrar conteo', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'historial-conteos.html', texto: 'Histórico de conteos', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'historial-mermas.html', texto: 'Histórico de mermas', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'producir.html', texto: 'Registrar producción', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'historial-producciones.html', texto: 'Histórico de producción', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'recetas.html', texto: 'Recetas', soloRol: ['Administrador'] },
+  { href: 'catalogo.html', texto: 'Registrar producto', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'traslados.html', texto: 'Traslados', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'compras.html', texto: 'Compras', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'gestiones.html', texto: 'Gestiones', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'importar.html', texto: 'Importar de FUDO', soloRol: ['Administrador'] },
+  { href: 'fudo.html', texto: 'Panel Fudo', soloRol: ['Administrador', 'Encargado'] },
+  { href: 'conciliacion.html', texto: 'Conciliación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'libro-inventario.html', texto: 'Libro de inventario', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'inventario-ubicacion.html', texto: 'Inventario por ubicación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'historial-conciliacion.html', texto: 'Histórico de conciliación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'historial-cierres-turno.html', texto: 'Histórico de cierres', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+  { href: 'base-caja.html', texto: 'Base de caja (histórico anterior)', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] },
+  { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'] }
+];
+
+/** Pinta el <nav id="menu-nav"> de la página actual con los enlaces que le tocan a `rolActual`,
+ * marcando como activo el que corresponde al archivo abierto. Si la página no trae ese <nav> (ej.
+ * cambiar-password.html), no hace nada. */
+function montarMenu_(rolActual) {
+  const nav = document.getElementById('menu-nav');
+  if (!nav) return;
+  const actual = window.location.pathname.split('/').pop();
+  nav.innerHTML = MENU_PRINCIPAL.map(function (item) {
+    const visible = !item.soloRol || item.soloRol.indexOf(rolActual) !== -1;
+    const clase = item.href === actual ? ' class="activo"' : '';
+    const oculto = visible ? '' : ' style="display:none"';
+    return `<a href="${escapeHtml(item.href)}"${clase}${oculto}>${escapeHtml(item.texto)}</a>`;
+  }).join('');
+}
+
 // Pinta el nombre/rol del usuario y engancha el botón de salir en cualquier página que lo incluya
 function montarBarraUsuario() {
   const u = Sesion.usuario();
@@ -313,6 +358,7 @@ function montarBarraUsuario() {
       `<button id="btn-salir">Salir</button>`;
     document.getElementById('btn-salir').addEventListener('click', () => Sesion.cerrar());
   }
+  montarMenu_(u ? u.rol : null);
   ocultarNavSegunRol_(u ? u.rol : null);
 }
 

@@ -42,7 +42,9 @@ const SHEET_NAMES = {
   FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes',
   MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario',
   PAGOS_FUDO: 'Pagos_FUDO',
-  BASE_CAJA: 'Base_Caja'
+  BASE_CAJA: 'Base_Caja',
+  CAJA_TURNO: 'Caja_Turno',
+  CAJA_MOVIMIENTOS: 'Caja_Movimientos'
 };
 
 function ss_() {
@@ -123,7 +125,12 @@ function configurarHojas() {
     Pagos_FUDO: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo',
       'sede', 'archivo_origen', 'importado_por', 'importado_en'],
     Base_Caja: ['id', 'fecha', 'sede', 'efectivo_fudo', 'caja_fuerte', 'efectivo_caja_menor', 'pendiente',
-      'gastos', 'cuadre', 'usuario', 'timestamp', 'observacion']
+      'gastos', 'cuadre', 'usuario', 'timestamp', 'observacion'],
+    Caja_Turno: ['id', 'fecha', 'sede', 'estado', 'base_inicial', 'hora_apertura', 'usuario_apertura_id',
+      'usuario_apertura', 'rappi_encendido', 'efectivo_contado', 'efectivo_esperado', 'diferencia',
+      'entrega_cierre', 'base_siguiente', 'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre'],
+    Caja_Movimientos: ['id', 'fecha', 'sede', 'tipo', 'valor', 'persona_entrega', 'persona_recibe', 'hora',
+      'motivo', 'evidencia_url', 'usuario_id', 'usuario', 'timestamp']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -386,6 +393,24 @@ function handleRequest_(e, method) {
       case 'base_caja_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
         return jsonOut_({ ok: true, data: baseCajaListar_(params.filtros, sesion.usuario) });
+      case 'caja_abrir':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaAbrir_(params.item, sesion.usuario));
+      case 'caja_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
+      case 'caja_rappi_marcar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaRappiMarcar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'caja_movimiento_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaMovimientoRegistrar_(params.item, sesion.usuario));
+      case 'caja_movimientos_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
+        return jsonOut_({ ok: true, data: cajaMovimientosListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'caja_cerrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaCerrar_(params.item, sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));

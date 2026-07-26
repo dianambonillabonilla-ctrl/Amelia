@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Caja</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav id="menu-nav"></nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Caja</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Fecha</label>
+          <input type="date" id="cj-fecha">
+        </div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="cj-sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="cj-apertura" style="display:none">
+      <h2>Abrir caja</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Todavía no se ha abierto la caja de hoy en esta sede. Registra con cuánto efectivo empieza el
+        turno — a partir de ahí el sistema calcula solo cuánto debería haber en caja en cualquier
+        momento.
+      </p>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Base inicial (efectivo con el que abre)</label>
+          <input type="number" step="1" id="cj-base-inicial">
+        </div>
+      </div>
+      <button class="btn dorado" id="btn-abrir-caja">Abrir caja</button>
+    </div>
+
+    <div id="cj-abierta" style="display:none">
+      <div class="card" id="cj-rappi-card" style="display:none">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+          <div>
+            <strong>Recordatorio:</strong> <span id="cj-rappi-texto">enciende Rappi al abrir el turno.</span>
+          </div>
+          <button class="btn fantasma" id="btn-rappi">Ya lo encendí</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Estado de la caja hoy</h2>
+        <div class="tiles">
+          <div class="tile">
+            <div class="tile-etiqueta">Base inicial</div>
+            <div class="tile-valor" id="cj-t-base">$0</div>
+          </div>
+          <div class="tile">
+            <div class="tile-etiqueta">Ventas en efectivo (FUDO)</div>
+            <div class="tile-valor" id="cj-t-fudo">$0</div>
+          </div>
+          <div class="tile">
+            <div class="tile-etiqueta">Otros ingresos</div>
+            <div class="tile-valor" id="cj-t-ingresos">$0</div>
+          </div>
+          <div class="tile">
+            <div class="tile-etiqueta">Entregas al administrador</div>
+            <div class="tile-valor" id="cj-t-entregas">$0</div>
+          </div>
+          <div class="tile">
+            <div class="tile-etiqueta">Gastos y salidas</div>
+            <div class="tile-valor" id="cj-t-gastos">$0</div>
+          </div>
+          <div class="tile tile-ok">
+            <div class="tile-etiqueta">Efectivo esperado ahora</div>
+            <div class="tile-valor" id="cj-t-esperado">$0</div>
+          </div>
+        </div>
+        <p style="color:var(--grey); font-size:.8rem; margin-top:10px">
+          Abierta desde <strong id="cj-hora-apertura">—</strong> por <strong id="cj-usuario-apertura">—</strong>.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>Movimientos del turno</h2>
+        <div class="grid grid-4">
+          <button class="btn" id="btn-abrir-entrega">Registrar entrega al administrador</button>
+          <button class="btn" id="btn-abrir-gasto">Registrar gasto o salida</button>
+          <button class="btn" id="btn-abrir-ingreso">Registrar otro ingreso</button>
+          <button class="btn fantasma" id="btn-ver-movimientos">Ver movimientos de caja</button>
+        </div>
+      </div>
+
+      <div class="card" id="cj-form-movimiento" style="display:none">
+        <h2 id="cj-form-movimiento-titulo">Registrar movimiento</h2>
+        <input type="hidden" id="mv-tipo">
+        <div class="grid grid-3">
+          <div class="campo">
+            <label>Valor</label>
+            <input type="number" step="1" id="mv-valor">
+          </div>
+          <div class="campo" id="mv-campo-entrega">
+            <label>Quién entrega</label>
+            <input type="text" id="mv-persona-entrega">
+          </div>
+          <div class="campo" id="mv-campo-recibe">
+            <label>Quién recibe</label>
+            <input type="text" id="mv-persona-recibe">
+          </div>
+          <div class="campo">
+            <label>Motivo u observación</label>
+            <input type="text" id="mv-motivo">
+          </div>
+          <div class="campo">
+            <label>Evidencia o foto (opcional)</label>
+            <input type="file" id="mv-evidencia" accept="image/jpeg,image/png,application/pdf">
+          </div>
+        </div>
+        <button class="btn dorado" id="btn-guardar-movimiento">Guardar movimiento</button>
+        <button class="btn fantasma" id="btn-cancelar-movimiento">Cancelar</button>
+      </div>
+
+      <div class="card" id="cj-tabla-movimientos" style="display:none">
+        <h2>Movimientos de hoy</h2>
+        <table>
+          <thead><tr><th>Hora</th><th>Tipo</th><th>Valor</th><th>Entrega</th><th>Recibe</th><th>Motivo</th><th>Evidencia</th><th>Usuario</th></tr></thead>
+          <tbody id="cj-tbody-movimientos"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card" id="cj-cierre-card" style="display:none">
+        <h2>Cerrar caja</h2>
+        <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+          Base inicial + ventas en efectivo (FUDO) + otros ingresos − entregas al administrador −
+          gastos = efectivo esperado. Cuenta el efectivo real y el sistema calcula la diferencia.
+        </p>
+        <div class="grid grid-3">
+          <div class="campo">
+            <label>Efectivo contado</label>
+            <input type="number" step="1" id="cj-contado">
+          </div>
+          <div class="campo">
+            <label>Base que deja para mañana</label>
+            <input type="number" step="1" id="cj-base-siguiente">
+          </div>
+          <div class="campo">
+            <label>Observación (opcional)</label>
+            <input type="text" id="cj-observacion-cierre">
+          </div>
+        </div>
+        <button class="btn dorado" id="btn-cerrar-caja">Cerrar caja</button>
+        <div id="cj-resultado-cierre" style="display:none; margin-top:14px"></div>
+      </div>
+
+      <div class="card" id="cj-cerrada-card" style="display:none">
+        <h2>Caja cerrada</h2>
+        <div id="cj-resumen-cerrada"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado', 'Cocina']);
+montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('cj-sede'));
+document.getElementById('cj-fecha').value = fechaLocalHoy_();
+
+let estadoActual_ = null;
+
+function formatoMoneda_(n) {
+  return '$' + Number(n || 0).toLocaleString('es-CO');
+}
+
+function fechaSede_() {
+  return { fecha: document.getElementById('cj-fecha').value, sede: document.getElementById('cj-sede').value };
+}
+
+async function cargarEstado_() {
+  const { fecha, sede } = fechaSede_();
+  if (!fecha || !sede) return;
+  ocultarFormularioMovimiento_();
+  document.getElementById('cj-tabla-movimientos').style.display = 'none';
+  document.getElementById('cj-cierre-card').style.display = 'none';
+
+  const data = await llamar('caja_estado', { fecha, sede });
+  if (!data.ok) { alert(data.error); return; }
+  estadoActual_ = data;
+
+  const cerrada = data.apertura && data.apertura.estado === 'Cerrado';
+  document.getElementById('cj-apertura').style.display = (!data.abierta && !cerrada) ? 'block' : 'none';
+  document.getElementById('cj-abierta').style.display = (data.abierta || cerrada) ? 'block' : 'none';
+  document.getElementById('cj-cerrada-card').style.display = cerrada ? 'block' : 'none';
+
+  if (!data.apertura) return;
+
+  document.getElementById('cj-t-base').textContent = formatoMoneda_(data.apertura.base_inicial);
+  document.getElementById('cj-t-fudo').textContent = formatoMoneda_(data.pagos_efectivo_esperado);
+  document.getElementById('cj-t-ingresos').textContent = formatoMoneda_(data.movimientos_resumen.otros_ingresos);
+  document.getElementById('cj-t-entregas').textContent = formatoMoneda_(data.movimientos_resumen.entregas_administrador);
+  document.getElementById('cj-t-gastos').textContent = formatoMoneda_(data.movimientos_resumen.gastos);
+  document.getElementById('cj-t-esperado').textContent = formatoMoneda_(data.efectivo_esperado);
+  document.getElementById('cj-hora-apertura').textContent = new Date(data.apertura.hora_apertura).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('cj-usuario-apertura').textContent = data.apertura.usuario_apertura;
+  document.getElementById('cj-base-siguiente').value = data.apertura.base_inicial;
+
+  const rappiEncendido = data.apertura.rappi_encendido === true || data.apertura.rappi_encendido === 'TRUE' || data.apertura.rappi_encendido === 'true';
+  document.getElementById('cj-rappi-card').style.display = (!cerrada && !rappiEncendido) ? 'block' : 'none';
+
+  if (cerrada) {
+    const a = data.apertura;
+    const diferencia = Number(a.diferencia) || 0;
+    const etiqueta = diferencia === 0 ? 'Caja correcta — cuadró.' : (diferencia > 0 ? 'Sobrante de ' + formatoMoneda_(diferencia) : 'Faltante de ' + formatoMoneda_(Math.abs(diferencia)));
+    document.getElementById('cj-resumen-cerrada').innerHTML = `
+      <p><strong>${escapeHtml(etiqueta)}</strong></p>
+      <p>Efectivo esperado: ${escapeHtml(formatoMoneda_(a.efectivo_esperado))} · Efectivo contado: ${escapeHtml(formatoMoneda_(a.efectivo_contado))}</p>
+      <p>Entrega al administrador al cierre: ${escapeHtml(formatoMoneda_(a.entrega_cierre))}</p>
+      <p>Base para el día siguiente: ${escapeHtml(formatoMoneda_(a.base_siguiente))}</p>
+      <p style="color:var(--grey); font-size:.85rem">Cerrada por ${escapeHtml(a.usuario_cierre || '')}.</p>
+    `;
+  } else {
+    document.getElementById('cj-cierre-card').style.display = data.puede_cerrar ? 'block' : 'none';
+  }
+}
+
+document.getElementById('cj-fecha').addEventListener('change', cargarEstado_);
+document.getElementById('cj-sede').addEventListener('change', cargarEstado_);
+
+document.getElementById('btn-abrir-caja').addEventListener('click', conBotonProtegido(document.getElementById('btn-abrir-caja'), async () => {
+  const { fecha, sede } = fechaSede_();
+  const baseInicial = document.getElementById('cj-base-inicial').value;
+  if (baseInicial === '') { alert('Falta la base inicial.'); return; }
+  const data = await llamar('caja_abrir', { item: { fecha, sede, base_inicial: baseInicial } });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado('Caja abierta.');
+  cargarEstado_();
+}));
+
+document.getElementById('btn-rappi').addEventListener('click', conBotonProtegido(document.getElementById('btn-rappi'), async () => {
+  const { fecha, sede } = fechaSede_();
+  const data = await llamar('caja_rappi_marcar', { fecha, sede });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado('Rappi encendido.');
+  cargarEstado_();
+}));
+
+// --- Movimientos ---------------------------------------------------------------------------------
+
+function ocultarFormularioMovimiento_() {
+  document.getElementById('cj-form-movimiento').style.display = 'none';
+  document.getElementById('mv-tipo').value = '';
+  document.getElementById('mv-valor').value = '';
+  document.getElementById('mv-persona-entrega').value = '';
+  document.getElementById('mv-persona-recibe').value = '';
+  document.getElementById('mv-motivo').value = '';
+  document.getElementById('mv-evidencia').value = '';
+}
+
+function abrirFormularioMovimiento_(tipo, titulo) {
+  document.getElementById('cj-tabla-movimientos').style.display = 'none';
+  document.getElementById('cj-form-movimiento').style.display = 'block';
+  document.getElementById('cj-form-movimiento-titulo').textContent = titulo;
+  document.getElementById('mv-tipo').value = tipo;
+  const esEntrega = tipo === 'Entrega administrador';
+  document.getElementById('mv-campo-entrega').style.display = esEntrega ? 'block' : 'none';
+  document.getElementById('mv-campo-recibe').style.display = esEntrega ? 'block' : 'none';
+}
+
+document.getElementById('btn-abrir-entrega').addEventListener('click', () => abrirFormularioMovimiento_('Entrega administrador', 'Registrar entrega al administrador'));
+document.getElementById('btn-abrir-gasto').addEventListener('click', () => abrirFormularioMovimiento_('Gasto', 'Registrar gasto o salida'));
+document.getElementById('btn-abrir-ingreso').addEventListener('click', () => abrirFormularioMovimiento_('Otro ingreso', 'Registrar otro ingreso'));
+document.getElementById('btn-cancelar-movimiento').addEventListener('click', ocultarFormularioMovimiento_);
+
+document.getElementById('btn-guardar-movimiento').addEventListener('click', conBotonProtegido(document.getElementById('btn-guardar-movimiento'), async () => {
+  const { fecha, sede } = fechaSede_();
+  const tipo = document.getElementById('mv-tipo').value;
+  const item = {
+    fecha, sede, tipo,
+    valor: document.getElementById('mv-valor').value,
+    persona_entrega: document.getElementById('mv-persona-entrega').value.trim(),
+    persona_recibe: document.getElementById('mv-persona-recibe').value.trim(),
+    motivo: document.getElementById('mv-motivo').value.trim()
+  };
+  const evidenciaInput = document.getElementById('mv-evidencia');
+  if (evidenciaInput.files[0]) {
+    const archivo = await leerArchivoBase64_(evidenciaInput);
+    const subida = await llamar('evidencia_subir', { archivo });
+    if (!subida.ok) { alert(subida.error || 'No se pudo subir la evidencia'); return; }
+    item.evidencia_url = subida.url;
+  }
+  const data = await llamar('caja_movimiento_registrar', { item });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado('Movimiento registrado.');
+  ocultarFormularioMovimiento_();
+  cargarEstado_();
+}));
+
+document.getElementById('btn-ver-movimientos').addEventListener('click', conBotonProtegido(document.getElementById('btn-ver-movimientos'), async () => {
+  ocultarFormularioMovimiento_();
+  const tabla = document.getElementById('cj-tabla-movimientos');
+  if (tabla.style.display === 'block') { tabla.style.display = 'none'; return; }
+  const { fecha, sede } = fechaSede_();
+  const data = await llamar('caja_movimientos_listar', { fecha, sede });
+  const body = document.getElementById('cj-tbody-movimientos');
+  if (!data.ok || !data.data.length) {
+    body.innerHTML = '<tr><td colspan="8" class="vacio">Sin movimientos todavía.</td></tr>';
+  } else {
+    body.innerHTML = data.data.map(m => `<tr>
+      <td>${escapeHtml(new Date(m.hora).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }))}</td>
+      <td>${escapeHtml(m.tipo)}</td>
+      <td>${escapeHtml(formatoMoneda_(m.valor))}</td>
+      <td>${escapeHtml(m.persona_entrega || '—')}</td>
+      <td>${escapeHtml(m.persona_recibe || '—')}</td>
+      <td>${escapeHtml(m.motivo)}</td>
+      <td>${m.evidencia_url ? evidenciaEnlaceHtml_(m.evidencia_url) : '—'}</td>
+      <td>${escapeHtml(m.usuario)}</td>
+    </tr>`).join('');
+  }
+  tabla.style.display = 'block';
+}));
+
+// --- Cierre ---------------------------------------------------------------------------------------
+
+document.getElementById('btn-cerrar-caja').addEventListener('click', conBotonProtegido(document.getElementById('btn-cerrar-caja'), async () => {
+  const { fecha, sede } = fechaSede_();
+  const contado = document.getElementById('cj-contado').value;
+  if (contado === '') { alert('Falta el efectivo contado.'); return; }
+  if (!confirm('¿Cerrar la caja de hoy? Después de cerrar no se pueden registrar más movimientos.')) return;
+  const item = {
+    fecha, sede,
+    efectivo_contado: contado,
+    base_siguiente: document.getElementById('cj-base-siguiente').value,
+    observacion: document.getElementById('cj-observacion-cierre').value.trim()
+  };
+  const data = await llamar('caja_cerrar', { item });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado('Caja cerrada.');
+  cargarEstado_();
+}));
+
+cargarEstado_();
+</script>
+</body>
+</html>
