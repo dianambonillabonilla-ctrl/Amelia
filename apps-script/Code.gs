@@ -22,6 +22,8 @@ const SHEET_NAMES = {
   CONTEOS: 'Conteos_Manuales',
   MOVIMIENTOS_FUDO: 'Movimientos_FUDO',
   VENTAS_FUDO: 'Ventas_FUDO',
+  FUDO_VENTAS: 'Fudo_Ventas',
+  FUDO_ITEMS: 'Fudo_Items',
   SESIONES: 'Sesiones',
   PRODUCCIONES: 'Producciones',
   ALERTAS_ENVIADAS: 'AlertasEnviadas',
@@ -69,6 +71,10 @@ function configurarHojas() {
       'sede', 'objeto_tipo', 'costo', 'archivo_origen', 'importado_por', 'importado_en'],
     Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por',
       'sede', 'formato_origen', 'archivo_origen', 'importado_en'],
+    Fudo_Ventas: ['id_venta', 'creacion', 'sede', 'creada_por', 'formato_origen', 'archivo_origen', 'importado_en',
+      'items_count', 'monto_total', 'lineas_canceladas'],
+    Fudo_Items: ['id', 'clave_item', 'id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada',
+      'sede', 'creada_por', 'formato_origen', 'archivo_origen', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
       'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
@@ -340,6 +346,18 @@ function handleRequest_(e, method) {
       case 'fudo_panel_estado':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(fudoApiEstadoPanel_());
+      case 'fudo_ventas_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoVentasEstado_() });
+      case 'fudo_ventas_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoVentasMigrarDesdeFlat_());
+      case 'fudo_ventas_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoVentasListar_(params.filtros || {}) });
+      case 'fudo_items_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoItemsListar_(params.filtros || {}) });
       case 'fudo_mapeo_sede_listar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });

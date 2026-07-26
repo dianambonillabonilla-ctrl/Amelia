@@ -112,6 +112,7 @@ function fudoApiEstadoPanel_() {
       productos: stockBase.length,
       ultimo_import: ultimoStockImport
     },
-    productos_sin_catalogo: sinCatalogo
+    productos_sin_catalogo: sinCatalogo,
+    ventas_normalizadas: typeof fudoVentasEstado_ === 'function' ? fudoVentasEstado_() : null
   };
 }
