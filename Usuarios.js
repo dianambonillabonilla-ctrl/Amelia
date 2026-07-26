@@ -1,0 +1,154 @@
+/**
+ * USUARIOS Y ROLES
+ * Roles esperados:
+ *  - Administrador: todo, incluyendo importar de FUDO, gestionar el catálogo y crear usuarios.
+ *  - Encargado: registra conteos y producción, ve Disponible Hoy y Conciliación — NO puede
+ *    importar de FUDO ni gestionar catálogo/usuarios (ver requiereAdmin_ en Code.gs).
+ *  - Cocina: igual que Encargado pero sin necesidad de ver conciliación (solo registra).
+ *  - Lectura: solo ve dashboards (disponible_hoy, conciliación), no puede registrar nada
+ *    (conteo_registrar/produccion_registrar exigen Administrador/Encargado/Cocina).
+ *
+ * La sede del usuario (columna `sede`: "Ambas", o una sede específica) limita para qué sede
+ * puede registrar conteos/producción — ver la validación en Conteos.gs/Produccion.gs. Un usuario
+ * que necesite registrar traslados entre sedes (ej. mover algo de Centro de Producción a una
+ * sede) debe tener sede = "Ambas"; si su sede es una sola, el backend rechaza registrar para
+ * cualquier otra.
+ *
+ * `sectores_permitidos` (texto separado por comas, ej. "Cocina, Café") es aparte del rol: es qué
+ * sectores puede elegir esa persona como su responsabilidad del día (ver Turnos.gs) — alguien
+ * puede ser rol "Cocina" un día y elegir sector "Café" otro, sin cambiar de cuenta ni de rol.
+ * Vacío = no se le pide elegir sector (puede seguir contando cualquier cosa, como hoy).
+ */
+
+function usuariosListar_(usuario) {
+  requiereAdmin_(usuario);
+  const rows = leerTabla_(SHEET_NAMES.USUARIOS);
+  return { ok: true, data: rows.map(function (r) { return { id: r.id, nombre: r.nombre, usuario: r.usuario, rol: r.rol, sede: r.sede, activo: r.activo, email: r.email, sectores_permitidos: r.sectores_permitidos || '' }; }) };
+}
+
+function usuarioGuardar_(item, usuarioSesion) {
+  requiereAdmin_(usuarioSesion);
+  if (!item) return { ok: false, error: 'Faltan datos del usuario' };
+  // Crear un usuario nuevo sí exige nombre/usuario/rol. Actualizar uno existente (ej. el botón
+  // Activar/Desactivar de usuarios.html, que solo manda { id, activo }) NO debe exigir estos tres
+  // campos de nuevo — antes esta validación corría siempre, así que ese botón fallaba en silencio
+  // cada vez con "Faltan campos obligatorios (nombre, usuario, rol)" sin que nadie lo notara.
+  if (!item.id && (!item.nombre || !item.usuario || !item.rol)) {
+    return { ok: false, error: 'Faltan campos obligatorios (nombre, usuario, rol)' };
+  }
+  if (item.rol !== undefined && ROLES_DISPONIBLES.indexOf(item.rol) === -1) {
+    return { ok: false, error: 'Rol no válido: ' + item.rol };
+  }
+  const sh = sheet_(SHEET_NAMES.USUARIOS);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const usuarioCol = headers.indexOf('usuario');
+
+  if (item.id) {
+    for (let r = 1; r < data.length; r++) {
+      if (data[r][idCol] === item.id) {
+        if (item.usuario !== undefined && item.usuario !== data[r][usuarioCol]) {
+          const enUsoPorOtro = data.slice(1).some(function (row, i) {
+            return (i + 1) !== r && row[usuarioCol] === item.usuario;
+          });
+          if (enUsoPorOtro) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
+        }
+        const filaAnterior = {};
+        headers.forEach(function (h, c) { filaAnterior[h] = data[r][c]; });
+
+        // neutralizarFormula_ (Code.gs): 'nombre'/'email'/'usuario' son texto libre — sin esto,
+        // algo como "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al
+        // abrir la hoja (auditoría de seguridad, jul 2026). Solo se limpia lo que se ESCRIBE; la
+        // bitácora de más abajo sigue registrando el valor tal como lo mandó el Administrador.
+        headers.forEach(function (h, c) {
+          if (h === 'password_hash' || h === 'salt') return; // la contraseña se cambia con cambiarPassword_
+          if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(neutralizarFormula_(item[h]));
+        });
+
+        // Bitácora: solo los campos sensibles que de verdad cambiaron (rol/sede/nombre/activo) —
+        // sin esto, editar un usuario sobrescribía en silencio quién tenía qué rol o sede antes,
+        // sin dejar rastro de cuándo ni quién lo cambió (auditoría de seguridad, jul 2026).
+        const camposAuditados = ['nombre', 'rol', 'sede', 'activo'];
+        const anterior = {};
+        const nuevo = {};
+        camposAuditados.forEach(function (h) {
+          if (item[h] !== undefined && item[h] !== filaAnterior[h]) {
+            anterior[h] = filaAnterior[h];
+            nuevo[h] = item[h];
+          }
+        });
+        if (Object.keys(nuevo).length) {
+          auditoriaRegistrar_(usuarioSesion, 'usuario_editado', 'Usuario', item.id, anterior, nuevo, filaAnterior.sede);
+        }
+
+        return { ok: true, actualizado: true };
+      }
+    }
+    return { ok: false, error: 'No se encontró el usuario con id ' + item.id };
+  }
+
+  const yaExiste = data.slice(1).some(function (row) { return row[usuarioCol] === item.usuario; });
+  if (yaExiste) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
+  if (!item.password || String(item.password).length < PASSWORD_LARGO_MINIMO) {
+    return { ok: false, error: 'La contraseña inicial debe tener al menos ' + PASSWORD_LARGO_MINIMO + ' caracteres' };
+  }
+
+  const salt = generarSalt_();
+  appendRowFromObj_(SHEET_NAMES.USUARIOS, {
+    id: Utilities.getUuid(),
+    nombre: item.nombre,
+    usuario: item.usuario,
+    password_hash: hashPasswordSalted_(item.password, salt),
+    salt: salt,
+    rol: item.rol,
+    sede: item.sede || 'Ambas',
+    activo: true,
+    email: item.email || ''
+  });
+  return { ok: true, creado: true };
+}
+
+/** Cambio de contraseña propio: requiere conocer la actual. Usado por la pantalla "Cambiar contraseña". */
+function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
+  if (!passwordActual || !passwordNueva) return { ok: false, error: 'Falta la contraseña actual o la nueva' };
+  if (String(passwordNueva).length < PASSWORD_LARGO_MINIMO) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos ' + PASSWORD_LARGO_MINIMO + ' caracteres' };
+  }
+
+  const fila = leerTabla_(SHEET_NAMES.USUARIOS).find(function (r) { return r.id === usuarioSesion.id; });
+  if (!fila) return { ok: false, error: 'Usuario no encontrado' };
+
+  const resultado = verificarPassword_(passwordActual, fila);
+  if (!resultado.valido) return { ok: false, error: 'La contraseña actual no es correcta' };
+
+  establecerPassword_(fila.id, passwordNueva);
+  // Cierra todas las sesiones (incluida la actual) — un token robado no debe seguir sirviendo
+  // después de que la víctima cambió su contraseña pensando que eso bastaba (ver Code.gs).
+  eliminarSesionesDeUsuario_(fila.id);
+  return { ok: true };
+}
+
+/**
+ * Restablecimiento de contraseña por un Administrador — NO requiere conocer la contraseña
+ * anterior. Existe para poder reaccionar rápido si una contraseña quedó expuesta (ej. guardada
+ * en texto plano en la hoja por error): el Administrador le pone una nueva de una vez, sin
+ * depender de que el usuario afectado la recuerde o la comparta por otro medio inseguro.
+ */
+function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
+  requiereAdmin_(usuarioSesion);
+  if (!id) return { ok: false, error: 'Falta el id del usuario' };
+  if (!passwordNueva || String(passwordNueva).length < PASSWORD_LARGO_MINIMO) {
+    return { ok: false, error: 'La nueva contraseña debe tener al menos ' + PASSWORD_LARGO_MINIMO + ' caracteres' };
+  }
+  const existe = leerTabla_(SHEET_NAMES.USUARIOS).some(function (r) { return r.id === id; });
+  if (!existe) return { ok: false, error: 'No se encontró el usuario' };
+
+  establecerPassword_(id, passwordNueva);
+  // Mismo motivo que en cambiarPassword_: un restablecimiento por Administrador debe cerrar
+  // cualquier sesión ya abierta con la contraseña vieja (ej. una cuenta comprometida).
+  eliminarSesionesDeUsuario_(id);
+  return { ok: true };
+}
+
+const ROLES_DISPONIBLES = ['Administrador', 'Encargado', 'Cocina', 'Lectura'];

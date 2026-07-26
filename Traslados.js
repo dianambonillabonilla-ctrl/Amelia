@@ -1,0 +1,261 @@
+/**
+ * TRASLADOS ENTRE SEDES
+ * El personal puede rotar, pero la sede asignada en Usuarios sigue protegiendo el movimiento:
+ * Administrador y usuarios con sede "Ambas" pueden operar cualquier traslado; los demás solo
+ * pueden enviar desde su sede, recibir en su sede y ver traslados relacionados con ella —
+ * EXCEPTO Centro de Producción, que cualquiera (San Antonio, Capri o Ambas) puede enviar/recibir/
+ * ver además de su propia sede (ver sedeEscrituraPermitida_ en Code.gs).
+ *
+ * Flujo:
+ *  1. Quien envía crea el traslado (producto, cantidad, origen -> destino). Queda "Enviado".
+ *  2. Quien recibe lo confirma (pasa a "Confirmado") o reporta un problema (pasa a
+ *     "Con observación" y dispara un correo a todos los Administrador/Encargado — mismo
+ *     destinatariosAlerta_ que usan las alertas de stock bajo).
+ *  3. Un traslado "Con observación" queda visualmente pendiente hasta que alguien lo marca
+ *     como "Resuelto" — el sistema no lo cuenta como recibido del todo mientras tanto.
+ *
+ * Este registro es un log de trazabilidad, no toca Conteos_Manuales directamente: el stock real
+ * sigue viniendo del próximo conteo físico en cada punto, como en el resto del sistema.
+ */
+
+function trasladoCrear_(item, usuario) {
+  if (!item || !item.producto || !item.unidad || !item.cantidad || !item.sede_origen || !item.sede_destino) {
+    return { ok: false, error: 'Faltan datos del traslado (producto, unidad, cantidad, sede origen y sede destino son obligatorios)' };
+  }
+  if (isNaN(Number(item.cantidad)) || Number(item.cantidad) <= 0) {
+    return { ok: false, error: 'La cantidad debe ser un número mayor que cero' };
+  }
+  if (item.sede_origen === item.sede_destino && (item.punto_origen || '') === (item.punto_destino || '')) {
+    return { ok: false, error: 'El origen y el destino no pueden ser el mismo lugar' };
+  }
+  requiereSedeTraslado_(usuario, item.sede_origen, 'enviar');
+
+  const fila = {
+    id: Utilities.getUuid(),
+    fecha: item.fecha || formatearFecha_(new Date()),
+    producto: item.producto,
+    unidad: item.unidad || '',
+    cantidad_enviada: Number(item.cantidad),
+    sede_origen: item.sede_origen,
+    punto_origen: item.punto_origen || '',
+    sede_destino: item.sede_destino,
+    punto_destino: item.punto_destino || '',
+    usuario_envia: usuario.nombre,
+    timestamp_envio: new Date(),
+    estado: 'Enviado',
+    usuario_recibe: '',
+    timestamp_recibe: '',
+    cantidad_recibida: '',
+    observacion: '',
+    resuelto_por: '',
+    timestamp_resuelto: '',
+    nota_resolucion: ''
+  };
+  appendRowFromObj_(SHEET_NAMES.TRASLADOS, fila);
+  if (typeof inventarioLibroIntentarDesdeTraslado_ === 'function') {
+    inventarioLibroIntentarDesdeTraslado_(fila, usuario, 'enviado');
+  }
+  return { ok: true, id: fila.id };
+}
+
+function trasladosListar_(filtro, usuario) {
+  filtro = filtro || {};
+  let rows = leerTabla_(SHEET_NAMES.TRASLADOS);
+  if (filtro.estado) rows = rows.filter(function (r) { return r.estado === filtro.estado; });
+  if (usuario.rol !== 'Administrador' && usuario.sede !== 'Ambas') {
+    // sedeEscrituraPermitida_ (Code.gs) también deja ver traslados que involucren Centro de
+    // Producción, no solo la sede propia — si San Antonio/Capri pueden registrar/confirmar ahí,
+    // también necesitan verlo en la lista para poder hacerlo.
+    rows = rows.filter(function (r) {
+      return sedeEscrituraPermitida_(usuario, r.sede_origen) || sedeEscrituraPermitida_(usuario, r.sede_destino);
+    });
+  }
+  return rows.sort(function (a, b) { return new Date(b.timestamp_envio) - new Date(a.timestamp_envio); });
+}
+
+function trasladoBuscarFila_(id) {
+  const sh = sheet_(SHEET_NAMES.TRASLADOS);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  for (let r = 1; r < data.length; r++) {
+    if (data[r][idCol] === id) return { sh: sh, headers: headers, fila: r + 1, valores: data[r] };
+  }
+  return null;
+}
+
+function trasladoActualizar_(id, cambios, usuario) {
+  const encontrado = trasladoBuscarFila_(id);
+  if (!encontrado) return { ok: false, error: 'No se encontró el traslado ' + id };
+  // neutralizarObjetoFormulas_ (Code.gs): 'observacion' y 'nota_resolucion' son texto libre que
+  // cualquiera con acceso a un traslado puede escribir — sin esto, algo como
+  // =HYPERLINK("...") ahí se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir la
+  // hoja (auditoría de seguridad, jul 2026). appendRowFromObj_/appendRowsFromObjs_ ya protegen la
+  // CREACIÓN del traslado; esto protege la actualización (confirmar/observar/resolver), que escribe
+  // directo con setValue y no pasa por esos helpers.
+  const cambiosLimpios = neutralizarObjetoFormulas_(cambios);
+  const idCol = encontrado.headers.indexOf('estado');
+  const estadoAnterior = encontrado.valores[idCol];
+  encontrado.headers.forEach(function (h, c) {
+    if (cambiosLimpios[h] !== undefined) encontrado.sh.getRange(encontrado.fila, c + 1).setValue(cambiosLimpios[h]);
+  });
+  const estadoNuevo = cambiosLimpios.estado || estadoAnterior;
+
+  // Bitácora: confirmar/observar/resolver son justo los cambios de estado que la auditoría señaló
+  // sin rastro — sin esto, no quedaba forma de saber cuándo pasó un traslado de "Enviado" a
+  // "Confirmado"/"Con observación", ni quién lo hizo, más allá del último valor guardado
+  // (auditoría de seguridad, jul 2026).
+  if (cambiosLimpios.estado && cambiosLimpios.estado !== estadoAnterior) {
+    auditoriaRegistrar_(usuario, 'traslado_estado_cambiado', 'Traslado', id,
+      { estado: estadoAnterior },
+      { estado: estadoNuevo, cantidad_recibida: cambiosLimpios.cantidad_recibida, observacion: cambiosLimpios.observacion, nota_resolucion: cambiosLimpios.nota_resolucion },
+      encontrado.valores[encontrado.headers.indexOf('sede_destino')]);
+    if (['Confirmado', 'Resuelto'].indexOf(estadoNuevo) !== -1 &&
+        ['Confirmado', 'Resuelto'].indexOf(estadoAnterior) === -1) {
+      const filaActualizada = leerTabla_(SHEET_NAMES.TRASLADOS).find(function (r) { return r.id === id; });
+      if (filaActualizada && typeof inventarioLibroIntentarDesdeTraslado_ === 'function') {
+        inventarioLibroIntentarDesdeTraslado_(filaActualizada, usuario, 'recibido');
+      }
+    }
+  }
+
+  return { ok: true, estado: estadoNuevo };
+}
+
+function trasladoConfirmar_(id, cantidadRecibida, usuario) {
+  // Lee el estado actual y decide si puede confirmarse ANTES de escribir — bajo lock de todo el
+  // script, para que dos solicitudes simultáneas (ej. confirmar y observar el mismo traslado casi
+  // a la vez) no lean ambas "Enviado" antes de que ninguna escriba, dejando un resultado
+  // contradictorio según cuál terminó de escribir último (auditoría de seguridad, jul 2026).
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Este traslado se está actualizando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const encontrado = trasladoBuscarFila_(id);
+    if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
+    const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
+    if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+    requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'recibir');
+
+    const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+    const recibida = cantidadRecibida !== undefined && cantidadRecibida !== '' ? Number(cantidadRecibida) : enviada;
+    if (isNaN(recibida) || recibida <= 0 || recibida > enviada) {
+      return { ok: false, error: 'La cantidad recibida debe ser mayor que cero y no superar la cantidad enviada' };
+    }
+
+    return trasladoActualizar_(id, {
+      estado: 'Confirmado',
+      usuario_recibe: usuario.nombre,
+      timestamp_recibe: new Date(),
+      cantidad_recibida: recibida
+    }, usuario);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function trasladoObservar_(id, cantidadRecibida, observacion, usuario) {
+  if (!observacion || !String(observacion).trim()) return { ok: false, error: 'Escribe qué pasó con el traslado' };
+
+  // Mismo lock que trasladoConfirmar_ — comprobar el estado y decidir si puede observarse debe
+  // quedar protegido contra una confirmación/observación simultánea del mismo traslado.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Este traslado se está actualizando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  let resultado;
+  try {
+    const encontrado = trasladoBuscarFila_(id);
+    if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
+    const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
+    if (estadoActual !== 'Enviado') return { ok: false, error: 'Este traslado ya fue confirmado o tiene una observación (estado actual: ' + estadoActual + ')' };
+    // BUG DE SEGURIDAD REAL: a diferencia de trasladoConfirmar_, esto nunca validaba la sede — un
+    // usuario de una sola sede podía reportar una observación (cantidad recibida falsa/menor) sobre
+    // un traslado que ni siquiera es suyo (ni origen ni destino), algo que sí estaba bloqueado
+    // correctamente al confirmar un traslado normal.
+    requiereSedeTraslado_(usuario, encontrado.valores[encontrado.headers.indexOf('sede_destino')], 'reportar un problema con');
+    const enviada = Number(encontrado.valores[encontrado.headers.indexOf('cantidad_enviada')]);
+    const recibida = Number(cantidadRecibida);
+    if (isNaN(recibida) || recibida < 0 || recibida >= enviada) {
+      return { ok: false, error: 'En una observación, la cantidad recibida debe estar entre cero y ser menor que la enviada' };
+    }
+
+    resultado = trasladoActualizar_(id, {
+      estado: 'Con observación',
+      usuario_recibe: usuario.nombre,
+      timestamp_recibe: new Date(),
+      cantidad_recibida: recibida,
+      observacion: String(observacion).trim()
+    }, usuario);
+  } finally {
+    lock.releaseLock();
+  }
+
+  if (resultado.ok) {
+    const traslado = leerTabla_(SHEET_NAMES.TRASLADOS).find(function (r) { return r.id === id; });
+    if (traslado) {
+      try {
+        enviarCorreoObservacionTraslado_(traslado);
+      } catch (err) {
+        Logger.log('enviarCorreoObservacionTraslado_ falló: ' + err.message);
+      }
+    }
+  }
+  return resultado;
+}
+
+function trasladoResolver_(id, notaResolucion, usuario) {
+  requiereRol_(usuario, ['Administrador', 'Encargado']);
+
+  // Mismo lock que confirmar_/observar_ — comprobar "Con observación" y resolver es el mismo
+  // patrón de lectura-modificación-escritura que necesita protección contra dos resoluciones (o
+  // una resolución y otra acción) simultáneas sobre el mismo traslado.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Este traslado se está actualizando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const encontrado = trasladoBuscarFila_(id);
+    if (!encontrado) return { ok: false, error: 'No se encontró el traslado' };
+    const estadoActual = encontrado.valores[encontrado.headers.indexOf('estado')];
+    if (estadoActual !== 'Con observación') return { ok: false, error: 'Solo se pueden resolver traslados con una observación pendiente' };
+    const origen = encontrado.valores[encontrado.headers.indexOf('sede_origen')];
+    const destino = encontrado.valores[encontrado.headers.indexOf('sede_destino')];
+    if (!sedeEscrituraPermitida_(usuario, origen) && !sedeEscrituraPermitida_(usuario, destino)) {
+      throw new Error('Solo puedes resolver traslados relacionados con tu sede');
+    }
+
+    return trasladoActualizar_(id, {
+      estado: 'Resuelto',
+      resuelto_por: usuario.nombre,
+      timestamp_resuelto: new Date(),
+      nota_resolucion: notaResolucion || ''
+    }, usuario);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function requiereSedeTraslado_(usuario, sede, accion) {
+  if (sedeEscrituraPermitida_(usuario, sede)) return;
+  throw new Error('No puedes ' + accion + ' un traslado de una sede distinta a la tuya (' + usuario.sede + ')');
+}
+
+function enviarCorreoObservacionTraslado_(traslado) {
+  const destinatarios = destinatariosAlerta_(); // Administrador + Encargado con email (Alertas.gs)
+  if (!destinatarios.length) return;
+  const cuerpo = 'Un traslado quedó con una observación y necesita resolverse:\n\n' +
+    'Producto: ' + traslado.producto + ' (' + traslado.cantidad_enviada + ' ' + traslado.unidad + ')\n' +
+    'De: ' + traslado.sede_origen + (traslado.punto_origen ? ' / ' + traslado.punto_origen : '') + '\n' +
+    'A: ' + traslado.sede_destino + (traslado.punto_destino ? ' / ' + traslado.punto_destino : '') + '\n' +
+    'Enviado por: ' + traslado.usuario_envia + '\n' +
+    'Observación de ' + traslado.usuario_recibe + ': ' + traslado.observacion + '\n\n' +
+    'Este traslado queda pendiente hasta que alguien lo marque como resuelto en Dilana OS.';
+
+  MailApp.sendEmail({
+    to: destinatarios.join(','),
+    subject: 'Dilana OS — Observación en traslado de ' + traslado.producto,
+    body: cuerpo
+  });
+}

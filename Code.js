@@ -1,0 +1,909 @@
+/**
+ * DILANA OS — Backend (Google Apps Script)
+ * Amelia Café / La Wafflería — Control de inventario, conciliación FUDO y disponibilidad
+ *
+ * ARQUITECTURA
+ * - Este script se vincula a UN Google Sheet que actúa como base de datos (ver README para las hojas requeridas).
+ * - Se despliega como "Web App" (Implementar > Nueva implementación > Aplicación web).
+ * - El frontend (GitHub Pages) llama a la URL /exec de este script vía fetch(), enviando `token` en cada solicitud.
+ *
+ * HOJAS QUE ESTE SCRIPT ESPERA ENCONTRAR (se crean/actualizan solas al correr `configurarHojas()`):
+ *   Usuarios | Catalogo_Maestro | Recetas | Conteos_Manuales | Movimientos_FUDO
+ *   Ventas_FUDO | Sesiones | Producciones | AlertasEnviadas
+ *
+ * Después de correr configurarHojas() por primera vez (o tras actualizar este script), corre
+ * también configurarTriggers() una vez para activar la limpieza diaria de sesiones y las alertas.
+ */
+
+const SHEET_NAMES = {
+  USUARIOS: 'Usuarios',
+  CATALOGO: 'Catalogo_Maestro',
+  RECETAS: 'Recetas',
+  CONTEOS: 'Conteos_Manuales',
+  MOVIMIENTOS_FUDO: 'Movimientos_FUDO',
+  VENTAS_FUDO: 'Ventas_FUDO',
+  FUDO_VENTAS: 'Fudo_Ventas',
+  FUDO_ITEMS: 'Fudo_Items',
+  FUDO_PAGOS: 'Fudo_Pagos',
+  FUDO_DESCUENTOS: 'Fudo_Descuentos',
+  FUDO_PROPINAS: 'Fudo_Propinas',
+  FUDO_SUBITEMS: 'Fudo_Subitems',
+  SESIONES: 'Sesiones',
+  PRODUCCIONES: 'Producciones',
+  ALERTAS_ENVIADAS: 'AlertasEnviadas',
+  TRASLADOS: 'Traslados',
+  AJUSTES_INVENTARIO: 'Ajustes_Inventario',
+  TURNOS_SECTOR: 'Turnos_Sector',
+  CIERRES_TURNO: 'Cierres_Turno',
+  GESTIONES: 'Gestiones',
+  AUDITORIA: 'Auditoria_Eventos',
+  STOCK_FUDO_BASE: 'Stock_FUDO_Base',
+  CATALOGO_ALIAS: 'Catalogo_Alias',
+  FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes',
+  MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario',
+  PAGOS_FUDO: 'Pagos_FUDO'
+};
+
+function ss_() {
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function sheet_(name) {
+  const sh = ss_().getSheetByName(name);
+  if (!sh) throw new Error('No existe la hoja "' + name + '". Corre configurarHojas() primero.');
+  return sh;
+}
+
+// ---------------------------------------------------------------------------
+// SETUP — correr manualmente desde el editor de Apps Script
+// ---------------------------------------------------------------------------
+
+/**
+ * Crea las hojas que falten y, en las que ya existen con datos, agrega al final las
+ * columnas nuevas que falten (sin tocar las existentes) — así se puede correr de nuevo
+ * de forma segura cada vez que este script gana una hoja o columna nueva.
+ */
+function configurarHojas() {
+  const spec = {
+    Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email', 'sectores_permitidos'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'id_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion', 'sector', 'sede'],
+    Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
+      'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
+      'controla_disponibilidad', 'notas'],
+    Conteos_Manuales: ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'],
+    Movimientos_FUDO: ['fecha', 'tipo', 'evento', 'nombre', 'stock_anterior', 'stock_actual', 'diferencia', 'usuario',
+      'sede', 'objeto_tipo', 'costo', 'archivo_origen', 'importado_por', 'importado_en'],
+    Ventas_FUDO: ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por',
+      'sede', 'formato_origen', 'archivo_origen', 'importado_en'],
+    Fudo_Ventas: ['id_venta', 'creacion', 'sede', 'creada_por', 'formato_origen', 'archivo_origen', 'importado_en',
+      'items_count', 'monto_total', 'lineas_canceladas'],
+    Fudo_Items: ['id', 'clave_item', 'id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada',
+      'sede', 'creada_por', 'formato_origen', 'archivo_origen', 'importado_en'],
+    Fudo_Pagos: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo', 'sede',
+      'es_efectivo', 'archivo_origen', 'importado_por', 'importado_en'],
+    Fudo_Descuentos: ['id_descuento', 'id_venta', 'creacion', 'monto', 'porcentaje', 'monto_max', 'cancelado',
+      'plantilla_nombre', 'sede', 'archivo_origen', 'importado_en'],
+    Fudo_Propinas: ['id_propina', 'id_venta', 'creacion', 'monto', 'cancelado', 'sede', 'archivo_origen', 'importado_en'],
+    Fudo_Subitems: ['id_subitem', 'clave_subitem', 'id_item', 'id_venta', 'creacion', 'producto', 'cantidad', 'precio',
+      'cancelado', 'sede', 'archivo_origen', 'importado_en'],
+    Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
+    Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
+      'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
+      'rendimiento_porcentaje', 'receta_referencia', 'hora_inicio', 'hora_fin', 'observacion', 'evidencia_url'],
+    AlertasEnviadas: ['fecha', 'plato'],
+    Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
+      'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
+      'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
+    Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
+      'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado', 'evidencia_url'],
+    Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
+    Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
+      'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones',
+      'pagos_fudo_total', 'pagos_efectivo_esperado', 'diferencia_caja',
+      'inventario_contado', 'diferencia_inventario', 'diferencias_inventario_json',
+      'fuente_ventas', 'fuente_pagos', 'descuentos_total', 'propinas_total', 'sync_ventas_en', 'sync_pagos_en'],
+    Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
+      'actualizado_por', 'timestamp_actualizado', 'factura_id'],
+    Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
+      'entidad_id', 'valor_anterior', 'valor_nuevo', 'sede', 'motivo'],
+    Stock_FUDO_Base: ['nombre_fudo', 'tipo', 'stock', 'unidad', 'fecha_base', 'importado_por', 'importado_en'],
+    Catalogo_Alias: ['id', 'catalogo_id', 'alias', 'origen', 'creado_por', 'timestamp'],
+    Fudo_Mapeo_Sedes: ['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp'],
+    Movimientos_Inventario: ['id', 'fecha', 'timestamp', 'catalogo_id', 'producto', 'cantidad', 'unidad', 'signo',
+      'tipo_movimiento', 'ubicacion_origen', 'ubicacion_destino', 'sede_origen', 'sede_destino', 'sede', 'fuente',
+      'entidad_tipo', 'entidad_id', 'clave_idempotencia', 'estado', 'usuario_id', 'usuario_nombre', 'observacion',
+      'evidencia_url', 'requiere_aprobacion', 'aprobado_por', 'aprobado_en', 'reversa_movimiento_id', 'creado_en'],
+    Pagos_FUDO: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo',
+      'sede', 'archivo_origen', 'importado_por', 'importado_en']
+  };
+  const spreadsheet = ss_();
+  Object.keys(spec).forEach(function (name) {
+    let sh = spreadsheet.getSheetByName(name);
+    const esNueva = !sh;
+    if (!sh) sh = spreadsheet.insertSheet(name);
+    if (sh.getLastRow() === 0) {
+      sh.getRange(1, 1, 1, spec[name].length).setValues([spec[name]]);
+      sh.setFrozenRows(1);
+      sh.getRange(1, 1, 1, spec[name].length).setFontWeight('bold').setBackground('#0B1F3A').setFontColor('#FFFFFF');
+      // Semilla de Fudo_Mapeo_Sedes: mismas salas ya hardcodeadas en sedeDesdeCreadaPor_ (Fudo.gs)
+      // para que, al crear la hoja por primera vez, el comportamiento no cambie — solo se vuelve
+      // editable desde la app en vez de requerir tocar código para agregar/corregir una sala.
+      if (name === 'Fudo_Mapeo_Sedes' && esNueva) {
+        const ahoraSemilla = new Date();
+        const semillas = [
+          ['Salón SA', 'San Antonio'], ['Terraza SA', 'San Antonio'],
+          ['Terraza Capri', 'Capri'], ['La Waffleria - Capri', 'Capri']
+        ];
+        sh.getRange(2, 1, semillas.length, spec[name].length).setValues(semillas.map(function (s) {
+          return [Utilities.getUuid(), 'Sala', '', s[0], s[1], 'sistema', ahoraSemilla];
+        }));
+      }
+    } else {
+      asegurarColumnas_(sh, spec[name]);
+    }
+  });
+
+  // Nunca se crea una credencial predeterminada. En una instalación nueva, el propietario debe
+  // ejecutar crearAdministradorInicial_() desde el editor con una contraseña propia.
+  const usuarios = sheet_(SHEET_NAMES.USUARIOS);
+  SpreadsheetApp.flush();
+  Logger.log(usuarios.getLastRow() === 1
+    ? 'Hojas configuradas. No hay usuarios: ejecuta crearAdministradorInicial_(nombre, usuario, password, email).'
+    : 'Hojas configuradas. Corre configurarTriggers() si no lo has hecho.');
+}
+
+function crearAdministradorInicial_(nombre, usuario, password, email) {
+  const sh = sheet_(SHEET_NAMES.USUARIOS);
+  if (sh.getLastRow() > 1) throw new Error('Ya existen usuarios; administra las cuentas desde DILANA OS.');
+  if (!nombre || !usuario || !password || String(password).length < 10) {
+    throw new Error('Nombre, usuario y una contraseña propia de al menos 10 caracteres son obligatorios.');
+  }
+  const salt = generarSalt_();
+  appendRowFromObj_(SHEET_NAMES.USUARIOS, {
+    id: Utilities.getUuid(), nombre: nombre, usuario: usuario,
+    password_hash: hashPasswordSalted_(password, salt), salt: salt,
+    rol: 'Administrador', sede: 'Ambas', activo: true, email: email || ''
+  });
+  return 'Administrador inicial creado. La contraseña no se guardó en texto plano.';
+}
+
+function asegurarColumnas_(sh, columnas) {
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  columnas.forEach(function (col) {
+    if (headers.indexOf(col) === -1) {
+      sh.getRange(1, sh.getLastColumn() + 1).setValue(col);
+    }
+  });
+}
+
+/**
+ * Corre UNA vez (o de nuevo si cambian los triggers) para activar:
+ * - tareaDiaria_ (diario ~6am): limpia sesiones vencidas, revisa alertas de stock bajo y toma el
+ *   snapshot diario de stock consolidado de FUDO (fudoSincronizacionStockDiaria_).
+ * - fudoSincronizacionAutomatica_ (cada 15 min): sincroniza ventas y pagos de FUDO solos, sin que
+ *   un Administrador tenga que entrar a "Importar de FUDO" y sincronizar a mano. Si no hay
+ *   credenciales de la API configuradas todavía (fudoApiConfigurarCredenciales_), no hace nada —
+ *   la sincronización manual de importar.html sigue disponible igual como respaldo.
+ */
+function configurarTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    const fn = t.getHandlerFunction();
+    if (fn === 'tareaDiaria_' || fn === 'fudoSincronizacionAutomatica_') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('tareaDiaria_').timeBased().everyDays(1).atHour(6).create();
+  ScriptApp.newTrigger('fudoSincronizacionAutomatica_').timeBased().everyMinutes(15).create();
+  Logger.log('Triggers configurados: tareaDiaria_ (diario ~6am) y fudoSincronizacionAutomatica_ (cada 15 min).');
+}
+
+function tareaDiaria_() {
+  limpiarSesionesVencidas_();
+  try {
+    revisarAlertas_();
+  } catch (err) {
+    Logger.log('revisarAlertas_ falló en la tarea diaria: ' + err.message);
+  }
+  try {
+    if (typeof fudoSincronizacionStockDiaria_ === 'function') fudoSincronizacionStockDiaria_();
+  } catch (err) {
+    Logger.log('fudoSincronizacionStockDiaria_ falló en la tarea diaria: ' + err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WEB APP ENTRY POINTS
+// ---------------------------------------------------------------------------
+function doGet(e) {
+  return handleRequest_(e, 'GET');
+}
+
+function doPost(e) {
+  return handleRequest_(e, 'POST');
+}
+
+/**
+ * Registra el detalle completo en el registro de ejecución y devuelve un Error con solo un código
+ * corto — el mensaje interno (stack, SQL, rutas, etc.) nunca debe llegar tal cual al navegador.
+ */
+function apiErrorConIncidente_(resumen, detalle) {
+  const incidente = 'API-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 1000);
+  Logger.log('[' + incidente + '] ' + resumen + ': ' + detalle);
+  return new Error(resumen + ' (código ' + incidente + ' — revisa el registro de ejecución de Apps Script para el detalle completo).');
+}
+
+function handleRequest_(e, method) {
+  // La API solo acepta POST: GET con ?action=login&password=... dejaría credenciales en logs,
+  // historial del navegador y proxies — auditoría de seguridad, jul 2026.
+  if (method === 'GET') {
+    return jsonOut_({ ok: false, error: 'La API de Dilana OS solo acepta solicitudes POST. Actualiza la página si ves este mensaje.' });
+  }
+
+  let body = {};
+  try {
+    if (e.postData && e.postData.contents) body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return jsonOut_({ ok: false, error: 'JSON inválido en el cuerpo de la solicitud' });
+  }
+  const params = Object.assign({}, e.parameter || {}, body || {});
+  const action = params.action;
+
+  try {
+    // Login y logout no requieren sesión previa válida (logout debe funcionar incluso con token vencido)
+    if (action === 'login') {
+      return jsonOut_(login_(params.usuario, params.password));
+    }
+    if (action === 'logout') {
+      return jsonOut_(logout_(params.token));
+    }
+
+    // Todo lo demás requiere sesión válida
+    const sesion = validarToken_(params.token);
+    if (!sesion.ok) return jsonOut_(sesion);
+
+    switch (action) {
+      case 'whoami':
+        return jsonOut_({ ok: true, usuario: sesion.usuario });
+      case 'cambiar_password':
+        return jsonOut_(cambiarPassword_(sesion.usuario, params.password_actual, params.password_nueva));
+      case 'catalogo_listar':
+        return jsonOut_({ ok: true, data: leerTabla_(SHEET_NAMES.CATALOGO) });
+      case 'catalogo_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoGuardar_(params.item, sesion.usuario));
+      case 'catalogo_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoEliminar_(params.id));
+      case 'catalogo_reparar_ids':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoRepararIds_());
+      case 'catalogo_fusionar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoFusionar_(params.id_conservar, params.id_eliminar));
+      case 'catalogo_alias_crear':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoAliasCrear_(params.catalogo_id, params.alias, params.origen, sesion.usuario));
+      case 'catalogo_alias_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: catalogoAliasListar_(params.catalogo_id) });
+      case 'catalogo_alias_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoAliasEliminar_(params.id));
+      case 'fudo_nombres_vistos':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: fudoNombresVistos_() });
+      case 'recetas_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: recetasListar_(params.filtros) });
+      case 'receta_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(recetaGuardar_(params.item, sesion.usuario));
+      case 'receta_aprobar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(recetaAprobar_(params.producto, sesion.usuario));
+      case 'platos_fudo_sin_receta':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: platosFudoSinReceta_() });
+      case 'conteo_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(conteoRegistrar_(params.items, sesion.usuario, params.opciones));
+      case 'conteo_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: conteoListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'conteos_historial':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: conteosHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'turno_sector_elegir':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(turnoSectorElegir_(params.fecha, params.sector, sesion.usuario));
+      case 'turno_sector_hoy':
+        return jsonOut_(turnoSectorDeHoy_(sesion.usuario, params.fecha));
+      case 'turno_faltantes_por_sector':
+        // Antes solo Administrador/Encargado — ahora también Cocina, porque quien tiene el sector
+        // "Caja" asignado hoy puede ser cualquier persona de planta, y necesita ver este detalle
+        // (quién ya contó qué) para poder cerrar el turno (ver turnoCerrar_ en Turnos.gs).
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: turnoFaltantesPorSector_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'turno_cerrar':
+        // Mismo motivo: el filtro fino de "solo Caja (o Admin/Encargado) puede cerrar" vive dentro
+        // de turnoCerrar_, no aquí — este solo exige que la sesión sea de un rol operativo válido.
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(turnoCerrar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario, params.datos_cierre));
+      case 'turno_cierre_estado':
+        return jsonOut_(turnoCierreEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'turno_resumen_cierre':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(turnoResumenCierre_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'cierres_turno_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: cierresTurnoListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'ajuste_inventario_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
+      case 'ajustes_inventario_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'ajustes_inventario_historial':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: ajustesInventarioHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'ajuste_inventario_avalar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ajusteInventarioAvalar_(params.id, sesion.usuario));
+      case 'ajuste_inventario_corregir_unidad':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ajusteInventarioCorregirUnidad_(params.id, params.unidad, params.cantidad, sesion.usuario));
+      case 'compra_registrar_factura':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(compraRegistrarFactura_(params.factura, sesion.usuario, params.opciones));
+      case 'compras_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: comprasListar_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'compras_resumen_gasto':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_({ ok: true, data: comprasResumenGasto_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'gestion_crear':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(gestionCrear_(params.item, sesion.usuario));
+      case 'gestiones_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: gestionesListar_(params.filtro, sesion.usuario) });
+      case 'gestion_actualizar_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(gestionActualizarEstado_(params.id, params.estado, params.nota, sesion.usuario));
+      case 'importar_fudo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
+      case 'fudo_api_probar_conexion':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiProbarConexion_());
+      case 'fudo_api_sincronizar_ventas':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiSincronizarVentas_(params.fecha_desde, params.fecha_hasta, sesion.usuario, params.opciones));
+      case 'fudo_api_sincronizar_pagos':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiSincronizarPagos_(params.fecha_desde, params.fecha_hasta, sesion.usuario, params.opciones));
+      case 'stock_fudo_base_importar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(stockFudoBaseImportar_(params.filas, sesion.usuario));
+      case 'fudo_api_tomar_snapshot_stock':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiTomarSnapshotStock_(sesion.usuario));
+      case 'fudo_panel_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_(fudoApiEstadoPanel_());
+      case 'fudo_ventas_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoVentasEstado_() });
+      case 'fudo_ventas_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoVentasMigrarDesdeFlat_());
+      case 'fudo_ventas_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoVentasListar_(params.filtros || {}) });
+      case 'fudo_items_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoItemsListar_(params.filtros || {}) });
+      case 'fudo_pagos_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoPagosEstado_() });
+      case 'fudo_pagos_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoPagosMigrarDesdeFlat_());
+      case 'fudo_pagos_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoPagosListar_(params.filtros || {}) });
+      case 'fudo_descuentos_propinas_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoDescuentosPropinasEstado_() });
+      case 'fudo_descuentos_propinas_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoDescuentosPropinasMigrarDesdeApi_(params.fecha_desde, params.fecha_hasta));
+      case 'fudo_descuentos_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoDescuentosListar_(params.filtros || {}) });
+      case 'fudo_propinas_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoPropinasListar_(params.filtros || {}) });
+      case 'fudo_subitems_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoSubitemsEstado_() });
+      case 'fudo_subitems_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoSubitemsMigrarDesdeApi_(params.fecha_desde, params.fecha_hasta));
+      case 'fudo_subitems_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoSubitemsListar_(params.filtros || {}) });
+      case 'fudo_mapeo_sede_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });
+      case 'fudo_mapeo_sede_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoMapeoSedeGuardar_(params.item, sesion.usuario));
+      case 'fudo_mapeo_sede_eliminar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoMapeoSedeEliminar_(params.id));
+      case 'ventas_pendientes_sede_listar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: ventasPendientesSedeListar_() });
+      case 'ventas_pendientes_sede_asignar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(ventasPendientesSedeAsignar_(params.creada_por, params.sede, sesion.usuario));
+      case 'disponible_hoy':
+        return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'tendencia_ingrediente':
+        return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'conciliacion':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: calcularConciliacion_(params.fecha, sesion.usuario) });
+      case 'conciliacion_historial_desfases':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(conciliacionHistorialDesfases_(params.fecha_desde, params.fecha_hasta, sesion.usuario));
+      case 'movimientos_inventario_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: movimientosInventarioListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'inventario_ubicacion_resumen':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(inventarioUbicacionResumen_(
+          params.fecha_desde,
+          params.fecha_hasta,
+          sedeConsultaPermitida_(sesion.usuario, params.sede),
+          params.punto,
+          params.opciones || {}
+        ));
+      case 'movimientos_inventario_libro_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: inventarioMovimientosLibroListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'inventario_libro_estado':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: inventarioLibroEstado_() });
+      case 'inventario_libro_configurar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(inventarioLibroConfigurarDesdeApi_(params.activo));
+      case 'migracion_inventario_simular':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migracionInventarioSimular_());
+      case 'migracion_inventario_ejecutar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migracionInventarioEjecutar_(sesion.usuario));
+      case 'inventario_teorico_calcular':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: calcularInventarioTeorico_(
+          params.producto,
+          sedeConsultaPermitida_(sesion.usuario, params.sede),
+          params.fecha_corte,
+          null,
+          { incluir_consumo_ventas: !!params.incluir_consumo_ventas }
+        ) });
+      case 'inventario_teorico_resumen':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(inventarioTeoricoResumen_(
+          params.fecha,
+          sedeConsultaPermitida_(sesion.usuario, params.sede),
+          params.productos,
+          null,
+          { incluir_consumo_ventas: !!params.incluir_consumo_ventas }
+        ));
+      case 'movimientos_venta_dia_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: movimientosDesdeVentas_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'resumen_diferencias_inventario':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(resumenDiferenciasInventarioFechaSede_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'evidencia_subir':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(evidenciaSubir_(params.archivo));
+      case 'evidencia_obtener':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
+        return jsonOut_(evidenciaObtener_(params.file_id));
+      case 'produccion_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
+      case 'produccion_con_obligatorios_registrar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(produccionConObligatoriosRegistrar_(params.items_produccion, params.items_obligatorios, sesion.usuario, params.opciones));
+      case 'produccion_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_({ ok: true, data: produccionListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'produccion_historial':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: produccionHistorial_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'usuarios_listar':
+        // usuariosListar_/usuarioGuardar_/usuarioResetearPassword_ ya exigen Administrador como su
+        // primera línea (Usuarios.gs) — este requiereAdmin_ es redundante hoy, pero mantiene el
+        // mismo patrón "todo case exige rol antes de ejecutar" que el resto del switch, para no
+        // depender solo de que la función interna nunca cambie (auditoría real, 24 jul 2026).
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(usuariosListar_(sesion.usuario));
+      case 'usuarios_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(usuarioGuardar_(params.item, sesion.usuario));
+      case 'usuario_resetear_password':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(usuarioResetearPassword_(params.id, params.password_nueva, sesion.usuario));
+      case 'traslado_crear':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
+      case 'traslados_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        // BUG DE SEGURIDAD REAL: faltaba pasar sesion.usuario aquí. trasladosListar_ necesita ese
+        // segundo argumento para filtrar por sede — sin él, `usuario` quedaba undefined dentro de
+        // la función y esto explotaba con un error de servidor en TODAS las llamadas (nunca
+        // devolvía traslados, sin importar el rol), en vez de limitar correctamente por sede.
+        return jsonOut_({ ok: true, data: trasladosListar_(params.filtro, sesion.usuario) });
+      case 'traslado_confirmar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(trasladoConfirmar_(params.id, params.cantidad_recibida, sesion.usuario));
+      case 'traslado_observar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(trasladoObservar_(params.id, params.cantidad_recibida, params.observacion, sesion.usuario));
+      case 'traslado_resolver':
+        // Mismo motivo que usuarios_* arriba: trasladoResolver_ ya exige rol y sede como sus
+        // primeras líneas (Traslados.gs), esto es redundante pero mantiene el patrón consistente.
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
+        return jsonOut_(trasladoResolver_(params.id, params.nota_resolucion, sesion.usuario));
+      case 'diagnostico_recetas':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarRecetas_(params.umbral) });
+      case 'diagnostico_recetas_sin_catalogo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarRecetasSinCatalogo_() });
+      case 'diagnostico_conteos_duplicados':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarConteosDuplicados_() });
+      case 'diagnostico_ventas_fudo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarVentasFudo_() });
+      case 'diagnostico_compras_no_suman':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarComprasNoSuman_() });
+      case 'diagnostico_catalogo_duplicados':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarCatalogoDuplicados_() });
+      case 'migrar_recetas_julio_2026':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migrarRecetasJulio2026_());
+      default:
+        return jsonOut_({ ok: false, error: 'Acción desconocida: ' + action });
+    }
+  } catch (err) {
+    const detalle = err && err.message ? err.message : String(err);
+    if (/código (API|FUDO)-/.test(detalle)) {
+      return jsonOut_({ ok: false, error: detalle });
+    }
+    return jsonOut_({ ok: false, error: apiErrorConIncidente_('Error de servidor', detalle).message });
+  }
+}
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ---------------------------------------------------------------------------
+// AUTENTICACIÓN
+// ---------------------------------------------------------------------------
+
+// Apps Script no ofrece bcrypt/scrypt/argon2. Se emula un KDF lento con SHA-256 salteado
+// e iterado; el número de iteraciones está acotado por el overhead de cada llamada nativa
+// de Utilities dentro de Apps Script (demasiadas iteraciones vuelven el login perceptiblemente lento).
+const HASH_ITERACIONES = 1000;
+
+// Mínimo único para cualquier contraseña nueva (alta de usuario, cambio propio o restablecimiento
+// por un Administrador). El admin inicial (crearAdministradorInicial_) exige 10 por separado, por
+// ser la única credencial que además protege la creación de todas las demás.
+const PASSWORD_LARGO_MINIMO = 8;
+
+// Protección contra fuerza bruta en login_: tras LOGIN_INTENTOS_MAXIMOS fallos consecutivos
+// para un mismo nombre de usuario, se bloquean intentos nuevos — sin importar si la contraseña es
+// correcta — durante un tiempo que va DOBLANDO cada vez que ese mismo usuario vuelve a agotar los
+// intentos después de un bloqueo anterior (15min, 30min, 1h, 2h... tope 6h, el máximo real que
+// permite CacheService.put). Antes el bloqueo era siempre 15 minutos fijos: cualquiera que solo
+// SUPIERA el nombre de usuario de un Administrador (sin saber la contraseña) podía mandarle 8
+// contraseñas incorrectas cada 15 minutos indefinidamente y dejarlo bloqueado de forma sostenida —
+// auditoría de seguridad, jul 2026. Usa CacheService en vez de una hoja porque es un contador
+// efímero de alta frecuencia que no necesita persistir ni ser auditado.
+const LOGIN_INTENTOS_MAXIMOS = 8;
+const LOGIN_BLOQUEO_BASE_SEGUNDOS = 15 * 60;
+const LOGIN_BLOQUEO_MAXIMO_SEGUNDOS = 6 * 60 * 60; // tope real de CacheService.put (21600s)
+
+function loginIntentosClave_(usuario) {
+  return 'login_intentos_' + normalizar_(usuario);
+}
+
+function loginBloqueosClave_(usuario) {
+  return 'login_bloqueos_' + normalizar_(usuario);
+}
+
+function loginBloqueado_(usuario) {
+  const intentos = Number(CacheService.getScriptCache().get(loginIntentosClave_(usuario))) || 0;
+  return intentos >= LOGIN_INTENTOS_MAXIMOS;
+}
+
+function loginRegistrarIntentoFallido_(usuario) {
+  const cache = CacheService.getScriptCache();
+  const claveIntentos = loginIntentosClave_(usuario);
+  const intentos = (Number(cache.get(claveIntentos)) || 0) + 1;
+
+  if (intentos < LOGIN_INTENTOS_MAXIMOS) {
+    // Todavía no llega al máximo — una racha de intentos sueltos (no un ataque sostenido) expira
+    // sola si no se completa, sin tocar el contador de bloqueos.
+    cache.put(claveIntentos, String(intentos), LOGIN_BLOQUEO_BASE_SEGUNDOS);
+    return;
+  }
+
+  const claveBloqueos = loginBloqueosClave_(usuario);
+  const bloqueosPrevios = Number(cache.get(claveBloqueos)) || 0;
+  const segundos = Math.min(LOGIN_BLOQUEO_BASE_SEGUNDOS * Math.pow(2, bloqueosPrevios), LOGIN_BLOQUEO_MAXIMO_SEGUNDOS);
+  cache.put(claveIntentos, String(intentos), segundos);
+  // El contador de bloqueos vive el DOBLE que el bloqueo mismo — así quien repita el patrón
+  // "esperar a que se abra y volver a bloquear" sigue escalando en vez de resetear a cero.
+  cache.put(claveBloqueos, String(bloqueosPrevios + 1), Math.min(segundos * 2, LOGIN_BLOQUEO_MAXIMO_SEGUNDOS));
+}
+
+function loginLimpiarIntentos_(usuario) {
+  const cache = CacheService.getScriptCache();
+  cache.remove(loginIntentosClave_(usuario));
+  cache.remove(loginBloqueosClave_(usuario));
+}
+
+function generarSalt_() {
+  return Utilities.base64Encode(Utilities.getUuid() + Utilities.getUuid());
+}
+
+// Esquema viejo (sin sal) — se conserva solo para poder verificar y migrar hashes ya guardados.
+function hashPassword_(pw) {
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, pw));
+}
+
+function hashPasswordSalted_(pw, salt) {
+  let valor = salt + ':' + pw;
+  for (let i = 0; i < HASH_ITERACIONES; i++) {
+    valor = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, valor + salt));
+  }
+  return valor;
+}
+
+/**
+ * Verifica la contraseña contra el esquema que tenga guardado esa fila (con sal si ya migró,
+ * sin sal si es una cuenta vieja). `necesitaMigracion` avisa a login_ que debe recalcular el
+ * hash con sal ahora que se confirmó la contraseña correcta.
+ */
+function verificarPassword_(passwordPlano, filaUsuario) {
+  if (filaUsuario.salt) {
+    return { valido: hashPasswordSalted_(passwordPlano, filaUsuario.salt) === filaUsuario.password_hash, necesitaMigracion: false };
+  }
+  const valido = hashPassword_(passwordPlano) === filaUsuario.password_hash;
+  return { valido: valido, necesitaMigracion: valido };
+}
+
+/** Genera sal nueva y sobreescribe password_hash/salt de un usuario existente por id. */
+function establecerPassword_(usuarioId, passwordPlano) {
+  const sh = sheet_(SHEET_NAMES.USUARIOS);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('id');
+  const saltCol = headers.indexOf('salt');
+  const hashCol = headers.indexOf('password_hash');
+  for (let r = 1; r < data.length; r++) {
+    if (data[r][idCol] === usuarioId) {
+      const salt = generarSalt_();
+      sh.getRange(r + 1, saltCol + 1).setValue(salt);
+      sh.getRange(r + 1, hashCol + 1).setValue(hashPasswordSalted_(passwordPlano, salt));
+      return true;
+    }
+  }
+  return false;
+}
+
+function login_(usuario, password) {
+  if (!usuario || !password) return { ok: false, error: 'Usuario y contraseña son obligatorios' };
+  if (loginBloqueado_(usuario)) {
+    return { ok: false, error: 'Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.' };
+  }
+
+  const rows = leerTabla_(SHEET_NAMES.USUARIOS);
+  const match = rows.find(function (r) { return r.usuario === usuario && r.activo === true; });
+  if (!match) {
+    loginRegistrarIntentoFallido_(usuario);
+    return { ok: false, error: 'Usuario o contraseña incorrectos' };
+  }
+
+  const resultado = verificarPassword_(password, match);
+  if (!resultado.valido) {
+    loginRegistrarIntentoFallido_(usuario);
+    return { ok: false, error: 'Usuario o contraseña incorrectos' };
+  }
+  loginLimpiarIntentos_(usuario);
+  if (resultado.necesitaMigracion) establecerPassword_(match.id, password);
+
+  const token = Utilities.getUuid();
+  const ahora = new Date();
+  const expira = new Date(ahora.getTime() + 12 * 60 * 60 * 1000); // 12 horas
+  appendRowFromObj_(SHEET_NAMES.SESIONES, { token: token, usuario_id: match.id, creado_en: ahora, expira_en: expira });
+
+  return {
+    ok: true,
+    token: token,
+    usuario: { id: match.id, nombre: match.nombre, rol: match.rol, sede: match.sede, sectores_permitidos: match.sectores_permitidos || '' }
+  };
+}
+
+function logout_(token) {
+  if (token) eliminarSesion_(token);
+  return { ok: true };
+}
+
+function eliminarSesion_(token) {
+  const sh = sheet_(SHEET_NAMES.SESIONES);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const tokenCol = headers.indexOf('token');
+  for (let r = data.length - 1; r >= 1; r--) {
+    if (data[r][tokenCol] === token) {
+      sh.deleteRow(r + 1);
+      return;
+    }
+  }
+}
+
+/**
+ * Cierra TODAS las sesiones de un usuario (todos sus tokens activos, no solo el actual) — se llama
+ * después de cambiar/restablecer una contraseña (Usuarios.gs). Sin esto, un token robado seguía
+ * funcionando hasta sus 12 horas de vida aunque la víctima ya hubiera cambiado la contraseña
+ * pensando que eso bastaba para sacar a quien lo tuviera (auditoría de seguridad, jul 2026). Incluye
+ * a propósito la sesión desde la que se hizo el cambio: el frontend ya maneja bien que la próxima
+ * llamada devuelva SESION_INVALIDA (ver assets/config.js) y mande de vuelta a iniciar sesión.
+ */
+function eliminarSesionesDeUsuario_(usuarioId) {
+  const sh = sheet_(SHEET_NAMES.SESIONES);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const usuarioCol = headers.indexOf('usuario_id');
+  for (let r = data.length - 1; r >= 1; r--) {
+    if (data[r][usuarioCol] === usuarioId) sh.deleteRow(r + 1);
+  }
+}
+
+function limpiarSesionesVencidas_() {
+  const sh = sheet_(SHEET_NAMES.SESIONES);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const expiraCol = headers.indexOf('expira_en');
+  const ahora = new Date();
+  for (let r = data.length - 1; r >= 1; r--) {
+    if (new Date(data[r][expiraCol]) < ahora) sh.deleteRow(r + 1);
+  }
+}
+
+function validarToken_(token) {
+  if (!token) return { ok: false, error: 'Falta token de sesión', codigo: 'SESION_INVALIDA' };
+  const sesiones = leerTabla_(SHEET_NAMES.SESIONES);
+  const s = sesiones.find(function (r) { return r.token === token; });
+  if (!s) return { ok: false, error: 'Sesión no encontrada, vuelve a iniciar sesión', codigo: 'SESION_INVALIDA' };
+  if (new Date(s.expira_en) < new Date()) {
+    eliminarSesion_(token);
+    return { ok: false, error: 'Sesión expirada, vuelve a iniciar sesión', codigo: 'SESION_INVALIDA' };
+  }
+
+  const usuarios = leerTabla_(SHEET_NAMES.USUARIOS);
+  const u = usuarios.find(function (r) { return r.id === s.usuario_id; });
+  if (!u || !u.activo) return { ok: false, error: 'Usuario inactivo', codigo: 'SESION_INVALIDA' };
+
+  return { ok: true, usuario: { id: u.id, nombre: u.nombre, rol: u.rol, sede: u.sede, sectores_permitidos: u.sectores_permitidos || '' } };
+}
+
+function requiereRol_(usuario, rolesPermitidos) {
+  if (rolesPermitidos.indexOf(usuario.rol) === -1) {
+    throw new Error('Esta acción requiere uno de estos roles: ' + rolesPermitidos.join(', '));
+  }
+}
+
+function requiereAdmin_(usuario) {
+  requiereRol_(usuario, ['Administrador']);
+}
+
+/**
+ * Limita las consultas operativas a la sede asignada, salvo Administrador o usuarios "Ambas".
+ * Centro de Producción es la excepción: cualquiera (San Antonio, Capri o Ambas) puede consultarlo
+ * además de su propia sede — en la práctica ese personal también cubre el Centro de Producción.
+ * Ver sedeEscrituraPermitida_ para la misma regla del lado de "guardar".
+ */
+function sedeConsultaPermitida_(usuario, sedeSolicitada) {
+  if (usuario.rol === 'Administrador' || usuario.sede === 'Ambas') return sedeSolicitada || null;
+  if (sedeSolicitada && sedeSolicitada !== usuario.sede && sedeSolicitada !== 'Centro de Producción') {
+    throw new Error('No puedes consultar datos de una sede distinta a la tuya (' + usuario.sede + ')');
+  }
+  return sedeSolicitada || usuario.sede;
+}
+
+/**
+ * Igual que sedeConsultaPermitida_ pero para ESCRIBIR (registrar conteos, ajustes, compras,
+ * producción): además de su propia sede, cualquiera puede registrar cosas en Centro de Producción
+ * — pedido explícito: "el que sea de san antonio o capri o ambas todos deben de poder guardar
+ * cosas del centro de producción".
+ */
+function sedeEscrituraPermitida_(usuario, sede) {
+  return usuario.rol === 'Administrador' || usuario.sede === 'Ambas' ||
+    sede === usuario.sede || sede === 'Centro de Producción';
+}
+
+// ---------------------------------------------------------------------------
+// HELPERS DE LECTURA/ESCRITURA GENÉRICOS
+// ---------------------------------------------------------------------------
+function leerTabla_(nombreHoja) {
+  const sh = sheet_(nombreHoja);
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const headers = values[0];
+  return values.slice(1)
+    .filter(function (row) { return row.some(function (v) { return v !== '' && v !== null; }); })
+    .map(function (row) {
+      const obj = {};
+      headers.forEach(function (h, i) { obj[h] = row[i]; });
+      return obj;
+    });
+}
+
+/**
+ * Antepone una comilla simple a cualquier texto que empiece con =, +, - o @ — esos son los
+ * caracteres que Google Sheets interpreta como el inicio de una fórmula, sin importar si el valor
+ * llegó por un campo libre (proveedor, producto, motivo, observaciones, notas...) escrito por
+ * cualquier usuario autenticado o importado de FUDO. Con la comilla adelante, Sheets guarda el
+ * texto tal cual (la comilla no se ve en la celda) en vez de intentar calcularlo como fórmula —
+ * auditoría de seguridad, jul 2026. Solo toca strings; números, booleanos, fechas y demás tipos se
+ * guardan igual que siempre.
+ */
+function neutralizarFormula_(valor) {
+  if (typeof valor !== 'string') return valor;
+  return /^[=+\-@]/.test(valor) ? "'" + valor : valor;
+}
+
+/** Igual que neutralizarFormula_ pero para un objeto completo, campo por campo. */
+function neutralizarObjetoFormulas_(obj) {
+  const limpio = {};
+  Object.keys(obj || {}).forEach(function (k) { limpio[k] = neutralizarFormula_(obj[k]); });
+  return limpio;
+}
+
+function appendRowFromObj_(nombreHoja, obj) {
+  const sh = sheet_(nombreHoja);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const row = headers.map(function (h) { return neutralizarFormula_(obj[h] !== undefined ? obj[h] : ''); });
+  sh.appendRow(row);
+}
+
+/**
+ * Igual que appendRowFromObj_ pero para muchas filas de una sola vez: UNA sola escritura a Sheets
+ * (getRange().setValues()) en vez de una llamada `appendRow` por fila. Un `appendRow` por fila es
+ * lentísimo para importaciones grandes (cada llamada es un viaje a la API de Sheets) — con un
+ * archivo de FUDO de un día completo (cientos o miles de filas de ventas) esto podía tardar tanto
+ * que la importación se sentía "trabada" sin ningún aviso, y en archivos grandes llegaba a superar
+ * el límite de 6 minutos de ejecución de Apps Script y fallaba sin guardar nada. No hace nada si
+ * `objs` viene vacío (evita pedirle a Sheets un rango de 0 filas, que revienta).
+ */
+function appendRowsFromObjs_(nombreHoja, objs) {
+  if (!objs || !objs.length) return;
+  const sh = sheet_(nombreHoja);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const filas = objs.map(function (obj) {
+    return headers.map(function (h) { return neutralizarFormula_(obj[h] !== undefined ? obj[h] : ''); });
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, filas.length, headers.length).setValues(filas);
+}
