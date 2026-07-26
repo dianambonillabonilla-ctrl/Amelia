@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "test": "node tests/recipe-engine.test.js && node tests/inventory-controls.test.js && node tests/gestiones.test.js && node tests/diagnostico.test.js && node tests/fudo-api.test.js && node tests/fudo-mapeo-sedes.test.js && node tests/fudo-estado.test.js && node tests/fudo-ventas.test.js && node tests/fudo-pagos.test.js && node tests/pagos-fudo.test.js && node tests/fudo-descuentos-propinas.test.js && node tests/fudo-subitems.test.js && node tests/fudo-lectores.test.js && node tests/cierre-turno-enriquecido.test.js && node tests/movimientos-inventario.test.js && node tests/inventario-movimientos.test.js && node tests/evidencias.test.js && node tests/security-api.test.js && node tests/formula-injection.test.js && node tests/auditoria.test.js && node tests/rendimiento-lecturas.test.js && node tests/integracion-api.test.js && node tests/syntax.test.js",
+    "test:api": "node tests/api-desplegada.js",
     "clasp:login": "cd apps-script && clasp login",
     "clasp:pull": "cd apps-script && clasp pull",
     "clasp:push": "cd apps-script && clasp push",
