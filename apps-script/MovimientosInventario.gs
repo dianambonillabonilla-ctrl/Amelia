@@ -192,6 +192,11 @@ function fechasEnRangoMovimientos_(fechaDesde, fechaHasta) {
   return fechas;
 }
 
+/** Clave de memoización para consumo/cancelación por venta — una sola explosión de receta por (tipo, sede, día). */
+function movimientosVentasCacheClave_(tipo, sede, fecha) {
+  return String(tipo || 'ventas') + '|' + sede + '|' + fecha;
+}
+
 /**
  * Libro completo, normalizado y filtrable — filtros = { fecha_desde, fecha_hasta, sede, producto,
  * punto, incluir_consumo_ventas, incluir_cancelaciones_ventas, indice (índice de Catalogo_Alias, opcional) }.
@@ -199,6 +204,7 @@ function fechasEnRangoMovimientos_(fechaDesde, fechaHasta) {
 function movimientosInventarioListar_(filtros) {
   filtros = filtros || {};
   const indice = filtros.indice || indiceCatalogo_();
+  const cacheVentas = filtros.cache_ventas || {};
   let movimientos = [].concat(
     movimientosDesdeAjustes_(),
     movimientosDesdeProduccion_(),
@@ -208,14 +214,14 @@ function movimientosInventarioListar_(filtros) {
     const desde = filtros.fecha_desde || filtros.fecha_hasta;
     const hasta = filtros.fecha_hasta || filtros.fecha_desde;
     fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
-      movimientos.push.apply(movimientos, movimientosDesdeVentas_(fecha, filtros.sede, indice));
+      movimientos.push.apply(movimientos, movimientosDesdeVentas_(fecha, filtros.sede, indice, cacheVentas));
     });
   }
   if (filtros.incluir_cancelaciones_ventas && filtros.sede && filtros.sede !== 'Ambas') {
     const desde = filtros.fecha_desde || filtros.fecha_hasta;
     const hasta = filtros.fecha_hasta || filtros.fecha_desde;
     fechasEnRangoMovimientos_(desde, hasta).forEach(function (fecha) {
-      movimientos.push.apply(movimientos, movimientosDesdeCancelaciones_(fecha, filtros.sede, indice));
+      movimientos.push.apply(movimientos, movimientosDesdeCancelaciones_(fecha, filtros.sede, indice, cacheVentas));
     });
   }
   if (filtros.fecha_desde) movimientos = movimientos.filter(function (m) { return m.fecha >= filtros.fecha_desde; });
@@ -265,7 +271,9 @@ function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional, 
     sede: sede,
     producto: producto,
     indice: indice,
-    incluir_consumo_ventas: !!opciones.incluir_consumo_ventas
+    incluir_consumo_ventas: !!opciones.incluir_consumo_ventas,
+    incluir_cancelaciones_ventas: !!opciones.incluir_cancelaciones_ventas,
+    cache_ventas: opciones.cache_ventas
   }).filter(function (m) {
     // El día EXACTO del último conteo ya quedó representado por el conteo mismo — solo se suman
     // movimientos de días posteriores (ver limitación de "por fecha, no por hora" en el encabezado).
@@ -289,8 +297,10 @@ function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional, opcio
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   const indice = indiceOpcional || indiceCatalogo_();
   const lista = (productos || []).filter(function (p) { return p; });
+  const cacheVentas = {};
+  const opcionesConCache = Object.assign({}, opciones || {}, { cache_ventas: cacheVentas });
   const filas = lista.map(function (producto) {
-    const teorico = calcularInventarioTeorico_(producto, sede, fecha, indice, opciones);
+    const teorico = calcularInventarioTeorico_(producto, sede, fecha, indice, opcionesConCache);
     return {
       producto: producto,
       cantidad: Number((Number(teorico.cantidad) || 0).toFixed(3)),
@@ -316,8 +326,11 @@ function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional, opcio
  * calcularCambioFisico_, que es más específico de esa pantalla) — suficiente para un movimiento de
  * auditoría, no para la comparación fina de Conciliación.
  */
-function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
+function movimientosDesdeVentas_(fecha, sede, indiceOpcional, cacheVentas) {
   if (!fecha || !sede) return [];
+  const cacheClave = cacheVentas ? movimientosVentasCacheClave_('ventas', sede, fecha) : '';
+  if (cacheVentas && cacheVentas[cacheClave]) return cacheVentas[cacheClave];
+
   const indice = indiceOpcional || indiceCatalogo_();
   const ventasDelDia = (typeof ventasFudoLineasParaConsumo_ === 'function'
     ? ventasFudoLineasParaConsumo_(fecha, { sin_canceladas: true, sede: sede })
@@ -342,7 +355,7 @@ function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
     }
   });
 
-  return Object.keys(consumoEsperado).map(function (clave) {
+  const resultado = Object.keys(consumoEsperado).map(function (clave) {
     const c = consumoEsperado[clave];
     return {
       fecha: fecha,
@@ -358,14 +371,19 @@ function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
       estado: 'Registrado'
     };
   });
+  if (cacheVentas) cacheVentas[cacheClave] = resultado;
+  return resultado;
 }
 
 /**
  * Reversa de consumo por venta cancelada — misma explosión de receta que movimientosDesdeVentas_,
  * pero solo líneas canceladas y con signo positivo (devuelve al inventario teórico).
  */
-function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional) {
+function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional, cacheVentas) {
   if (!fecha || !sede) return [];
+  const cacheClave = cacheVentas ? movimientosVentasCacheClave_('cancelaciones', sede, fecha) : '';
+  if (cacheVentas && cacheVentas[cacheClave]) return cacheVentas[cacheClave];
+
   const indice = indiceOpcional || indiceCatalogo_();
   const canceladas = (typeof ventasFudoLineasCanceladasParaFecha_ === 'function'
     ? ventasFudoLineasCanceladasParaFecha_(fecha, { sede: sede })
@@ -390,7 +408,7 @@ function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional) {
     }
   });
 
-  return Object.keys(consumoEsperado).map(function (clave) {
+  const resultado = Object.keys(consumoEsperado).map(function (clave) {
     const c = consumoEsperado[clave];
     return {
       fecha: fecha,
@@ -406,6 +424,8 @@ function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional) {
       estado: 'Registrado'
     };
   });
+  if (cacheVentas) cacheVentas[cacheClave] = resultado;
+  return resultado;
 }
 
 /**
@@ -481,9 +501,10 @@ function resumenDiferenciasInventarioFechaSede_(fecha, sede, indiceOpcional) {
 
   const diferencias = [];
   let productosConDiferencia = 0;
+  const cacheVentas = {};
   Object.keys(porProducto).forEach(function (clave) {
     const item = porProducto[clave];
-    const teorico = calcularInventarioTeorico_(item.producto, sede, fecha, indice);
+    const teorico = calcularInventarioTeorico_(item.producto, sede, fecha, indice, { cache_ventas: cacheVentas });
     const contado = item.contado;
     const teoricoCant = Number(teorico.cantidad) || 0;
     const diff = contado - teoricoCant;

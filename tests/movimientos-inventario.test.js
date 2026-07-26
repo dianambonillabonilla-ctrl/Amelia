@@ -289,6 +289,37 @@ function cargarMovimientosVentas_(fx) {
 })();
 
 (function () {
+  let lecturasVentas = 0;
+  const fx = {
+    ventas: [{ creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', cantidad: 1, cancelada: false }],
+    recetaMap: {}
+  };
+  const mod = cargar('apps-script/MovimientosInventario.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', RECETAS: 'recetas' },
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    claveProducto_: claveProductoMock_,
+    leerTabla_: () => [],
+    ventaCancelada_: () => false,
+    recetasVigentes_: () => [],
+    construirRecetaMap_: () => fx.recetaMap,
+    claveRecetaVenta_: (producto) => claveProductoMock_(producto),
+    explotarReceta_: () => {},
+    nombreCanonico_: (texto) => texto,
+    ventasFudoLineasParaConsumo_: (fecha, opciones) => {
+      lecturasVentas++;
+      let lineas = fx.ventas.filter((v) => String(v.creacion).slice(0, 10) === fecha && v.sede === opciones.sede);
+      return { lineas };
+    }
+  });
+  const cache = {};
+  mod.movimientosDesdeVentas_('2026-07-21', 'Capri', {}, cache);
+  mod.movimientosDesdeVentas_('2026-07-21', 'Capri', {}, cache);
+  assert.equal(lecturasVentas, 1, 'con cache compartido, Ventas_FUDO se lee una sola vez por fecha×sede');
+  console.log('movimientosDesdeVentas_ memoiza por fecha×sede con cache_ventas: OK');
+})();
+
+(function () {
   const fx = {
     ventas: [
       { creacion: '2026-07-21', sede: 'Capri', producto: 'Chanchostilla', cantidad: 1, cancelada: false },

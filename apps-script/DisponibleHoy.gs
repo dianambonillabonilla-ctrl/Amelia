@@ -315,6 +315,7 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  */
 function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
   indice = indice || indiceCatalogo_();
+  const cacheVentas = {};
   const conteos = leerTabla_(SHEET_NAMES.CONTEOS);
   const ajustes = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO);
   const traslados = leerTabla_(SHEET_NAMES.TRASLADOS);
@@ -377,7 +378,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede) {
       const resAjustes = netoAjustesDesdeConteo_(ajustes, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
       const resTraslados = trasladosRecibidosDesdeConteo_(traslados, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
       const resProduccion = netoProduccionDesdeConteo_(producciones, clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
-      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad);
+      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad, cacheVentas);
       const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad || resVentas.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
@@ -500,7 +501,7 @@ function netoProduccionDesdeConteo_(producciones, clave, sede, fechaConteoExclus
  * hasta la fecha de corte — Fase 6 del roadmap. Solo días posteriores al día del conteo (misma
  * limitación por fecha que calcularInventarioTeorico_).
  */
-function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada, cacheVentas) {
   if (!sede || sede === 'Ambas') return { neto: 0, unidad: unidadEsperada || '' };
   if (typeof movimientosDesdeVentas_ !== 'function') return { neto: 0, unidad: unidadEsperada || '' };
   let neto = 0;
@@ -512,7 +513,7 @@ function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInc
     : [hasta];
   fechas.forEach(function (f) {
     if (fechaConteoExclusive && f <= fechaConteoExclusive) return;
-    movimientosDesdeVentas_(f, sede, indice).forEach(function (m) {
+    movimientosDesdeVentas_(f, sede, indice, cacheVentas).forEach(function (m) {
       if (claveProducto_(m.producto, indice) !== clave) return;
       const base = aUnidadBase_(Math.abs(m.cantidad), m.unidad);
       if (!unidad) unidad = base.unidad;
