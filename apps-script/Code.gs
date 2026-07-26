@@ -351,23 +351,15 @@ function handleRequest_(e, method) {
       case 'conciliacion_historial_desfases':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_(conciliacionHistorialDesfases_(params.fecha_desde, params.fecha_hasta, sesion.usuario));
-      case 'ubicaciones_listar':
-        return jsonOut_({ ok: true, data: ubicacionesListar_(params.sede) });
       case 'movimientos_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: movimientosInventarioListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
       case 'inventario_teorico_calcular':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
-      case 'movimientos_inventario_libro_listar':
+      case 'movimientos_venta_dia_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
-        return jsonOut_({ ok: true, data: inventarioMovimientosLibroListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
-      case 'inventario_libro_estado':
-        requiereAdmin_(sesion.usuario);
-        return jsonOut_({ ok: true, data: inventarioLibroEstado_() });
-      case 'migracion_inventario_simular':
-        requiereAdmin_(sesion.usuario);
-        return jsonOut_(migracionInventarioSimular_());
+        return jsonOut_({ ok: true, data: movimientosDesdeVentas_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
