@@ -138,11 +138,19 @@
         filas se podrían copiar a Movimientos_Inventario).
       </p>
       <p id="admin-estado-libro" style="font-size:.9rem"></p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
+        <button class="btn dorado" id="btn-activar-dualwrite">Activar dual-write</button>
+        <button class="btn fantasma" id="btn-desactivar-dualwrite">Desactivar dual-write</button>
+      </div>
+      <p style="margin:0 0 12px; font-size:.8rem; color:var(--grey)">
+        El dual-write hace que compras, producción, traslados y mermas nuevos también se copien a
+        <code>Movimientos_Inventario</code>. La migración histórica es aparte — no lo activa sola.
+      </p>
       <button class="btn fantasma" id="btn-simular-migracion">Simular migración</button>
       <button class="btn dorado" id="btn-ejecutar-migracion" style="margin-left:8px">Ejecutar migración histórica</button>
       <p style="margin:8px 0 0; font-size:.8rem; color:var(--grey)">
         La ejecución copia movimientos de la vista calculada a <code>Movimientos_Inventario</code>.
-        Es idempotente — no duplica filas que ya existan. No activa el dual-write para registros nuevos.
+        Es idempotente — no duplica filas que ya existan.
       </p>
       <pre id="admin-migracion-resultado" style="display:none; margin-top:10px; font-size:.8rem; white-space:pre-wrap"></pre>
     </div>
@@ -192,6 +200,21 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 document.getElementById('btn-cargar').addEventListener('click', cargar);
 cargar();
 
+async function actualizarEstadoLibroAdmin_() {
+  const estado = await llamar('inventario_libro_estado', {});
+  const card = document.getElementById('card-admin-migracion');
+  card.style.display = 'block';
+  if (!estado.ok) return;
+  const activo = estado.data.activo;
+  document.getElementById('estado-libro').innerHTML = activo
+    ? `<span class="badge ok">Dual-write activo</span> — ${estado.data.filas_libro} filas en el libro físico.`
+    : '<span class="badge aviso">Dual-write inactivo</span> — solo la vista calculada tiene datos.';
+  document.getElementById('admin-estado-libro').textContent =
+    `Estado: ${activo ? 'ACTIVO' : 'INACTIVO'} · ${estado.data.filas_libro} filas en Movimientos_Inventario`;
+  document.getElementById('btn-activar-dualwrite').disabled = activo;
+  document.getElementById('btn-desactivar-dualwrite').disabled = !activo;
+}
+
 async function cargar() {
   const filtros = {
     fecha_desde: document.getElementById('filtro-desde').value,
@@ -220,17 +243,7 @@ async function cargar() {
   pintarDiferencias(resumenInv.ok ? (resumenInv.diferencias || []) : []);
 
   if (Sesion.usuario().rol === 'Administrador') {
-    const estado = await llamar('inventario_libro_estado', {});
-    const card = document.getElementById('card-admin-migracion');
-    card.style.display = 'block';
-    if (estado.ok) {
-      const activo = estado.data.activo;
-      document.getElementById('estado-libro').innerHTML = activo
-        ? `<span class="badge ok">Dual-write activo</span> — ${estado.data.filas_libro} filas en el libro físico.`
-        : '<span class="badge aviso">Dual-write inactivo</span> — solo la vista calculada tiene datos.';
-      document.getElementById('admin-estado-libro').textContent =
-        `Estado: ${activo ? 'ACTIVO' : 'INACTIVO'} · ${estado.data.filas_libro} filas en Movimientos_Inventario`;
-    }
+    await actualizarEstadoLibroAdmin_();
   }
 }
 
@@ -306,6 +319,23 @@ function formatearFechaLocal_(v) {
   if (typeof v === 'string') return v.slice(0, 10);
   try { return new Date(v).toISOString().slice(0, 10); } catch (e) { return String(v); }
 }
+
+document.getElementById('btn-activar-dualwrite').addEventListener('click', async () => {
+  if (!confirm('¿Activar el dual-write? Los registros nuevos de compras, producción, traslados y mermas también escribirán en Movimientos_Inventario.')) return;
+  const data = await llamar('inventario_libro_configurar', { activo: true });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado(data.mensaje || 'Dual-write activado.');
+  await actualizarEstadoLibroAdmin_();
+  document.getElementById('btn-cargar').click();
+});
+
+document.getElementById('btn-desactivar-dualwrite').addEventListener('click', async () => {
+  if (!confirm('¿Desactivar el dual-write? Los registros nuevos solo irán a las hojas operativas (comportamiento anterior).')) return;
+  const data = await llamar('inventario_libro_configurar', { activo: false });
+  if (!data.ok) { alert(data.error); return; }
+  avisarGuardado(data.mensaje || 'Dual-write desactivado.');
+  await actualizarEstadoLibroAdmin_();
+});
 
 document.getElementById('btn-simular-migracion').addEventListener('click', async () => {
   const data = await llamar('migracion_inventario_simular', {});

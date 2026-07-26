@@ -194,6 +194,18 @@ function nuevaFila(item = '', unidad = 'g', cantidad = '') {
           <label>Observación</label>
           <input type="text" class="in-observacion" placeholder="opcional">
         </div>
+        <div class="campo">
+          <label>Hora inicio lote</label>
+          <input type="time" class="in-hora-inicio">
+        </div>
+        <div class="campo">
+          <label>Hora fin lote</label>
+          <input type="time" class="in-hora-fin">
+        </div>
+        <div class="campo">
+          <label>Foto del pesaje</label>
+          <input type="file" class="in-evidencia" accept="image/*">
+        </div>
       </div>
     </td>`;
 
@@ -208,6 +220,22 @@ function nuevaFila(item = '', unidad = 'g', cantidad = '') {
 document.getElementById('btn-agregar-fila').addEventListener('click', () => nuevaFila());
 for (let i = 0; i < 3; i++) nuevaFila();
 
+function leerArchivoBase64_(input) {
+  const file = input.files[0];
+  if (!file) return Promise.resolve(null);
+  if (file.size > 8 * 1024 * 1024) return Promise.reject(new Error('La foto no puede superar 8 MB'));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = String(reader.result || '').split(',')[1];
+      if (!base64) { reject(new Error('No se pudo leer la foto')); return; }
+      resolve({ nombre: file.name, mime_type: file.type || 'image/jpeg', contenido_base64: base64 });
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer la foto'));
+    reader.readAsDataURL(file);
+  });
+}
+
 const btnGuardarProduccion = document.getElementById('btn-guardar');
 btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProduccion, async () => {
   const fecha = document.getElementById('fecha').value;
@@ -216,8 +244,8 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
   // El "Detalle de lote" (insumo/merma/rendimiento) es opcional y vive en la fila oculta que sigue
   // a cada .fila-produccion (ver nuevaFila) — solo se manda si de verdad se llenó algo, para no
   // guardar insumo_producto vacío por cada ítem que nunca abrió ese detalle.
-  const items = Array.from(document.getElementById('filas').getElementsByClassName('fila-produccion'))
-    .map(tr => {
+  const items = await Promise.all(Array.from(document.getElementById('filas').getElementsByClassName('fila-produccion'))
+    .map(async tr => {
       const detalle = tr.nextElementSibling;
       const item = {
         fecha, sede,
@@ -237,11 +265,22 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
       if (rendimiento !== '') item.rendimiento_porcentaje = parseFloat(rendimiento.replace(',', '.'));
       const observacion = detalle.querySelector('.in-observacion').value.trim();
       if (observacion) item.observacion = observacion;
+      const horaInicio = detalle.querySelector('.in-hora-inicio').value;
+      if (horaInicio) item.hora_inicio = horaInicio;
+      const horaFin = detalle.querySelector('.in-hora-fin').value;
+      if (horaFin) item.hora_fin = horaFin;
+      const evidenciaInput = detalle.querySelector('.in-evidencia');
+      if (evidenciaInput && evidenciaInput.files[0]) {
+        const archivo = await leerArchivoBase64_(evidenciaInput);
+        const subida = await llamar('evidencia_subir', { archivo });
+        if (!subida.ok) throw new Error(subida.error || 'Error subiendo la foto del pesaje');
+        item.evidencia_url = subida.url;
+      }
       return item;
-    })
-    .filter(it => it.item && !isNaN(it.cantidad));
+    }));
+  const itemsValidos = items.filter(it => it.item && !isNaN(it.cantidad));
 
-  // Los insumos obligatorios de cocina (vinagre balsámico, salsa de soya, sal marina...) bloquean
+  // Los insumos obligatorios de cocina
   // el guardado igual que los productos obligatorios del día bloquean Registrar conteo — sin
   // importar si esta vez hay algo en la tabla de producción o no.
   const filasObligatorias = Array.from(document.getElementById('filas-obligatorios-produccion').children);
@@ -255,7 +294,7 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
     return;
   }
 
-  if (!items.length && !filasObligatorias.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
+  if (!itemsValidos.length && !filasObligatorias.length) { alert('Agrega al menos un ítem con cantidad.'); return; }
 
   // Los insumos obligatorios se registran como CONTEO (cuánto queda), no como producción — nada
   // se "produce" del vinagre balsámico. El punto de conteo usa la ubicación predeterminada del
@@ -279,13 +318,13 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
   // forma clara de saber cuál sí se guardó). produccion_con_obligatorios_registrar valida las dos
   // cosas ANTES de escribir cualquiera — auditoría de seguridad, jul 2026.
   const data = await llamar('produccion_con_obligatorios_registrar', {
-    items_produccion: items,
+    items_produccion: itemsValidos,
     items_obligatorios: itemsObligatorios,
     opciones: { produccion: { request_id: requestId } }
   });
   if (!data.ok) { alert(data.error); return; }
 
-  avisarGuardado(`Guardado: ${items.length} ítem(s) de producción, ${itemsObligatorios.length} insumo(s) obligatorio(s).`);
+  avisarGuardado(`Guardado: ${itemsValidos.length} ítem(s) de producción, ${itemsObligatorios.length} insumo(s) obligatorio(s).`);
   cargarHistorial();
 }));
 
@@ -300,7 +339,13 @@ async function cargarHistorial() {
       ? `${escapeHtml(p.insumo_cantidad)} ${escapeHtml(p.insumo_unidad)} de ${escapeHtml(p.insumo_producto)}` +
         (p.merma_cantidad ? ` (merma: ${escapeHtml(p.merma_cantidad)} ${escapeHtml(p.merma_unidad || p.insumo_unidad)})` : '')
       : '—';
-    return `<tr><td>${escapeHtml(p.item)}</td><td>${escapeHtml(p.sede)}</td><td>${escapeHtml(p.cantidad)}</td><td>${escapeHtml(p.unidad)}</td><td>${escapeHtml(p.usuario)}</td><td>${detalle}</td></tr>`;
+    const horas = (p.hora_inicio || p.hora_fin)
+      ? `<br><span style="color:var(--grey); font-size:.8rem">Lote: ${escapeHtml(p.hora_inicio || '—')} – ${escapeHtml(p.hora_fin || '—')}</span>`
+      : '';
+    const evidencia = p.evidencia_url
+      ? `<br><a href="${escapeHtml(p.evidencia_url)}" target="_blank" rel="noopener">Ver foto</a>`
+      : '';
+    return `<tr><td>${escapeHtml(p.item)}</td><td>${escapeHtml(p.sede)}</td><td>${escapeHtml(p.cantidad)}</td><td>${escapeHtml(p.unidad)}</td><td>${escapeHtml(p.usuario)}</td><td>${detalle}${horas}${evidencia}</td></tr>`;
   }).join('');
 }
 

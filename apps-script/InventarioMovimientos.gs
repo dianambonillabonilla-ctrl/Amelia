@@ -28,6 +28,12 @@ function inventarioLibroConfigurarActivo_(activo) {
     : 'Libro central de movimientos INACTIVO — solo las hojas operativas (comportamiento anterior).';
 }
 
+/** Expuesto vía API web — solo Administrador. */
+function inventarioLibroConfigurarDesdeApi_(activo) {
+  const mensaje = inventarioLibroConfigurarActivo_(activo === true);
+  return { ok: true, data: inventarioLibroEstado_(), mensaje: mensaje };
+}
+
 function inventarioLibroEstado_() {
   return {
     activo: inventarioLibroActivo_(),
