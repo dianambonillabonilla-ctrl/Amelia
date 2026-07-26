@@ -24,14 +24,47 @@ function crearEntorno() {
   const stats = { lecturas: 0, porHoja: {} };
   const hojas = [];
 
-  // Real Sheets nunca guarda la comilla que antepone neutralizarFormula_ — es solo la marca de
-  // "esto es texto plano, no fórmula" (setValue/appendRow se comportan igual que teclear en la
-  // UI). Sin este despojo, un hash/salt en base64 que por azar empiece con +/-/=/@ (~6% de las
-  // veces) queda con la comilla PEGADA en la fila simulada pero NO en el valor recién calculado
-  // para comparar — password_hash nunca vuelve a coincidir y el login falla al azar en las
-  // pruebas, algo que no pasa contra un Sheet real.
-  function despojarApostrofeSiEsTexto_(v) {
-    return (typeof v === 'string' && v.charAt(0) === "'") ? v.slice(1) : v;
+  /**
+   * Reloj controlable: `avanzarReloj(ms)` mueve hacia adelante lo que ve `new Date()` dentro del
+   * código cargado. Necesario porque varias reglas comparan la HORA de dos hechos del mismo día —
+   * por ejemplo, una compra solo suma al inventario si ocurrió después del último conteo físico
+   * (eventoCubiertoPorConteo_ en DisponibleHoy.gs). Una prueba que registra conteo y compra seguidos
+   * los deja en el mismo milisegundo, y entonces el resultado depende de la suerte. Con esto el orden
+   * de los hechos es explícito.
+   */
+  let desplazamientoReloj = 0;
+  const DateReal = Date;
+  class FechaControlada extends DateReal {
+    constructor(...args) {
+      if (args.length === 0) super(DateReal.now() + desplazamientoReloj);
+      else super(...args);
+    }
+    static now() { return DateReal.now() + desplazamientoReloj; }
+  }
+  function avanzarReloj(ms) { desplazamientoReloj += Number(ms) || 0; }
+  /**
+   * Fija la hora que verá el código a un instante concreto. Conviene usarlo en cualquier prueba con
+   * fechas escritas a mano: si el código guarda `new Date()` y la prueba compara contra un
+   * '2026-07-26' fijo, correr la prueba a las 11 de la noche (o sumarle horas con avanzarReloj) mueve
+   * el día y el resultado cambia según cuándo se ejecute.
+   */
+  function fijarReloj(instante) {
+    desplazamientoReloj = new DateReal(instante).getTime() - DateReal.now();
+  }
+
+  /**
+   * Google Sheets trata una comilla simple al inicio de un texto como marca de "guardar esto como
+   * texto, no lo evalúes": no forma parte del valor, y `getValues()` devuelve el texto sin ella. Eso
+   * es justo lo que hace `neutralizarFormula_` al escribir algo que empieza con =, +, - o @.
+   *
+   * Sin emular esto, la simulación devolvía la comilla pegada al valor y cualquier dato que
+   * empezara con uno de esos caracteres se leía distinto a como se guardó. Se notó con las
+   * contraseñas: `generarSalt_` produce base64, que ~1 de cada 64 veces empieza con "+", así que un
+   * usuario nuevo no podía entrar de forma intermitente — un fallo de la simulación, no del
+   * programa, pero que habría escondido problemas reales de ida y vuelta.
+   */
+  function comoLoGuardaSheets(valor) {
+    return typeof valor === 'string' && valor.charAt(0) === "'" ? valor.slice(1) : valor;
   }
 
   function crearHoja(nombre) {
@@ -52,7 +85,7 @@ function crearEntorno() {
       copyTo: () => crearHoja(st.nombre + ' copia'),
       getDataRange: () => sh.getRange(1, 1, Math.max(st.values.length, 1), Math.max(st.maxCols, 1)),
       appendRow: (fila) => {
-        st.values.push(fila.map(despojarApostrofeSiEsTexto_));
+        st.values.push(fila.map(comoLoGuardaSheets));
         if (fila.length > st.maxCols) st.maxCols = fila.length;
         return sh;
       },
@@ -76,7 +109,7 @@ function crearEntorno() {
           setValues: (vals) => {
             asegurar(fila - 1 + vals.length, col - 1 + (vals[0] ? vals[0].length : 0));
             vals.forEach((linea, r) => linea.forEach((v, c) => {
-              st.values[fila - 1 + r][col - 1 + c] = despojarApostrofeSiEsTexto_(v);
+              st.values[fila - 1 + r][col - 1 + c] = comoLoGuardaSheets(v);
             }));
             return rng;
           },
@@ -103,7 +136,7 @@ function crearEntorno() {
   const props = new Map();
   const cache = new Map();
   const ctx = {
-    console, Math, Date, JSON, String, Number, Boolean, Object, Array, RegExp, Error, Promise,
+    console, Math, Date: FechaControlada, JSON, String, Number, Boolean, Object, Array, RegExp, Error, Promise,
     isNaN, isFinite, parseFloat, parseInt, encodeURIComponent, decodeURIComponent,
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, openById: () => spreadsheet, flush: () => {} },
     Utilities: {
@@ -175,7 +208,9 @@ function crearEntorno() {
 
   // Igual que Apps Script: todos los .gs comparten un único espacio global. La ruta se resuelve
   // desde este archivo, no desde el directorio de trabajo, para no depender de cómo se lance node.
-  const dir = path.join(__dirname, '..', '..', 'apps-script');
+  // APPS_SCRIPT_DIR permite apuntar a otra copia del backend (ej. una versión anterior extraída con
+  // `git archive`) para medir el mismo escenario contra las dos y comparar.
+  const dir = process.env.APPS_SCRIPT_DIR || path.join(__dirname, '..', '..', 'apps-script');
   fs.readdirSync(dir).filter((f) => f.endsWith('.gs')).sort().forEach((f) => {
     vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f });
   });
@@ -197,7 +232,7 @@ function crearEntorno() {
   }
   function reiniciarStats() { stats.lecturas = 0; stats.porHoja = {}; }
 
-  return { ctx, hojas, spreadsheet, post, hoja, agregar, stats, reiniciarStats, evaluar };
+  return { ctx, hojas, spreadsheet, post, hoja, agregar, stats, reiniciarStats, evaluar, avanzarReloj, fijarReloj };
 }
 
 module.exports = { crearEntorno };

@@ -198,6 +198,25 @@ function movimientosVentasCacheClave_(tipo, sede, fecha) {
 }
 
 /**
+ * Mapa de recetas vigentes en `fecha`/`sede`, reutilizado entre días con las mismas recetas.
+ *
+ * Se arma una vez por día del rango, y armarlo no es gratis: convierte unidades y rendimientos
+ * línea por línea. Como la vigencia solo cambia cuando una receta empieza o deja de estar vigente,
+ * casi todos los días de un rango comparten exactamente el mismo mapa — recorrer un año lo
+ * reconstruía 365 veces idéntico, y eso era la mitad del tiempo de "Disponible Hoy".
+ *
+ * La firma son los ids de las recetas vigentes: si dos días tienen las mismas, el mapa es el mismo.
+ * Sin caché (llamada suelta) se comporta igual que antes. El mapa se usa solo para leer.
+ */
+function recetaMapVigenteMemoizado_(fecha, sede, indice, cache) {
+  const vigentes = recetasVigentes_(fecha, sede);
+  if (!cache) return construirRecetaMap_(vigentes, indice);
+  const firma = '__receta_map__|' + sede + '|' + vigentes.map(function (r) { return r.id; }).join(',');
+  if (!cache[firma]) cache[firma] = construirRecetaMap_(vigentes, indice);
+  return cache[firma];
+}
+
+/**
  * Guarda `resultado` en el caché de consumo por venta (si hay caché) y lo devuelve, para poder
  * memoizar también las respuestas vacías en una sola expresión de `return`.
  */
@@ -381,7 +400,7 @@ function movimientosDesdeVentas_(fecha, sede, indiceOpcional, cacheVentas) {
   // tablas de Fudo completas.
   if (!ventasDelDia.length) return movimientosVentasMemoizar_(cacheVentas, cacheClave, []);
 
-  const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+  const recetaMap = recetaMapVigenteMemoizado_(fecha, sede, indice, cacheVentas);
   const consumoEsperado = {};
   ventasDelDia.forEach(function (v) {
     const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
@@ -434,7 +453,7 @@ function movimientosDesdeCancelaciones_(fecha, sede, indiceOpcional, cacheVentas
       }) }).lineas;
   if (!canceladas.length) return movimientosVentasMemoizar_(cacheVentas, cacheClave, []);
 
-  const recetaMap = construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+  const recetaMap = recetaMapVigenteMemoizado_(fecha, sede, indice, cacheVentas);
   const consumoEsperado = {};
   canceladas.forEach(function (v) {
     const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);

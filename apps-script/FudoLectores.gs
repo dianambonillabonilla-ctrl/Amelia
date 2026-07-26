@@ -58,33 +58,53 @@ function ventasFudoLineasFiltrar_(lineas, opciones, fuente) {
   return { lineas: lineas, fuente: fuente };
 }
 
-/** Líneas de venta de un día — Fudo_Items si hay datos ese día, si no Ventas_FUDO. */
+/**
+ * Agrupa una tabla por el día de `creacion`, calculando la fecha UNA vez por fila.
+ *
+ * Sin esto, pedir las líneas de un día filtraba la tabla completa, y los cálculos que recorren un
+ * rango (Disponible Hoy, libro, conciliación) hacen eso una vez por día: con un año de ventas eran
+ * ~20 millones de conversiones de fecha, y formatearFecha_ es una llamada nativa de Apps Script.
+ * Se memoiza en el alcance de solo lectura de conCacheDeTablas_ (ver Code.gs); fuera de ese alcance
+ * se recalcula, que es exactamente el comportamiento anterior.
+ */
+function fudoLineasPorFecha_(nombreHoja) {
+  function construir() {
+    const porFecha = {};
+    leerTabla_(nombreHoja).forEach(function (fila) {
+      const f = formatearFecha_(fila.creacion);
+      if (!f) return;
+      if (!porFecha[f]) porFecha[f] = [];
+      porFecha[f].push(fila);
+    });
+    return porFecha;
+  }
+  // Sin Code.gs cargado (pruebas que usan este archivo suelto) se construye sin memoizar.
+  return typeof memoEnCacheDeTablas_ === 'function'
+    ? memoEnCacheDeTablas_('lineas_por_fecha|' + nombreHoja, construir)
+    : construir();
+}
+
+/**
+ * Líneas de venta de un día — Fudo_Items si hay datos ese día, si no Ventas_FUDO.
+ * El fallback se decide POR DÍA (no por tabla): una instalación puede tener julio ya normalizado en
+ * Fudo_Items y junio solo en la tabla plana.
+ */
 function ventasFudoLineasParaFecha_(fecha, opciones) {
   opciones = opciones || {};
-  let lineas = leerTabla_(SHEET_NAMES.FUDO_ITEMS).filter(function (it) {
-    return formatearFecha_(it.creacion) === fecha;
-  });
-  let fuente = 'Fudo_Items';
-  if (!lineas.length) {
-    lineas = leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
-      return formatearFecha_(v.creacion) === fecha;
-    });
-    fuente = 'Ventas_FUDO';
-  } else {
-    lineas = lineas.map(fudoItemALineaPlana_);
+  const items = fudoLineasPorFecha_(SHEET_NAMES.FUDO_ITEMS)[fecha] || [];
+  if (items.length) {
+    return ventasFudoLineasFiltrar_(items.map(fudoItemALineaPlana_), opciones, 'Fudo_Items');
   }
-  return ventasFudoLineasFiltrar_(lineas, opciones, fuente);
+  const planas = fudoLineasPorFecha_(SHEET_NAMES.VENTAS_FUDO)[fecha] || [];
+  return ventasFudoLineasFiltrar_(planas.slice(), opciones, 'Ventas_FUDO');
 }
 
 /** Subítems/modificadores de un día — solo Fudo_Subitems (sin tabla plana). */
 function subitemsFudoParaFecha_(fecha, opciones) {
   opciones = opciones || {};
-  let lineas = leerTabla_(SHEET_NAMES.FUDO_SUBITEMS).filter(function (s) {
-    return formatearFecha_(s.creacion) === fecha;
-  });
+  const lineas = fudoLineasPorFecha_(SHEET_NAMES.FUDO_SUBITEMS)[fecha] || [];
   if (!lineas.length) return { lineas: [], fuente: null };
-  lineas = lineas.map(fudoSubitemALineaPlana_);
-  return ventasFudoLineasFiltrar_(lineas, opciones, 'Fudo_Subitems');
+  return ventasFudoLineasFiltrar_(lineas.map(fudoSubitemALineaPlana_), opciones, 'Fudo_Subitems');
 }
 
 /** Líneas canceladas de un día — Fudo_Items con fallback a Ventas_FUDO. */
@@ -212,15 +232,18 @@ function fudoFechasConVentas_(sede, cache) {
   const claveCache = FUDO_FECHAS_CACHE_PREFIJO_ + '|' + (sede || '');
   if (cache && cache[claveCache]) return cache[claveCache];
 
+  // Reutiliza el índice por fecha (fudoLineasPorFecha_) en vez de recorrer las tres tablas de nuevo:
+  // la fecha de cada fila ya se calculó al armarlo.
   const fechas = {};
-  function marcar(linea) {
-    if (sede && sede !== 'Ambas' && linea.sede !== sede) return;
-    const f = formatearFecha_(linea.creacion);
-    if (f) fechas[f] = true;
-  }
-  leerTabla_(SHEET_NAMES.FUDO_ITEMS).forEach(marcar);
-  leerTabla_(SHEET_NAMES.VENTAS_FUDO).forEach(marcar);
-  leerTabla_(SHEET_NAMES.FUDO_SUBITEMS).forEach(marcar);
+  [SHEET_NAMES.FUDO_ITEMS, SHEET_NAMES.VENTAS_FUDO, SHEET_NAMES.FUDO_SUBITEMS].forEach(function (hoja) {
+    const porFecha = fudoLineasPorFecha_(hoja);
+    Object.keys(porFecha).forEach(function (f) {
+      if (fechas[f]) return;
+      const hayDeEsaSede = !sede || sede === 'Ambas' ||
+        porFecha[f].some(function (linea) { return linea.sede === sede; });
+      if (hayDeEsaSede) fechas[f] = true;
+    });
+  });
 
   const lista = Object.keys(fechas).sort();
   if (cache) cache[claveCache] = lista;

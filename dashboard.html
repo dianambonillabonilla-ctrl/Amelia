@@ -128,9 +128,12 @@ async function cargar() {
   const sede = document.getElementById('sede-corte').value;
   fechaCorteActual = fecha;
   sedeCorteActual = sede;
+
   // Todo lo que necesita esta pantalla se lanza junto, en una sola ida y vuelta: ninguna de estas
   // consultas depende del resultado de otra, y cada `await` encadenado sería una espera completa
-  // más contra el Apps Script.
+  // más contra el Apps Script. turno_sector_hoy/turno_cierre_estado se piden UNA sola vez aquí
+  // (dentro de pendientesConsultas_) y se comparten entre el indicador de arriba (estado del
+  // turno) y el bloque de pendientes de abajo — antes cada uno pedía los suyos por separado.
   const usuario = Sesion.usuario();
   const consultasPendientes = usuario
     ? pendientesConsultas_(usuario, fechaLocalHoy_(), sede)
@@ -149,6 +152,15 @@ async function cargar() {
   const nFrecuencia = pintarAlertaFrecuenciaHoy_(catalogoActual, fecha, sede);
   const nInsumos = pintarAlertaInsumos_(data.data.stock_ingredientes, catalogoActual, sede, gestionesAbiertas);
   const nPlatosBajos = pintarTilesPlatos_(data.data.platos);
+  if (consultasPendientes.promesas.cierre) {
+    const [dataCierre, dataSector] = await Promise.all([
+      consultasPendientes.promesas.cierre,
+      consultasPendientes.promesas.sector || Promise.resolve({ ok: false })
+    ]);
+    pintarEstadoTurno_(sede, dataCierre, dataSector);
+  } else {
+    pintarEstadoTurno_(sede, { ok: false }, { ok: false });
+  }
   const nPendientes = usuario ? await pintarPendientes_(consultasPendientes) : 0;
   actualizarResumenDia_({ pendientes: nPendientes, frecuencia: nFrecuencia, platosBajos: nPlatosBajos, insumos: nInsumos });
 
@@ -430,16 +442,11 @@ function sedeAlcanzable_(sede) {
  * aparte de "abrir", así que el aviso manda directo ahí. Solo aplica con una sede específica
  * elegida (no "Ambas": el turno se abre/cierra por sede, no de forma agregada).
  */
-async function pintarEstadoTurno_(sede) {
+function pintarEstadoTurno_(sede, dataCierre, dataSector) {
   const cont = document.getElementById('estado-turno');
   const usuario = Sesion.usuario();
   if (!usuario || !sede || sede === 'Ambas') { cont.style.display = 'none'; return; }
 
-  const hoy = fechaLocalHoy_();
-  const [dataCierre, dataSector] = await Promise.all([
-    llamar('turno_cierre_estado', { fecha: hoy, sede }),
-    llamar('turno_sector_hoy', { fecha: hoy })
-  ]);
   const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
 
   let icono, clase, texto;
@@ -466,29 +473,35 @@ async function pintarEstadoTurno_(sede) {
  * pendiente hoy, con el botón para cerrar el turno cuando ya no falte nada (ver Turnos.gs).
  */
 /**
- * Todas las consultas que necesita el bloque de pendientes, pedidas de una sola vez. Antes se
- * pedían en cadena (traslados, luego sector de hoy, luego faltantes+estado de cierre): cada
- * `await` era una ida y vuelta completa al Apps Script, así que abrir el dashboard costaba cuatro
- * esperas seguidas aunque ninguna de las consultas dependa del resultado de la anterior.
+ * Todas las consultas que necesita el bloque de pendientes (y el indicador de estado de turno de
+ * arriba), pedidas de una sola vez. Antes se pedían en cadena (traslados, luego sector de hoy,
+ * luego faltantes+estado de cierre, luego resumen) y encima turno_sector_hoy/turno_cierre_estado
+ * se volvían a pedir aparte para el indicador de arriba — cada `await` encadenado, o cada consulta
+ * repetida, era otra ida y vuelta completa al Apps Script, la causa real de los 25-35 segundos que
+ * tardaba en cargar "Disponible Hoy".
  *
- * Quién puede cerrar turno depende del sector elegido hoy, que es justo una de estas consultas —
- * pero si "Caja" no está entre los sectores habilitados del usuario, su sector de hoy nunca podrá
- * ser Caja, así que se puede decidir antes de preguntar y no se pide nada de más.
+ * `sector`/`cierre` se piden si hace falta para CUALQUIERA de los dos usos (el indicador de arriba
+ * los necesita para toda la sede, no solo para quien puede cerrar turno); `faltantes`/`resumen`
+ * solo se piden para quien de verdad podría llegar a cerrar el turno (Administrador/Encargado, o
+ * quien tenga hoy el sector "Caja" — eso último solo se sabe tras la respuesta de `sector`, así que
+ * aquí se aproxima con "tiene Caja entre sus sectores habilitados", suficiente para decidir si vale
+ * la pena pedirlo de una vez; pintarPendientes_ vuelve a confirmarlo con el sector de hoy ya real).
  */
 function pendientesConsultas_(usuario, hoy, sede) {
   const sectoresPermitidos = String(usuario.sectores_permitidos || '').split(',').map(s => s.trim()).filter(Boolean);
   const puedeCerrarPorRol = usuario.rol === 'Administrador' || usuario.rol === 'Encargado';
   const podriaCerrarPorCaja = sectoresPermitidos.includes('Caja');
-  const pideCierre = (puedeCerrarPorRol || podriaCerrarPorCaja) && sede && sede !== 'Ambas';
+  const sedeEspecifica = !!(sede && sede !== 'Ambas');
+  const pideCierre = (puedeCerrarPorRol || podriaCerrarPorCaja) && sedeEspecifica;
   return {
     sectoresPermitidos,
     puedeCerrarPorRol,
     pideCierre,
     promesas: {
       traslados: llamar('traslados_listar', { filtro: { estado: 'Enviado' } }),
-      sector: sectoresPermitidos.length ? llamar('turno_sector_hoy', { fecha: hoy }) : null,
+      sector: (sectoresPermitidos.length || sedeEspecifica) ? llamar('turno_sector_hoy', { fecha: hoy }) : null,
+      cierre: sedeEspecifica ? llamar('turno_cierre_estado', { fecha: hoy, sede }) : null,
       faltantes: pideCierre ? llamar('turno_faltantes_por_sector', { fecha: hoy, sede }) : null,
-      cierre: pideCierre ? llamar('turno_cierre_estado', { fecha: hoy, sede }) : null,
       // Se pide junto con las demás en vez de esperar a saber si falta algún conteo: en el caso
       // normal (no falta nada) hace falta igual, y así no cuesta otra ida y vuelta.
       resumen: pideCierre ? llamar('turno_resumen_cierre', { fecha: hoy, sede }) : null
@@ -496,12 +509,20 @@ function pendientesConsultas_(usuario, hoy, sede) {
   };
 }
 
-/** Vuelve a pedir y pintar el bloque de pendientes — tras cerrar turno, por ejemplo. */
+/** Vuelve a pedir y pintar el indicador de estado de turno y el bloque de pendientes — tras cerrar turno, por ejemplo. */
 async function refrescarPendientes_() {
   const usuario = Sesion.usuario();
   if (!usuario) return 0;
   const sede = document.getElementById('sede-corte').value;
-  return pintarPendientes_(pendientesConsultas_(usuario, fechaLocalHoy_(), sede));
+  const consultas = pendientesConsultas_(usuario, fechaLocalHoy_(), sede);
+  if (consultas.promesas.cierre) {
+    const [dataCierre, dataSector] = await Promise.all([
+      consultas.promesas.cierre,
+      consultas.promesas.sector || Promise.resolve({ ok: false })
+    ]);
+    pintarEstadoTurno_(sede, dataCierre, dataSector);
+  }
+  return pintarPendientes_(consultas);
 }
 
 async function pintarPendientes_(consultas) {
@@ -527,7 +548,7 @@ async function pintarPendientes_(consultas) {
 
   const sectoresPermitidos = consultas.sectoresPermitidos;
   let sectorHoyUsuario = '';
-  if (consultas.promesas.sector) {
+  if (sectoresPermitidos.length && consultas.promesas.sector) {
     const dataSector = await consultas.promesas.sector;
     if (dataSector.ok) sectorHoyUsuario = dataSector.sector || '';
     if (dataSector.ok && !dataSector.sector) {
