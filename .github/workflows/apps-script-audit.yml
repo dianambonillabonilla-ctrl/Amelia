@@ -21,3 +21,53 @@ jobs:
 
       - name: Ejecutar auditoría estática
         run: node tests/apps-script-audit.js
+
+      - name: Probar API desplegada de Apps Script
+        env:
+          API_URL: https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec
+        run: |
+          node <<'NODE'
+          const url = process.env.API_URL;
+
+          async function leerJson(response, nombre) {
+            const text = await response.text();
+            let data;
+            try {
+              data = JSON.parse(text);
+            } catch (error) {
+              throw new Error(`${nombre}: respuesta no JSON (HTTP ${response.status}): ${text.slice(0, 300)}`);
+            }
+            return { response, data };
+          }
+
+          async function main() {
+            const getResult = await leerJson(await fetch(url, { redirect: 'follow' }), 'GET');
+            if (!getResult.response.ok) throw new Error(`GET devolvió HTTP ${getResult.response.status}`);
+            if (getResult.data.ok !== false || !String(getResult.data.error || '').includes('solo acepta solicitudes POST')) {
+              throw new Error(`GET no corresponde al backend esperado: ${JSON.stringify(getResult.data)}`);
+            }
+            console.log('✅ GET: el despliegue responde y corresponde al backend esperado.');
+
+            const postResult = await leerJson(await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'login',
+                usuario: '__prueba_api_automatica__',
+                password: '__prueba_api_automatica__'
+              }),
+              redirect: 'follow'
+            }), 'POST login');
+
+            if (!postResult.response.ok) throw new Error(`POST devolvió HTTP ${postResult.response.status}`);
+            if (postResult.data.ok !== false || !String(postResult.data.error || '').toLowerCase().includes('incorrect')) {
+              throw new Error(`La ruta login no respondió como se esperaba: ${JSON.stringify(postResult.data)}`);
+            }
+            console.log('✅ POST login: la API procesa JSON y ejecuta la ruta de autenticación.');
+          }
+
+          main().catch((error) => {
+            console.error('❌ Prueba de API fallida:', error.message);
+            process.exit(1);
+          });
+          NODE
