@@ -332,6 +332,11 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
       archivo_origen: archivoSync
     });
   }
+  if (typeof fudoSubitemsEscribirDesdeSales_ === 'function' && resultado.registros.length) {
+    fudoSubitemsEscribirDesdeSales_(resultado.registros, resultado.incluidos, indiceMapeo, {
+      archivo_origen: archivoSync
+    });
+  }
 
   if (!filas.length) {
     const vacio = { ok: true, importados: 0, omitidos_duplicados: 0, tipo: 'ventas', ventas_encontradas: resultado.registros.length };
