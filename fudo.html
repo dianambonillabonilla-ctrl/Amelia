@@ -87,6 +87,19 @@
       <ul id="lista-sin-catalogo" style="margin:0; padding-left:20px"></ul>
     </div>
 
+    <div class="card" id="card-ventas-normalizadas">
+      <h2>Ventas normalizadas (Fudo_Ventas / Fudo_Items)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Dual-write experimental desde <code>Ventas_FUDO</code> — la conciliación sigue leyendo la
+        tabla plana. Cada importación o sync copia también aquí, agrupado por id de venta.
+      </p>
+      <p id="estado-ventas-normalizadas" class="vacio">Cargando…</p>
+      <p id="acciones-ventas-normalizadas" style="display:none; margin:12px 0 0">
+        <button class="btn fantasma" id="btn-migrar-ventas-flat">Migrar histórico desde Ventas_FUDO</button>
+      </p>
+      <pre id="resultado-migracion-ventas" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
+    </div>
+
     <div class="card" id="card-sync-rapida" style="display:none">
       <h2>Sincronización rápida</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">Solo Administrador. Ventas primero, pagos después — mismo criterio que en Importar.</p>
@@ -114,6 +127,7 @@ const esAdmin = usuario.rol === 'Administrador';
 if (esAdmin) {
   document.getElementById('card-sync-rapida').style.display = 'block';
   document.getElementById('acciones-stock-admin').style.display = 'block';
+  document.getElementById('acciones-ventas-normalizadas').style.display = 'block';
 }
 
 const hoy = fechaLocalHoy_();
@@ -135,6 +149,7 @@ async function cargar() {
   pintarStock(data.stock_fudo_base);
   pintarPendientes(data.ventas_pendientes_sede);
   pintarSinCatalogo(data.productos_sin_catalogo);
+  pintarVentasNormalizadas(data.ventas_normalizadas);
 }
 
 function pintarCredenciales(data) {
@@ -214,6 +229,15 @@ function pintarPendientes(p) {
     (p.grupos > p.detalle.length ? `<tr><td colspan="4" style="color:var(--grey); font-size:.85rem">… y ${p.grupos - p.detalle.length} grupos más en Importar.</td></tr>` : '');
 }
 
+function pintarVentasNormalizadas(vn) {
+  const el = document.getElementById('estado-ventas-normalizadas');
+  if (!vn) { el.textContent = 'Sin datos.'; return; }
+  el.innerHTML =
+    `<p style="margin:0">Líneas planas (Ventas_FUDO): <strong>${escapeHtml(vn.flat_lineas)}</strong></p>` +
+    `<p style="margin:8px 0 0">Ventas agrupadas (Fudo_Ventas): <strong>${escapeHtml(vn.ventas)}</strong></p>` +
+    `<p style="margin:4px 0 0">Ítems (Fudo_Items): <strong>${escapeHtml(vn.items)}</strong></p>`;
+}
+
 function pintarSinCatalogo(sc) {
   const card = document.getElementById('card-sin-catalogo');
   if (!sc || !sc.total) { card.style.display = 'none'; return; }
@@ -222,6 +246,16 @@ function pintarSinCatalogo(sc) {
   lista.innerHTML = sc.muestra.map(n => `<li>${escapeHtml(n)}</li>`).join('') +
     (sc.total > sc.muestra.length ? `<li style="color:var(--grey)">… y ${sc.total - sc.muestra.length} más</li>` : '');
 }
+
+document.getElementById('btn-migrar-ventas-flat').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-ventas-flat'), async () => {
+  if (!confirm('¿Copiar todo Ventas_FUDO a Fudo_Ventas/Fudo_Items? Es idempotente — no duplica ítems que ya existan.')) return;
+  const data = await llamar('fudo_ventas_migrar', {});
+  const pre = document.getElementById('resultado-migracion-ventas');
+  pre.style.display = 'block';
+  pre.textContent = JSON.stringify(data, null, 2);
+  if (data.ok) { avisarGuardado(`Migración: ${data.items_creados || 0} ítems nuevos.`); cargar(); }
+  else alert(data.error || 'Error en la migración');
+}));
 
 document.getElementById('btn-sync-hoy').addEventListener('click', conBotonProtegido(document.getElementById('btn-sync-hoy'), sincronizarRango));
 document.getElementById('btn-reintentar-ultimo').addEventListener('click', async () => {

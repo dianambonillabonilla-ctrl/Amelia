@@ -180,6 +180,9 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
       importados++;
     });
     appendRowsFromObjs_(SHEET_NAMES.VENTAS_FUDO, nuevasFilas);
+    if (typeof fudoVentasEscribirDesdeFlat_ === 'function' && nuevasFilas.length) {
+      fudoVentasEscribirDesdeFlat_(nuevasFilas);
+    }
 
     const valores = Object.keys(sinIdentificar);
     return {
