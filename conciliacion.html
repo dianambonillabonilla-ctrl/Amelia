@@ -27,6 +27,7 @@
       <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura" class="activo">Conciliación</a>
       <a href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura">Libro de inventario</a>
       <a href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de conciliación</a>
+      <a href="historial-cierres-turno.html" data-solo-rol="Administrador,Encargado,Lectura">Histórico de cierres</a>
       <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
       <a href="usuarios.html" data-solo-rol="Administrador">Usuarios</a>
     </nav>
@@ -68,6 +69,16 @@
     </div>
 
     <div class="card">
+      <h2>Consumo por ventas — vista del libro</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Misma explosión de recetas que usa la conciliación de comida, expresada como movimientos del
+        libro central (<code>movimientosDesdeVentas_</code>). Útil para auditar qué debió salir del
+        inventario según Fudo ese día.
+      </p>
+      <div id="bloques-consumo-ventas"><p class="vacio">Cargando…</p></div>
+    </div>
+
+    <div class="card">
       <h2>Inventario por sede — ventas vs. cambio físico (comida, bebidas y demás)</h2>
       <p style="color:var(--grey); font-size:.85rem">No compara contra el stock de FUDO (para comida no cuadra) — compara el cambio físico (hoy vs. ayer) contra lo que las ventas debieron consumir: por receta, o 1 a 1 si no tiene (ej. una bebida). Ya incluye compras, traslados, producción y mermas de esa sede.</p>
       <div id="bloques-comida"></div>
@@ -106,6 +117,28 @@ async function cargar() {
   pintarVentasDia(data.data.ventas, sedeRestringida);
   pintarBebidas(data.data.bebidas, sedeRestringida);
   pintarComida(data.data.comida);
+  pintarConsumoVentasLibro_(fecha, sedeRestringida, Object.keys(data.data.comida || {}));
+}
+
+async function pintarConsumoVentasLibro_(fecha, sedeRestringida, sedesComida) {
+  const cont = document.getElementById('bloques-consumo-ventas');
+  const sedes = sedeRestringida ? [sedeRestringida] : (sedesComida.length ? sedesComida : ['San Antonio', 'Capri']);
+  const resultados = await Promise.all(sedes.map(sede => llamar('movimientos_venta_dia_listar', { fecha, sede }).then(r => ({ sede, filas: r.ok ? r.data : [] }))));
+  let html = '';
+  resultados.forEach(({ sede, filas }) => {
+    html += `<h3 style="margin:16px 0 8px">${escapeHtml(sede)}</h3>`;
+    if (!filas.length) {
+      html += '<p class="vacio">Sin consumo por ventas ese día en esta sede.</p>';
+      return;
+    }
+    html += '<table><thead><tr><th>Producto</th><th>Cantidad consumida</th><th>Unidad</th></tr></thead><tbody>';
+    filas.sort((a, b) => String(a.producto).localeCompare(String(b.producto)));
+    filas.forEach(m => {
+      html += `<tr><td>${escapeHtml(m.producto)}</td><td>${escapeHtml(Math.abs(Number(m.cantidad) || 0))}</td><td>${escapeHtml(m.unidad)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  });
+  cont.innerHTML = html || '<p class="vacio">Sin datos.</p>';
 }
 
 function pintarVentasDia(filas, sedeRestringida) {

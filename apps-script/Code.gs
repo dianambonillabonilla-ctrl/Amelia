@@ -83,7 +83,7 @@ function configurarHojas() {
     Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
       'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones',
       'pagos_fudo_total', 'pagos_efectivo_esperado', 'diferencia_caja',
-      'inventario_contado', 'diferencia_inventario'],
+      'inventario_contado', 'diferencia_inventario', 'diferencias_inventario_json'],
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
@@ -283,6 +283,9 @@ function handleRequest_(e, method) {
       case 'turno_resumen_cierre':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(turnoResumenCierre_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'cierres_turno_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: cierresTurnoListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
