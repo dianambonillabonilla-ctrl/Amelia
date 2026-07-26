@@ -94,13 +94,18 @@ function fudoApiObtenerToken_() {
     return tokenGuardado;
   }
 
-  const resp = UrlFetchApp.fetch(FUDO_API_AUTH_URL_, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Accept: 'application/json' },
-    payload: JSON.stringify({ apiKey: apiKey, apiSecret: apiSecret }),
-    muteHttpExceptions: true
-  });
+  let resp;
+  try {
+    resp = UrlFetchApp.fetch(FUDO_API_AUTH_URL_, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Accept: 'application/json' },
+      payload: JSON.stringify({ apiKey: apiKey, apiSecret: apiSecret }),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    throw fudoApiErrorConIncidente_('No se pudo conectar con la API de FUDO para autenticar', err && err.message ? err.message : String(err));
+  }
   if (resp.getResponseCode() !== 200) {
     throw fudoApiErrorConIncidente_('Autenticación con la API de FUDO falló (' + resp.getResponseCode() + ')', resp.getContentText());
   }
@@ -142,11 +147,16 @@ function fudoApiPeticionPagina_(recurso, opciones) {
   if (opciones.include) params.push('include=' + encodeURIComponent(opciones.include));
 
   const url = fudoApiBaseUrl_().replace(/\/$/, '') + '/' + String(recurso).replace(/^\//, '') + '?' + params.join('&');
-  const resp = UrlFetchApp.fetch(url, {
-    method: 'get',
-    headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
-    muteHttpExceptions: true
-  });
+  let resp;
+  try {
+    resp = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    throw fudoApiErrorConIncidente_('No se pudo conectar con la API de FUDO (GET ' + recurso + ')', err && err.message ? err.message : String(err));
+  }
   if (resp.getResponseCode() !== 200) {
     throw fudoApiErrorConIncidente_('GET ' + recurso + ' falló (' + resp.getResponseCode() + ')', resp.getContentText());
   }
