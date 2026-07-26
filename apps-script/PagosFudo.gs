@@ -68,6 +68,7 @@ function pagosFudoImportar_(filas, usuario, opciones) {
     let actualizados = 0;
     let omitidos = 0;
     const nuevasFilas = [];
+    const procesados = [];
 
     filas.forEach(function (f) {
       const idPago = String(f.id_pago || '');
@@ -86,6 +87,7 @@ function pagosFudoImportar_(filas, usuario, opciones) {
         importado_por: usuario.nombre,
         importado_en: ahora
       });
+      procesados.push(obj);
       const filaExistente = filaPorId[idPago];
       if (filaExistente) {
         headers.forEach(function (h, c) {
@@ -98,6 +100,9 @@ function pagosFudoImportar_(filas, usuario, opciones) {
       }
     });
     appendRowsFromObjs_(SHEET_NAMES.PAGOS_FUDO, nuevasFilas);
+    if (typeof fudoPagosEscribirDesdeFlat_ === 'function' && procesados.length) {
+      fudoPagosEscribirDesdeFlat_(procesados);
+    }
     return { ok: true, importados: importados, actualizados: actualizados, omitidos: omitidos, tipo: 'pagos' };
   } finally {
     lock.releaseLock();

@@ -100,6 +100,19 @@
       <pre id="resultado-migracion-ventas" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
     </div>
 
+    <div class="card" id="card-pagos-normalizados">
+      <h2>Pagos normalizados (Fudo_Pagos)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Dual-write experimental desde <code>Pagos_FUDO</code> — el cierre de turno sigue leyendo la
+        tabla plana. Cada sync de pagos copia también aquí, con flag <code>es_efectivo</code> precalculado.
+      </p>
+      <p id="estado-pagos-normalizados" class="vacio">Cargando…</p>
+      <p id="acciones-pagos-normalizados" style="display:none; margin:12px 0 0">
+        <button class="btn fantasma" id="btn-migrar-pagos-flat">Migrar histórico desde Pagos_FUDO</button>
+      </p>
+      <pre id="resultado-migracion-pagos" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
+    </div>
+
     <div class="card" id="card-sync-rapida" style="display:none">
       <h2>Sincronización rápida</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">Solo Administrador. Ventas primero, pagos después — mismo criterio que en Importar.</p>
@@ -128,6 +141,7 @@ if (esAdmin) {
   document.getElementById('card-sync-rapida').style.display = 'block';
   document.getElementById('acciones-stock-admin').style.display = 'block';
   document.getElementById('acciones-ventas-normalizadas').style.display = 'block';
+  document.getElementById('acciones-pagos-normalizados').style.display = 'block';
 }
 
 const hoy = fechaLocalHoy_();
@@ -150,6 +164,7 @@ async function cargar() {
   pintarPendientes(data.ventas_pendientes_sede);
   pintarSinCatalogo(data.productos_sin_catalogo);
   pintarVentasNormalizadas(data.ventas_normalizadas);
+  pintarPagosNormalizados(data.pagos_normalizados);
 }
 
 function pintarCredenciales(data) {
@@ -238,6 +253,15 @@ function pintarVentasNormalizadas(vn) {
     `<p style="margin:4px 0 0">Ítems (Fudo_Items): <strong>${escapeHtml(vn.items)}</strong></p>`;
 }
 
+function pintarPagosNormalizados(pn) {
+  const el = document.getElementById('estado-pagos-normalizados');
+  if (!pn) { el.textContent = 'Sin datos.'; return; }
+  el.innerHTML =
+    `<p style="margin:0">Registros planos (Pagos_FUDO): <strong>${escapeHtml(pn.flat_registros)}</strong></p>` +
+    `<p style="margin:8px 0 0">Pagos normalizados (Fudo_Pagos): <strong>${escapeHtml(pn.pagos)}</strong></p>` +
+    `<p style="margin:4px 0 0">Efectivo acumulado (no cancelado): <strong>$${escapeHtml(Number(pn.efectivo_total || 0).toLocaleString('es-CO'))}</strong></p>`;
+}
+
 function pintarSinCatalogo(sc) {
   const card = document.getElementById('card-sin-catalogo');
   if (!sc || !sc.total) { card.style.display = 'none'; return; }
@@ -254,6 +278,16 @@ document.getElementById('btn-migrar-ventas-flat').addEventListener('click', conB
   pre.style.display = 'block';
   pre.textContent = JSON.stringify(data, null, 2);
   if (data.ok) { avisarGuardado(`Migración: ${data.items_creados || 0} ítems nuevos.`); cargar(); }
+  else alert(data.error || 'Error en la migración');
+}));
+
+document.getElementById('btn-migrar-pagos-flat').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-pagos-flat'), async () => {
+  if (!confirm('¿Copiar todo Pagos_FUDO a Fudo_Pagos? Es idempotente — actualiza pagos que ya existan.')) return;
+  const data = await llamar('fudo_pagos_migrar', {});
+  const pre = document.getElementById('resultado-migracion-pagos');
+  pre.style.display = 'block';
+  pre.textContent = JSON.stringify(data, null, 2);
+  if (data.ok) { avisarGuardado(`Migración: ${data.creados || 0} nuevos, ${data.actualizados || 0} actualizados.`); cargar(); }
   else alert(data.error || 'Error en la migración');
 }));
 

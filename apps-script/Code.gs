@@ -24,6 +24,7 @@ const SHEET_NAMES = {
   VENTAS_FUDO: 'Ventas_FUDO',
   FUDO_VENTAS: 'Fudo_Ventas',
   FUDO_ITEMS: 'Fudo_Items',
+  FUDO_PAGOS: 'Fudo_Pagos',
   SESIONES: 'Sesiones',
   PRODUCCIONES: 'Producciones',
   ALERTAS_ENVIADAS: 'AlertasEnviadas',
@@ -75,6 +76,8 @@ function configurarHojas() {
       'items_count', 'monto_total', 'lineas_canceladas'],
     Fudo_Items: ['id', 'clave_item', 'id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada',
       'sede', 'creada_por', 'formato_origen', 'archivo_origen', 'importado_en'],
+    Fudo_Pagos: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo', 'sede',
+      'es_efectivo', 'archivo_origen', 'importado_por', 'importado_en'],
     Sesiones: ['token', 'usuario_id', 'creado_en', 'expira_en'],
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
       'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
@@ -358,6 +361,15 @@ function handleRequest_(e, method) {
       case 'fudo_items_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: fudoItemsListar_(params.filtros || {}) });
+      case 'fudo_pagos_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoPagosEstado_() });
+      case 'fudo_pagos_migrar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoPagosMigrarDesdeFlat_());
+      case 'fudo_pagos_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: fudoPagosListar_(params.filtros || {}) });
       case 'fudo_mapeo_sede_listar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: fudoMapeoSedeListar_() });

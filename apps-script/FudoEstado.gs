@@ -113,6 +113,7 @@ function fudoApiEstadoPanel_() {
       ultimo_import: ultimoStockImport
     },
     productos_sin_catalogo: sinCatalogo,
-    ventas_normalizadas: typeof fudoVentasEstado_ === 'function' ? fudoVentasEstado_() : null
+    ventas_normalizadas: typeof fudoVentasEstado_ === 'function' ? fudoVentasEstado_() : null,
+    pagos_normalizados: typeof fudoPagosEstado_ === 'function' ? fudoPagosEstado_() : null
   };
 }
