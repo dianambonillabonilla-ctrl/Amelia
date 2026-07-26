@@ -71,6 +71,10 @@
       <button class="btn fantasma" id="btn-agregar-fila" style="margin-top:10px">+ Agregar línea</button>
 
       <p id="total-factura" style="margin-top:14px; font-weight:600"></p>
+      <div class="campo" style="margin-bottom:14px">
+        <label>Foto de la factura (opcional)</label>
+        <input type="file" id="evidencia-factura" accept="image/*">
+      </div>
       <button class="btn dorado" id="btn-guardar">Guardar factura</button>
     </div>
 
@@ -214,6 +218,14 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
   if (!factura.numero_factura) { alert('Escribe el número de factura.'); return; }
   if (!factura.lineas.length) { alert('Agrega al menos una línea con producto y cantidad.'); return; }
 
+  const evidenciaInput = document.getElementById('evidencia-factura');
+  if (evidenciaInput && evidenciaInput.files[0]) {
+    const archivo = await leerArchivoBase64_(evidenciaInput);
+    const subida = await llamar('evidencia_subir', { archivo });
+    if (!subida.ok) { alert(subida.error || 'No se pudo subir la foto de la factura'); return; }
+    factura.evidencia_url = subida.url;
+  }
+
   // Si alguien escribió un "producto nuevo" que en realidad ya existe (con tilde, mayúscula o
   // espacio distinto), avisar en vez de dejar que se cree un duplicado — mismo motivo por el que
   // se cambió el campo a desplegable en primer lugar.
@@ -238,6 +250,7 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
     avisarGuardado(`Factura guardada: ${data.lineas} líneas.`);
     document.getElementById('proveedor').value = '';
     document.getElementById('numero-factura').value = '';
+    document.getElementById('evidencia-factura').value = '';
     document.getElementById('filas').innerHTML = '';
     for (let i = 0; i < 3; i++) nuevaFila();
     recalcularTotal_();
@@ -269,6 +282,7 @@ function toggleDetalleFactura_(fila) {
   const detalle = document.createElement('tr');
   detalle.className = 'fila-detalle-factura';
   detalle.innerHTML = `<td></td><td colspan="7" style="background:var(--cream); padding:12px">
+    ${factura.evidencia_url ? `<p style="margin:0 0 10px"><a href="${escapeHtml(factura.evidencia_url)}" target="_blank" rel="noopener">Ver foto de la factura</a></p>` : ''}
     <table style="margin:0">
       <thead><tr><th>Producto</th><th>Sede</th><th>Cantidad</th><th>Costo</th></tr></thead>
       <tbody>

@@ -78,7 +78,7 @@ function configurarHojas() {
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
     Ajustes_Inventario: ['id', 'fecha', 'sede', 'punto', 'tipo', 'producto', 'unidad', 'cantidad', 'motivo', 'usuario', 'timestamp',
-      'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado'],
+      'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado', 'evidencia_url'],
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
     Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
       'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones',

@@ -58,7 +58,8 @@ function ajusteInventarioFila_(item, usuario) {
     // tanto. Es puramente para que el Administrador pueda marcar "ya revisé esto".
     avalado: false,
     avalado_por: '',
-    timestamp_avalado: ''
+    timestamp_avalado: '',
+    evidencia_url: item.evidencia_url || ''
   };
 }
 
