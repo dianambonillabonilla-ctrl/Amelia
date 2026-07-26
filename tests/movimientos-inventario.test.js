@@ -227,4 +227,69 @@ function cargarMovimientos_(fx) {
   console.log('calcularInventarioTeorico_ sin conteo previo: OK');
 })();
 
+// --- movimientosDesdeVentas_: consumo por venta, explotando receta vigente ----------------------
+// (función aparte, no integrada al combinador genérico — ver comentario en el encabezado del
+// archivo. Reutiliza construirRecetaMap_/explotarReceta_/claveRecetaVenta_, mockeadas aquí con el
+// mismo criterio que ya usan las pruebas de Conciliacion.gs para esas mismas funciones.)
+
+function cargarMovimientosVentas_(fx) {
+  return cargar('apps-script/MovimientosInventario.gs', {
+    SHEET_NAMES: { VENTAS_FUDO: 'ventas', RECETAS: 'recetas' },
+    normalizar_: normalizarSimple_,
+    formatearFecha_: (v) => String(v).slice(0, 10),
+    claveProducto_: claveProductoMock_,
+    leerTabla_: (hoja) => hoja === 'ventas' ? fx.ventas : (hoja === 'recetas' ? (fx.recetas || []) : []),
+    ventaCancelada_: (v) => v.cancelada === true || normalizarSimple_(v.cancelada) === 'si',
+    recetasVigentes_: () => fx.recetas || [],
+    construirRecetaMap_: () => fx.recetaMap || {},
+    claveRecetaVenta_: (producto, recetaMap) => claveProductoMock_(producto),
+    explotarReceta_: (claveProd, cantidad, recetaMap, acumulado) => {
+      recetaMap[claveProd].lineas.forEach((linea) => {
+        if (!acumulado[linea.clave]) acumulado[linea.clave] = { nombre: linea.nombre, cantidad: 0, unidad: linea.unidad };
+        acumulado[linea.clave].cantidad += cantidad * linea.cantidad;
+      });
+    },
+    nombreCanonico_: (texto) => texto
+  });
+}
+
+(function () {
+  const fx = {
+    ventas: [
+      { creacion: '2026-07-21', sede: 'Capri', producto: 'Chanchostilla', cantidad: 2, cancelada: false },
+      { creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', cantidad: 3, cancelada: false },
+      { creacion: '2026-07-21', sede: 'Capri', producto: 'Poker', cantidad: 5, cancelada: 'Si' }, // cancelada: no debe sumar
+      { creacion: '2026-07-20', sede: 'Capri', producto: 'Poker', cantidad: 100, cancelada: false }, // otro día: no debe sumar
+      { creacion: '2026-07-21', sede: 'San Antonio', producto: 'Poker', cantidad: 999, cancelada: false } // otra sede: no debe sumar
+    ],
+    recetaMap: {
+      chanchostilla: { lineas: [{ clave: 'costilla preparada', nombre: 'Costilla Preparada', unidad: 'g', cantidad: 100 }] }
+    }
+  };
+  const mod = cargarMovimientosVentas_(fx);
+  const movimientos = mod.movimientosDesdeVentas_('2026-07-21', 'Capri', {});
+
+  assert.equal(movimientos.length, 2, 'un movimiento por Costilla Preparada (receta) y uno por Poker (sin receta)');
+  assert.ok(movimientos.every((m) => m.tipo_movimiento === 'Consumo por venta'));
+  assert.ok(movimientos.every((m) => m.sede === 'Capri'));
+
+  const costilla = movimientos.find((m) => m.producto === 'Costilla Preparada');
+  assert.equal(costilla.cantidad, -200, '2 Chanchostillas × 100 g de Costilla Preparada = -200 g');
+  assert.equal(costilla.unidad, 'g');
+
+  const poker = movimientos.find((m) => m.producto === 'Poker');
+  assert.equal(poker.cantidad, -3, 'sin receta, se autoconsume 1:1 — solo las 3 no canceladas de ese día/sede');
+  assert.equal(poker.unidad, 'u');
+
+  console.log('movimientosDesdeVentas_ explota receta vigente y autoconsume sin receta 1:1: OK');
+})();
+
+(function () {
+  const mod = cargarMovimientosVentas_({ ventas: [] });
+  assert.deepEqual(mod.movimientosDesdeVentas_('2026-07-21', 'Capri', {}), [], 'sin ventas ese día/sede, no debe generar movimientos');
+  assert.deepEqual(mod.movimientosDesdeVentas_('', 'Capri', {}), [], 'sin fecha, no debe intentar calcular nada');
+  assert.deepEqual(mod.movimientosDesdeVentas_('2026-07-21', '', {}), [], 'sin sede, no debe intentar calcular nada');
+  console.log('movimientosDesdeVentas_ sin datos/parámetros: OK');
+})();
+
 console.log('movimientos-inventario: OK');

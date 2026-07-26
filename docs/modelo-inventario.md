@@ -291,11 +291,16 @@ los cálculos existentes):
   un único formato con signo (`MOVIMIENTO_TIPOS_SIGNO_`), y `calcularInventarioTeorico_(producto,
   sede, fechaCorte)` implementa la fórmula de la sección 5 (último conteo + movimientos
   posteriores) como una sola función reusable. Es una vista calculada, no una tabla nueva: no migra
-  las hojas de origen ni cambia cómo Producción/Traslados/Ajustes escriben hoy. Tampoco incluye
-  todavía "Consumo por venta" (requiere explotar la receta vigente, ya resuelto en
-  `DisponibleHoy.gs`/`Conciliacion.gs` — se conecta ahí cuando se decida consolidar, no se
-  duplica). Y compara por FECHA, no por hora exacta como sí hace `DisponibleHoy.gs` para la
-  pantalla operativa — esa lógica más fina sigue siendo la que se usa en producción por ahora.
+  las hojas de origen ni cambia cómo Producción/Traslados/Ajustes escriben hoy. Compara por FECHA,
+  no por hora exacta como sí hace `DisponibleHoy.gs` para la pantalla operativa — esa lógica más
+  fina sigue siendo la que se usa en producción por ahora.
+- **"Consumo por venta"** — `movimientosDesdeVentas_(fecha, sede, indice)`, función APARTE del
+  combinador de arriba (no integrada a `movimientosInventarioListar_`/`calcularInventarioTeorico_`):
+  toda la explosión de receta en este repo opera por un día y una sede a la vez, un patrón distinto
+  al de rango-de-fechas de las demás fuentes. Reutiliza
+  `construirRecetaMap_`/`explotarReceta_`/`claveRecetaVenta_` (`DisponibleHoy.gs`/`Recetas.gs`) —
+  mismo criterio EXACTO que ya usa `conciliarComidaPorSede_` (`Conciliacion.gs`), sin duplicar esa
+  lógica. Ventas canceladas se excluyen (no generan movimiento), igual que en Conciliación.
 
 - **Insumo consumido y merma de proceso en Producción** (sección 6.B) — `Produccion.gs`:
   `produccionRegistrar_` acepta ahora, de forma opcional, `insumo_producto`/`insumo_cantidad`/
@@ -340,11 +345,18 @@ antes de tocar código en producción):
   contra qué comparar el efectivo o qué "un solo número" de diferencia de inventario significaría
   requiere una decisión de producto, no solo código).
 - Migrar Conciliacion.gs/DisponibleHoy.gs para que consulten `movimientosInventarioListar_`/
-  `calcularInventarioTeorico_` en vez de combinar las hojas por su cuenta — deliberadamente no se
-  hizo en esta pasada para no arriesgar su lógica ya probada (comparación por hora exacta,
-  proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón concreta.
-- "Consumo por venta"/"Cancelación de venta" todavía no están en el libro — requieren explotar la
-  receta vigente de cada venta (ya resuelto en DisponibleHoy.gs, se conecta cuando se consolide).
+  `calcularInventarioTeorico_`/`movimientosDesdeVentas_` en vez de combinar las hojas por su
+  cuenta — deliberadamente no se hizo en esta pasada para no arriesgar su lógica ya probada
+  (comparación por hora exacta, proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón
+  concreta.
+- "Cancelación de venta" (el tipo de movimiento en sí) no está implementado — hoy una venta
+  cancelada simplemente se excluye del cálculo (no genera ningún movimiento), igual que ya hacía
+  Conciliacion.gs. Si en el futuro se necesita registrar la reversa de un consumo ya contabilizado
+  (ej. una venta que se cancela DESPUÉS de haberse preparado/servido), hace falta una regla de
+  negocio nueva sobre el momento de la cancelación, no solo código.
+- `movimientosDesdeVentas_` no está conectado a ninguna pantalla todavía (sí a la acción
+  `movimientos_venta_dia_listar`) — falta decidir dónde mostrarlo (¿una vista nueva del libro?
+  ¿dentro de Conciliación?).
 - Foto/evidencia de pesaje (`evidencia_url`) y hora de inicio/fin del lote: el backend ya tiene las
   columnas pero no hay flujo de subida de imágenes en todo el repositorio todavía (no es solo
   agregar un campo — hace falta decidir dónde se guardan las fotos, ej. Google Drive vía Apps
