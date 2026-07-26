@@ -49,6 +49,12 @@ function ss_() {
 }
 
 function sheet_(name) {
+  if (!name) {
+    throw new Error(
+      'Nombre de hoja inválido (undefined). El Code.gs desplegado está incompleto o desactualizado — ' +
+      'haz clasp push de todo el proyecto, corre configurarHojas() en el editor de Apps Script y vuelve a desplegar la Web App.'
+    );
+  }
   const sh = ss_().getSheetByName(name);
   if (!sh) throw new Error('No existe la hoja "' + name + '". Corre configurarHojas() primero.');
   return sh;
