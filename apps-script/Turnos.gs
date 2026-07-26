@@ -295,6 +295,9 @@ function turnoCerrar_(fecha, sede, usuario, datosCierre) {
     ? Number(datosCierre.efectivo_contado) : '';
   const diferenciaCaja = efectivoContado !== ''
     ? efectivoContado - (Number(resumen.pagos_efectivo_esperado) || 0) : '';
+  const diffsInventario = (resumen.diferencias_inventario || []).filter(function (d) {
+    return Math.abs(Number(d.diferencia) || 0) > 0.001;
+  }).slice(0, 40);
   appendRowFromObj_(SHEET_NAMES.CIERRES_TURNO, {
     id: Utilities.getUuid(),
     fecha: fecha,
@@ -310,9 +313,47 @@ function turnoCerrar_(fecha, sede, usuario, datosCierre) {
     efectivo_contado: efectivoContado,
     inventario_contado: resumen.inventario_contado,
     diferencia_inventario: resumen.diferencia_inventario,
+    diferencias_inventario_json: diffsInventario.length ? JSON.stringify(diffsInventario) : '',
     observaciones: datosCierre.observaciones || ''
   });
   return { ok: true, resumen: resumen, diferencia_caja: diferenciaCaja };
+}
+
+/**
+ * Histórico de cierres de turno — para historial-cierres-turno.html. Más reciente primero por fecha
+ * de cierre (luego por sede). Parsea diferencias_inventario_json a un arreglo listo para la UI.
+ */
+function cierresTurnoListar_(filtros) {
+  filtros = filtros || {};
+  let rows = leerTabla_(SHEET_NAMES.CIERRES_TURNO);
+  if (filtros.fecha_desde) {
+    rows = rows.filter(function (r) { return formatearFecha_(r.fecha) >= filtros.fecha_desde; });
+  }
+  if (filtros.fecha_hasta) {
+    rows = rows.filter(function (r) { return formatearFecha_(r.fecha) <= filtros.fecha_hasta; });
+  }
+  if (filtros.sede && filtros.sede !== 'Ambas') {
+    rows = rows.filter(function (r) { return r.sede === filtros.sede; });
+  }
+  return rows.sort(function (a, b) {
+    const fa = formatearFecha_(a.fecha);
+    const fb = formatearFecha_(b.fecha);
+    if (fa !== fb) return fa < fb ? 1 : -1;
+    return String(a.sede).localeCompare(String(b.sede));
+  }).map(function (r) {
+    const fila = Object.assign({}, r);
+    if (fila.diferencias_inventario_json) {
+      try {
+        fila.diferencias_inventario = JSON.parse(fila.diferencias_inventario_json);
+      } catch (err) {
+        fila.diferencias_inventario = [];
+      }
+      delete fila.diferencias_inventario_json;
+    } else {
+      fila.diferencias_inventario = [];
+    }
+    return fila;
+  });
 }
 
 function turnoCierreEstado_(fecha, sede) {

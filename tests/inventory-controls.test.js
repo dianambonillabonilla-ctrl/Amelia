@@ -2166,6 +2166,23 @@ assert.deepEqual(faltantesAlias[0].faltantes, [], 'contado bajo el alias de FUDO
   console.log('turnoResumenCierre_: OK');
 })();
 
+(function () {
+  const mod = cargar('apps-script/Turnos.gs', {
+    SHEET_NAMES: { CIERRES_TURNO: 'cierres' },
+    leerTabla_: (hoja) => hoja === 'cierres' ? [
+      { fecha: '2026-07-21', sede: 'Capri', usuario: 'Ana', ventas_fudo_total: 100,
+        diferencias_inventario_json: JSON.stringify([{ producto: 'Aceite', contado: 2, teorico: 1, diferencia: 1, unidad: 'L' }]) },
+      { fecha: '2026-07-20', sede: 'San Antonio', usuario: 'Diana', ventas_fudo_total: 50, diferencias_inventario_json: '' }
+    ] : [],
+    formatearFecha_: (v) => String(v).slice(0, 10)
+  });
+  const lista = mod.cierresTurnoListar_({ fecha_desde: '2026-07-21', fecha_hasta: '2026-07-21', sede: 'Capri' });
+  assert.equal(lista.length, 1);
+  assert.equal(lista[0].diferencias_inventario.length, 1);
+  assert.equal(lista[0].diferencias_inventario[0].producto, 'Aceite');
+  console.log('cierresTurnoListar_: OK');
+})();
+
 // turnoCerrar_: bloquea si falta algo, dejando el detalle; permite y registra el cierre si no falta nada.
 let cierresExistentes = [];
 const cierresGuardados = [];
@@ -2185,7 +2202,10 @@ function cargarTurnosCerrar_(conteosHoy) {
     indiceCatalogo_: indiceCatalogoVacioMock_,
     claveProducto_: claveProductoMock_,
     pagosFudoTotalesSedeFecha_: () => ({ pagos_fudo_total: 0, pagos_efectivo_esperado: 0, pagos_fudo_cantidad: 0 }),
-    resumenDiferenciasInventarioFechaSede_: () => ({ ok: true, productos_contados: 3, productos_con_diferencia: 1, diferencias: [] })
+    resumenDiferenciasInventarioFechaSede_: () => ({
+      ok: true, productos_contados: 3, productos_con_diferencia: 1,
+      diferencias: [{ producto: 'Sal Marina', contado: 5, teorico: 4, diferencia: 1, unidad: 'kg' }]
+    })
   });
 }
 
@@ -2207,6 +2227,8 @@ assert.equal(cierresGuardados[0].traslados_pendientes, 0);
 assert.equal(cierresGuardados[0].producciones_registradas, 0);
 assert.equal(cierresGuardados[0].inventario_contado, 3);
 assert.equal(cierresGuardados[0].diferencia_inventario, 1);
+assert.ok(cierresGuardados[0].diferencias_inventario_json, 'debe guardar detalle JSON de diferencias con desfase');
+assert.equal(JSON.parse(cierresGuardados[0].diferencias_inventario_json).length, 1);
 assert.equal(cierreOk.resumen.ventas_fudo_total, 0, 'turnoCerrar_ también debe devolver el resumen usado, no solo guardarlo');
 assert.equal(cierresGuardados[0].efectivo_contado, '', 'sin datosCierre, efectivo_contado debe quedar vacío, no forzado a 0');
 assert.equal(cierresGuardados[0].observaciones, '');
