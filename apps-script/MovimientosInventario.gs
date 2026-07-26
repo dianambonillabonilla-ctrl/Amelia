@@ -298,3 +298,61 @@ function movimientosDesdeVentas_(fecha, sede, indiceOpcional) {
     };
   });
 }
+
+/**
+ * Compara inventario teórico vs. físico contado en UN día y UNA sede — para el resumen de cierre
+ * de turno (Turnos.gs) y la vista del libro. Solo considera productos que tuvieron al menos un
+ * conteo ese día en esa sede (suma todos los puntos de conteo del mismo producto).
+ */
+function resumenDiferenciasInventarioFechaSede_(fecha, sede, indiceOpcional) {
+  if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+  const indice = indiceOpcional || indiceCatalogo_();
+  const conteosDelDia = conteoListar_(fecha, sede);
+  const porProducto = {};
+
+  conteosDelDia.forEach(function (c) {
+    const clave = claveProducto_(c.producto, indice);
+    if (!porProducto[clave]) {
+      porProducto[clave] = {
+        producto: nombreCanonico_(c.producto, indice),
+        contado: 0,
+        unidad: ''
+      };
+    }
+    const base = aUnidadBase_(c.cantidad, c.unidad);
+    if (!porProducto[clave].unidad) porProducto[clave].unidad = base.unidad;
+    if (base.unidad === porProducto[clave].unidad) {
+      porProducto[clave].contado += base.cantidad;
+    } else {
+      porProducto[clave].contado += Number(c.cantidad) || 0;
+      if (!porProducto[clave].unidad) porProducto[clave].unidad = c.unidad;
+    }
+  });
+
+  const diferencias = [];
+  let productosConDiferencia = 0;
+  Object.keys(porProducto).forEach(function (clave) {
+    const item = porProducto[clave];
+    const teorico = calcularInventarioTeorico_(item.producto, sede, fecha, indice);
+    const contado = item.contado;
+    const teoricoCant = Number(teorico.cantidad) || 0;
+    const diff = contado - teoricoCant;
+    if (Math.abs(diff) > 0.001) productosConDiferencia++;
+    diferencias.push({
+      producto: item.producto,
+      contado: contado,
+      teorico: teoricoCant,
+      diferencia: diff,
+      unidad: teorico.unidad || item.unidad || ''
+    });
+  });
+
+  diferencias.sort(function (a, b) { return Math.abs(b.diferencia) - Math.abs(a.diferencia); });
+
+  return {
+    ok: true,
+    productos_contados: Object.keys(porProducto).length,
+    productos_con_diferencia: productosConDiferencia,
+    diferencias: diferencias
+  };
+}

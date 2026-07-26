@@ -195,9 +195,9 @@ function turnoOportuno_(fecha, sede, usuario) {
  * algo antes de confirmar. Es de solo lectura (se puede pedir las veces que haga falta sin efecto
  * alguno); turnoCerrar_ vuelve a calcular lo mismo y lo guarda como snapshot al momento de cerrar.
  *
- * Deliberadamente NO incluye "diferencia de inventario" todavía: no hay un valor agregado único de
- * inventario teórico vs. contado por sede. Sí incluye pagos sincronizados de Fudo (Pagos_FUDO) para
- * comparar el efectivo esperado contra `efectivo_contado` al cerrar.
+ * Incluye pagos sincronizados de Fudo (Pagos_FUDO) para comparar el efectivo esperado contra
+ * `efectivo_contado` al cerrar, y un resumen de diferencias inventario (teórico vs. contado del día)
+ * para los productos que sí tuvieron conteo en esa sede.
  */
 function turnoResumenCierre_(fecha, sede) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
@@ -225,6 +225,10 @@ function turnoResumenCierre_(fecha, sede) {
     return formatearFecha_(p.fecha) === fecha && p.sede === sede;
   }).length;
 
+  const inventario = typeof resumenDiferenciasInventarioFechaSede_ === 'function'
+    ? resumenDiferenciasInventarioFechaSede_(fecha, sede)
+    : { ok: true, productos_contados: 0, productos_con_diferencia: 0, diferencias: [] };
+
   return {
     ok: true,
     ventas_fudo_total: ventasFudoTotal,
@@ -233,7 +237,10 @@ function turnoResumenCierre_(fecha, sede) {
     pagos_efectivo_esperado: pagos.pagos_efectivo_esperado,
     pagos_fudo_cantidad: pagos.pagos_fudo_cantidad,
     traslados_pendientes: trasladosPendientes,
-    producciones_registradas: produccionesRegistradas
+    producciones_registradas: produccionesRegistradas,
+    inventario_contado: inventario.productos_contados || 0,
+    diferencia_inventario: inventario.productos_con_diferencia || 0,
+    diferencias_inventario: inventario.diferencias || []
   };
 }
 
@@ -301,6 +308,8 @@ function turnoCerrar_(fecha, sede, usuario, datosCierre) {
     pagos_efectivo_esperado: resumen.pagos_efectivo_esperado,
     diferencia_caja: diferenciaCaja,
     efectivo_contado: efectivoContado,
+    inventario_contado: resumen.inventario_contado,
+    diferencia_inventario: resumen.diferencia_inventario,
     observaciones: datosCierre.observaciones || ''
   });
   return { ok: true, resumen: resumen, diferencia_caja: diferenciaCaja };
@@ -323,6 +332,8 @@ function turnoCierreEstado_(fecha, sede) {
     pagos_efectivo_esperado: fila ? fila.pagos_efectivo_esperado : '',
     diferencia_caja: fila ? fila.diferencia_caja : '',
     efectivo_contado: fila ? fila.efectivo_contado : '',
+    inventario_contado: fila ? fila.inventario_contado : '',
+    diferencia_inventario: fila ? fila.diferencia_inventario : '',
     observaciones: fila ? fila.observaciones : ''
   };
 }

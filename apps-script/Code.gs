@@ -82,7 +82,8 @@ function configurarHojas() {
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
     Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
       'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones',
-      'pagos_fudo_total', 'pagos_efectivo_esperado', 'diferencia_caja'],
+      'pagos_fudo_total', 'pagos_efectivo_esperado', 'diferencia_caja',
+      'inventario_contado', 'diferencia_inventario'],
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
@@ -361,12 +362,24 @@ function handleRequest_(e, method) {
       case 'movimientos_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: movimientosInventarioListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'movimientos_inventario_libro_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_({ ok: true, data: inventarioMovimientosLibroListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
+      case 'inventario_libro_estado':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: inventarioLibroEstado_() });
+      case 'migracion_inventario_simular':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(migracionInventarioSimular_());
       case 'inventario_teorico_calcular':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: calcularInventarioTeorico_(params.producto, sedeConsultaPermitida_(sesion.usuario, params.sede), params.fecha_corte) });
       case 'movimientos_venta_dia_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: movimientosDesdeVentas_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'resumen_diferencias_inventario':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(resumenDiferenciasInventarioFechaSede_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
       case 'produccion_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(produccionRegistrar_(params.items, sesion.usuario, params.opciones));
