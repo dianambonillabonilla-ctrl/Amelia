@@ -4,6 +4,14 @@
  * en vez de inferirlo restando el conteo de un día contra el anterior. Conciliacion.gs usa
  * este dato cuando existe y cae al cálculo inferido (cambio físico) cuando no hay producción
  * registrada para esa fecha/sede/ítem.
+ *
+ * insumo_producto/insumo_cantidad/insumo_unidad/merma_cantidad/merma_unidad son OPCIONALES (jul
+ * 2026, ver docs/modelo-inventario.md sección 6.B): registran cuánto insumo crudo entró al lote y
+ * cuánto se perdió como merma de proceso, además de lo ya preparado — así un mismo evento de
+ * producción puede generar sus tres movimientos ("Entrada por producción", "Consumo de
+ * producción", "Merma de producción" — ver movimientosDesdeProduccion_ en MovimientosInventario.gs)
+ * en vez de solo el primero. Si no se mandan (como hasta ahora), producciónRegistrar_ funciona
+ * exactamente igual que antes — no se exige nada nuevo a quien solo registra el producto terminado.
  */
 
 /**
@@ -20,6 +28,16 @@ function validarItemsProduccion_(items, usuario) {
     }
     if (isNaN(Number(it.cantidad)) || Number(it.cantidad) <= 0) {
       return 'La cantidad producida debe ser un número mayor que cero';
+    }
+    // El insumo consumido es opcional, pero si se manda alguno de sus tres datos, los tres son
+    // obligatorios — un insumo a medias (ej. producto sin unidad) no sirve para nada y generaría un
+    // movimiento de "Consumo de producción" incompleto en MovimientosInventario.gs.
+    const tieneAlgoDeInsumo = it.insumo_producto || it.insumo_cantidad !== undefined && it.insumo_cantidad !== '' || it.insumo_unidad;
+    if (tieneAlgoDeInsumo && (!it.insumo_producto || !it.insumo_unidad || isNaN(Number(it.insumo_cantidad)) || Number(it.insumo_cantidad) <= 0)) {
+      return 'Si registras el insumo consumido, debe traer producto, cantidad (mayor que cero) y unidad';
+    }
+    if (it.merma_cantidad !== undefined && it.merma_cantidad !== '' && (isNaN(Number(it.merma_cantidad)) || Number(it.merma_cantidad) < 0)) {
+      return 'La merma de producción no puede ser negativa';
     }
   }
   // sedeEscrituraPermitida_ (Code.gs) también deja registrar en Centro de Producción sin importar
@@ -62,7 +80,18 @@ function produccionRegistrar_(items, usuario, opciones) {
         unidad: it.unidad,
         usuario: usuario.nombre,
         timestamp: ahora,
-        request_id: opciones.request_id || ''
+        request_id: opciones.request_id || '',
+        insumo_producto: it.insumo_producto || '',
+        insumo_cantidad: it.insumo_cantidad !== undefined && it.insumo_cantidad !== '' ? Number(it.insumo_cantidad) : '',
+        insumo_unidad: it.insumo_unidad || '',
+        merma_cantidad: it.merma_cantidad !== undefined && it.merma_cantidad !== '' ? Number(it.merma_cantidad) : '',
+        merma_unidad: it.merma_unidad || it.unidad || '',
+        rendimiento_porcentaje: it.rendimiento_porcentaje !== undefined && it.rendimiento_porcentaje !== '' ? Number(it.rendimiento_porcentaje) : '',
+        receta_referencia: it.receta_referencia || '',
+        hora_inicio: it.hora_inicio || '',
+        hora_fin: it.hora_fin || '',
+        observacion: it.observacion || '',
+        evidencia_url: it.evidencia_url || ''
       });
     });
     return { ok: true, registrados: items.length };

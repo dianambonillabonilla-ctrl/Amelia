@@ -13,6 +13,13 @@
  * que este proyecto pide evitar. Cuando se decida consolidar Conciliacion.gs/DisponibleHoy.gs sobre
  * este libro (pendiente, ver docs/modelo-inventario.md), esa lógica se conecta aquí, no se copia.
  *
+ * "Consumo de producción" y "Merma de producción" SÍ están (jul 2026): Producciones ahora admite
+ * insumo_producto/insumo_cantidad/insumo_unidad/merma_cantidad opcionales (ver produccionRegistrar_
+ * en Produccion.gs). La merma NO resta de un producto real — ya queda reflejada en la diferencia
+ * entre el insumo consumido y lo efectivamente producido; se registra bajo un nombre de producto
+ * sintético solo para verse en el libro/reportes, sin arriesgar un doble descuento (ver el
+ * comentario en movimientosDesdeProduccion_).
+ *
  * Tampoco reemplaza el cálculo más fino que ya usa DisponibleHoy.gs (que compara HORA exacta contra
  * el conteo cuando ambos lados la tienen, ver eventoCubiertoPorConteo_) — calcularInventarioTeorico_
  * de este archivo compara por FECHA solamente (más simple, para una vista de auditoría general, no
@@ -66,23 +73,68 @@ function movimientosDesdeAjustes_() {
   });
 }
 
-/** Producciones -> "Entrada por producción" (solo el producto terminado; ver limitación arriba). */
+/**
+ * Producciones -> "Entrada por producción" (siempre, el producto terminado) + "Consumo de
+ * producción" y "Merma de producción" (solo si esa fila trae insumo/merma registrados — son
+ * opcionales, ver produccionRegistrar_ en Produccion.gs). Antes de jul 2026, Producciones solo
+ * guardaba el terminado, así que una fila vieja sin insumo/merma sigue generando UN solo movimiento,
+ * igual que antes.
+ */
 function movimientosDesdeProduccion_() {
-  return leerTabla_(SHEET_NAMES.PRODUCCIONES).map(function (p) {
-    return {
+  const movimientos = [];
+  leerTabla_(SHEET_NAMES.PRODUCCIONES).forEach(function (p) {
+    movimientos.push({
       fecha: formatearFecha_(p.fecha),
       producto: p.item,
       cantidad: Math.abs(Number(p.cantidad) || 0),
       unidad: p.unidad,
       sede: p.sede,
       ubicacion_origen: '',
-      ubicacion_destino: movimientoUbicacion_(p.sede, ''),
+      ubicacion_destino: movimientoUbicacion_(p.sede, 'Productos terminados'),
       tipo_movimiento: 'Entrada por producción',
       usuario: p.usuario,
       documento_relacionado: p.id,
       estado: 'Registrado'
-    };
+    });
+    if (p.insumo_producto && p.insumo_cantidad !== '' && p.insumo_cantidad !== undefined && p.insumo_cantidad !== null) {
+      movimientos.push({
+        fecha: formatearFecha_(p.fecha),
+        producto: p.insumo_producto,
+        cantidad: -Math.abs(Number(p.insumo_cantidad) || 0),
+        unidad: p.insumo_unidad,
+        sede: p.sede,
+        ubicacion_origen: movimientoUbicacion_(p.sede, 'Materia prima cruda'),
+        ubicacion_destino: '',
+        tipo_movimiento: 'Consumo de producción',
+        usuario: p.usuario,
+        documento_relacionado: p.id,
+        estado: 'Registrado'
+      });
+    }
+    if (p.merma_cantidad !== '' && p.merma_cantidad !== undefined && p.merma_cantidad !== null && Number(p.merma_cantidad) > 0) {
+      // OJO: la merma NO se resta de un producto real (ni el insumo crudo ni el terminado) — ya
+      // quedó reflejada en la diferencia entre "Consumo de producción" (-insumo_cantidad, TODO lo
+      // que entró al lote) y "Entrada por producción" (+cantidad, solo lo que sí se aprovechó).
+      // Restarla de nuevo aquí sobre un producto real sería contarla dos veces. Se registra bajo un
+      // nombre de producto sintético (que nunca calza con ningún producto real del catálogo) solo
+      // para que aparezca en el libro/reportes de merma — calcularInventarioTeorico_ de un producto
+      // real jamás la suma, porque claveProducto_ nunca la va a emparejar con ese producto.
+      movimientos.push({
+        fecha: formatearFecha_(p.fecha),
+        producto: (p.insumo_producto || p.item) + ' — merma de producción',
+        cantidad: -Math.abs(Number(p.merma_cantidad) || 0),
+        unidad: p.merma_unidad || p.unidad,
+        sede: p.sede,
+        ubicacion_origen: movimientoUbicacion_(p.sede, 'Mermas de producción'),
+        ubicacion_destino: '',
+        tipo_movimiento: 'Merma de producción',
+        usuario: p.usuario,
+        documento_relacionado: p.id,
+        estado: 'Registrado'
+      });
+    }
   });
+  return movimientos;
 }
 
 /** Traslados -> "Traslado enviado" (siempre) + "Traslado recibido" (solo si ya llegó de verdad). */

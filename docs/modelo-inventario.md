@@ -297,6 +297,17 @@ los cálculos existentes):
   duplica). Y compara por FECHA, no por hora exacta como sí hace `DisponibleHoy.gs` para la
   pantalla operativa — esa lógica más fina sigue siendo la que se usa en producción por ahora.
 
+- **Insumo consumido y merma de proceso en Producción** (sección 6.B) — `Produccion.gs`:
+  `produccionRegistrar_` acepta ahora, de forma opcional, `insumo_producto`/`insumo_cantidad`/
+  `insumo_unidad`/`merma_cantidad`/`merma_unidad` (además de `rendimiento_porcentaje`,
+  `receta_referencia`, `hora_inicio`/`hora_fin`, `observacion`, `evidencia_url`, guardados tal cual
+  sin lógica todavía). Cuando vienen, `movimientosDesdeProduccion_` genera los 3 movimientos de la
+  sección 6.B (entrada del terminado, consumo del insumo crudo, merma) en vez de solo el primero.
+  La merma se registra bajo un nombre de producto sintético (no calza con ningún producto real del
+  catálogo) para que aparezca en el libro/reportes sin restarse dos veces — ya queda reflejada en
+  la diferencia entre insumo consumido y lo efectivamente producido. Sin insumo/merma (como todas
+  las producciones registradas antes de jul 2026), sigue funcionando exactamente igual que antes.
+
 Pendiente (no implementado todavía, requiere decisiones de producto y migración de datos reales
 antes de tocar código en producción):
 
@@ -304,10 +315,10 @@ antes de tocar código en producción):
   `calcularInventarioTeorico_` en vez de combinar las hojas por su cuenta — deliberadamente no se
   hizo en esta pasada para no arriesgar su lógica ya probada (comparación por hora exacta,
   proyección de Stock_FUDO_Base hacia atrás, etc.) sin una razón concreta.
-- Agregar "Consumo de producción"/"Merma de producción" reales: hoy `Producciones` solo registra el
-  producto TERMINADO (cantidad+unidad), no el insumo crudo que entró ni la merma de proceso de la
-  sección 6.B — para eso hace falta ampliar el formulario de producción, no solo el libro.
-  "Consumo por venta"/"Cancelación de venta" tampoco están en el libro todavía (ver punto anterior).
+- "Consumo por venta"/"Cancelación de venta" todavía no están en el libro — requieren explotar la
+  receta vigente de cada venta (ya resuelto en DisponibleHoy.gs, se conecta cuando se consolide).
+- UI de producir.html para cargar insumo/merma/rendimiento/evidencia (hoy solo existe el campo en
+  el backend; la pantalla sigue mandando solo el producto terminado).
 - Refactor de `Ventas_FUDO` en `Fudo_Ventas`/`Fudo_Items`/`Fudo_Subitems`/`Fudo_Pagos`/
   `Fudo_Descuentos`/`Fudo_Propinas`.
 - Ampliación de `Cierres_Turno` con los campos de sincronización/pagos/inventario del punto 6.F.

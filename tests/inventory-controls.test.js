@@ -2343,6 +2343,37 @@ const produccionBloqueada = produccionBloqueadaMod.produccionRegistrar_(itemsPro
 assert.equal(produccionBloqueada.ok, false, 'con el lock ocupado, produccionRegistrar_ no debe registrar nada');
 assert.match(produccionBloqueada.error, /espera un momento/);
 
+// --- produccionRegistrar_: insumo consumido y merma de proceso son opcionales (jul 2026) --------
+// (docs/modelo-inventario.md sección 6.B: un mismo evento de producción puede declarar también
+// cuánto insumo crudo entró al lote y cuánto se perdió como merma, sin que sea obligatorio).
+produccionGuardada = [];
+const itemConInsumoYMerma = [{
+  fecha: '2026-07-24', sede: 'San Antonio', item: 'Costilla Preparada', unidad: 'kg', cantidad: 18.2,
+  insumo_producto: 'Costilla cruda', insumo_cantidad: 25, insumo_unidad: 'kg', merma_cantidad: 6.8
+}];
+const resultadoConInsumo = cargarProduccion_().produccionRegistrar_(itemConInsumoYMerma, usuarioProduccion, {});
+assert.equal(resultadoConInsumo.ok, true);
+assert.equal(produccionGuardada[0].insumo_producto, 'Costilla cruda');
+assert.equal(produccionGuardada[0].insumo_cantidad, 25);
+assert.equal(produccionGuardada[0].merma_cantidad, 6.8);
+
+assert.equal(
+  cargarProduccion_().produccionRegistrar_([{ fecha: '2026-07-24', sede: 'San Antonio', item: 'X', unidad: 'kg', cantidad: 1, insumo_producto: 'Costilla cruda' }], usuarioProduccion, {}).ok,
+  false,
+  'insumo_producto sin cantidad/unidad no debe guardarse a medias'
+);
+assert.equal(
+  cargarProduccion_().produccionRegistrar_([{ fecha: '2026-07-24', sede: 'San Antonio', item: 'X', unidad: 'kg', cantidad: 1, merma_cantidad: -1 }], usuarioProduccion, {}).ok,
+  false,
+  'una merma negativa no tiene sentido físico'
+);
+
+produccionGuardada = [];
+const sinInsumoNiMerma = cargarProduccion_().produccionRegistrar_(itemsProduccion, usuarioProduccion, {});
+assert.equal(sinInsumoNiMerma.ok, true, 'seguir sin declarar insumo/merma (como siempre) debe funcionar igual que antes');
+assert.equal(produccionGuardada[0].insumo_producto, '');
+assert.equal(produccionGuardada[0].merma_cantidad, '');
+
 // --- produccionConObligatoriosRegistrar_: una sola operación, valida TODO antes de escribir nada -
 // (auditoría de seguridad, jul 2026: antes producir.html mandaba dos llamadas independientes en
 // paralelo — si una pasaba y la otra fallaba, quedaba un estado a medias sin forma clara de saber

@@ -126,6 +126,71 @@ function cargarMovimientos_(fx) {
   console.log('movimientosInventarioListar_ filtra por sede/fecha/producto: OK');
 })();
 
+// --- movimientosDesdeProduccion_: insumo consumido y merma de proceso (opcionales) --------------
+
+(function () {
+  const fx = fixtures_();
+  fx.producciones.push({
+    id: 'p2', fecha: '2026-07-07', sede: 'Centro de Producción', item: 'Costilla Preparada',
+    cantidad: 18.2, unidad: 'kg', usuario: 'Juan',
+    insumo_producto: 'Costilla cruda', insumo_cantidad: 25, insumo_unidad: 'kg', merma_cantidad: 6.8
+  });
+  const mod = cargarMovimientos_(fx);
+  const deP2 = mod.movimientosInventarioListar_({ indice: {} }).filter((m) => m.documento_relacionado === 'p2');
+
+  assert.equal(deP2.length, 3, 'una producción con insumo y merma debe generar 3 movimientos: entrada, consumo y merma');
+
+  const entrada = deP2.find((m) => m.tipo_movimiento === 'Entrada por producción');
+  assert.equal(entrada.producto, 'Costilla Preparada');
+  assert.equal(entrada.cantidad, 18.2);
+
+  const consumo = deP2.find((m) => m.tipo_movimiento === 'Consumo de producción');
+  assert.equal(consumo.producto, 'Costilla cruda');
+  assert.equal(consumo.cantidad, -25, 'debe restar TODO el insumo que entró al lote, en negativo');
+  assert.equal(consumo.sede, 'Centro de Producción');
+
+  const merma = deP2.find((m) => m.tipo_movimiento === 'Merma de producción');
+  assert.equal(merma.cantidad, -6.8);
+  assert.notEqual(merma.producto, 'Costilla cruda', 'la merma NO debe registrarse contra el nombre real del insumo (evita descontarlo dos veces)');
+  assert.notEqual(merma.producto, 'Costilla Preparada', 'tampoco contra el nombre real del terminado');
+
+  console.log('movimientosDesdeProduccion_ genera consumo/merma cuando la fila los trae: OK');
+})();
+
+(function () {
+  // Una producción SIN insumo/merma (como todas las que había antes de jul 2026) sigue generando
+  // UN solo movimiento — nada de esto es retroactivo ni obligatorio.
+  const fx = fixtures_();
+  const mod = cargarMovimientos_(fx);
+  const deP1 = mod.movimientosInventarioListar_({ indice: {} }).filter((m) => m.documento_relacionado === 'p1');
+  assert.equal(deP1.length, 1);
+  assert.equal(deP1[0].tipo_movimiento, 'Entrada por producción');
+  console.log('movimientosDesdeProduccion_ sin insumo/merma sigue generando un solo movimiento: OK');
+})();
+
+(function () {
+  // La propiedad importante: declarar insumo/merma NO debe alterar el inventario teórico calculado
+  // para el producto TERMINADO (solo afecta al insumo crudo, que se resta UNA sola vez).
+  const fx = fixtures_();
+  fx.producciones = [{
+    id: 'p2', fecha: '2026-07-07', sede: 'Centro de Producción', item: 'Costilla Preparada',
+    cantidad: 18.2, unidad: 'kg', usuario: 'Juan',
+    insumo_producto: 'Costilla cruda', insumo_cantidad: 25, insumo_unidad: 'kg', merma_cantidad: 6.8
+  }];
+  fx.ajustes = [];
+  fx.traslados = [];
+  fx.conteos = [];
+  const mod = cargarMovimientos_(fx);
+
+  const terminado = mod.calcularInventarioTeorico_('Costilla Preparada', 'Centro de Producción', '2026-07-10', {});
+  assert.equal(terminado.cantidad, 18200, 'el terminado debe reflejar exactamente lo producido (18.2 kg), sin que la merma lo toque');
+
+  const crudo = mod.calcularInventarioTeorico_('Costilla cruda', 'Centro de Producción', '2026-07-10', {});
+  assert.equal(crudo.cantidad, -25000, 'el insumo crudo debe restarse UNA sola vez (25 kg), no 31.8 kg (25 + 6.8 de merma)');
+
+  console.log('la merma de producción no descuenta dos veces el insumo ni afecta al terminado: OK');
+})();
+
 // --- calcularInventarioTeorico_: último conteo + movimientos posteriores, con signo -------------
 
 (function () {
