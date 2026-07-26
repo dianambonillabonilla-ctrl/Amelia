@@ -36,7 +36,7 @@ const ACCIONES_OMITIDAS = new Set([
   'evidencia_subir', 'evidencia_obtener', 'produccion_registrar',
   'produccion_con_obligatorios_registrar', 'usuarios_guardar', 'usuario_resetear_password',
   'traslado_crear', 'traslado_confirmar', 'traslado_observar', 'traslado_resolver',
-  'migrar_recetas_julio_2026'
+  'migrar_recetas_julio_2026', 'base_caja_guardar'
 ]);
 
 const HOY = '2026-07-26';
@@ -76,7 +76,9 @@ function parametrosPorAccion() {
     fudo_pagos_listar: { filtros: {} },
     fudo_descuentos_listar: { filtros: {} },
     fudo_propinas_listar: { filtros: {} },
-    fudo_subitems_listar: { filtros: {} }
+    fudo_subitems_listar: { filtros: {} },
+    base_caja_dia: { fecha: HOY, sede: SEDE },
+    base_caja_listar: { filtros: { fecha_desde: '2026-07-01', fecha_hasta: HOY } }
   };
 }
 
