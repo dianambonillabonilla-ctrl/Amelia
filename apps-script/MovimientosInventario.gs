@@ -246,6 +246,27 @@ function calcularInventarioTeorico_(producto, sede, fechaCorte, indiceOpcional) 
 }
 
 /**
+ * Inventario teórico de VARIOS productos en UNA sede a la fecha de corte — envoltorio batch de
+ * calcularInventarioTeorico_ para Conciliación y otras vistas que ya tienen la lista de nombres.
+ */
+function inventarioTeoricoResumen_(fecha, sede, productos, indiceOpcional) {
+  if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+  const indice = indiceOpcional || indiceCatalogo_();
+  const lista = (productos || []).filter(function (p) { return p; });
+  const filas = lista.map(function (producto) {
+    const teorico = calcularInventarioTeorico_(producto, sede, fecha, indice);
+    return {
+      producto: producto,
+      cantidad: Number((Number(teorico.cantidad) || 0).toFixed(3)),
+      unidad: teorico.unidad || '',
+      ultimo_conteo_fecha: teorico.ultimo_conteo ? formatearFecha_(teorico.ultimo_conteo.fecha) : null
+    };
+  });
+  filas.sort(function (a, b) { return String(a.producto).localeCompare(String(b.producto)); });
+  return { ok: true, filas: filas };
+}
+
+/**
  * "Consumo por venta" de UN día en UNA sede: para cada venta de Fudo no cancelada, explota su
  * receta vigente (o se autoconsume 1:1 si no tiene receta, ej. una bebida) y devuelve un movimiento
  * negativo por cada ingrediente/preparado consumido — mismo criterio EXACTO que usa

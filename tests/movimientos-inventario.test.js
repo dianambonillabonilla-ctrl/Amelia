@@ -50,6 +50,7 @@ function cargarMovimientos_(fx) {
     formatearFecha_: (v) => String(v).slice(0, 10),
     claveProducto_: claveProductoMock_,
     aUnidadBase_: aUnidadBaseMock_,
+    indiceCatalogo_: () => ({}),
     leerTabla_: (hoja) => hoja === 'ajustes' ? fx.ajustes : hoja === 'producciones' ? fx.producciones : hoja === 'traslados' ? fx.traslados : (fx.conteos || [])
   });
 }
@@ -306,6 +307,26 @@ function cargarMovimientosVentas_(fx) {
   assert.equal(costilla.diferencia, 1);
   assert.equal(mod.resumenDiferenciasInventarioFechaSede_('', 'Capri').ok, false);
   console.log('resumenDiferenciasInventarioFechaSede_: OK');
+})();
+
+(function () {
+  const fx = fixtures_();
+  fx.conteos = [
+    { fecha: '2026-07-01', sede: 'Capri', producto: 'Costilla', unidad: 'kg', cantidad: 10 }
+  ];
+  const mod = cargarMovimientos_(fx);
+  const resumen = mod.inventarioTeoricoResumen_('2026-07-10', 'Capri', ['Costilla', 'Aceite']);
+  assert.equal(resumen.ok, true);
+  assert.equal(resumen.filas.length, 2);
+  const costilla = resumen.filas.find((f) => f.producto === 'Costilla');
+  assert.equal(costilla.cantidad, 10900);
+  assert.equal(costilla.unidad, 'g');
+  assert.equal(costilla.ultimo_conteo_fecha, '2026-07-01');
+  const aceite = resumen.filas.find((f) => f.producto === 'Aceite');
+  assert.equal(aceite.ultimo_conteo_fecha, null);
+  assert.equal(mod.inventarioTeoricoResumen_('', 'Capri', []).ok, false);
+  assert.equal(mod.inventarioTeoricoResumen_('2026-07-10', '', []).ok, false);
+  console.log('inventarioTeoricoResumen_: OK');
 })();
 
 console.log('movimientos-inventario: OK');
