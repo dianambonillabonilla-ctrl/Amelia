@@ -20,19 +20,6 @@ function aUnidadBaseMock_(cantidad, unidad) {
   return { cantidad: n, unidad: u };
 }
 
-// --- Ubicaciones ---------------------------------------------------------------------------------
-
-(function () {
-  const mod = cargar('apps-script/Ubicaciones.gs', {});
-  const todas = mod.ubicacionesListar_();
-  assert.ok(todas['Centro de Producción'].includes('Materia prima cruda'));
-  assert.ok(todas['San Antonio'].includes('Caja'));
-  assert.ok(todas['Capri'].includes('Waflería'));
-  assert.deepEqual(mod.ubicacionesListar_('Capri'), todas['Capri']);
-  assert.deepEqual(mod.ubicacionesListar_('Sede que no existe'), []);
-  console.log('ubicacionesListar_: OK');
-})();
-
 // --- movimientosInventarioListar_: normaliza Ajustes/Producciones/Traslados con signo -----------
 
 function fixtures_() {

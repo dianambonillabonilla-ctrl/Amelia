@@ -207,6 +207,18 @@ function fudoApiObtenerTodoCompleto_(recurso, opciones) {
  * el dato vino de un archivo o de la API. Ítems sin producto resuelto en "incluidos" (no debería
  * pasar si se pidió con include=items.product, pero por seguridad) se omiten en vez de guardarse
  * con el nombre vacío.
+ *
+ * Además de la sala (mesa→sala), se intenta resolver la sede también por mesero (waiter) e
+ * identificador de venta (saleIdentifier) vía fudoResolverSedeVenta_ (FudoMapeoSedes.gs) — para eso
+ * fudoApiSincronizarVentas_ debe pedir include=waiter,saleIdentifier además de table.room. NO se
+ * intenta con "caja registradora": la especificación OpenAPI oficial completa confirma que /sales
+ * no tiene ninguna relación cashRegister (solo la tienen los Usuarios — deliveryCashRegister/
+ * tablesCashRegister/takeAwayCashRegister —, no las ventas; ver apps-script/fudo-openapi.yml, jul
+ * 2026). Se manda una columna 'Sede' adicional con lo resuelto; importarFudoConLock_ (Fudo.gs) la
+ * usa si vino algo Y sigue intentando su propia lógica (sedeDesdeCreadaPor_) si no — nunca se
+ * pierde cobertura, solo se suma una oportunidad más de identificar la sede antes de "Sin
+ * identificar". El atributo exacto de SaleIdentifier no está confirmado contra una cuenta real
+ * (no tiene endpoint propio en el spec) — se intenta `attributes.name` a falta de algo mejor.
  */
 function fudoApiFilasVentaDesdeSale_(sale, incluidos) {
   const itemsPtr = (sale.relationships && sale.relationships.items && sale.relationships.items.data) || [];
@@ -217,6 +229,16 @@ function fudoApiFilasVentaDesdeSale_(sale, incluidos) {
   // Ventas sin mesa (delivery/take away/menú online) no tienen sala — sedeDesdeCreadaPor_ (Fudo.gs)
   // las deja "Sin identificar" igual que antes, no hay otro dato de sede disponible para esos casos.
   const creadaPor = (room && room.attributes && room.attributes.name) || '';
+
+  const waiterPtr = sale.relationships && sale.relationships.waiter && sale.relationships.waiter.data;
+  const waiter = waiterPtr ? incluidos[waiterPtr.type + ':' + waiterPtr.id] : null;
+  const saleIdentifierPtr = sale.relationships && sale.relationships.saleIdentifier && sale.relationships.saleIdentifier.data;
+  const saleIdentifier = saleIdentifierPtr ? incluidos[saleIdentifierPtr.type + ':' + saleIdentifierPtr.id] : null;
+  const sedeResuelta = fudoResolverSedeVenta_({
+    sala: creadaPor || null,
+    identificador: (saleIdentifier && saleIdentifier.attributes && saleIdentifier.attributes.name) || null,
+    usuario: (waiter && waiter.attributes && waiter.attributes.name) || null
+  }).sede;
 
   const filas = [];
   itemsPtr.forEach(function (ptr) {
@@ -234,7 +256,8 @@ function fudoApiFilasVentaDesdeSale_(sale, incluidos) {
       'Cantidad': item.attributes.quantity,
       'Precio': item.attributes.price,
       'Cancelada': !!item.attributes.canceled,
-      'Creada por': creadaPor
+      'Creada por': creadaPor,
+      'Sede': sedeResuelta
     });
   });
   return filas;
@@ -257,7 +280,11 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
       // saleState no acepta eq. — su patrón real (según la documentación) solo permite in.(...).
       saleState: 'in.(CLOSED)'
     },
-    include: 'items.product,table.room',
+    // waiter y saleIdentifier se agregan para que fudoApiFilasVentaDesdeSale_ tenga más de una
+    // referencia con la que intentar resolver la sede (ver fudoResolverSedeVenta_ en
+    // FudoMapeoSedes.gs) — antes solo se pedía table.room, y una venta sin mesa (delivery/take
+    // away) no tenía ninguna otra oportunidad de identificarse.
+    include: 'items.product,table.room,waiter,saleIdentifier',
     orden: 'createdAt'
   });
 
@@ -308,20 +335,31 @@ function fudoApiProbarConexionRecursoSeguro_(recurso, opciones) {
  * relación de sede/sucursal (confirmado contra la especificación OpenAPI oficial completa, ver
  * apps-script/fudo-openapi.yml — modelo acordado jul 2026, ver docs/modelo-inventario.md).
  * Acción admin desde la app: 'fudo_api_tomar_snapshot_stock'.
+ *
+ * Usa fudoApiObtenerTodoCompleto_ (no fudoApiObtenerTodo_) a propósito: la unidad real no viene en
+ * los atributos propios del producto/ingrediente, sino en el recurso Unit referenciado por
+ * relationships.unit, que solo llega en el arreglo "included" de la respuesta — fudoApiObtenerTodo_
+ * lo descarta. Antes de este cambio se pedía include=unit pero nunca se leía, y unidad quedaba
+ * siempre en blanco (auditoría jul 2026).
  */
 function fudoApiTomarSnapshotStock_(usuario) {
-  const productos = fudoApiObtenerTodo_('products', { include: 'unit' });
-  const ingredientes = fudoApiObtenerTodo_('ingredients', { include: 'unit' });
+  const productos = fudoApiObtenerTodoCompleto_('products', { include: 'unit' });
+  const ingredientes = fudoApiObtenerTodoCompleto_('ingredients', { include: 'unit' });
   const filas = [];
-  function agregar(lista, tipo) {
-    lista.forEach(function (item) {
+  function unidadDe_(item, incluidos) {
+    const unitPtr = item.relationships && item.relationships.unit && item.relationships.unit.data;
+    const unit = unitPtr ? incluidos[unitPtr.type + ':' + unitPtr.id] : null;
+    return (unit && unit.attributes && unit.attributes.name) || '';
+  }
+  function agregar(resultado, tipo) {
+    resultado.registros.forEach(function (item) {
       const attrs = item.attributes || {};
       if (!attrs.name) return;
       filas.push({
         nombre_fudo: attrs.name,
         tipo: tipo,
         stock: attrs.stock,
-        unidad: '',
+        unidad: unidadDe_(item, resultado.incluidos),
         fecha_base: ''
       });
     });

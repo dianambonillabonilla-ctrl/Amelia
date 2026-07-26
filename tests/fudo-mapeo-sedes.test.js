@@ -228,4 +228,50 @@ function cargarVentasPendientes_(ventasFudo, mapeoSedes) {
   console.log('sedeDesdeCreadaPor_ con Fudo_Mapeo_Sedes: OK');
 })();
 
+// --- importarFudo_('ventas'): prioriza la columna 'Sede' (resuelta por fudoResolverSedeVenta_ en
+// el sync de la API vía identificador/mesero) sobre sedeDesdeCreadaPor_, pero le da una segunda
+// oportunidad a sedeDesdeCreadaPor_ si esa resolución no encontró nada ("Sin identificar") --------
+
+(function () {
+  function cargarFudoVentas_(ventasPrevias) {
+    let ventasGuardadas = ventasPrevias || [];
+    const ctx = cargar('apps-script/Fudo.gs', {
+      SHEET_NAMES: { VENTAS_FUDO: 'ventas', MOVIMIENTOS_FUDO: 'movimientos', FUDO_MAPEO_SEDES: 'mapeo' },
+      normalizar_: normalizarSimple_,
+      formatearFecha_: (v) => String(v).slice(0, 10),
+      leerTabla_: (hoja) => hoja === 'ventas' ? ventasGuardadas : [],
+      appendRowsFromObjs_: (hoja, filas) => { if (hoja === 'ventas') ventasGuardadas.push.apply(ventasGuardadas, filas); },
+      LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) }
+    });
+    return { ctx: ctx, ventas: () => ventasGuardadas };
+  }
+
+  const usuario = { nombre: 'Diana' };
+
+  // 'Sede' viene resuelta (ej. por identificador de venta, sin mesa) — debe usarse tal cual, sin
+  // siquiera consultar sedeDesdeCreadaPor_ (que con 'Creada por' vacío daría "Sin identificar").
+  const conSede = cargarFudoVentas_([]);
+  conSede.ctx.importarFudo_('ventas', [
+    { 'Id. Venta': '1', 'Creación': '2026-07-21 12:00:00', Producto: 'Domicilio', Cantidad: 1, Precio: 30000, 'Creada por': '', Sede: 'Capri', Cancelada: 'No' }
+  ], usuario, {});
+  assert.equal(conSede.ventas()[0].sede, 'Capri', "'Sede' ya resuelta debe usarse directo");
+
+  // 'Sede' viene "Sin identificar" (fudoResolverSedeVenta_ tampoco encontró nada) — debe darle una
+  // segunda oportunidad a sedeDesdeCreadaPor_ usando 'Creada por' (la lista fija histórica).
+  const conRespaldo = cargarFudoVentas_([]);
+  conRespaldo.ctx.importarFudo_('ventas', [
+    { 'Id. Venta': '2', 'Creación': '2026-07-21 12:00:00', Producto: 'Poker', Cantidad: 1, Precio: 13000, 'Creada por': 'terraza', Sede: 'Sin identificar', Cancelada: 'No' }
+  ], usuario, {});
+  assert.equal(conRespaldo.ventas()[0].sede, 'San Antonio', "'Sede'=Sin identificar no debe rendirse: sedeDesdeCreadaPor_ todavía puede resolverla");
+
+  // Sin columna 'Sede' (export CSV de siempre) — comportamiento intacto, igual que antes.
+  const sinColumnaSede = cargarFudoVentas_([]);
+  sinColumnaSede.ctx.importarFudo_('ventas', [
+    { 'Id. Venta': '3', 'Creación': '2026-07-21 12:00:00', Producto: 'Poker', Cantidad: 1, Precio: 13000, 'Creada por': 'terraza', Cancelada: 'No' }
+  ], usuario, {});
+  assert.equal(sinColumnaSede.ventas()[0].sede, 'San Antonio', 'sin la columna Sede (CSV de siempre), debe seguir funcionando exactamente igual');
+
+  console.log("importarFudo_('ventas') prioriza 'Sede' resuelta, con respaldo en sedeDesdeCreadaPor_: OK");
+})();
+
 console.log('fudo-mapeo-sedes: OK');
