@@ -195,11 +195,9 @@ function turnoOportuno_(fecha, sede, usuario) {
  * algo antes de confirmar. Es de solo lectura (se puede pedir las veces que haga falta sin efecto
  * alguno); turnoCerrar_ vuelve a calcular lo mismo y lo guarda como snapshot al momento de cerrar.
  *
- * Deliberadamente NO incluye "pagos esperados"/"diferencia de caja" ni "diferencia de inventario"
- * todavía: la app no sincroniza pagos de Fudo (solo ventas) ni tiene un valor agregado único de
- * inventario teórico vs. contado por sede — inventarlos ahora sería mostrar un número que no
- * significa nada real. `efectivo_contado` y `observaciones` quedan como campos manuales que quien
- * cierra puede llenar, sin comparar contra nada calculado todavía.
+ * Deliberadamente NO incluye "diferencia de inventario" todavía: no hay un valor agregado único de
+ * inventario teórico vs. contado por sede. Sí incluye pagos sincronizados de Fudo (Pagos_FUDO) para
+ * comparar el efectivo esperado contra `efectivo_contado` al cerrar.
  */
 function turnoResumenCierre_(fecha, sede) {
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
@@ -211,6 +209,8 @@ function turnoResumenCierre_(fecha, sede) {
   const ventasFudoTotal = ventasDelDia.reduce(function (acc, v) {
     return acc + (Number(v.precio) || 0) * (Number(v.cantidad) || 0);
   }, 0);
+
+  const pagos = pagosFudoTotalesSedeFecha_(fecha, sede);
 
   const trasladosPendientes = leerTabla_(SHEET_NAMES.TRASLADOS).filter(function (t) {
     return (t.sede_origen === sede || t.sede_destino === sede) &&
@@ -229,6 +229,9 @@ function turnoResumenCierre_(fecha, sede) {
     ok: true,
     ventas_fudo_total: ventasFudoTotal,
     ventas_fudo_cantidad: ventasDelDia.length,
+    pagos_fudo_total: pagos.pagos_fudo_total,
+    pagos_efectivo_esperado: pagos.pagos_efectivo_esperado,
+    pagos_fudo_cantidad: pagos.pagos_fudo_cantidad,
     traslados_pendientes: trasladosPendientes,
     producciones_registradas: produccionesRegistradas
   };
@@ -281,6 +284,10 @@ function turnoCerrar_(fecha, sede, usuario, datosCierre) {
     };
   }
   const resumen = turnoResumenCierre_(fecha, sede);
+  const efectivoContado = datosCierre.efectivo_contado !== undefined && datosCierre.efectivo_contado !== ''
+    ? Number(datosCierre.efectivo_contado) : '';
+  const diferenciaCaja = efectivoContado !== ''
+    ? efectivoContado - (Number(resumen.pagos_efectivo_esperado) || 0) : '';
   appendRowFromObj_(SHEET_NAMES.CIERRES_TURNO, {
     id: Utilities.getUuid(),
     fecha: fecha,
@@ -290,11 +297,13 @@ function turnoCerrar_(fecha, sede, usuario, datosCierre) {
     ventas_fudo_total: resumen.ventas_fudo_total,
     traslados_pendientes: resumen.traslados_pendientes,
     producciones_registradas: resumen.producciones_registradas,
-    efectivo_contado: datosCierre.efectivo_contado !== undefined && datosCierre.efectivo_contado !== ''
-      ? Number(datosCierre.efectivo_contado) : '',
+    pagos_fudo_total: resumen.pagos_fudo_total,
+    pagos_efectivo_esperado: resumen.pagos_efectivo_esperado,
+    diferencia_caja: diferenciaCaja,
+    efectivo_contado: efectivoContado,
     observaciones: datosCierre.observaciones || ''
   });
-  return { ok: true, resumen: resumen };
+  return { ok: true, resumen: resumen, diferencia_caja: diferenciaCaja };
 }
 
 function turnoCierreEstado_(fecha, sede) {
@@ -310,6 +319,9 @@ function turnoCierreEstado_(fecha, sede) {
     ventas_fudo_total: fila ? fila.ventas_fudo_total : '',
     traslados_pendientes: fila ? fila.traslados_pendientes : '',
     producciones_registradas: fila ? fila.producciones_registradas : '',
+    pagos_fudo_total: fila ? fila.pagos_fudo_total : '',
+    pagos_efectivo_esperado: fila ? fila.pagos_efectivo_esperado : '',
+    diferencia_caja: fila ? fila.diferencia_caja : '',
     efectivo_contado: fila ? fila.efectivo_contado : '',
     observaciones: fila ? fila.observaciones : ''
   };

@@ -34,7 +34,8 @@ const SHEET_NAMES = {
   STOCK_FUDO_BASE: 'Stock_FUDO_Base',
   CATALOGO_ALIAS: 'Catalogo_Alias',
   FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes',
-  MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario'
+  MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario',
+  PAGOS_FUDO: 'Pagos_FUDO'
 };
 
 function ss_() {
@@ -80,7 +81,8 @@ function configurarHojas() {
       'proveedor', 'numero_factura', 'costo', 'factura_id', 'avalado', 'avalado_por', 'timestamp_avalado'],
     Turnos_Sector: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'sector', 'timestamp'],
     Cierres_Turno: ['id', 'fecha', 'sede', 'usuario', 'timestamp',
-      'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones'],
+      'ventas_fudo_total', 'traslados_pendientes', 'producciones_registradas', 'efectivo_contado', 'observaciones',
+      'pagos_fudo_total', 'pagos_efectivo_esperado', 'diferencia_caja'],
     Gestiones: ['id', 'fecha', 'producto', 'sede', 'estado', 'nota', 'creado_por', 'timestamp_creado',
       'actualizado_por', 'timestamp_actualizado', 'factura_id'],
     Auditoria_Eventos: ['id', 'timestamp', 'usuario_id', 'usuario_nombre', 'accion', 'entidad_tipo',
@@ -91,7 +93,9 @@ function configurarHojas() {
     Movimientos_Inventario: ['id', 'fecha', 'timestamp', 'catalogo_id', 'producto', 'cantidad', 'unidad', 'signo',
       'tipo_movimiento', 'ubicacion_origen', 'ubicacion_destino', 'sede_origen', 'sede_destino', 'sede', 'fuente',
       'entidad_tipo', 'entidad_id', 'clave_idempotencia', 'estado', 'usuario_id', 'usuario_nombre', 'observacion',
-      'evidencia_url', 'requiere_aprobacion', 'aprobado_por', 'aprobado_en', 'reversa_movimiento_id', 'creado_en']
+      'evidencia_url', 'requiere_aprobacion', 'aprobado_por', 'aprobado_en', 'reversa_movimiento_id', 'creado_en'],
+    Pagos_FUDO: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo',
+      'sede', 'archivo_origen', 'importado_por', 'importado_en']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -320,6 +324,9 @@ function handleRequest_(e, method) {
       case 'fudo_api_sincronizar_ventas':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoApiSincronizarVentas_(params.fecha_desde, params.fecha_hasta, sesion.usuario, params.opciones));
+      case 'fudo_api_sincronizar_pagos':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(fudoApiSincronizarPagos_(params.fecha_desde, params.fecha_hasta, sesion.usuario, params.opciones));
       case 'stock_fudo_base_importar':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(stockFudoBaseImportar_(params.filas, sesion.usuario));

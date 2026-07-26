@@ -468,11 +468,16 @@ async function pintarPendientes_() {
         // después se editan ventas/traslados/producción de ese día.
         const detalleCierre = [
           `Ventas Fudo: $${escapeHtml(Number(dataCierre.ventas_fudo_total || 0).toLocaleString('es-CO'))}`,
+          `Pagos Fudo: $${escapeHtml(Number(dataCierre.pagos_fudo_total || 0).toLocaleString('es-CO'))}`,
+          `Efectivo esperado (Fudo): $${escapeHtml(Number(dataCierre.pagos_efectivo_esperado || 0).toLocaleString('es-CO'))}`,
           `Traslados pendientes: ${escapeHtml(dataCierre.traslados_pendientes || 0)}`,
           `Producciones registradas: ${escapeHtml(dataCierre.producciones_registradas || 0)}`
         ];
         if (dataCierre.efectivo_contado !== '' && dataCierre.efectivo_contado !== undefined) {
           detalleCierre.push(`Efectivo contado: $${escapeHtml(Number(dataCierre.efectivo_contado).toLocaleString('es-CO'))}`);
+        }
+        if (dataCierre.diferencia_caja !== '' && dataCierre.diferencia_caja !== undefined) {
+          detalleCierre.push(`Diferencia de caja: $${escapeHtml(Number(dataCierre.diferencia_caja).toLocaleString('es-CO'))}`);
         }
         bloques.push(
           `<p style="margin:0 0 6px"><span class="badge ok">Turno de hoy en ${escapeHtml(sede)} ya cerrado</span> por ${escapeHtml(dataCierre.usuario)}.</p>` +
@@ -503,24 +508,27 @@ async function pintarPendientes_() {
         const avisoInicio = requiereInicio
           ? `<p style="margin:0 0 6px; color:var(--red)"><strong>Ayer no se cerró el turno de ${escapeHtml(sede)}</strong> — hoy hace falta completar el conteo de INICIO antes que el de cierre cuente para cerrar.</p>`
           : '';
-        // Resumen ANTES de cerrar (docs/modelo-inventario.md, sección 6.F) — ventas Fudo del día,
-        // traslados de/hacia esta sede sin confirmar, y producción registrada, para que quien
-        // cierra vea de un vistazo qué falta sin tener que ir a otra pantalla. Efectivo contado y
-        // observaciones son opcionales: la app no compara el efectivo contra nada calculado
-        // todavía (no sincroniza pagos de Fudo), solo lo deja anotado para consulta futura.
+        // Resumen ANTES de cerrar (docs/modelo-inventario.md, sección 6.F) — ventas y pagos Fudo del
+        // día, traslados de/hacia esta sede sin confirmar, y producción registrada, para que quien
+        // cierra vea de un vistazo qué falta sin tener que ir a otra pantalla.
         let bloqueResumenYBoton = '';
         if (!pendientesInicio.length && !pendientesSector.length) {
           const dataResumen = await llamar('turno_resumen_cierre', { fecha: hoy, sede });
-          const resumen = dataResumen.ok ? dataResumen : { ventas_fudo_total: 0, traslados_pendientes: 0, producciones_registradas: 0 };
+          const resumen = dataResumen.ok ? dataResumen : {
+            ventas_fudo_total: 0, pagos_fudo_total: 0, pagos_efectivo_esperado: 0,
+            traslados_pendientes: 0, producciones_registradas: 0
+          };
           bloqueResumenYBoton =
             `<p style="margin:0 0 6px; font-size:.85rem; color:var(--grey)">` +
             `Ventas Fudo: $${escapeHtml(Number(resumen.ventas_fudo_total || 0).toLocaleString('es-CO'))} · ` +
+            `Pagos Fudo: $${escapeHtml(Number(resumen.pagos_fudo_total || 0).toLocaleString('es-CO'))} · ` +
+            `Efectivo esperado (Fudo): $${escapeHtml(Number(resumen.pagos_efectivo_esperado || 0).toLocaleString('es-CO'))} · ` +
             `Traslados pendientes: ${escapeHtml(resumen.traslados_pendientes || 0)} · ` +
             `Producciones registradas: ${escapeHtml(resumen.producciones_registradas || 0)}` +
             (resumen.traslados_pendientes ? ` — revisa <a href="traslados.html">Traslados</a> antes de cerrar si corresponde` : '') +
             `</p>` +
             `<div class="grid grid-2" style="gap:10px; margin-bottom:10px; max-width:420px">` +
-            `<div class="campo"><label>Efectivo contado (opcional)</label><input type="number" step="1" id="in-efectivo-contado"></div>` +
+            `<div class="campo"><label>Efectivo contado (opcional)</label><input type="number" step="1" id="in-efectivo-contado" placeholder="Para comparar con Fudo"></div>` +
             `<div class="campo"><label>Observaciones (opcional)</label><input type="text" id="in-observaciones-cierre"></div>` +
             `</div>` +
             `<p style="margin:0 0 10px"><button class="btn dorado" id="btn-cerrar-turno" data-sede="${escapeHtml(sede)}">Cerrar turno</button></p>`;
