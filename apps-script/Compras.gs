@@ -96,7 +96,8 @@ function compraRegistrarFactura_(factura, usuario, opciones) {
         proveedor: factura.proveedor,
         numero_factura: factura.numero_factura,
         costo: costo,
-        factura_id: facturaId
+        factura_id: facturaId,
+        evidencia_url: factura.evidencia_url || ''
       };
       // Antes se ignoraba este resultado: si la validación rechazaba una línea, la factura igual se
       // reportaba como guardada con éxito sin que quedara ningún movimiento de inventario
@@ -157,10 +158,12 @@ function comprasListar_(fechaDesde, fechaHasta, sede) {
         usuario: r.usuario,
         timestamp: r.timestamp,
         total: 0,
+        evidencia_url: r.evidencia_url || '',
         lineas: []
       };
     }
     const f = facturas[r.factura_id];
+    if (!f.evidencia_url && r.evidencia_url) f.evidencia_url = r.evidencia_url;
     if (f.sedes.indexOf(r.sede) === -1) f.sedes.push(r.sede);
     const costo = Number(r.costo) || 0;
     f.total += costo;

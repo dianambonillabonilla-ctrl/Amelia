@@ -247,7 +247,8 @@ function inventarioLibroItemDesdeVista_(vista, meta) {
     clave_idempotencia: meta.clave_idempotencia,
     estado: vista.estado === 'Avalado' ? 'Avalado' : 'Registrado',
     usuario: vista.usuario,
-    observacion: meta.observacion || ''
+    observacion: meta.observacion || '',
+    evidencia_url: meta.evidencia_url || vista.evidencia_url || ''
   };
 }
 
@@ -285,7 +286,8 @@ function inventarioLibroIntentarDesdeAjuste_(filaAjuste, usuario) {
       entidad_tipo: 'Ajuste',
       entidad_id: filaAjuste.id,
       clave_idempotencia: inventarioLibroClave_('Ajuste', filaAjuste.id, tipoMov, 0),
-      observacion: filaAjuste.motivo || ''
+      observacion: filaAjuste.motivo || '',
+      evidencia_url: filaAjuste.evidencia_url || ''
     }), usuario);
   } catch (err) {
     Logger.log('inventarioLibroIntentarDesdeAjuste_ falló para ' + filaAjuste.id + ': ' + err.message);

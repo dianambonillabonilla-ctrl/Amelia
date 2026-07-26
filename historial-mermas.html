@@ -93,7 +93,7 @@
       <div style="overflow-x:auto">
         <table>
           <thead>
-            <tr><th>Fecha</th><th>Sede</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Registrado por</th><th>Registrado el</th><th>Avalado</th><th></th></tr>
+            <tr><th>Fecha</th><th>Sede</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Evidencia</th><th>Registrado por</th><th>Registrado el</th><th>Avalado</th><th></th></tr>
           </thead>
           <tbody id="tabla-historial"><tr><td colspan="10" class="vacio">Cargando…</td></tr></tbody>
         </table>
@@ -132,7 +132,7 @@ function formatearHora_(valor) {
 async function cargar() {
   const tabla = document.getElementById('tabla-historial');
   const contador = document.getElementById('contador-resultados');
-  tabla.innerHTML = '<tr><td colspan="10" class="vacio">Cargando…</td></tr>';
+  tabla.innerHTML = '<tr><td colspan="11" class="vacio">Cargando…</td></tr>';
   contador.style.display = 'none';
 
   const filtros = {
@@ -149,7 +149,7 @@ async function cargar() {
     llamar('ajustes_inventario_historial', { filtros: Object.assign({}, filtros, { tipo: 'Merma / desperdicio', producto: '' }) })
   ]);
   pintarEstadisticasMermas_(datosMerma);
-  if (!data.ok) { tabla.innerHTML = `<tr><td colspan="10" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
+  if (!data.ok) { tabla.innerHTML = `<tr><td colspan="11" class="vacio">${escapeHtml(data.error)}</td></tr>`; return; }
 
   const soloSinAvalar = document.getElementById('filtro-solo-sin-avalar').checked;
   const filas = soloSinAvalar
@@ -157,7 +157,7 @@ async function cargar() {
     : data.data;
 
   if (!filas.length) {
-    tabla.innerHTML = '<tr><td colspan="10" class="vacio">Sin movimientos que coincidan con el filtro.</td></tr>';
+    tabla.innerHTML = '<tr><td colspan="11" class="vacio">Sin movimientos que coincidan con el filtro.</td></tr>';
     return;
   }
 
@@ -170,6 +170,9 @@ async function cargar() {
       : '—';
     const accion = esAdmin && esMerma && r.avalado !== true
       ? `<button class="btn fantasma btn-avalar" data-id="${escapeHtml(r.id)}" type="button">Avalar</button>` : '';
+    const evidencia = r.evidencia_url
+      ? `<a href="${escapeHtml(r.evidencia_url)}" target="_blank" rel="noopener">Foto</a>`
+      : '—';
     return `<tr>
       <td>${escapeHtml(String(r.fecha).slice(0, 10))}</td>
       <td>${escapeHtml(r.sede)}</td>
@@ -177,6 +180,7 @@ async function cargar() {
       <td>${escapeHtml(r.producto)}</td>
       <td>${escapeHtml(r.cantidad)} ${escapeHtml(r.unidad)}</td>
       <td>${escapeHtml(r.motivo || '')}</td>
+      <td>${evidencia}</td>
       <td>${escapeHtml(r.usuario)}</td>
       <td style="color:var(--grey); font-size:.85rem">${formatearHora_(r.timestamp)}</td>
       <td>${avalado}</td>

@@ -90,4 +90,16 @@ function cargar(path, extras = {}) {
   console.log('inventarioLibroConfigurarDesdeApi_: OK');
 })();
 
+(function () {
+  const mod = cargar('apps-script/AjustesInventario.gs', {
+    Utilities: { getUuid: () => 'aj-1' }
+  });
+  const fila = mod.ajusteInventarioFila_({
+    fecha: '2026-07-10', sede: 'Capri', tipo: 'Merma / desperdicio', producto: 'Aceite',
+    unidad: 'u', cantidad: 2, motivo: 'se cayó', evidencia_url: 'https://drive.google.com/foto'
+  }, { nombre: 'Ana' });
+  assert.equal(fila.evidencia_url, 'https://drive.google.com/foto');
+  console.log('ajusteInventarioFila_ con evidencia_url: OK');
+})();
+
 console.log('evidencias: OK');

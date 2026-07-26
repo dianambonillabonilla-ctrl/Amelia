@@ -81,6 +81,23 @@ function fechaLocalHoy_() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/** Lee un <input type="file"> y devuelve { nombre, mime_type, contenido_base64 } para evidencia_subir. */
+function leerArchivoBase64_(input) {
+  const file = input.files[0];
+  if (!file) return Promise.resolve(null);
+  if (file.size > 8 * 1024 * 1024) return Promise.reject(new Error('La foto no puede superar 8 MB'));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = String(reader.result || '').split(',')[1];
+      if (!base64) { reject(new Error('No se pudo leer la foto')); return; }
+      resolve({ nombre: file.name, mime_type: file.type || 'image/jpeg', contenido_base64: base64 });
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer la foto'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // Espejo de normalizar_() en Catalogo.gs — para comparar nombres de producto en el navegador
 // (sin tildes, minúsculas, espacios colapsados) antes de mandar nada al backend.
 function normalizarTexto(s) {
