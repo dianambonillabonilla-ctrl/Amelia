@@ -6,103 +6,98 @@
 <title>Dilana OS — Caja</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-  .caja-shell{max-width:980px}.estado-caja{display:flex;justify-content:space-between;gap:14px;align-items:center;background:linear-gradient(135deg,#0B1F3A,#16305A);color:#fff;border-radius:14px;padding:22px 24px;margin-bottom:18px}.estado-caja h1,.estado-caja h2{color:#fff}.estado-badge{padding:8px 14px;border-radius:999px;font-weight:700;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)}.estado-badge.abierta{background:#DDF1E5;color:#22603E}.estado-badge.cerrada{background:#FBEAEA;color:#8A2F2A}.dinero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.dinero-card{background:#FBFAF6;border:1px solid var(--line);border-radius:11px;padding:15px}.dinero-card span{display:block;font-size:.72rem;color:var(--grey);text-transform:uppercase;letter-spacing:.04em}.dinero-card strong{display:block;margin-top:7px;font-size:1.45rem;color:var(--navy)}.dinero-card.destacado{background:#F2F8F4;border-color:var(--green)}.dinero-card.destacado strong{color:var(--green)}.rappi-pendiente{background:#FFF3E6;border:2px solid #E47911;color:#8B4100;border-radius:12px;padding:16px;display:flex;justify-content:space-between;gap:16px;align-items:center}.rappi-ok{background:#F2F8F4;border:1px solid var(--green);color:var(--green);border-radius:12px;padding:14px;font-weight:700}.formularios-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.movimiento-item{display:grid;grid-template-columns:150px 120px 1fr 150px;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:.84rem}.positivo{color:var(--green);font-weight:700}.negativo{color:var(--red);font-weight:700}.oculto{display:none!important}.alerta-diferencia{font-weight:700;margin-top:8px}.perfil-caja{font-size:.85rem;opacity:.82;margin:3px 0 0}@media(max-width:780px){.formularios-grid{grid-template-columns:1fr}.movimiento-item{grid-template-columns:1fr 1fr}.estado-caja{align-items:flex-start;flex-direction:column}}
+  .caja-wrap{max-width:1050px}.cabecera-caja{background:linear-gradient(135deg,#0B1F3A,#17345f);color:#fff;border-radius:15px;padding:22px 25px;margin-bottom:18px;display:flex;justify-content:space-between;gap:18px;align-items:center}.cabecera-caja h2{color:#fff;margin:0}.perfil{opacity:.8;margin:5px 0 0}.estado{padding:8px 14px;border-radius:999px;font-weight:700;background:rgba(255,255,255,.14)}.estado.abierta{background:#DDF1E5;color:#22603E}.estado.cerrada{background:#FBEAEA;color:#8A2F2A}.dinero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}.dinero{border:1px solid var(--line);background:#FBFAF6;border-radius:11px;padding:15px}.dinero span{display:block;color:var(--grey);font-size:.72rem;text-transform:uppercase}.dinero strong{display:block;margin-top:7px;font-size:1.35rem;color:var(--navy)}.dinero.principal{border-color:var(--green);background:#F2F8F4}.dinero.principal strong{color:var(--green)}.rappi{background:#FFF3E6;border:2px solid #E47911;border-radius:12px;padding:16px;color:#8B4100;display:flex;justify-content:space-between;gap:14px;align-items:center}.rappi-ok{background:#F2F8F4;border:1px solid var(--green);color:var(--green);border-radius:12px;padding:15px;font-weight:700}.dos-columnas{display:grid;grid-template-columns:1fr 1fr;gap:18px}.movimiento{display:grid;grid-template-columns:170px 120px 1fr 160px;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:.84rem}.positivo{color:var(--green);font-weight:700}.negativo{color:var(--red);font-weight:700}.oculto{display:none!important}.diferencia{font-weight:700;margin:8px 0}.advertencia{background:#FFF8E8;border-left:4px solid var(--gold);padding:12px;border-radius:7px;font-size:.85rem}@media(max-width:780px){.dos-columnas{grid-template-columns:1fr}.cabecera-caja{flex-direction:column;align-items:flex-start}.movimiento{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
 <div class="shell">
   <aside class="sidebar">
     <div class="marca">Dilana <span>OS</span></div>
-    <nav>
-      <a href="inicio.html">Inicio de turno</a>
-      <a href="caja.html" class="activo">Caja</a>
-      <a href="dashboard.html">Disponible Hoy</a>
-      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
-      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
-      <a href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina">Reportar novedad</a>
-    </nav>
+    <nav id="menu-nav"></nav>
   </aside>
   <main class="main">
     <div class="topbar"><h1>Caja</h1><div id="barra-usuario"></div></div>
-    <div class="caja-shell">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
-        <label style="margin:0">Sede</label>
-        <select id="sede-caja" style="width:auto;min-width:190px"><option>San Antonio</option><option>Capri</option></select>
-        <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+    <div class="caja-wrap">
+      <div class="card">
+        <div class="grid grid-3">
+          <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
+          <div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option></select></div>
+          <div style="display:flex;align-items:end"><button class="btn fantasma" id="actualizar">Actualizar</button></div>
+        </div>
       </div>
 
-      <section class="estado-caja">
-        <div><p style="margin:0 0 4px;opacity:.74">Responsable</p><h2 id="responsable" style="margin:0">—</h2><p class="perfil-caja" id="perfil-caja">—</p></div>
-        <div class="estado-badge" id="estado-badge">Consultando…</div>
+      <section class="cabecera-caja">
+        <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
+        <div class="estado" id="estado">Consultando…</div>
       </section>
 
-      <section id="vista-cargando" class="card"><p class="vacio">Consultando el estado de la caja…</p></section>
+      <section id="cargando" class="card"><p class="vacio">Consultando el estado de la caja…</p></section>
 
-      <section id="vista-sin-abrir" class="oculto">
+      <section id="sin-abrir" class="oculto">
         <div class="card" style="border:2px solid var(--gold)">
-          <h2>Abrir caja</h2>
-          <p style="color:var(--grey)">Cuenta físicamente el dinero que recibes. La base esperada viene del cierre anterior.</p>
-          <div class="dinero-grid" style="margin-bottom:18px">
-            <div class="dinero-card"><span>Base esperada</span><strong id="base-esperada">$0</strong></div>
-            <div class="dinero-card"><span>Dinero contado al abrir</span><input type="number" min="0" step="1" id="efectivo-inicial" placeholder="0" style="margin-top:8px"></div>
+          <h2>Abrir mi caja</h2>
+          <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
+          <div class="dinero-grid">
+            <div class="dinero"><span>Base esperada del cierre anterior</span><strong id="base-esperada">$0</strong></div>
+            <div class="dinero"><span>Dinero contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
           </div>
-          <p id="diferencia-apertura" class="alerta-diferencia"></p>
-          <div class="campo"><label for="observacion-apertura">Observación cuando no coincide</label><input type="text" id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base entregada"></div>
-          <button class="btn dorado" id="btn-abrir-caja">Abrir mi turno de caja</button>
+          <p class="diferencia" id="diferencia-apertura"></p>
+          <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
+          <button class="btn dorado" id="abrir">Abrir caja</button>
         </div>
       </section>
 
-      <section id="vista-abierta" class="oculto">
-        <div id="rappi-pendiente" class="rappi-pendiente">
-          <div><strong>⚠ No olvides prender Rappi</strong><div style="font-size:.84rem;margin-top:3px">Confirma solo cuando la aplicación esté encendida y recibiendo pedidos.</div></div>
-          <button class="btn dorado" id="btn-rappi">Rappi encendido</button>
+      <section id="abierta" class="oculto">
+        <div id="rappi-pendiente" class="rappi">
+          <div><strong>⚠ No olvides prender Rappi</strong><div style="font-size:.83rem;margin-top:4px">Confirma cuando esté encendido y recibiendo pedidos.</div></div>
+          <button class="btn dorado" id="rappi">Rappi encendido</button>
         </div>
         <div id="rappi-ok" class="rappi-ok oculto">✓ Rappi confirmado como encendido.</div>
 
         <div class="card" style="margin-top:18px">
-          <h2>Dinero que debería haber en caja</h2>
+          <h2>Dinero que debería haber ahora</h2>
           <div class="dinero-grid">
-            <div class="dinero-card"><span>Base inicial</span><strong id="res-base">$0</strong></div>
-            <div class="dinero-card"><span>Ventas en efectivo FUDO</span><strong id="res-fudo">$0</strong></div>
-            <div class="dinero-card"><span>Otros ingresos</span><strong id="res-ingresos">$0</strong></div>
-            <div class="dinero-card"><span>Entregado al administrador</span><strong id="res-entregas">$0</strong></div>
-            <div class="dinero-card"><span>Otras salidas</span><strong id="res-salidas">$0</strong></div>
-            <div class="dinero-card destacado"><span>Efectivo esperado ahora</span><strong id="res-esperado">$0</strong></div>
+            <div class="dinero"><span>Dinero contado al abrir</span><strong id="d-base">$0</strong></div>
+            <div class="dinero"><span>Efectivo FUDO desde apertura</span><strong id="d-fudo">$0</strong></div>
+            <div class="dinero"><span>Otros ingresos</span><strong id="d-ingresos">$0</strong></div>
+            <div class="dinero"><span>Entregado al administrador</span><strong id="d-entregas">$0</strong></div>
+            <div class="dinero"><span>Gastos y salidas</span><strong id="d-gastos">$0</strong></div>
+            <div class="dinero principal"><span>Efectivo esperado</span><strong id="d-esperado">$0</strong></div>
           </div>
-          <p style="font-size:.78rem;color:var(--grey);margin:12px 0 0">El efectivo de FUDO se calcula desde el momento exacto en que se abrió esta caja.</p>
+          <p style="font-size:.8rem;color:var(--grey)">Abierta por <strong id="abierta-por">—</strong> a las <strong id="abierta-hora">—</strong>.</p>
         </div>
 
-        <div class="formularios-grid">
+        <div class="dos-columnas">
           <div class="card">
             <h2>Registrar movimiento</h2>
-            <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Entrega administrador</option><option>Salida</option><option>Ingreso</option></select></div>
-            <div class="campo"><label>Monto</label><input type="number" min="1" step="1" id="mov-monto" placeholder="0"></div>
-            <div class="campo" id="campo-recibido"><label>Quién recibió el dinero</label><input type="text" id="mov-recibido" placeholder="Nombre del administrador o responsable"></div>
-            <div class="campo"><label>Motivo</label><input type="text" id="mov-motivo" placeholder="Ej. entrega parcial de efectivo"></div>
-            <button class="btn" id="btn-movimiento">Guardar movimiento</button>
+            <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Entrega administrador</option><option>Gasto</option><option>Otro ingreso</option></select></div>
+            <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="mov-valor"></div>
+            <div id="datos-entrega">
+              <div class="campo"><label>Quién entrega</label><input id="mov-entrega"></div>
+              <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
+            </div>
+            <div class="campo"><label>Motivo u observación</label><input id="mov-motivo"></div>
+            <div class="campo"><label>Foto o evidencia opcional</label><input type="file" id="mov-evidencia" accept="image/jpeg,image/png,application/pdf"></div>
+            <button class="btn" id="guardar-movimiento">Guardar movimiento</button>
           </div>
 
           <div class="card">
             <h2>Cerrar caja</h2>
-            <div class="campo"><label>Efectivo contado físicamente</label><input type="number" min="0" step="1" id="cierre-contado" placeholder="0"></div>
-            <div class="campo"><label>Base que se deja para el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base" placeholder="0"></div>
-            <div class="campo"><label>Quién recibe el efectivo restante</label><input type="text" id="cierre-recibido" placeholder="Nombre del administrador o responsable"></div>
-            <div class="campo"><label>Observación cuando haya diferencia</label><input type="text" id="cierre-observacion"></div>
-            <p id="calculo-cierre" style="font-size:.85rem"></p>
-            <button class="btn dorado" id="btn-cerrar-caja">Cerrar mi caja</button>
+            <div class="advertencia">Cuenta todo el efectivo. Después indica cuánto se deja como base y quién recibe el dinero restante.</div>
+            <div class="campo"><label>Efectivo contado físicamente</label><input type="number" min="0" step="1" id="cierre-contado"></div>
+            <div class="campo"><label>Base para el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
+            <div class="campo"><label>Quién recibe el dinero restante</label><input id="cierre-recibe"></div>
+            <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
+            <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
+            <button class="btn dorado" id="cerrar">Cerrar caja</button>
           </div>
         </div>
 
-        <div class="card">
-          <h2>Movimientos de este turno</h2>
-          <div id="lista-movimientos"><p class="vacio">Sin movimientos registrados.</p></div>
-        </div>
+        <div class="card"><h2>Movimientos registrados</h2><div id="movimientos"><p class="vacio">Sin movimientos.</p></div></div>
       </section>
 
-      <section id="vista-cerrada" class="card oculto" style="border-left:4px solid var(--green)">
-        <h2>✓ Caja cerrada</h2>
-        <p id="resumen-cierre-final"></p>
-        <a class="btn" href="inicio.html" style="display:inline-block;text-decoration:none">Volver al inicio</a>
+      <section id="cerrada" class="card oculto" style="border-left:4px solid var(--green)">
+        <h2>✓ Caja cerrada</h2><div id="resumen-cierre"></div>
       </section>
     </div>
   </main>
@@ -110,116 +105,104 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
+requerirRol_(['Administrador','Encargado','Cocina']);
 montarBarraUsuario();
 const usuario=Sesion.usuario();
-const hoy=fechaLocalHoy_();
-const sedeSelect=document.getElementById('sede-caja');
-if(usuario.rol!=='Administrador' && usuario.sede!=='Ambas'){
-  Array.from(sedeSelect.options).forEach(o=>{if(o.value!==usuario.sede)o.remove();});
-  sedeSelect.value=usuario.sede;
-  sedeSelect.disabled=true;
-}
+const fechaEl=document.getElementById('fecha');
+const sedeEl=document.getElementById('sede');
+fechaEl.value=fechaLocalHoy_();
+restringirSelectorSede_(sedeEl);
+// Caja solo existe en sedes de venta; Centro de Producción no debe aparecer aquí.
+Array.from(sedeEl.options).forEach(o=>{if(o.value==='Centro de Producción')o.remove();});
+if(!sedeEl.value && sedeEl.options.length)sedeEl.value=sedeEl.options[0].value;
 document.getElementById('responsable').textContent=usuario.nombre||usuario.usuario;
-document.getElementById('perfil-caja').textContent=`${usuario.rol} · ${usuario.sede}`;
+document.getElementById('perfil').textContent=`${usuario.rol} · ${usuario.sede}`;
 let estadoActual=null;
 const dinero=n=>Number(n||0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
-
-function mostrar(id){['vista-cargando','vista-sin-abrir','vista-abierta','vista-cerrada'].forEach(x=>document.getElementById(x).classList.toggle('oculto',x!==id));}
-function sede(){return sedeSelect.value;}
-function pintarMovimientos(lista){
-  const cont=document.getElementById('lista-movimientos');
-  if(!lista||!lista.length){cont.innerHTML='<p class="vacio">Sin movimientos registrados.</p>';return;}
-  cont.innerHTML=lista.map(m=>{
-    const resta=m.tipo==='Entrega administrador'||m.tipo==='Salida';
-    return `<div class="movimiento-item"><strong>${escapeHtml(m.tipo)}</strong><span class="${resta?'negativo':'positivo'}">${resta?'−':'+'}${dinero(m.monto)}</span><span>${escapeHtml(m.motivo||'')}</span><span>${escapeHtml(m.recibido_por||m.usuario||'')}</span></div>`;
-  }).join('');
-}
-function pintar(data){
-  estadoActual=data;
-  document.getElementById('estado-badge').className='estado-badge';
-  if(data.estado==='sin_abrir'){
-    document.getElementById('estado-badge').textContent='Caja sin abrir';
-    document.getElementById('estado-badge').classList.add('cerrada');
-    document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
-    document.getElementById('efectivo-inicial').value=data.base_esperada||0;
-    mostrar('vista-sin-abrir');
-    actualizarDiferenciaApertura();
-    return;
-  }
-  if(data.estado==='abierta'){
-    document.getElementById('estado-badge').textContent='Caja abierta';
-    document.getElementById('estado-badge').classList.add('abierta');
-    const t=data.turno,r=data.resumen;
-    document.getElementById('res-base').textContent=dinero(t.efectivo_inicial);
-    document.getElementById('res-fudo').textContent=dinero(r.efectivo_fudo_turno);
-    document.getElementById('res-ingresos').textContent=dinero(r.ingresos_total);
-    document.getElementById('res-entregas').textContent='−'+dinero(r.entregas_admin_total);
-    document.getElementById('res-salidas').textContent='−'+dinero(r.salidas_total);
-    document.getElementById('res-esperado').textContent=dinero(r.efectivo_esperado);
-    const rappi=String(t.rappi_encendido).toLowerCase()==='true';
-    document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi);
-    document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
-    document.getElementById('cierre-contado').value=Math.max(0,r.efectivo_esperado);
-    document.getElementById('cierre-base').value=data.ultimo_cierre&&data.ultimo_cierre.base_siguiente!==''?data.ultimo_cierre.base_siguiente:t.efectivo_inicial;
-    pintarMovimientos(r.movimientos);
-    mostrar('vista-abierta');
-    actualizarCalculoCierre();
-  }
-}
-async function cargar(){
-  mostrar('vista-cargando');
-  const data=await llamar('caja_estado',{fecha:hoy,sede:sede()});
-  if(!data.ok){alert(data.error);window.location.href='inicio.html';return;}
-  pintar(data);
-}
-function actualizarDiferenciaApertura(){
-  if(!estadoActual||estadoActual.estado!=='sin_abrir')return;
-  const contado=Number(document.getElementById('efectivo-inicial').value||0);
-  const dif=contado-Number(estadoActual.base_esperada||0);
+const mostrar=id=>['cargando','sin-abrir','abierta','cerrada'].forEach(x=>document.getElementById(x).classList.toggle('oculto',x!==id));
+const parametros=()=>({fecha:fechaEl.value,sede:sedeEl.value});
+function diferenciaApertura(){
+  if(!estadoActual||estadoActual.apertura)return;
+  const dif=Number(document.getElementById('base-contada').value||0)-Number(estadoActual.base_esperada||0);
   const el=document.getElementById('diferencia-apertura');
   el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
   el.style.color=dif===0?'var(--green)':'var(--red)';
 }
-function actualizarCalculoCierre(){
-  if(!estadoActual||estadoActual.estado!=='abierta')return;
+function calculoCierre(){
+  if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
   const base=Number(document.getElementById('cierre-base').value||0);
-  const esperado=Number(estadoActual.resumen.efectivo_esperado||0);
-  const diferencia=contado-esperado;
-  const entrega=Math.max(0,contado-base);
-  document.getElementById('calculo-cierre').innerHTML=`Efectivo esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${diferencia===0?'var(--green)':'var(--red)'}">${diferencia>0?'+':''}${dinero(diferencia)}</strong><br>Se entrega al responsable: <strong>${dinero(entrega)}</strong>`;
+  const esperado=Number(estadoActual.efectivo_esperado||0);
+  const dif=contado-esperado;
+  const entrega=contado-base;
+  document.getElementById('calculo-cierre').innerHTML=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
 }
-
-document.getElementById('efectivo-inicial').addEventListener('input',actualizarDiferenciaApertura);
-document.getElementById('cierre-contado').addEventListener('input',actualizarCalculoCierre);
-document.getElementById('cierre-base').addEventListener('input',actualizarCalculoCierre);
-document.getElementById('mov-tipo').addEventListener('change',()=>document.getElementById('campo-recibido').style.display=document.getElementById('mov-tipo').value==='Entrega administrador'?'block':'none');
-sedeSelect.addEventListener('change',cargar);
-document.getElementById('btn-actualizar').addEventListener('click',cargar);
-
-document.getElementById('btn-abrir-caja').addEventListener('click',conBotonProtegido(document.getElementById('btn-abrir-caja'),async()=>{
-  const data=await llamar('caja_abrir',{fecha:hoy,sede:sede(),datos:{efectivo_inicial:document.getElementById('efectivo-inicial').value,observacion:document.getElementById('observacion-apertura').value.trim()}});
-  if(!data.ok){alert(data.error);return;}avisarGuardado('Caja abierta. Ahora confirma que Rappi esté encendido.');pintar(data);
-}));
-document.getElementById('btn-rappi').addEventListener('click',conBotonProtegido(document.getElementById('btn-rappi'),async()=>{
-  const data=await llamar('caja_rappi_confirmar',{fecha:hoy,sede:sede()});
-  if(!data.ok){alert(data.error);return;}avisarGuardado('Rappi marcado como encendido.');pintar(data);
-}));
-document.getElementById('btn-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('btn-movimiento'),async()=>{
-  const item={tipo:document.getElementById('mov-tipo').value,monto:document.getElementById('mov-monto').value,motivo:document.getElementById('mov-motivo').value.trim(),recibido_por:document.getElementById('mov-recibido').value.trim()};
-  const data=await llamar('caja_movimiento_registrar',{fecha:hoy,sede:sede(),item});
-  if(!data.ok){alert(data.error);return;}document.getElementById('mov-monto').value='';document.getElementById('mov-motivo').value='';document.getElementById('mov-recibido').value='';avisarGuardado('Movimiento de caja registrado.');pintar(data);
-}));
-document.getElementById('btn-cerrar-caja').addEventListener('click',conBotonProtegido(document.getElementById('btn-cerrar-caja'),async()=>{
-  if(!confirm('Vas a cerrar esta caja. Confirma que ya contaste todo el efectivo.'))return;
-  const datos={efectivo_contado:document.getElementById('cierre-contado').value,base_siguiente:document.getElementById('cierre-base').value,recibido_por:document.getElementById('cierre-recibido').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
-  const data=await llamar('caja_cerrar',{fecha:hoy,sede:sede(),datos});
+function pintarMovimientos(lista){
+  const el=document.getElementById('movimientos');
+  if(!lista||!lista.length){el.innerHTML='<p class="vacio">Sin movimientos registrados.</p>';return;}
+  el.innerHTML=lista.map(m=>{const resta=m.tipo!=='Otro ingreso';return `<div class="movimiento"><strong>${escapeHtml(m.tipo)}</strong><span class="${resta?'negativo':'positivo'}">${resta?'−':'+'}${dinero(m.valor)}</span><span>${escapeHtml(m.motivo||'')}</span><span>${escapeHtml(m.persona_recibe||m.usuario||'')}</span></div>`;}).join('');
+}
+async function cargar(){
+  mostrar('cargando');
+  const p=parametros();
+  const data=await llamar('caja_estado',p);
   if(!data.ok){alert(data.error);return;}
-  document.getElementById('estado-badge').textContent='Caja cerrada';document.getElementById('estado-badge').className='estado-badge cerrada';
-  document.getElementById('resumen-cierre-final').innerHTML=`Efectivo esperado: <strong>${dinero(data.efectivo_esperado)}</strong><br>Efectivo contado: <strong>${dinero(data.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(data.diferencia_cierre)}</strong><br>Entregado al responsable: <strong>${dinero(data.entrega_final_admin)}</strong><br>Base para el siguiente turno: <strong>${dinero(data.base_siguiente)}</strong>`;
-  mostrar('vista-cerrada');avisarGuardado('Caja cerrada correctamente.');
+  estadoActual=data;
+  document.getElementById('estado').className='estado';
+  if(!data.apertura){
+    document.getElementById('estado').textContent='Caja sin abrir';document.getElementById('estado').classList.add('cerrada');
+    document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
+    document.getElementById('base-contada').value=data.base_esperada||0;
+    mostrar('sin-abrir');diferenciaApertura();return;
+  }
+  if(data.apertura.estado==='Cerrado'){
+    document.getElementById('estado').textContent='Caja cerrada';document.getElementById('estado').classList.add('cerrada');
+    const a=data.apertura;const dif=Number(a.diferencia||0);
+    document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado a ${escapeHtml(a.persona_recibe_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
+    mostrar('cerrada');return;
+  }
+  document.getElementById('estado').textContent='Caja abierta';document.getElementById('estado').classList.add('abierta');
+  document.getElementById('d-base').textContent=dinero(data.apertura.base_inicial);
+  document.getElementById('d-fudo').textContent=dinero(data.pagos_efectivo_esperado);
+  document.getElementById('d-ingresos').textContent=dinero(data.movimientos_resumen.otros_ingresos);
+  document.getElementById('d-entregas').textContent='−'+dinero(data.movimientos_resumen.entregas_administrador);
+  document.getElementById('d-gastos').textContent='−'+dinero(data.movimientos_resumen.gastos);
+  document.getElementById('d-esperado').textContent=dinero(data.efectivo_esperado);
+  document.getElementById('abierta-por').textContent=data.apertura.usuario_apertura||'—';
+  document.getElementById('abierta-hora').textContent=new Date(data.apertura.hora_apertura).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  const rappi=String(data.apertura.rappi_encendido).toLowerCase()==='true';
+  document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
+  document.getElementById('mov-entrega').value=usuario.nombre||'';
+  document.getElementById('cierre-contado').value=Math.max(0,Number(data.efectivo_esperado||0));
+  document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
+  const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
+  mostrar('abierta');calculoCierre();
+}
+document.getElementById('base-contada').addEventListener('input',diferenciaApertura);
+document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
+document.getElementById('cierre-base').addEventListener('input',calculoCierre);
+document.getElementById('mov-tipo').addEventListener('change',()=>document.getElementById('datos-entrega').style.display=document.getElementById('mov-tipo').value==='Entrega administrador'?'block':'none');
+fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
+document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{
+  const item={...parametros(),base_inicial:document.getElementById('base-contada').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()};
+  if(Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)&&!item.observacion_apertura){alert('La base no coincide. Escribe una observación.');return;}
+  const r=await llamar('caja_abrir',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja abierta. Ahora confirma Rappi.');cargar();
 }));
-
+document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
+document.getElementById('guardar-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('guardar-movimiento'),async()=>{
+  const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim()};
+  const f=document.getElementById('mov-evidencia');if(f.files[0]){const archivo=await leerArchivoBase64_(f);const sub=await llamar('evidencia_subir',{archivo});if(!sub.ok){alert(sub.error);return;}item.evidencia_url=sub.url;}
+  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');f.value='';avisarGuardado('Movimiento registrado.');cargar();
+}));
+document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
+  if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
+  const contado=Number(document.getElementById('cierre-contado').value||0);const base=Number(document.getElementById('cierre-base').value||0);
+  if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
+  const item={...parametros(),efectivo_contado:contado,base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
+  if(contado-base>0&&!item.persona_recibe_cierre){alert('Escribe quién recibe el dinero restante.');return;}
+  if(contado!==Number(estadoActual.efectivo_esperado||0)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
+  const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
+}));
 cargar();
 </script>
 </body>
