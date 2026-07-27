@@ -1,39 +1,81 @@
 /**
- * CAJA — apertura, movimientos y cierre del turno de caja
+ * CAJA — apertura, movimientos y cierre del turno de caja.
  *
- * Pedido real: "el dinero esperado debe cambiar de inmediato cuando se entrega al administrador, no
- * aparecer como un faltante al cerrar". Antes (BaseCaja.gs) el cuadre era una sola foto manual al
- * final del día, sin apertura ni registro de lo que salió de la caja durante el turno — por eso
- * cualquier entrega al administrador se veía como un faltante en vez de restarse del esperado.
+ * Fuente única:
+ * - Caja_Turno: apertura, base esperada, Rappi y cierre.
+ * - Caja_Movimientos: entregas al administrador, gastos y otros ingresos.
  *
- * Modelo:
- * - Caja_Turno: una fila por fecha+sede — apertura (base_inicial, hora, quién abre) y, al cerrar,
- *   el resultado del cuadre. Vive todo el turno en estado 'Abierto' hasta que se cierra.
- * - Caja_Movimientos: una fila por cada entrega al administrador, gasto/salida u otro ingreso —
- *   valor, quién entrega, quién recibe, hora, motivo y evidencia opcional (Evidencias.gs).
- *
- * Efectivo esperado = base con la que abrió + efectivo que FUDO dice que entró (turnoResumenCierre_)
- * + otros ingresos − entregas al administrador − gastos, sumando Caja_Movimientos del día. Se
- * calcula en vivo (cajaEstado_) y se vuelve a calcular al cerrar (cajaCerrar_) contra lo contado.
- *
- * Quién puede abrir/registrar/cerrar: Administrador y Encargado siempre, o quien tenga el sector
- * "Caja" elegido hoy (Turnos.gs) — mismo criterio que turnoCerrar_.
+ * Efectivo esperado = efectivo contado al abrir
+ *   + efectivo FUDO registrado desde la apertura
+ *   + otros ingresos
+ *   - entregas al administrador
+ *   - gastos.
  */
 
 const CAJA_TIPOS_MOVIMIENTO_ = ['Entrega administrador', 'Gasto', 'Otro ingreso'];
+
+const CAJA_COLUMNAS_TURNO_ = [
+  'id', 'fecha', 'sede', 'estado',
+  'base_esperada', 'base_inicial', 'diferencia_apertura', 'observacion_apertura',
+  'hora_apertura', 'usuario_apertura_id', 'usuario_apertura', 'efectivo_fudo_al_abrir',
+  'rappi_encendido', 'rappi_confirmado_por', 'rappi_confirmado_en',
+  'efectivo_contado', 'efectivo_esperado', 'diferencia',
+  'entrega_cierre', 'persona_recibe_cierre', 'base_siguiente',
+  'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre'
+];
+
+const CAJA_COLUMNAS_MOVIMIENTOS_ = [
+  'id', 'fecha', 'sede', 'tipo', 'valor', 'persona_entrega', 'persona_recibe',
+  'hora', 'motivo', 'evidencia_url', 'usuario_id', 'usuario', 'timestamp'
+];
+
+function cajaAsegurarEstructura_() {
+  asegurarColumnas_(sheet_(SHEET_NAMES.CAJA_TURNO), CAJA_COLUMNAS_TURNO_);
+  asegurarColumnas_(sheet_(SHEET_NAMES.CAJA_MOVIMIENTOS), CAJA_COLUMNAS_MOVIMIENTOS_);
+}
 
 function cajaPuedeCerrar_(usuario, fecha) {
   if (usuario.rol === 'Administrador' || usuario.rol === 'Encargado') return true;
   return turnoSectorDeHoy_(usuario, fecha).sector === 'Caja';
 }
 
+function cajaFechaMs_(valor) {
+  if (!valor) return 0;
+  const d = valor instanceof Date ? valor : new Date(valor);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
 function cajaTurnoFila_(fecha, sede) {
+  cajaAsegurarEstructura_();
   return leerTabla_(SHEET_NAMES.CAJA_TURNO).find(function (r) {
     return formatearFecha_(r.fecha) === fecha && r.sede === sede;
   });
 }
 
+function cajaUltimoCierreAntes_(fecha, sede) {
+  cajaAsegurarEstructura_();
+  const limite = new Date(fecha + 'T23:59:59').getTime();
+  return leerTabla_(SHEET_NAMES.CAJA_TURNO)
+    .filter(function (r) {
+      if (r.sede !== sede || r.estado !== 'Cerrado') return false;
+      const marca = cajaFechaMs_(r.timestamp_cierre || r.hora_cierre || r.fecha);
+      return marca && marca <= limite;
+    })
+    .sort(function (a, b) {
+      return cajaFechaMs_(b.timestamp_cierre || b.hora_cierre || b.fecha)
+        - cajaFechaMs_(a.timestamp_cierre || a.hora_cierre || a.fecha);
+    })[0] || null;
+}
+
+function cajaBaseEsperada_(fecha, sede) {
+  const ultimo = cajaUltimoCierreAntes_(fecha, sede);
+  return ultimo && ultimo.base_siguiente !== '' && ultimo.base_siguiente !== null
+    ? Number(ultimo.base_siguiente) || 0
+    : 0;
+}
+
 function cajaMovimientosDelDia_(fecha, sede) {
+  cajaAsegurarEstructura_();
   return leerTabla_(SHEET_NAMES.CAJA_MOVIMIENTOS).filter(function (r) {
     return formatearFecha_(r.fecha) === fecha && r.sede === sede;
   });
@@ -53,26 +95,32 @@ function cajaMovimientosResumen_(movimientos) {
   return resumen;
 }
 
-function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
-  const resumen = cajaMovimientosResumen_(movimientos);
+function cajaEfectivoFudoDia_(fecha, sede) {
   const fudo = typeof turnoResumenCierre_ === 'function'
     ? turnoResumenCierre_(fecha, sede)
     : { pagos_efectivo_esperado: 0 };
-  const pagosEfectivoEsperado = Number(fudo.pagos_efectivo_esperado) || 0;
+  return Number(fudo.pagos_efectivo_esperado) || 0;
+}
+
+function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
+  const resumen = cajaMovimientosResumen_(movimientos);
+  const efectivoFudoActual = cajaEfectivoFudoDia_(fecha, sede);
+  const efectivoFudoTurno = Math.max(0, efectivoFudoActual - (Number(apertura.efectivo_fudo_al_abrir) || 0));
   const esperado = Number(apertura.base_inicial || 0)
-    + pagosEfectivoEsperado
+    + efectivoFudoTurno
     + resumen.otros_ingresos
     - resumen.entregas_administrador
     - resumen.gastos;
   return {
     esperado: Number(esperado.toFixed(2)),
-    pagos_efectivo_esperado: pagosEfectivoEsperado,
+    pagos_efectivo_esperado: Number(efectivoFudoTurno.toFixed(2)),
+    pagos_efectivo_dia: Number(efectivoFudoActual.toFixed(2)),
     resumen: resumen
   };
 }
 
-/** Actualiza en el sitio la fila de Caja_Turno de `fecha`+`sede` con los campos de `cambios`. */
 function cajaTurnoActualizarFila_(fecha, sede, cambios) {
+  cajaAsegurarEstructura_();
   const sh = sheet_(SHEET_NAMES.CAJA_TURNO);
   const data = sh.getDataRange().getValues();
   const headers = data[0];
@@ -81,52 +129,69 @@ function cajaTurnoActualizarFila_(fecha, sede, cambios) {
   const limpio = neutralizarObjetoFormulas_(cambios);
   for (let r = 1; r < data.length; r++) {
     if (formatearFecha_(data[r][fechaCol]) === fecha && data[r][sedeCol] === sede) {
-      headers.forEach(function (h, c) { if (limpio[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(limpio[h]); });
+      headers.forEach(function (h, c) {
+        if (limpio[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(limpio[h]);
+      });
       return true;
     }
   }
   return false;
 }
 
-/** Apertura del turno de caja: base inicial y hora, una vez por fecha+sede. Obligatoria antes de
- * poder registrar movimientos o cerrar (ver cajaMovimientoRegistrar_/cajaCerrar_). */
 function cajaAbrir_(item, usuario) {
+  cajaAsegurarEstructura_();
   if (!item || !item.fecha || !item.sede) return { ok: false, error: 'Falta la fecha o la sede' };
   if (item.base_inicial === '' || item.base_inicial === undefined || item.base_inicial === null) {
-    return { ok: false, error: 'Falta la base inicial con la que abre la caja' };
+    return { ok: false, error: 'Falta el efectivo contado al abrir la caja' };
   }
   if (!sedeEscrituraPermitida_(usuario, item.sede)) {
     return { ok: false, error: 'No puedes abrir la caja de una sede distinta a la tuya (' + usuario.sede + ')' };
   }
+
   const fecha = formatearFecha_(item.fecha);
   const existente = cajaTurnoFila_(fecha, item.sede);
   if (existente) {
     if (existente.estado === 'Cerrado') return { ok: false, error: 'La caja de hoy en ' + item.sede + ' ya se cerró.' };
     return { ok: true, ya_abierta: true, item: existente };
   }
+
+  const baseEsperada = cajaBaseEsperada_(fecha, item.sede);
+  const baseInicial = Number(item.base_inicial) || 0;
+  const diferenciaApertura = Number((baseInicial - baseEsperada).toFixed(2));
   const fila = {
     id: Utilities.getUuid(),
     fecha: fecha,
     sede: item.sede,
     estado: 'Abierto',
-    base_inicial: Number(item.base_inicial) || 0,
+    base_esperada: baseEsperada,
+    base_inicial: baseInicial,
+    diferencia_apertura: diferenciaApertura,
+    observacion_apertura: item.observacion_apertura || '',
     hora_apertura: new Date(),
     usuario_apertura_id: usuario.id,
     usuario_apertura: usuario.nombre,
+    efectivo_fudo_al_abrir: cajaEfectivoFudoDia_(fecha, item.sede),
     rappi_encendido: false
   };
   appendRowFromObj_(SHEET_NAMES.CAJA_TURNO, fila);
   auditoriaRegistrar_(usuario, 'caja_abrir', 'CajaTurno', fecha + '|' + item.sede, null,
-    { base_inicial: fila.base_inicial }, item.sede, '');
+    { base_esperada: baseEsperada, base_inicial: baseInicial, diferencia_apertura: diferenciaApertura },
+    item.sede, item.observacion_apertura || '');
   return { ok: true, item: fila };
 }
 
-/** Estado de la caja de hoy para la pantalla de Inicio: si está abierta, la base y el efectivo
- * esperado calculado en vivo con los movimientos registrados hasta este momento. */
 function cajaEstado_(fecha, sede, usuario) {
+  cajaAsegurarEstructura_();
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   const apertura = cajaTurnoFila_(fecha, sede);
-  if (!apertura) return { ok: true, abierta: false, puede_cerrar: cajaPuedeCerrar_(usuario, fecha) };
+  if (!apertura) {
+    return {
+      ok: true,
+      abierta: false,
+      base_esperada: cajaBaseEsperada_(fecha, sede),
+      puede_cerrar: cajaPuedeCerrar_(usuario, fecha)
+    };
+  }
   const movimientos = cajaMovimientosDelDia_(fecha, sede);
   const calculo = cajaEfectivoEsperado_(apertura, movimientos, fecha, sede);
   return {
@@ -135,24 +200,29 @@ function cajaEstado_(fecha, sede, usuario) {
     apertura: apertura,
     movimientos_resumen: calculo.resumen,
     pagos_efectivo_esperado: calculo.pagos_efectivo_esperado,
+    pagos_efectivo_dia: calculo.pagos_efectivo_dia,
     efectivo_esperado: calculo.esperado,
     puede_cerrar: cajaPuedeCerrar_(usuario, fecha)
   };
 }
 
-/** Recordatorio de encender Rappi: un simple sí/no guardado en la apertura de hoy, no un estado
- * conectado a Rappi de verdad (no existe esa integración) — solo para que quede marcado y visible. */
-function cajaRappiMarcar_(fecha, sede) {
+function cajaRappiMarcar_(fecha, sede, usuario) {
+  cajaAsegurarEstructura_();
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
   const fechaFmt = formatearFecha_(fecha);
-  if (!cajaTurnoFila_(fechaFmt, sede)) return { ok: false, error: 'Primero hay que abrir la caja de hoy en ' + sede + '.' };
-  cajaTurnoActualizarFila_(fechaFmt, sede, { rappi_encendido: true });
+  const turno = cajaTurnoFila_(fechaFmt, sede);
+  if (!turno) return { ok: false, error: 'Primero hay que abrir la caja de hoy en ' + sede + '.' };
+  if (turno.estado === 'Cerrado') return { ok: false, error: 'La caja ya está cerrada.' };
+  cajaTurnoActualizarFila_(fechaFmt, sede, {
+    rappi_encendido: true,
+    rappi_confirmado_por: usuario ? usuario.nombre : '',
+    rappi_confirmado_en: new Date()
+  });
   return { ok: true };
 }
 
-/** Un movimiento de efectivo durante el turno: entrega al administrador, gasto/salida u otro
- * ingreso. Cambia el efectivo esperado de inmediato (cajaEstado_/cajaCerrar_ ya lo reflejan). */
 function cajaMovimientoRegistrar_(item, usuario) {
+  cajaAsegurarEstructura_();
   if (!item || !item.fecha || !item.sede) return { ok: false, error: 'Falta la fecha o la sede' };
   if (!sedeEscrituraPermitida_(usuario, item.sede)) {
     return { ok: false, error: 'No puedes registrar movimientos de caja de una sede distinta a la tuya (' + usuario.sede + ')' };
@@ -188,11 +258,10 @@ function cajaMovimientoRegistrar_(item, usuario) {
   };
   appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS, fila);
   auditoriaRegistrar_(usuario, 'caja_movimiento_registrar', 'CajaMovimientos', fila.id, null,
-    { tipo: fila.tipo, valor: fila.valor }, item.sede, item.motivo);
+    { tipo: fila.tipo, valor: fila.valor, persona_recibe: fila.persona_recibe }, item.sede, item.motivo);
   return { ok: true, item: fila };
 }
 
-/** Movimientos de caja de una fecha+sede, más recientes primero — para "Ver movimientos de caja". */
 function cajaMovimientosListar_(fecha, sede) {
   if (!fecha || !sede) return [];
   return cajaMovimientosDelDia_(formatearFecha_(fecha), sede).sort(function (a, b) {
@@ -200,12 +269,8 @@ function cajaMovimientosListar_(fecha, sede) {
   });
 }
 
-/**
- * Cierre de caja: compara el efectivo contado contra el esperado (base + FUDO + otros ingresos −
- * entregas − gastos) y calcula sobrante/faltante, cuánto se entrega al administrador al cierre y con
- * cuánto queda la base para el día siguiente (por defecto, la misma base con la que abrió hoy).
- */
 function cajaCerrar_(item, usuario) {
+  cajaAsegurarEstructura_();
   if (!item || !item.fecha || !item.sede) return { ok: false, error: 'Falta la fecha o la sede' };
   if (!sedeEscrituraPermitida_(usuario, item.sede)) {
     return { ok: false, error: 'No puedes cerrar la caja de una sede distinta a la tuya (' + usuario.sede + ')' };
@@ -236,6 +301,7 @@ function cajaCerrar_(item, usuario) {
     efectivo_esperado: calculo.esperado,
     diferencia: diferencia,
     entrega_cierre: entregaCierre,
+    persona_recibe_cierre: item.persona_recibe_cierre || '',
     base_siguiente: baseSiguiente,
     usuario_cierre: usuario.nombre,
     hora_cierre: new Date(),
@@ -243,10 +309,15 @@ function cajaCerrar_(item, usuario) {
     timestamp_cierre: new Date()
   });
 
-  if (diferencia !== 0) {
-    auditoriaRegistrar_(usuario, 'caja_no_cuadra', 'CajaTurno', fecha + '|' + item.sede, null,
-      { diferencia: diferencia }, item.sede, diferencia > 0 ? 'Sobrante en caja' : 'Faltante en caja');
-  }
+  auditoriaRegistrar_(usuario, 'caja_cerrar', 'CajaTurno', fecha + '|' + item.sede, null,
+    {
+      efectivo_esperado: calculo.esperado,
+      efectivo_contado: efectivoContado,
+      diferencia: diferencia,
+      entrega_cierre: entregaCierre,
+      persona_recibe_cierre: item.persona_recibe_cierre || '',
+      base_siguiente: baseSiguiente
+    }, item.sede, item.observacion || '');
 
   return {
     ok: true,
@@ -254,6 +325,7 @@ function cajaCerrar_(item, usuario) {
     efectivo_contado: efectivoContado,
     diferencia: diferencia,
     entrega_cierre: entregaCierre,
+    persona_recibe_cierre: item.persona_recibe_cierre || '',
     base_siguiente: baseSiguiente
   };
 }
