@@ -220,6 +220,10 @@ function conteosHistorial_(filtros) {
 
 function formatearFecha_(valor) {
   if (!valor) return '';
+  if (typeof valor === 'string') {
+    const texto = valor.trim();
+    if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(texto)) return texto;
+  }
   const d = (valor instanceof Date) ? valor : new Date(valor);
   return Utilities.formatDate(d, Session.getScriptTimeZone() || 'America/Bogota', 'yyyy-MM-dd');
 }
