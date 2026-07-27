@@ -114,28 +114,78 @@ function calcularDisponibleHoySinCache_(fecha, sede) {
  * rendimiento_producto default 1 (así las filas viejas tipo "plato", que no tienen esa columna
  * llena, se comportan exactamente igual que antes). tipo default 'plato'.
  */
+function claveRecetaEnMapa_(texto, recetaMap, indice) {
+  const exacta = normalizar_(texto);
+  if (recetaMap && recetaMap[exacta]) return exacta;
+  return claveProducto_(texto, indice);
+}
+
 function construirRecetaMap_(recetas, indice) {
   const recetaMap = {};
-  recetas.forEach(function (r) {
-    const clave = claveProducto_(r.producto, indice);
-    if (!recetaMap[clave]) {
-      recetaMap[clave] = { nombre: nombreCanonico_(r.producto, indice), tipo: (r.tipo || 'plato').toString().trim() || 'plato', lineas: [] };
+  const grupos = {};
+
+  (recetas || []).forEach(function (r) {
+    const canonica = claveProducto_(r.producto, indice);
+    const exacta = normalizar_(r.producto);
+    if (!grupos[canonica]) grupos[canonica] = [];
+    if (grupos[canonica].indexOf(exacta) === -1) {
+      grupos[canonica].push(exacta);
     }
+  });
+
+  const preferida = {};
+  Object.keys(grupos).forEach(function (canonica) {
+    preferida[canonica] = grupos[canonica].indexOf(canonica) !== -1
+      ? canonica
+      : grupos[canonica][0];
+  });
+
+  (recetas || []).forEach(function (r) {
+    const canonica = claveProducto_(r.producto, indice);
+    const exacta = normalizar_(r.producto);
+    const clave = exacta === preferida[canonica] ? canonica : exacta;
+    const tipo = (r.tipo || 'plato').toString().trim() || 'plato';
+
+    if (!recetaMap[clave]) {
+      recetaMap[clave] = {
+        nombre: nombreCanonico_(r.producto, indice),
+        nombre_origen: String(r.producto || '').trim(),
+        tipo: tipo,
+        lineas: []
+      };
+    }
+
+    if (recetaMap[clave].tipo !== tipo) {
+      recetaMap[clave].conflicto_tipos = true;
+    }
+
     const entradaBase = aUnidadBase_(r.cantidad, r.unidad);
-    const salidaBase = r.rendimiento_producto !== '' && r.rendimiento_producto !== null && r.rendimiento_producto !== undefined
-      ? aUnidadBase_(r.rendimiento_producto, r.unidad_rendimiento || r.unidad)
-      : { cantidad: 1, unidad: 'u' };
+    const salidaBase =
+      r.rendimiento_producto !== '' &&
+      r.rendimiento_producto !== null &&
+      r.rendimiento_producto !== undefined
+        ? aUnidadBase_(
+            r.rendimiento_producto,
+            r.unidad_rendimiento || r.unidad
+          )
+        : { cantidad: 1, unidad: 'u' };
+
     recetaMap[clave].lineas.push({
       ingrediente: r.ingrediente,
       cantidad: entradaBase.cantidad,
       unidad: entradaBase.unidad,
       rendimiento: salidaBase.cantidad || 1,
       unidad_rendimiento: salidaBase.unidad,
-      controla_disponibilidad: !(r.controla_disponibilidad === false || normalizar_(r.controla_disponibilidad) === 'no' || normalizar_(r.controla_disponibilidad) === 'false'),
+      controla_disponibilidad: !(
+        r.controla_disponibilidad === false ||
+        normalizar_(r.controla_disponibilidad) === 'no' ||
+        normalizar_(r.controla_disponibilidad) === 'false'
+      ),
       version: r.version || '',
       fuente: r.fuente || ''
     });
   });
+
   return recetaMap;
 }
 
@@ -170,7 +220,7 @@ function cantidadDisponibleDetallada_(clave, recetaMap, stockContado, indice, me
       const ratio = linea.cantidad / linea.rendimiento;
       if (!(ratio > 0)) return;
       if (!linea.controla_disponibilidad) return;
-      const claveIng = claveProducto_(linea.ingrediente, indice);
+      const claveIng = claveRecetaEnMapa_(linea.ingrediente, recetaMap, indice);
       const det = cantidadDisponibleDetallada_(claveIng, recetaMap, stockContado, indice, memo, enCurso);
       const posible = det.disponible / ratio;
       if (posible < minPosible) {
@@ -242,25 +292,52 @@ function limitanteRaiz_(limitante) {
  * la UI. A diferencia de cantidadDisponibleDetallada_, sí atraviesa capas "produccion" para
  * mostrar el desglose completo hasta materia prima.
  */
-function aplanarConsumo_(claveProducto, recetaMap, indice, cantidadBase, acumulado, profundidad) {
+function aplanarConsumo_(claveProducto, recetaMap, indice, cantidadBase, acumulado, profundidad, enCurso) {
   cantidadBase = cantidadBase || 1;
   acumulado = acumulado || {};
   profundidad = profundidad || 0;
+  enCurso = enCurso || {};
+
   if (profundidad > 10) return acumulado;
+  if (enCurso[claveProducto]) return acumulado;
+
   const entrada = recetaMap[claveProducto];
   if (!entrada) return acumulado;
+
+  enCurso[claveProducto] = true;
 
   entrada.lineas.forEach(function (linea) {
     const ratio = linea.cantidad / linea.rendimiento;
     const cantidadTotal = cantidadBase * ratio;
-    const claveIngrediente = claveProducto_(linea.ingrediente, indice);
+    const claveIngrediente = claveRecetaEnMapa_(
+      linea.ingrediente,
+      recetaMap,
+      indice
+    );
+
     if (recetaMap[claveIngrediente]) {
-      aplanarConsumo_(claveIngrediente, recetaMap, indice, cantidadTotal, acumulado, profundidad + 1);
+      aplanarConsumo_(
+        claveIngrediente,
+        recetaMap,
+        indice,
+        cantidadTotal,
+        acumulado,
+        profundidad + 1,
+        enCurso
+      );
     } else {
-      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = { nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0, unidad: linea.unidad };
+      if (!acumulado[claveIngrediente]) {
+        acumulado[claveIngrediente] = {
+          nombre: nombreCanonico_(linea.ingrediente, indice),
+          cantidad: 0,
+          unidad: linea.unidad
+        };
+      }
       acumulado[claveIngrediente].cantidad += cantidadTotal;
     }
   });
+
+  delete enCurso[claveProducto];
   return acumulado;
 }
 
@@ -272,25 +349,53 @@ function aplanarConsumo_(claveProducto, recetaMap, indice, cantidadBase, acumula
  * prima. Si mañana Conciliación necesita bajar hasta materia prima, hay que decidirlo aparte —
  * no es lo mismo que "Disponible Hoy".
  */
-function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indice, profundidad) {
+function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indice, profundidad, enCurso) {
   profundidad = profundidad || 0;
+  enCurso = enCurso || {};
+
   if (profundidad > 6) return acumulado;
+  if (enCurso[claveProducto]) return acumulado;
+
   const entrada = recetaMap[claveProducto];
   if (!entrada) return acumulado;
 
+  enCurso[claveProducto] = true;
+
   entrada.lineas.forEach(function (linea) {
-    const cantidadTotal = cantidadBase * (linea.cantidad / linea.rendimiento);
-    const claveIngrediente = claveProducto_(linea.ingrediente, indice);
+    const cantidadTotal =
+      cantidadBase * (linea.cantidad / linea.rendimiento);
+
+    const claveIngrediente = claveRecetaEnMapa_(
+      linea.ingrediente,
+      recetaMap,
+      indice
+    );
+
     const subEntrada = recetaMap[claveIngrediente];
+
     if (subEntrada && subEntrada.tipo !== 'produccion') {
-      explotarReceta_(claveIngrediente, cantidadTotal, recetaMap, acumulado, indice, profundidad + 1);
+      explotarReceta_(
+        claveIngrediente,
+        cantidadTotal,
+        recetaMap,
+        acumulado,
+        indice,
+        profundidad + 1,
+        enCurso
+      );
     } else {
-      if (!acumulado[claveIngrediente]) acumulado[claveIngrediente] = {
-        nombre: nombreCanonico_(linea.ingrediente, indice), cantidad: 0, unidad: linea.unidad
-      };
+      if (!acumulado[claveIngrediente]) {
+        acumulado[claveIngrediente] = {
+          nombre: nombreCanonico_(linea.ingrediente, indice),
+          cantidad: 0,
+          unidad: linea.unidad
+        };
+      }
       acumulado[claveIngrediente].cantidad += cantidadTotal;
     }
   });
+
+  delete enCurso[claveProducto];
   return acumulado;
 }
 

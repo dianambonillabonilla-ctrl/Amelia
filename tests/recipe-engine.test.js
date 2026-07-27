@@ -123,4 +123,66 @@ assert.strictEqual(detContadoEnCero.sin_dato, false, 'Contado y en cero, sin_dat
   console.log('recetaAprobar_ borrador → activo: OK');
 })();
 
+
+// REGRESIÓN: Falafel y Falafel Preparado deben conservar recetas separadas aunque
+// el catálogo relacione ambos nombres. Una venta consume el preparado; no debe
+// entrar en recursión ni descontar materias primas nuevamente.
+const indiceFalafelColision = {
+  falafel: 'Falafel',
+  'falafel preparado': 'Falafel'
+};
+
+const mapaFalafelColision = ctx.construirRecetaMap_([
+  {
+    producto: 'Falafel',
+    ingrediente: 'Falafel Preparado',
+    cantidad: 187,
+    unidad: 'g',
+    tipo: 'plato'
+  },
+  {
+    producto: 'Falafel Preparado',
+    ingrediente: 'Garbanzo',
+    cantidad: 1000,
+    unidad: 'g',
+    rendimiento_producto: 1000,
+    unidad_rendimiento: 'g',
+    tipo: 'produccion'
+  }
+], indiceFalafelColision);
+
+assert.ok(
+  mapaFalafelColision.falafel,
+  'Debe conservarse la receta del plato Falafel'
+);
+
+assert.ok(
+  mapaFalafelColision['falafel preparado'],
+  'Debe conservarse separada la receta de producción de Falafel Preparado'
+);
+
+assert.strictEqual(mapaFalafelColision.falafel.tipo, 'plato');
+assert.strictEqual(mapaFalafelColision['falafel preparado'].tipo, 'produccion');
+
+const consumoFalafelSeguro = {};
+ctx.explotarReceta_(
+  'falafel',
+  1,
+  mapaFalafelColision,
+  consumoFalafelSeguro,
+  indiceFalafelColision
+);
+
+assert.strictEqual(
+  consumoFalafelSeguro['falafel preparado'].cantidad,
+  187,
+  'Una venta debe consumir exactamente 187 g de Falafel Preparado'
+);
+
+assert.strictEqual(
+  consumoFalafelSeguro.garbanzo,
+  undefined,
+  'La venta no debe volver a descontar Garbanzo: eso corresponde a la producción'
+);
+
 console.log('recipe-engine: OK');
