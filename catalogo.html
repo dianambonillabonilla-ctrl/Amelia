@@ -161,23 +161,31 @@
     </div>
 
     <div class="card" data-solo-rol="Administrador">
-      <h2>3. Sincronizar catálogo con FUDO</h2>
+      <h2>3. Comparar catálogo Dilana vs FUDO</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Cruza el catálogo de Dilana con los productos e ingredientes de FUDO. <strong>Traer desde FUDO</strong>
-        rellena <em>ID FUDO</em>, <em>Nombre en FUDO</em> y el tipo (producto vs ingrediente) — es el
-        primer paso para que ventas y conciliación calen. <strong>Enviar a FUDO</strong> actualiza el nombre
-        en el POS con lo que tengas en la columna "Nombre en FUDO" (no cambia el nombre estándar de Dilana).
-        FUDO limita los nombres a 45 caracteres.
+        El catálogo no cuadra porque los nombres/IDs de FUDO y Dilana no están alineados. Este paso
+        <strong>no modifica nada</strong>: trae el catálogo actual de FUDO (productos + ingredientes),
+        lo compara con lo que tienes en Dilana y te muestra en grupos qué coincide, qué hay que
+        vincular, qué está solo en un lado y qué parece duplicado. Revisa la lista, unifica nombres
+        y luego vincula — sin adivinar.
       </p>
       <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px">
-        <button class="btn dorado" id="btn-sync-desde-fudo" type="button">Traer catálogo desde FUDO</button>
-        <label style="display:flex; align-items:center; gap:6px; font-size:.85rem; margin:0">
-          <input type="checkbox" id="sync-crear-faltantes" style="width:auto">
-          Crear en Dilana lo que solo existe en FUDO
-        </label>
-        <button class="btn fantasma" id="btn-sync-a-fudo" type="button">Enviar nombres a FUDO</button>
+        <button class="btn dorado" id="btn-comparar-fudo" type="button">Comparar con FUDO (solo lectura)</button>
+        <button class="btn fantasma" id="btn-exportar-comparacion" type="button" disabled>Exportar comparación (CSV)</button>
       </div>
-      <div id="resultado-sync-catalogo" style="font-size:.88rem"></div>
+      <div id="resultado-comparacion-catalogo" style="font-size:.88rem"></div>
+      <details style="margin-top:18px; font-size:.85rem">
+        <summary style="cursor:pointer; color:var(--grey)">Cuando ya revisaste la comparación: aplicar cambios</summary>
+        <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center">
+          <button class="btn fantasma" id="btn-sync-desde-fudo" type="button">Traer vínculos desde FUDO</button>
+          <label style="display:flex; align-items:center; gap:6px; margin:0">
+            <input type="checkbox" id="sync-crear-faltantes" style="width:auto">
+            Crear en Dilana lo que solo existe en FUDO
+          </label>
+          <button class="btn fantasma" id="btn-sync-a-fudo" type="button">Enviar nombres a FUDO</button>
+        </div>
+        <div id="resultado-sync-catalogo" style="margin-top:10px"></div>
+      </details>
     </div>
 
     <div class="card" data-solo-rol="Administrador">
@@ -497,7 +505,183 @@ function buscarParecidos_(nombre) {
   });
 }
 
-// --- Sincronización catálogo ↔ FUDO -----------------------------------------------------------
+// --- Comparar catálogo Dilana vs FUDO (solo lectura) ------------------------------------------
+
+let ultimaComparacion = null;
+
+function pintarTablaComparacion_(titulo, filas, columnas, vacio) {
+  if (!filas.length) return `<p><strong>${escapeHtml(titulo)}:</strong> ${escapeHtml(vacio)}</p>`;
+  return `<p><strong>${escapeHtml(titulo)} (${filas.length})</strong></p>
+    <table style="margin-bottom:16px"><thead><tr>${columnas.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}</tr></thead>
+    <tbody>${filas.map(fila => `<tr>${columnas.map(c => `<td>${c.html ? c.html(fila) : escapeHtml(fila[c.key] || '')}</td>`).join('')}</tr>`).join('')}
+    </tbody></table>`;
+}
+
+function pintarComparacion_(data) {
+  const r = data.resumen;
+  let html = `<div class="grid grid-4" style="margin-bottom:16px">
+    <div><span style="color:var(--grey)">En FUDO</span><br><strong>${r.total_fudo}</strong></div>
+    <div><span style="color:var(--grey)">En Dilana</span><br><strong>${r.total_dilana}</strong></div>
+    <div><span style="color:var(--green)">Coinciden</span><br><strong>${r.coinciden}</strong></div>
+    <div><span style="color:var(--amber)">Requieren acción</span><br><strong>${r.requiere_accion}</strong></div>
+  </div>`;
+
+  html += pintarTablaComparacion_('✓ Coinciden (ID y nombre alineados)', data.coinciden,
+    [
+      { key: 'nombre_estandar', label: 'Dilana' },
+      { key: 'nombre_fudo', label: 'FUDO' },
+      { key: 'id_fudo', label: 'ID' },
+      { key: 'tipo_fudo', label: 'Tipo' }
+    ], 'nada en esta categoría');
+
+  html += pintarTablaComparacion_('⚠ Mismo ID pero nombre distinto', data.nombre_distinto,
+    [
+      { key: 'nombre_estandar', label: 'Dilana (estándar)' },
+      { key: 'nombre_fudo_dilana', label: 'Dilana (nombre FUDO)' },
+      { key: 'nombre_fudo_fudo', label: 'FUDO ahora' },
+      { key: 'accion', label: 'Qué hacer' }
+    ], 'nada');
+
+  html += pintarTablaComparacion_('→ Sugieren vincular (nombre parecido, sin ID)', data.sugieren_vinculo,
+    [
+      { key: 'nombre_estandar', label: 'Dilana' },
+      { key: 'nombre_fudo', label: 'FUDO' },
+      { key: 'id_fudo', label: 'ID FUDO' },
+      {
+        label: '',
+        html: (f) => `<button class="btn dorado btn-vincular-comparacion" type="button"
+          data-id="${escapeHtml(f.catalogo_id)}" data-fudo="${escapeHtml(f.nombre_fudo)}"
+          data-idfudo="${escapeHtml(f.id_fudo)}" data-tipo="${escapeHtml(f.tipo_fudo)}">Vincular</button>`
+      }
+    ], 'nada');
+
+  html += pintarTablaComparacion_('Solo en FUDO (no hay pareja en Dilana)', data.solo_fudo,
+    [
+      { key: 'nombre_fudo', label: 'FUDO' },
+      { key: 'id_fudo', label: 'ID' },
+      { key: 'tipo_fudo', label: 'Tipo' },
+      { key: 'accion', label: 'Qué hacer' }
+    ], 'nada');
+
+  html += pintarTablaComparacion_('Solo en Dilana (sin pareja en FUDO)', data.solo_dilana,
+    [
+      { key: 'nombre_estandar', label: 'Dilana' },
+      { key: 'nombre_fudo_dilana', label: 'Nombre FUDO guardado' },
+      { key: 'accion', label: 'Qué hacer' }
+    ], 'nada');
+
+  html += pintarTablaComparacion_('Conflictos (ID inválido u otros)', data.conflictos,
+    [
+      { key: 'nombre_estandar', label: 'Dilana' },
+      { key: 'id_fudo', label: 'ID problemático' },
+      { key: 'accion', label: 'Qué hacer' }
+    ], 'nada');
+
+  html += pintarTablaComparacion_('Duplicados posibles en Dilana (unificar)', data.duplicados_dilana,
+    [
+      { key: 'nombre_a', label: 'Producto A' },
+      { key: 'nombre_fudo_a', label: 'FUDO A' },
+      { key: 'nombre_b', label: 'Producto B' },
+      { key: 'nombre_fudo_b', label: 'FUDO B' },
+      { key: 'accion', label: 'Qué hacer' }
+    ], 'nada');
+
+  document.getElementById('resultado-comparacion-catalogo').innerHTML = html;
+
+  document.querySelectorAll('.btn-vincular-comparacion').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const id = btn.dataset.id;
+      const data = await llamar('catalogo_guardar', {
+        item: {
+          id: id,
+          nombre_fudo: btn.dataset.fudo,
+          id_fudo: btn.dataset.idfudo,
+          tipo_fudo: btn.dataset.tipo
+        }
+      });
+      if (!data.ok) { alert(data.error); return; }
+      const item = catalogo.find(p => p.id === id);
+      if (item) {
+        item.nombre_fudo = btn.dataset.fudo;
+        item.id_fudo = btn.dataset.idfudo;
+        item.tipo_fudo = btn.dataset.tipo;
+      }
+      avisarGuardado('Vinculado.');
+      pintarTabla_();
+      document.getElementById('btn-comparar-fudo').click();
+    }));
+  });
+}
+
+function exportarComparacionCsv_() {
+  if (!ultimaComparacion) return;
+  const lineas = ['categoria,dilana_estandar,dilana_nombre_fudo,fudo_nombre,id_fudo,tipo,accion'];
+  function agregar(cat, filas, map) {
+    filas.forEach(f => {
+      lineas.push([
+        cat,
+        map.dilana(f),
+        map.dilanaFudo(f),
+        map.fudo(f),
+        map.id(f),
+        map.tipo(f),
+        map.accion(f)
+      ].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
+    });
+  }
+  agregar('coincide', ultimaComparacion.coinciden, {
+    dilana: f => f.nombre_estandar, dilanaFudo: f => f.nombre_fudo_dilana, fudo: f => f.nombre_fudo,
+    id: f => f.id_fudo, tipo: f => f.tipo_fudo, accion: () => ''
+  });
+  agregar('nombre_distinto', ultimaComparacion.nombre_distinto, {
+    dilana: f => f.nombre_estandar, dilanaFudo: f => f.nombre_fudo_dilana, fudo: f => f.nombre_fudo_fudo,
+    id: f => f.id_fudo, tipo: f => f.tipo_fudo, accion: f => f.accion
+  });
+  agregar('sugerir_vinculo', ultimaComparacion.sugieren_vinculo, {
+    dilana: f => f.nombre_estandar, dilanaFudo: f => f.nombre_fudo_dilana, fudo: f => f.nombre_fudo,
+    id: f => f.id_fudo, tipo: f => f.tipo_fudo, accion: f => f.accion
+  });
+  agregar('solo_fudo', ultimaComparacion.solo_fudo, {
+    dilana: () => '', dilanaFudo: () => '', fudo: f => f.nombre_fudo,
+    id: f => f.id_fudo, tipo: f => f.tipo_fudo, accion: f => f.accion
+  });
+  agregar('solo_dilana', ultimaComparacion.solo_dilana, {
+    dilana: f => f.nombre_estandar, dilanaFudo: f => f.nombre_fudo_dilana, fudo: () => '',
+    id: () => '', tipo: () => '', accion: f => f.accion
+  });
+  agregar('conflicto', ultimaComparacion.conflictos, {
+    dilana: f => f.nombre_estandar, dilanaFudo: f => f.nombre_fudo_dilana || '', fudo: () => '',
+    id: f => f.id_fudo, tipo: f => f.tipo || '', accion: f => f.accion
+  });
+  agregar('duplicado_dilana', ultimaComparacion.duplicados_dilana, {
+    dilana: f => f.nombre_a + ' / ' + f.nombre_b, dilanaFudo: f => (f.nombre_fudo_a || '') + ' / ' + (f.nombre_fudo_b || ''),
+    fudo: () => '', id: () => '', tipo: () => '', accion: f => f.accion
+  });
+  const blob = new Blob([lineas.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'comparacion-catalogo-dilana-fudo.csv';
+  a.click();
+}
+
+document.getElementById('btn-comparar-fudo').addEventListener('click', conBotonProtegido(
+  document.getElementById('btn-comparar-fudo'), async () => {
+    document.getElementById('resultado-comparacion-catalogo').innerHTML =
+      '<p>Comparando con FUDO… puede tardar un minuto.</p>';
+    const data = await llamar('catalogo_comparar_fudo');
+    if (!data.ok) {
+      document.getElementById('resultado-comparacion-catalogo').innerHTML =
+        `<p style="color:var(--red)">${escapeHtml(data.error || 'Error')}</p>`;
+      return;
+    }
+    ultimaComparacion = data;
+    document.getElementById('btn-exportar-comparacion').disabled = false;
+    pintarComparacion_(data);
+  }));
+
+document.getElementById('btn-exportar-comparacion').addEventListener('click', () => exportarComparacionCsv_());
+
+// --- Sincronización catálogo ↔ FUDO (aplicar cambios) ------------------------------------------
 
 function pintarResultadoSync_(html) {
   document.getElementById('resultado-sync-catalogo').innerHTML = html;

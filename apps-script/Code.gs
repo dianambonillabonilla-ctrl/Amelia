@@ -432,6 +432,9 @@ function handleRequest_(e, method) {
       case 'fudo_api_sincronizar_catalogo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoSincronizarDesdeFudo_(sesion.usuario, params.opciones));
+      case 'catalogo_comparar_fudo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoCompararConFudo_());
       case 'catalogo_enviar_nombre_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(catalogoEnviarNombreAFudo_(params.catalogo_id, sesion.usuario));

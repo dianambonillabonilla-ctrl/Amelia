@@ -37,6 +37,182 @@ function catalogoBuscarPorNombreFudo_(nombre, catalogo, indiceNombre) {
   }) || null;
 }
 
+/** Lista productos + ingredientes de FUDO vía API (sin modificar Dilana). */
+function fudoApiListarCatalogoItems_() {
+  const productos = fudoApiObtenerTodoCompleto_('products', { include: 'unit' });
+  const ingredientes = fudoApiObtenerTodoCompleto_('ingredients', { include: 'unit' });
+  const items = [];
+  function agregar(resultado, tipoFudo) {
+    resultado.registros.forEach(function (item) {
+      const attrs = item.attributes || {};
+      const nombre = String(attrs.name || '').trim();
+      if (!nombre) return;
+      items.push({
+        id_fudo: String(item.id),
+        nombre_fudo: nombre,
+        tipo_fudo: tipoFudo,
+        unidad: fudoApiUnidadDesdeItem_(item, resultado.incluidos),
+        stock: attrs.stock
+      });
+    });
+  }
+  agregar(productos, 'Producto');
+  agregar(ingredientes, 'Ingrediente');
+  return items;
+}
+
+/**
+ * Compara el catálogo de FUDO (API) con Catalogo_Maestro SIN modificar nada.
+ * Agrupa en categorías claras para revisar qué vincular, unificar o crear.
+ */
+function catalogoCompararConFudo_() {
+  return catalogoCompararConFudoInterno_(fudoApiListarCatalogoItems_());
+}
+
+function catalogoCompararConFudoInterno_(itemsFudo) {
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO).filter(function (c) { return c.nombre_estandar; });
+  const indiceNombre = indiceCatalogo_();
+  const fudoPorId = {};
+  itemsFudo.forEach(function (f) { fudoPorId[f.id_fudo] = f; });
+
+  const reporte = {
+    ok: true,
+    coinciden: [],
+    nombre_distinto: [],
+    sugieren_vinculo: [],
+    solo_fudo: [],
+    solo_dilana: [],
+    conflictos: [],
+    duplicados_dilana: []
+  };
+
+  const idsFudoUsados = {};
+
+  catalogo.forEach(function (c) {
+    const idFudo = c.id_fudo ? String(c.id_fudo) : '';
+    const fudo = idFudo ? fudoPorId[idFudo] : null;
+
+    if (idFudo && fudo) {
+      idsFudoUsados[idFudo] = true;
+      const nomFudo = normalizar_(fudo.nombre_fudo);
+      const nomDilanaFudo = normalizar_(c.nombre_fudo || '');
+      const nomEstandar = normalizar_(c.nombre_estandar);
+      if (nomDilanaFudo === nomFudo || nomEstandar === nomFudo) {
+        reporte.coinciden.push({
+          catalogo_id: c.id,
+          nombre_estandar: c.nombre_estandar,
+          nombre_fudo_dilana: c.nombre_fudo || '',
+          nombre_fudo: fudo.nombre_fudo,
+          id_fudo: idFudo,
+          tipo_fudo: fudo.tipo_fudo
+        });
+      } else {
+        reporte.nombre_distinto.push({
+          catalogo_id: c.id,
+          nombre_estandar: c.nombre_estandar,
+          nombre_fudo_dilana: c.nombre_fudo || '',
+          nombre_fudo_fudo: fudo.nombre_fudo,
+          id_fudo: idFudo,
+          tipo_fudo: fudo.tipo_fudo,
+          accion: 'Mismo ID pero distinto nombre — decide si actualizas Dilana o FUDO'
+        });
+      }
+      return;
+    }
+
+    if (idFudo && !fudo) {
+      reporte.conflictos.push({
+        tipo: 'id_obsoleto',
+        catalogo_id: c.id,
+        nombre_estandar: c.nombre_estandar,
+        nombre_fudo_dilana: c.nombre_fudo || '',
+        id_fudo: idFudo,
+        accion: 'id_fudo en Dilana no existe en FUDO — revisar o limpiar'
+      });
+      return;
+    }
+
+    const matchFudo = itemsFudo.find(function (f) {
+      if (idsFudoUsados[f.id_fudo]) return false;
+      return normalizar_(f.nombre_fudo) === normalizar_(c.nombre_fudo) ||
+        normalizar_(f.nombre_fudo) === normalizar_(c.nombre_estandar) ||
+        claveProducto_(c.nombre_estandar, indiceNombre) === claveProducto_(f.nombre_fudo, indiceNombre);
+    });
+
+    if (matchFudo) {
+      idsFudoUsados[matchFudo.id_fudo] = true;
+      reporte.sugieren_vinculo.push({
+        catalogo_id: c.id,
+        nombre_estandar: c.nombre_estandar,
+        nombre_fudo_dilana: c.nombre_fudo || '',
+        nombre_fudo: matchFudo.nombre_fudo,
+        id_fudo: matchFudo.id_fudo,
+        tipo_fudo: matchFudo.tipo_fudo,
+        accion: 'Vincular: guardar id_fudo en este producto'
+      });
+      return;
+    }
+
+    reporte.solo_dilana.push({
+      catalogo_id: c.id,
+      nombre_estandar: c.nombre_estandar,
+      nombre_fudo_dilana: c.nombre_fudo || '',
+      accion: c.nombre_fudo
+        ? 'Nombre en Dilana no aparece en el catálogo actual de FUDO'
+        : 'Sin vínculo con FUDO — ¿solo interno o falta crear/vincular?'
+    });
+  });
+
+  itemsFudo.forEach(function (f) {
+    if (idsFudoUsados[f.id_fudo]) return;
+    reporte.solo_fudo.push({
+      nombre_fudo: f.nombre_fudo,
+      id_fudo: f.id_fudo,
+      tipo_fudo: f.tipo_fudo,
+      unidad: f.unidad || '',
+      accion: 'Solo en FUDO — crear en Dilana o vincular a uno existente'
+    });
+  });
+
+  if (typeof sonNombresParecidos_ === 'function') {
+    for (let i = 0; i < catalogo.length; i++) {
+      for (let j = i + 1; j < catalogo.length; j++) {
+        const a = catalogo[i], b = catalogo[j];
+        const na = normalizar_(a.nombre_estandar), nb = normalizar_(b.nombre_estandar);
+        if (na === nb) continue;
+        if (sonNombresParecidos_(na, nb)) {
+          reporte.duplicados_dilana.push({
+            id_a: a.id,
+            nombre_a: a.nombre_estandar,
+            nombre_fudo_a: a.nombre_fudo || '',
+            id_b: b.id,
+            nombre_b: b.nombre_estandar,
+            nombre_fudo_b: b.nombre_fudo || '',
+            accion: '¿Mismo producto con dos nombres? Fusionar o eliminar uno'
+          });
+        }
+      }
+    }
+  }
+
+  reporte.resumen = {
+    total_fudo: itemsFudo.length,
+    total_dilana: catalogo.length,
+    coinciden: reporte.coinciden.length,
+    nombre_distinto: reporte.nombre_distinto.length,
+    sugieren_vinculo: reporte.sugieren_vinculo.length,
+    solo_fudo: reporte.solo_fudo.length,
+    solo_dilana: reporte.solo_dilana.length,
+    conflictos: reporte.conflictos.length,
+    duplicados_dilana: reporte.duplicados_dilana.length,
+    requiere_accion: reporte.nombre_distinto.length + reporte.sugieren_vinculo.length +
+      reporte.solo_fudo.length + reporte.solo_dilana.length + reporte.conflictos.length +
+      reporte.duplicados_dilana.length
+  };
+
+  return reporte;
+}
+
 /**
  * Trae el catálogo completo de FUDO y lo cruza con Catalogo_Maestro.
  * opciones.crear_faltantes = true → crea entradas nuevas en Dilana para productos/ingredientes

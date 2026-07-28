@@ -82,5 +82,15 @@ const { crearEntorno } = require('./helpers/entorno-apps-script');
   assert.equal(push.ok, true);
   assert.equal(push.nombre_enviado, 'Papa pelada nueva');
 
+  const cmp = ctx.catalogoCompararConFudoInterno_([
+    { id_fudo: '10', nombre_fudo: 'Aguila Light', tipo_fudo: 'Producto', unidad: 'u' },
+    { id_fudo: '99', nombre_fudo: 'Papa pelada nueva', tipo_fudo: 'Ingrediente', unidad: 'g' },
+    { id_fudo: '50', nombre_fudo: 'Solo FUDO', tipo_fudo: 'Producto', unidad: 'u' }
+  ]);
+  assert.equal(cmp.ok, true);
+  assert.equal(cmp.resumen.coinciden, 2);
+  assert.equal(cmp.resumen.solo_fudo, 1);
+  assert.ok(cmp.solo_fudo.some(s => s.nombre_fudo === 'Solo FUDO'));
+
   console.log('fudo-catalogo-sync: OK');
 })();
