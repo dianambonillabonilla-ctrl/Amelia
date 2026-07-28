@@ -29,6 +29,7 @@ const ACCIONES_OMITIDAS = new Set([
   'ajuste_inventario_registrar', 'ajuste_inventario_avalar', 'ajuste_inventario_corregir_unidad',
   'compra_registrar_factura', 'gestion_crear', 'gestion_actualizar_estado', 'importar_fudo',
   'fudo_api_probar_conexion', 'fudo_api_sincronizar_ventas', 'fudo_api_sincronizar_pagos',
+  'fudo_api_sincronizar_catalogo', 'catalogo_enviar_nombre_fudo', 'catalogo_enviar_nombres_fudo',
   'stock_fudo_base_importar', 'fudo_api_tomar_snapshot_stock', 'fudo_ventas_migrar',
   'fudo_pagos_migrar', 'fudo_descuentos_propinas_migrar', 'fudo_subitems_migrar',
   'fudo_mapeo_sede_guardar', 'fudo_mapeo_sede_eliminar', 'ventas_pendientes_sede_asignar',

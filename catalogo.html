@@ -161,7 +161,27 @@
     </div>
 
     <div class="card" data-solo-rol="Administrador">
-      <h2>3. Barrido: duplicados y nombres de FUDO sin asignar</h2>
+      <h2>3. Sincronizar catálogo con FUDO</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Cruza el catálogo de Dilana con los productos e ingredientes de FUDO. <strong>Traer desde FUDO</strong>
+        rellena <em>ID FUDO</em>, <em>Nombre en FUDO</em> y el tipo (producto vs ingrediente) — es el
+        primer paso para que ventas y conciliación calen. <strong>Enviar a FUDO</strong> actualiza el nombre
+        en el POS con lo que tengas en la columna "Nombre en FUDO" (no cambia el nombre estándar de Dilana).
+        FUDO limita los nombres a 45 caracteres.
+      </p>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px">
+        <button class="btn dorado" id="btn-sync-desde-fudo" type="button">Traer catálogo desde FUDO</button>
+        <label style="display:flex; align-items:center; gap:6px; font-size:.85rem; margin:0">
+          <input type="checkbox" id="sync-crear-faltantes" style="width:auto">
+          Crear en Dilana lo que solo existe en FUDO
+        </label>
+        <button class="btn fantasma" id="btn-sync-a-fudo" type="button">Enviar nombres a FUDO</button>
+      </div>
+      <div id="resultado-sync-catalogo" style="font-size:.88rem"></div>
+    </div>
+
+    <div class="card" data-solo-rol="Administrador">
+      <h2>4. Barrido: duplicados y nombres de FUDO sin asignar</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
         Revisa dos cosas para organizar el catálogo: nombres muy parecidos dentro del catálogo
         (posibles duplicados) y nombres que ya han traído las importaciones de FUDO pero que
@@ -175,7 +195,7 @@
     </div>
 
     <div class="card" data-solo-rol="Administrador">
-      <h2>4. Alias — vincular nombres distintos al mismo producto</h2>
+      <h2>5. Alias — vincular nombres distintos al mismo producto</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
         Un producto puede tener VARIOS nombres a la vez (a diferencia de "Nombre en FUDO", que solo
         guarda uno): el que usa FUDO, y el que cada receta haya usado para escribirlo — no siempre
@@ -476,6 +496,65 @@ function buscarParecidos_(nombre) {
     return pn === norm || pn.includes(norm) || norm.includes(pn);
   });
 }
+
+// --- Sincronización catálogo ↔ FUDO -----------------------------------------------------------
+
+function pintarResultadoSync_(html) {
+  document.getElementById('resultado-sync-catalogo').innerHTML = html;
+}
+
+document.getElementById('btn-sync-desde-fudo').addEventListener('click', conBotonProtegido(
+  document.getElementById('btn-sync-desde-fudo'), async () => {
+    pintarResultadoSync_('<p>Sincronizando desde FUDO… puede tardar un minuto.</p>');
+    const crearFaltantes = document.getElementById('sync-crear-faltantes').checked;
+    const data = await llamar('fudo_api_sincronizar_catalogo', {
+      opciones: { crear_faltantes: crearFaltantes }
+    });
+    if (!data.ok) {
+      pintarResultadoSync_(`<p style="color:var(--red)">${escapeHtml(data.error || 'Error desconocido')}</p>`);
+      return;
+    }
+    let html = `<p><strong>Listo.</strong> Productos en FUDO: ${data.productos_fudo || 0} + ingredientes: ${data.ingredientes_fudo || 0}.</p>
+      <ul style="margin:8px 0; padding-left:20px">
+        <li>Vinculados por ID: ${data.vinculados_por_id || 0}</li>
+        <li>Vinculados por nombre: ${data.vinculados_por_nombre || 0}</li>
+        <li>Nombres en FUDO actualizados en Dilana: ${data.nombres_actualizados || 0}</li>
+        <li>Creados en Dilana: ${data.creados || 0}</li>
+      </ul>`;
+    if (data.conflictos && data.conflictos.length) {
+      html += `<p style="color:var(--amber)"><strong>Conflictos (${data.conflictos.length}):</strong> revisa manualmente — mismo producto con dos IDs distintos en FUDO.</p>
+        <ul style="margin:8px 0; padding-left:20px">${data.conflictos.slice(0, 8).map(c =>
+          `<li>${escapeHtml(c.mensaje || c.nombre_fudo || '')}</li>`).join('')}</ul>`;
+    }
+    if (data.sin_vincular && data.sin_vincular.length) {
+      html += `<p><strong>Sin pareja en Dilana (${data.sin_vincular.length}):</strong> marca "Crear en Dilana…" y vuelve a traer, o vincula abajo en el barrido.</p>
+        <ul style="margin:8px 0; padding-left:20px">${data.sin_vincular.slice(0, 10).map(s =>
+          `<li>${escapeHtml(s.nombre)} <span style="color:var(--grey)">(${escapeHtml(s.tipo)}, id ${escapeHtml(s.id_fudo)})</span></li>`).join('')}</ul>`;
+    }
+    pintarResultadoSync_(html);
+    await cargarCatalogo();
+  }));
+
+document.getElementById('btn-sync-a-fudo').addEventListener('click', conBotonProtegido(
+  document.getElementById('btn-sync-a-fudo'), async () => {
+    if (!confirm(
+      '¿Enviar a FUDO el "Nombre en FUDO" de todos los productos vinculados?\n\n' +
+      'Esto cambia el nombre en el POS. El nombre estándar de Dilana no se modifica.'
+    )) return;
+    pintarResultadoSync_('<p>Enviando nombres a FUDO…</p>');
+    const data = await llamar('catalogo_enviar_nombres_fudo', {});
+    if (!data.ok) {
+      pintarResultadoSync_(`<p style="color:var(--red)">${escapeHtml(data.error || 'Error')}</p>`);
+      return;
+    }
+    let html = `<p><strong>Enviados a FUDO:</strong> ${data.enviados || 0}. Omitidos (sin ID o sin nombre): ${data.omitidos || 0}.</p>`;
+    if (data.errores && data.errores.length) {
+      html += `<p style="color:var(--red)"><strong>Errores (${data.errores.length}):</strong></p>
+        <ul style="margin:8px 0; padding-left:20px">${data.errores.slice(0, 8).map(e =>
+          `<li>${escapeHtml(e.producto)}: ${escapeHtml(e.error)}</li>`).join('')}</ul>`;
+    }
+    pintarResultadoSync_(html);
+  }));
 
 // --- Barrido: duplicados dentro del catálogo + nombres de FUDO sin vincular --------------------
 // No une ni cambia nada solo — cada resultado es una sugerencia para revisar a mano, porque un

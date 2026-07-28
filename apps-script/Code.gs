@@ -75,7 +75,7 @@ function sheet_(name) {
 function configurarHojas() {
   const spec = {
     Usuarios: ['id', 'nombre', 'usuario', 'password_hash', 'salt', 'rol', 'sede', 'activo', 'email', 'sectores_permitidos'],
-    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'id_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion', 'sector', 'sede'],
+    Catalogo_Maestro: ['id', 'nombre_estandar', 'nombre_fudo', 'id_fudo', 'tipo_fudo', 'categoria', 'unidad_base', 'tipo', 'notas', 'stock_minimo', 'frecuencia_conteo', 'obligatorio_produccion', 'sector', 'sede'],
     Recetas: ['id', 'producto', 'ingrediente', 'cantidad', 'unidad', 'rendimiento_producto', 'unidad_rendimiento',
       'tipo', 'fuente', 'umbral_alerta', 'version', 'sede', 'vigente_desde', 'vigente_hasta', 'estado',
       'controla_disponibilidad', 'notas'],
@@ -429,6 +429,15 @@ function handleRequest_(e, method) {
       case 'fudo_api_tomar_snapshot_stock':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(fudoApiTomarSnapshotStock_(sesion.usuario));
+      case 'fudo_api_sincronizar_catalogo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoSincronizarDesdeFudo_(sesion.usuario, params.opciones));
+      case 'catalogo_enviar_nombre_fudo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoEnviarNombreAFudo_(params.catalogo_id, sesion.usuario));
+      case 'catalogo_enviar_nombres_fudo':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(catalogoEnviarNombresAFudo_(sesion.usuario, params.opciones));
       case 'fudo_panel_estado':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(fudoApiEstadoPanel_());
