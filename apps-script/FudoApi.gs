@@ -153,6 +153,26 @@ function fudoApiPeticionPagina_(recurso, opciones) {
   return JSON.parse(resp.getContentText());
 }
 
+/**
+ * PATCH JSON:API a un recurso de FUDO (ej. actualizar el nombre de un producto o ingrediente).
+ * Usado por la sincronización de catálogo Dilana → FUDO (FudoCatalogoSync.gs).
+ */
+function fudoApiPatch_(recurso, id, body) {
+  const token = fudoApiObtenerToken_();
+  const url = fudoApiBaseUrl_().replace(/\/$/, '') + '/' + String(recurso).replace(/^\//, '') + '/' + encodeURIComponent(id);
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'patch',
+    contentType: 'application/json',
+    headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) {
+    throw fudoApiErrorConIncidente_('PATCH ' + recurso + '/' + id + ' falló (' + resp.getResponseCode() + ')', resp.getContentText());
+  }
+  return JSON.parse(resp.getContentText());
+}
+
 /** Una sola página, ya desenvuelta a solo el arreglo de registros (sin .included). */
 function fudoApiObtenerPagina_(recurso, opciones) {
   const data = fudoApiPeticionPagina_(recurso, opciones);

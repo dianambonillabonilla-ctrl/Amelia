@@ -9,11 +9,15 @@
 var FUDO_PANEL_SYNC_PROP_VENTAS_ = 'FUDO_SYNC_ULTIMA_VENTAS';
 var FUDO_PANEL_SYNC_PROP_PAGOS_ = 'FUDO_SYNC_ULTIMA_PAGOS';
 var FUDO_PANEL_SYNC_PROP_STOCK_ = 'FUDO_SYNC_ULTIMA_STOCK';
+var FUDO_PANEL_SYNC_PROP_CATALOGO_ = 'FUDO_SYNC_ULTIMA_CATALOGO';
+var FUDO_PANEL_SYNC_PROP_CATALOGO_PUSH_ = 'FUDO_SYNC_ULTIMA_CATALOGO_PUSH';
 
 function fudoApiSyncPropKey_(tipo) {
   if (tipo === 'ventas') return FUDO_PANEL_SYNC_PROP_VENTAS_;
   if (tipo === 'pagos') return FUDO_PANEL_SYNC_PROP_PAGOS_;
   if (tipo === 'stock') return FUDO_PANEL_SYNC_PROP_STOCK_;
+  if (tipo === 'catalogo') return FUDO_PANEL_SYNC_PROP_CATALOGO_;
+  if (tipo === 'catalogo_push') return FUDO_PANEL_SYNC_PROP_CATALOGO_PUSH_;
   return null;
 }
 
@@ -108,7 +112,9 @@ function fudoApiEstadoPanelSinCache_() {
     ultima_sincronizacion: {
       ventas: fudoApiSyncLeer_('ventas'),
       pagos: fudoApiSyncLeer_('pagos'),
-      stock: fudoApiSyncLeer_('stock')
+      stock: fudoApiSyncLeer_('stock'),
+      catalogo: fudoApiSyncLeer_('catalogo'),
+      catalogo_push: fudoApiSyncLeer_('catalogo_push')
     },
     resumen_hoy: {
       fecha: hoy,
