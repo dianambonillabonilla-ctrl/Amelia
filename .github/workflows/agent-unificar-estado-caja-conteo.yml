@@ -1,0 +1,136 @@
+name: Aplicar corrección estado Caja y conteo
+
+on:
+  push:
+    branches:
+      - agent/unificar-estado-caja-conteo
+    paths:
+      - .github/workflows/agent-unificar-estado-caja-conteo.yml
+
+permissions:
+  contents: write
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/unificar-estado-caja-conteo
+          fetch-depth: 0
+
+      - name: Aplicar cambios
+        shell: python
+        run: |
+          from pathlib import Path
+
+          turnos = Path('apps-script/Turnos.gs')
+          texto = turnos.read_text(encoding='utf-8')
+          anterior = """function turnoSectorDeHoy_(usuario, fecha) {
+            if (!fecha) return { ok: false, error: 'Falta la fecha' };
+            const fila = leerTabla_(SHEET_NAMES.TURNOS_SECTOR).find(function (r) {
+              return formatearFecha_(r.fecha) === fecha && r.usuario_id === usuario.id;
+            });
+            return { ok: true, sector: fila ? fila.sector : '' };
+          }"""
+          nuevo = """function turnoSectorDeHoy_(usuario, fecha) {
+            if (!fecha) return { ok: false, error: 'Falta la fecha' };
+            const fila = leerTabla_(SHEET_NAMES.TURNOS_SECTOR).find(function (r) {
+              return formatearFecha_(r.fecha) === fecha && r.usuario_id === usuario.id;
+            });
+            if (fila && fila.sector) return { ok: true, sector: fila.sector };
+
+            // Evita pedir una elección que no existe: si el usuario solo tiene un sector habilitado,
+            // se asigna automáticamente. También reconoce a quien abrió la caja como sector Caja
+            // cuando esa función está entre sus opciones. Caja_Turno y Turnos_Sector siguen siendo
+            // registros separados, pero dejan de mostrar estados aparentemente contradictorios.
+            const permitidos = sectoresPermitidos_(usuario);
+            let automatico = permitidos.length === 1 ? permitidos[0] : '';
+
+            if (!automatico && permitidos.indexOf('Caja') !== -1 && typeof cajaTurnoFila_ === 'function') {
+              const sedes = usuario.sede === 'Ambas' ? ['San Antonio', 'Capri'] : [usuario.sede];
+              const abrioCajaHoy = sedes.some(function (sede) {
+                if (!sede || sede === 'Centro de Producción') return false;
+                const caja = cajaTurnoFila_(fecha, sede);
+                return caja && caja.estado === 'Abierto' &&
+                  String(caja.usuario_apertura_id || '') === String(usuario.id || '');
+              });
+              if (abrioCajaHoy) automatico = 'Caja';
+            }
+
+            if (automatico) {
+              const guardado = turnoSectorElegir_(fecha, automatico, usuario);
+              if (guardado.ok) {
+                return { ok: true, sector: automatico, asignado_automaticamente: true };
+              }
+            }
+            return { ok: true, sector: '' };
+          }"""
+          if anterior not in texto:
+            raise SystemExit('No se encontró el bloque esperado en Turnos.gs')
+          turnos.write_text(texto.replace(anterior, nuevo), encoding='utf-8')
+
+          dashboard = Path('dashboard.html')
+          texto = dashboard.read_text(encoding='utf-8')
+          anterior = "texto = `Turno de hoy en ${sede} — SIN ABRIR: elige tu sector en Registrar conteo para empezar`;"
+          nuevo = "texto = `Caja y operación pueden estar abiertas. Falta elegir tu sector de conteo en ${sede}`;"
+          if anterior not in texto:
+            raise SystemExit('No se encontró el mensaje esperado en dashboard.html')
+          dashboard.write_text(texto.replace(anterior, nuevo), encoding='utf-8')
+
+          conteo = Path('conteo.html')
+          texto = conteo.read_text(encoding='utf-8')
+          anterior = """  const card = document.getElementById('card-sector-hoy');
+            const select = document.getElementById('sector-hoy-select');
+            select.innerHTML = sectores.map(s => `<option>${escapeHtml(s)}</option>`).join('');
+            card.style.display = 'block';
+
+            const hoy = fechaLocalHoy_();
+            const data = await llamar('turno_sector_hoy', { fecha: hoy });
+            const actual = document.getElementById('sector-hoy-actual');
+            if (data.ok && data.sector) {
+              select.value = data.sector;
+              actual.textContent = `Hoy elegiste: ${data.sector}. Si necesitas cambiarlo, elige otro y presiona Confirmar de nuevo.`;
+            } else {
+              actual.textContent = 'Todavía no has elegido tu sector de hoy.';
+            }"""
+          nuevo = """  const card = document.getElementById('card-sector-hoy');
+            const select = document.getElementById('sector-hoy-select');
+            select.innerHTML = sectores.map(s => `<option>${escapeHtml(s)}</option>`).join('');
+
+            const hoy = fechaLocalHoy_();
+            let data = await llamar('turno_sector_hoy', { fecha: hoy });
+
+            // Si solo existe una opción no se abre una ventana para preguntar lo obvio. El backend
+            // normalmente ya la asigna; este respaldo conserva el comportamiento aun durante un
+            // despliegue gradual del frontend y Apps Script.
+            if (sectores.length === 1) {
+              if (!data.ok || !data.sector) {
+                data = await llamar('turno_sector_elegir', { fecha: hoy, sector: sectores[0] });
+              }
+              card.style.display = 'none';
+              return;
+            }
+
+            card.style.display = 'block';
+            const actual = document.getElementById('sector-hoy-actual');
+            if (data.ok && data.sector) {
+              select.value = data.sector;
+              actual.textContent = `Hoy elegiste: ${data.sector}. Si necesitas cambiarlo, elige otro y presiona Confirmar de nuevo.`;
+            } else {
+              actual.textContent = 'Elige cuál de tus sectores te corresponde hoy.';
+            }"""
+          if anterior not in texto:
+            raise SystemExit('No se encontró el bloque esperado en conteo.html')
+          conteo.write_text(texto.replace(anterior, nuevo), encoding='utf-8')
+
+      - name: Ejecutar pruebas
+        run: npm test
+
+      - name: Guardar corrección en la rama
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps-script/Turnos.gs dashboard.html conteo.html
+          git commit -m "Unifica estado de caja y sector de conteo"
+          git push origin HEAD:agent/unificar-estado-caja-conteo
