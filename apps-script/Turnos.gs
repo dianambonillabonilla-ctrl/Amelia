@@ -60,7 +60,33 @@ function turnoSectorDeHoy_(usuario, fecha) {
   const fila = leerTabla_(SHEET_NAMES.TURNOS_SECTOR).find(function (r) {
     return formatearFecha_(r.fecha) === fecha && r.usuario_id === usuario.id;
   });
-  return { ok: true, sector: fila ? fila.sector : '' };
+  if (fila && fila.sector) return { ok: true, sector: fila.sector };
+
+  // Evita pedir una elección que no existe: si el usuario solo tiene un sector habilitado,
+  // se asigna automáticamente. También reconoce a quien abrió la caja como sector Caja
+  // cuando esa función está entre sus opciones. Caja_Turno y Turnos_Sector siguen siendo
+  // registros separados, pero dejan de mostrar estados aparentemente contradictorios.
+  const permitidos = sectoresPermitidos_(usuario);
+  let automatico = permitidos.length === 1 ? permitidos[0] : '';
+
+  if (!automatico && permitidos.indexOf('Caja') !== -1 && typeof cajaTurnoFila_ === 'function') {
+    const sedes = usuario.sede === 'Ambas' ? ['San Antonio', 'Capri'] : [usuario.sede];
+    const abrioCajaHoy = sedes.some(function (sede) {
+      if (!sede || sede === 'Centro de Producción') return false;
+      const caja = cajaTurnoFila_(fecha, sede);
+      return caja && caja.estado === 'Abierto' &&
+        String(caja.usuario_apertura_id || '') === String(usuario.id || '');
+    });
+    if (abrioCajaHoy) automatico = 'Caja';
+  }
+
+  if (automatico) {
+    const guardado = turnoSectorElegir_(fecha, automatico, usuario);
+    if (guardado.ok) {
+      return { ok: true, sector: automatico, asignado_automaticamente: true };
+    }
+  }
+  return { ok: true, sector: '' };
 }
 
 function turnosSectorDelDia_(fecha) {
