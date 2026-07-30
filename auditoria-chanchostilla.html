@@ -6,7 +6,7 @@
 <title>Dilana OS — Auditoría Chanchostilla</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-  .aud-wrap{max-width:1180px;margin:0 auto}.aud-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.aud-kpi{border:1px solid var(--line);border-radius:11px;padding:14px;background:#FBFAF6}.aud-kpi span{display:block;color:var(--grey);font-size:.72rem;text-transform:uppercase}.aud-kpi strong{display:block;color:var(--navy);font-size:1.35rem;margin-top:5px}.aud-sedes{display:grid;grid-template-columns:1fr 1fr;gap:14px}.aud-sede{border:1px solid var(--line);border-radius:12px;padding:16px}.aud-ok{color:var(--green)}.aud-error{color:var(--red);font-weight:700}.aud-aviso{color:var(--amber);font-weight:700}.aud-tabla{overflow-x:auto}.aud-tabla table{min-width:900px}.aud-tabla td,.aud-tabla th{font-size:.8rem}.aud-detalle{border-top:1px solid var(--line);padding:10px 0}.aud-detalle summary{cursor:pointer;font-weight:700}.cadena-costilla{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:8px;margin:12px 0}.cadena-paso{border:1px solid var(--line);border-radius:10px;padding:11px;background:#FBFAF6}.cadena-paso span{display:block;font-size:.68rem;color:var(--grey);text-transform:uppercase}.cadena-paso strong{display:block;margin-top:4px;color:var(--navy)}.oculto{display:none!important}@media(max-width:800px){.aud-kpis{grid-template-columns:1fr 1fr}.aud-sedes{grid-template-columns:1fr}.cadena-costilla{grid-template-columns:1fr 1fr}}
+  .aud-wrap{max-width:1180px;margin:0 auto}.aud-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.aud-kpi{border:1px solid var(--line);border-radius:11px;padding:14px;background:#FBFAF6}.aud-kpi span{display:block;color:var(--grey);font-size:.72rem;text-transform:uppercase}.aud-kpi strong{display:block;color:var(--navy);font-size:1.35rem;margin-top:5px}.aud-sedes{display:grid;grid-template-columns:1fr 1fr;gap:14px}.aud-sede{border:1px solid var(--line);border-radius:12px;padding:16px}.aud-ok{color:var(--green)}.aud-error{color:var(--red);font-weight:700}.aud-aviso{color:var(--amber);font-weight:700}.aud-tabla{overflow-x:auto}.aud-tabla table{min-width:950px}.aud-tabla td,.aud-tabla th{font-size:.8rem}.aud-detalle{border-top:1px solid var(--line);padding:10px 0}.aud-detalle summary{cursor:pointer;font-weight:700}.cadena-costilla{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:8px;margin:12px 0}.cadena-resumen{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px;margin:12px 0;max-width:620px}.cadena-paso{border:1px solid var(--line);border-radius:10px;padding:13px;background:#FBFAF6}.cadena-paso span{display:block;font-size:.68rem;color:var(--grey);text-transform:uppercase}.cadena-paso strong{display:block;margin-top:4px;color:var(--navy);font-size:1.15rem}.oculto{display:none!important}@media(max-width:800px){.aud-kpis{grid-template-columns:1fr 1fr}.aud-sedes{grid-template-columns:1fr}.cadena-costilla{grid-template-columns:1fr 1fr}.cadena-resumen{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -42,20 +42,20 @@
 
       <section class="card">
         <h2>Cómo interpreta Dilana la costilla</h2>
-        <p style="color:var(--grey);font-size:.86rem">Son existencias distintas y no deben sumarse como si fueran el mismo peso. La costilla cruda está en el Centro de Producción; la costilla preparada entera llega a los restaurantes y allí se transforma en costilla picada lista para servir.</p>
+        <p style="color:var(--grey);font-size:.86rem">La costilla cruda está en el Centro de Producción. A los restaurantes llega como Costilla Preparada entera y allí se pica, se retiran los huesos y se mezcla con reducción.</p>
         <div class="cadena-costilla">
           <div class="cadena-paso"><span>Centro de Producción</span><strong>Costilla San Luis Entera</strong></div>
           <div class="cadena-paso"><span>Después de cocción</span><strong>Costilla Preparada entera</strong></div>
-          <div class="cadena-paso"><span>En cada restaurante</span><strong>Picado + retiro de huesos</strong></div>
+          <div class="cadena-paso"><span>En el restaurante</span><strong>Picado y retiro de huesos</strong></div>
           <div class="cadena-paso"><span>Se agrega</span><strong>Reducción Balsámica</strong></div>
           <div class="cadena-paso"><span>Lista para venta</span><strong>Costilla Preparada Picada</strong></div>
         </div>
-        <p style="margin-bottom:0;font-size:.8rem;color:var(--grey)">Conversión provisional usada: 3.120 g de costilla preparada entera + 656 g de reducción → 2.690 g de costilla preparada picada. Se seguirá validando con nuevos lotes.</p>
+        <p style="margin-bottom:0;font-size:.8rem;color:var(--grey)">Conversión provisional: 3.120 g de Costilla Preparada entera + 656 g de reducción producen 2.690 g de Costilla Preparada Picada.</p>
       </section>
 
       <section id="hallazgos" class="card card-alerta aviso oculto"><h2>Hallazgos del sistema</h2><div id="hallazgos-contenido"></div></section>
       <section id="resumen" class="card oculto"><h2>Resumen del periodo</h2><div id="resumen-contenido"></div></section>
-      <section id="detalle" class="card oculto"><h2>Conciliación día por día</h2><p style="color:var(--grey);font-size:.84rem">Abre un día para revisar el inventario en sus dos estados: costilla preparada entera y costilla preparada picada.</p><div id="detalle-contenido"></div></section>
+      <section id="detalle" class="card oculto"><h2>Conciliación día por día</h2><p style="color:var(--grey);font-size:.84rem">Las dos etapas de costilla aparecen dentro de la tabla de conteo y consumo esperado.</p><div id="detalle-contenido"></div></section>
     </div>
   </main>
 </div>
@@ -89,7 +89,8 @@ const COSTILLA={
   salidaPicada:2690
 };
 const COMPONENTES=Object.keys(RECETA);
-const ITEMS_CONTEO=Array.from(new Set(COMPONENTES.concat([COSTILLA.cruda,COSTILLA.entera,COSTILLA.reduccion])));
+const COMPONENTES_TABLA=[COSTILLA.entera,COSTILLA.picada,'Panceta Pre-Ahumada','Papas Listas','Cebolla Elaborada','Alioli'];
+const ITEMS_CONTEO=Array.from(new Set(COMPONENTES_TABLA.concat([COSTILLA.cruda,COSTILLA.reduccion])));
 const normalizar=normalizarTexto;
 const esCancelada=v=>v===true||['si','sí','true','1'].includes(normalizar(v));
 const numero=v=>Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:1});
@@ -118,7 +119,6 @@ function canonConteo(producto){
   if(n==='costilla cruda'||n==='costilla san luis')return COSTILLA.cruda;
   return null;
 }
-
 function agruparVentas(filas,desde,hasta){
   const mapa={};
   filas.filter(v=>ventaEsChanchostilla(v)&&!esCancelada(v.cancelada)).forEach(v=>{
@@ -153,8 +153,12 @@ function rangoFechas(desde,hasta){
   const out=[];const d=new Date(desde+'T12:00:00');const fin=new Date(hasta+'T12:00:00');
   while(d<=fin){out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));d.setDate(d.getDate()+1);}return out;
 }
-function valorConteo(conteos,fecha,sede,producto){
-  return conteos[[fecha,sede,producto].join('|')];
+function valorConteo(conteos,fecha,sede,producto){return conteos[[fecha,sede,producto].join('|')];}
+function consumoEsperado(producto,unidades){
+  if(producto===COSTILLA.entera){
+    return unidades*RECETA[COSTILLA.picada]*COSTILLA.entradaEntera/COSTILLA.salidaPicada;
+  }
+  return unidades*Number(RECETA[producto]||0);
 }
 function convertirCostilla(entera,reduccion,picada){
   const e=Number(entera||0);const r=Number(reduccion||0);const p=Number(picada||0);
@@ -208,18 +212,17 @@ function pintarResumen(items){
   document.getElementById('resumen').classList.remove('oculto');
   document.getElementById('resumen-contenido').innerHTML='<div class="aud-sedes">'+items.map(s=>{
     const c=s.costilla;
-    return `<div class="aud-sede"><h3 style="margin-top:0">${escapeHtml(s.sede)}</h3><div class="aud-kpis"><div class="aud-kpi"><span>Vendidas</span><strong>${numero(s.vendidas)}</strong></div><div class="aud-kpi"><span>Días con venta</span><strong>${s.diasVenta}</strong></div><div class="aud-kpi"><span>Días con conteo</span><strong>${s.diasConteo}</strong></div><div class="aud-kpi"><span>Días con diferencia</span><strong class="${s.diasDif?'aud-error':'aud-ok'}">${s.diasDif}</strong></div></div><p><strong>Disponibles reales del plato:</strong> ${s.disponibles===null?'—':numero(s.disponibles)}<br><strong>Limitante general:</strong> ${escapeHtml(s.limitante||'—')}</p><h4>Cadena de costilla al corte</h4><div class="cadena-costilla"><div class="cadena-paso"><span>Preparada entera</span><strong>${numero(c.entera)} g</strong></div><div class="cadena-paso"><span>Picada lista</span><strong>${numero(c.picada)} g</strong></div><div class="cadena-paso"><span>Reducción disponible</span><strong>${numero(c.reduccion)} g</strong></div><div class="cadena-paso"><span>Picada adicional producible</span><strong>${numero(c.producible)} g</strong></div><div class="cadena-paso"><span>Total equivalente picado</span><strong>${numero(c.total)} g</strong></div></div><p style="font-size:.82rem"><strong>La costilla por sí sola alcanza para:</strong> ${numero(c.platos)} Chanchostilla(s). La disponibilidad final del plato puede ser menor por panceta, papas, cebolla o alioli.</p></div>`;
+    return `<div class="aud-sede"><h3 style="margin-top:0">${escapeHtml(s.sede)}</h3><div class="aud-kpis"><div class="aud-kpi"><span>Vendidas</span><strong>${numero(s.vendidas)}</strong></div><div class="aud-kpi"><span>Días con venta</span><strong>${s.diasVenta}</strong></div><div class="aud-kpi"><span>Días con conteo</span><strong>${s.diasConteo}</strong></div><div class="aud-kpi"><span>Días con diferencia</span><strong class="${s.diasDif?'aud-error':'aud-ok'}">${s.diasDif}</strong></div></div><p><strong>Disponibles reales del plato:</strong> ${s.disponibles===null?'—':numero(s.disponibles)}<br><strong>Limitante general:</strong> ${escapeHtml(s.limitante||'—')}</p><div class="cadena-resumen"><div class="cadena-paso"><span>Reducción disponible</span><strong>${numero(c.reduccion)} g</strong></div><div class="cadena-paso"><span>Platos que puede producir la costilla</span><strong>${numero(c.platos)}</strong></div></div><p style="font-size:.8rem;color:var(--grey)">El cálculo de platos considera la costilla picada ya lista y la que puede obtenerse de la costilla preparada entera.</p></div>`;
   }).join('')+'</div>';
 }
 function pintarHallazgos(conteos,ventas,recetas,producciones){
   const h=[];
   const recetaActiva=recetas.some(r=>normalizar(r.producto)==='cono chanchostilla'&&!['archivado','inactivo','pendiente','borrador'].includes(normalizar(r.estado)));
   const recetaDirecta=recetas.some(r=>normalizar(r.producto)==='chanchostilla'&&!['archivado','inactivo','pendiente','borrador'].includes(normalizar(r.estado)));
-  if(recetaActiva&&!recetaDirecta)h.push('FUDO vende “Chanchostilla”, pero la receta activa se llama “Cono Chanchostilla”. La auditoría puede calcularla, pero el motor necesita un solo nombre oficial.');
-  if(conteos.some(c=>normalizar(c.producto)==='cebollita de amelia'))h.push('Hay conteos bajo “Cebollita de Amelia” separados de “Cebolla Elaborada”. En esta auditoría se unifican para leerlos.');
-  if(conteos.some(c=>['costilla cruda','costilla san luis','costilla lista'].includes(normalizar(c.producto))))h.push('Hay nombres antiguos de costilla en los conteos. La materia prima oficial es “Costilla San Luis Entera”; la cocida sin picar es “Costilla Preparada”; y la lista para servir es “Costilla Preparada Picada”.');
+  if(recetaActiva&&!recetaDirecta)h.push('FUDO vende “Chanchostilla”, pero la receta activa se llama “Cono Chanchostilla”.');
+  if(conteos.some(c=>normalizar(c.producto)==='cebollita de amelia'))h.push('Hay conteos bajo “Cebollita de Amelia” separados de “Cebolla Elaborada”. En esta auditoría se unifican.');
   const hayProduccionPicada=producciones.some(p=>normalizar(p.item||p.producto||p.producto_obtenido)==='costilla preparada picada');
-  if(!hayProduccionPicada)h.push('No hay producción registrada de Costilla Preparada Picada. Aunque la disponibilidad puede proyectarse desde la costilla entera, la conciliación histórica no puede certificar cuánto se picó, cuánta reducción se usó ni cuánta merma de hueso salió.');
+  if(!hayProduccionPicada)h.push('No hay producción registrada de Costilla Preparada Picada. La disponibilidad puede proyectarse, pero no se puede certificar la transformación histórica de la costilla entera.');
   if(!ventas.length)h.push('No se recibieron filas de ventas FUDO para el periodo elegido.');
   const box=document.getElementById('hallazgos');
   if(!h.length){box.classList.add('oculto');return;}
@@ -230,7 +233,7 @@ function pintarDetalle(fechas,ventas,conteos,desfases){
   document.getElementById('detalle').classList.remove('oculto');
   document.getElementById('detalle-contenido').innerHTML=conActividad.slice().reverse().map(fecha=>`<details class="aud-detalle"><summary>${escapeHtml(fecha)}</summary>${['San Antonio','Capri'].map(sede=>{
     const u=ventas[fecha+'|'+sede]||0;const c=costillaEnFecha(conteos,fecha,sede);
-    return `<h3>${escapeHtml(sede)} · ${u} Chanchostilla(s)</h3><div class="cadena-costilla"><div class="cadena-paso"><span>Costilla preparada entera</span><strong>${numero(c.entera)} g</strong></div><div class="cadena-paso"><span>Costilla picada lista</span><strong>${numero(c.picada)} g</strong></div><div class="cadena-paso"><span>Reducción</span><strong>${numero(c.reduccion)} g</strong></div><div class="cadena-paso"><span>Picada que puede producirse</span><strong>${numero(c.producible)} g</strong></div><div class="cadena-paso"><span>Total equivalente</span><strong>${numero(c.total)} g · ${c.platos} platos</strong></div></div><p style="font-size:.78rem;color:var(--grey)">La costilla cruda del Centro de Producción no se suma directamente a esta sede. Primero debe convertirse en Costilla Preparada y trasladarse. La costilla preparada entera tampoco se descuenta por venta hasta registrar su transformación a picada.</p><div class="aud-tabla"><table><thead><tr><th>Componente directo del plato</th><th>Conteo registrado</th><th>Consumo esperado por Chanchostilla</th><th>Diferencia no explicada</th><th>Lectura</th></tr></thead><tbody>${COMPONENTES.map(comp=>{const count=conteos[[fecha,sede,comp].join('|')];const esperado=u*RECETA[comp];const dif=desfases[[fecha,sede,comp].join('|')];const lectura=dif===undefined?'Sin conciliación para este componente':Math.abs(dif)<1?'Cuadra':'Revisar';return `<tr><td>${escapeHtml(comp)}</td><td>${count===undefined?'—':numero(count)+' g'}</td><td>${numero(esperado)} g</td><td class="${dif===undefined?'':Math.abs(dif)<1?'aud-ok':'aud-error'}">${dif===undefined?'—':numero(dif)+' g'}</td><td>${escapeHtml(lectura)}</td></tr>`;}).join('')}</tbody></table></div>`;
+    return `<h3>${escapeHtml(sede)} · ${u} Chanchostilla(s)</h3><div class="cadena-resumen"><div class="cadena-paso"><span>Reducción disponible</span><strong>${numero(c.reduccion)} g</strong></div><div class="cadena-paso"><span>Platos que puede producir la costilla</span><strong>${numero(c.platos)}</strong></div></div><p style="font-size:.78rem;color:var(--grey)">La costilla cruda del Centro de Producción no se suma a la sede hasta cocinarse y trasladarse.</p><div class="aud-tabla"><table><thead><tr><th>Componente o etapa</th><th>Conteo registrado</th><th>Consumo o transformación esperada</th><th>Diferencia no explicada</th><th>Lectura</th></tr></thead><tbody>${COMPONENTES_TABLA.map(comp=>{const count=conteos[[fecha,sede,comp].join('|')];const esperado=consumoEsperado(comp,u);const dif=desfases[[fecha,sede,comp].join('|')];let lectura=dif===undefined?'Sin conciliación para este componente':Math.abs(dif)<1?'Cuadra':'Revisar';if(comp===COSTILLA.entera&&dif===undefined)lectura='Equivalente para producir la costilla picada vendida';return `<tr><td>${escapeHtml(comp)}</td><td>${count===undefined?'—':numero(count)+' g'}</td><td>${numero(esperado)} g${comp===COSTILLA.entera?' equivalentes':''}</td><td class="${dif===undefined?'':Math.abs(dif)<1?'aud-ok':'aud-error'}">${dif===undefined?'—':numero(dif)+' g'}</td><td>${escapeHtml(lectura)}</td></tr>`;}).join('')}</tbody></table></div>`;
   }).join('')}</details>`).join('')||'<p class="vacio">No hay actividad para mostrar.</p>';
 }
 
@@ -253,7 +256,7 @@ async function analizar(){
   pintarHallazgos(conteosFilas,ventasFilas,recetasFilas,produccionesFilas);
   pintarResumen([resumenSede('San Antonio',fechas,ventas,conteos,desfases,sa),resumenSede('Capri',fechas,ventas,conteos,desfases,capri)]);
   pintarDetalle(fechas,ventas,conteos,desfases);
-  estado.innerHTML='<p class="aud-ok"><strong>Análisis terminado.</strong> La costilla preparada entera y la picada se muestran por separado; el total equivalente aplica el rendimiento provisional y la reducción disponible.</p>';
+  estado.innerHTML='<p class="aud-ok"><strong>Análisis terminado.</strong> Las dos costillas están en la tabla; arriba solo se muestran reducción y platos posibles.</p>';
 }
 document.getElementById('btn-analizar').addEventListener('click',conBotonProtegido(document.getElementById('btn-analizar'),analizar));
 analizar();
