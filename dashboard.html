@@ -455,7 +455,7 @@ function pintarEstadoTurno_(sede, dataCierre, dataSector) {
     texto = `Turno de hoy en ${sede} — CERRADO (por ${dataCierre.usuario || '—'})`;
   } else if (sectoresPermitidos.length && dataSector.ok && !dataSector.sector) {
     icono = '⚠️'; clase = 'aviso';
-    texto = `Turno de hoy en ${sede} — SIN ABRIR: elige tu sector en Registrar conteo para empezar`;
+    texto = `Caja y operación pueden estar abiertas. Falta elegir tu sector de conteo en ${sede}`;
   } else {
     icono = '🔓'; clase = 'ok';
     texto = `Turno de hoy en ${sede} — ABIERTO`;

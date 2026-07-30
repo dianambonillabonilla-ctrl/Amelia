@@ -242,16 +242,28 @@ async function inicializarSectorHoy_() {
   const card = document.getElementById('card-sector-hoy');
   const select = document.getElementById('sector-hoy-select');
   select.innerHTML = sectores.map(s => `<option>${escapeHtml(s)}</option>`).join('');
-  card.style.display = 'block';
 
   const hoy = fechaLocalHoy_();
-  const data = await llamar('turno_sector_hoy', { fecha: hoy });
+  let data = await llamar('turno_sector_hoy', { fecha: hoy });
+
+  // Si solo existe una opción no se abre una ventana para preguntar lo obvio. El backend
+  // normalmente ya la asigna; este respaldo conserva el comportamiento aun durante un
+  // despliegue gradual del frontend y Apps Script.
+  if (sectores.length === 1) {
+    if (!data.ok || !data.sector) {
+      data = await llamar('turno_sector_elegir', { fecha: hoy, sector: sectores[0] });
+    }
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
   const actual = document.getElementById('sector-hoy-actual');
   if (data.ok && data.sector) {
     select.value = data.sector;
     actual.textContent = `Hoy elegiste: ${data.sector}. Si necesitas cambiarlo, elige otro y presiona Confirmar de nuevo.`;
   } else {
-    actual.textContent = 'Todavía no has elegido tu sector de hoy.';
+    actual.textContent = 'Elige cuál de tus sectores te corresponde hoy.';
   }
 }
 
