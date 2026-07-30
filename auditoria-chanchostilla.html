@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Auditoría Chanchostilla</title>
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+  .aud-wrap{max-width:1180px;margin:0 auto}.aud-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.aud-kpi{border:1px solid var(--line);border-radius:11px;padding:14px;background:#FBFAF6}.aud-kpi span{display:block;color:var(--grey);font-size:.72rem;text-transform:uppercase}.aud-kpi strong{display:block;color:var(--navy);font-size:1.35rem;margin-top:5px}.aud-sedes{display:grid;grid-template-columns:1fr 1fr;gap:14px}.aud-sede{border:1px solid var(--line);border-radius:12px;padding:16px}.aud-ok{color:var(--green)}.aud-error{color:var(--red);font-weight:700}.aud-aviso{color:var(--amber);font-weight:700}.aud-tabla{overflow-x:auto}.aud-tabla table{min-width:900px}.aud-tabla td,.aud-tabla th{font-size:.8rem}.aud-detalle{border-top:1px solid var(--line);padding:10px 0}.aud-detalle summary{cursor:pointer;font-weight:700}.oculto{display:none!important}@media(max-width:800px){.aud-kpis{grid-template-columns:1fr 1fr}.aud-sedes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav>
+      <a href="inicio.html">Inicio de turno</a>
+      <a href="dashboard.html">Disponible Hoy</a>
+      <a href="auditoria-chanchostilla.html" class="activo">Auditoría Chanchostilla</a>
+      <a href="conteo.html">Registrar conteo</a>
+      <a href="producir.html">Registrar producción</a>
+      <a href="traslados.html">Traslados</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="topbar"><h1>Auditoría Chanchostilla</h1><div id="barra-usuario"></div></div>
+    <div class="aud-wrap">
+      <section class="card" style="border-top:4px solid var(--navy)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0">¿Está funcionando bien el sistema para este plato?</h2>
+            <p style="margin:5px 0 0;color:var(--grey);font-size:.86rem">Cruza ventas FUDO, conteos físicos y conciliación desde el primer conteo registrado.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div class="campo" style="margin:0"><label>Desde</label><input type="date" id="fecha-desde" value="2026-07-20"></div>
+            <div class="campo" style="margin:0"><label>Hasta</label><input type="date" id="fecha-hasta"></div>
+            <button class="btn dorado" id="btn-analizar">Analizar</button>
+          </div>
+        </div>
+        <div id="estado" style="margin-top:12px"></div>
+      </section>
+
+      <section id="hallazgos" class="card card-alerta aviso oculto"><h2>Hallazgos del sistema</h2><div id="hallazgos-contenido"></div></section>
+      <section id="resumen" class="card oculto"><h2>Resumen del periodo</h2><div id="resumen-contenido"></div></section>
+      <section id="detalle" class="card oculto"><h2>Conciliación día por día</h2><p style="color:var(--grey);font-size:.84rem">Abre un día para revisar qué esperaba consumir Dilana y qué diferencias no quedaron explicadas.</p><div id="detalle-contenido"></div></section>
+    </div>
+  </main>
+</div>
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+montarBarraUsuario();
+const usuario=Sesion.usuario();
+if(!usuario || usuario.rol!=='Administrador'){alert('Esta auditoría es solo para Administración.');location.href='inicio.html';}
+document.getElementById('fecha-hasta').value=fechaLocalHoy_();
+
+const RECETA={
+  'Costilla Preparada Picada':85,
+  'Panceta Pre-Ahumada':75,
+  'Papas Listas':100,
+  'Cebolla Elaborada':50,
+  'Alioli':30
+};
+const COMPONENTES=Object.keys(RECETA);
+const normalizar=normalizarTexto;
+const esCancelada=v=>v===true||['si','sí','true','1'].includes(normalizar(v));
+const numero=v=>Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:1});
+
+function filasDe(res){
+  if(!res||!res.ok)return[];
+  if(Array.isArray(res.data))return res.data;
+  if(res.data&&Array.isArray(res.data.filas))return res.data.filas;
+  if(Array.isArray(res.filas))return res.filas;
+  return[];
+}
+function fechaDe(v){
+  if(!v)return'';
+  const s=String(v);
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:'';
+}
+function sedeValida(s){return s==='San Antonio'||s==='Capri';}
+function ventaEsChanchostilla(v){return ['chanchostilla','cono chanchostilla'].includes(normalizar(v.producto));}
+
+function agruparVentas(filas,desde,hasta){
+  const mapa={};
+  filas.filter(v=>ventaEsChanchostilla(v)&&!esCancelada(v.cancelada)).forEach(v=>{
+    const fecha=fechaDe(v.creacion||v.fecha); const sede=v.sede||'Sin identificar';
+    if(fecha<desde||fecha>hasta||!sedeValida(sede))return;
+    const k=fecha+'|'+sede;
+    mapa[k]=(mapa[k]||0)+Number(v.cantidad||0);
+  });
+  return mapa;
+}
+function agruparConteos(filas,desde,hasta){
+  const mapa={};
+  filas.forEach(c=>{
+    const fecha=fechaDe(c.fecha); const sede=c.sede; const prod=String(c.producto||'');
+    if(fecha<desde||fecha>hasta||!sedeValida(sede))return;
+    let canon=COMPONENTES.find(x=>normalizar(x)===normalizar(prod));
+    if(!canon&&normalizar(prod)==='cebollita de amelia')canon='Cebolla Elaborada';
+    if(!canon)return;
+    const k=[fecha,sede,canon].join('|');
+    mapa[k]=(mapa[k]||0)+Number(c.cantidad||0);
+  });
+  return mapa;
+}
+function mapaDesfases(res,desde,hasta){
+  const mapa={};
+  const comida=(res&&res.ok&&Array.isArray(res.comida))?res.comida:[];
+  comida.forEach(r=>{
+    const fecha=fechaDe(r.fecha); const canon=COMPONENTES.find(x=>normalizar(x)===normalizar(r.ingrediente));
+    if(!canon||fecha<desde||fecha>hasta||!sedeValida(r.sede))return;
+    mapa[[fecha,r.sede,canon].join('|')]=Number(r.implicito||0);
+  });
+  return mapa;
+}
+function rangoFechas(desde,hasta){
+  const out=[];const d=new Date(desde+'T12:00:00');const fin=new Date(hasta+'T12:00:00');
+  while(d<=fin){out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));d.setDate(d.getDate()+1);}return out;
+}
+function resumenSede(sede,fechas,ventas,conteos,desfases,disponible){
+  const vendidas=fechas.reduce((a,f)=>a+(ventas[f+'|'+sede]||0),0);
+  const diasVenta=fechas.filter(f=>(ventas[f+'|'+sede]||0)>0).length;
+  const diasConteo=fechas.filter(f=>COMPONENTES.some(c=>conteos[[f,sede,c].join('|')]!==undefined)).length;
+  const clavesDif=Object.keys(desfases).filter(k=>k.includes('|'+sede+'|')&&Math.abs(desfases[k])>=1);
+  const diasDif=new Set(clavesDif.map(k=>k.split('|')[0])).size;
+  const plato=(disponible&&disponible.ok&&disponible.data&&disponible.data.platos||[]).find(p=>['chanchostilla','cono chanchostilla'].includes(normalizar(p.producto)));
+  return {sede,vendidas,diasVenta,diasConteo,diasDif,disponibles:plato?plato.preparaciones_posibles:null,limitante:plato?(plato.cadena_limitante||plato.ingrediente_limitante):'—'};
+}
+function pintarResumen(items){
+  document.getElementById('resumen').classList.remove('oculto');
+  document.getElementById('resumen-contenido').innerHTML='<div class="aud-sedes">'+items.map(s=>`<div class="aud-sede"><h3 style="margin-top:0">${escapeHtml(s.sede)}</h3><div class="aud-kpis"><div class="aud-kpi"><span>Vendidas</span><strong>${numero(s.vendidas)}</strong></div><div class="aud-kpi"><span>Días con venta</span><strong>${s.diasVenta}</strong></div><div class="aud-kpi"><span>Días con conteo</span><strong>${s.diasConteo}</strong></div><div class="aud-kpi"><span>Días con diferencia</span><strong class="${s.diasDif?'aud-error':'aud-ok'}">${s.diasDif}</strong></div></div><p><strong>Disponibles al corte:</strong> ${s.disponibles===null?'—':numero(s.disponibles)}<br><strong>Limitante:</strong> ${escapeHtml(s.limitante||'—')}</p></div>`).join('')+'</div>';
+}
+function pintarHallazgos(conteos,ventas,recetas,producciones){
+  const h=[];
+  const recetaActiva=recetas.some(r=>normalizar(r.producto)==='cono chanchostilla'&&!['archivado','inactivo','pendiente','borrador'].includes(normalizar(r.estado)));
+  const recetaDirecta=recetas.some(r=>normalizar(r.producto)==='chanchostilla'&&!['archivado','inactivo','pendiente','borrador'].includes(normalizar(r.estado)));
+  if(recetaActiva&&!recetaDirecta)h.push('FUDO vende “Chanchostilla”, pero la receta activa se llama “Cono Chanchostilla”. La auditoría puede calcularla, pero el motor necesita un alias o un solo nombre oficial.');
+  if(conteos.some(c=>normalizar(c.producto)==='cebollita de amelia'))h.push('Hay conteos bajo “Cebollita de Amelia” separados de “Cebolla Elaborada”. En esta auditoría se unifican para leerlos, pero la base debe manejar un solo nombre.');
+  if(!producciones.some(p=>normalizar(p.item)==='costilla preparada picada'))h.push('No hay producción registrada de Costilla Preparada Picada. Dilana no puede auditar cuánto se picó, cuánta reducción se usó ni la merma de hueso.');
+  if(!ventas.length)h.push('No se recibieron filas de ventas FUDO para el periodo elegido.');
+  const box=document.getElementById('hallazgos');
+  if(!h.length){box.classList.add('oculto');return;}
+  box.classList.remove('oculto');document.getElementById('hallazgos-contenido').innerHTML='<ul>'+h.map(x=>`<li>${escapeHtml(x)}</li>`).join('')+'</ul>';
+}
+function pintarDetalle(fechas,ventas,conteos,desfases){
+  const conActividad=fechas.filter(f=>['San Antonio','Capri'].some(s=>(ventas[f+'|'+s]||0)>0||COMPONENTES.some(c=>conteos[[f,s,c].join('|')]!==undefined)||COMPONENTES.some(c=>desfases[[f,s,c].join('|')]!==undefined)));
+  document.getElementById('detalle').classList.remove('oculto');
+  document.getElementById('detalle-contenido').innerHTML=conActividad.slice().reverse().map(fecha=>`<details class="aud-detalle"><summary>${escapeHtml(fecha)}</summary>${['San Antonio','Capri'].map(sede=>{const u=ventas[fecha+'|'+sede]||0;return `<h3>${escapeHtml(sede)} · ${u} Chanchostilla(s)</h3><div class="aud-tabla"><table><thead><tr><th>Componente</th><th>Conteo registrado</th><th>Consumo esperado por Chanchostilla</th><th>Diferencia no explicada del sistema</th><th>Lectura</th></tr></thead><tbody>${COMPONENTES.map(c=>{const count=conteos[[fecha,sede,c].join('|')];const esperado=u*RECETA[c];const dif=desfases[[fecha,sede,c].join('|')];const lectura=dif===undefined?'Sin conciliación para este componente':Math.abs(dif)<1?'Cuadra':'Revisar';return `<tr><td>${escapeHtml(c)}</td><td>${count===undefined?'—':numero(count)+' g'}</td><td>${numero(esperado)} g</td><td class="${dif===undefined?'':Math.abs(dif)<1?'aud-ok':'aud-error'}">${dif===undefined?'—':numero(dif)+' g'}</td><td>${escapeHtml(lectura)}</td></tr>`;}).join('')}</tbody></table></div>`;}).join('')}</details>`).join('')||'<p class="vacio">No hay actividad para mostrar.</p>';
+}
+
+async function analizar(){
+  const desde=document.getElementById('fecha-desde').value;const hasta=document.getElementById('fecha-hasta').value;
+  if(!desde||!hasta||desde>hasta){alert('Revisa el rango de fechas.');return;}
+  const estado=document.getElementById('estado');estado.innerHTML='<p class="vacio">Cruzando ventas, conteos, recetas y conciliación…</p>';
+  const [v,c,d,r,p,sa,capri]=await Promise.all([
+    llamar('fudo_items_listar',{filtros:{fecha_desde:desde,fecha_hasta:hasta}}),
+    llamar('conteos_historial',{filtros:{fecha_desde:desde,fecha_hasta:hasta,sede:'Ambas'}}),
+    llamar('conciliacion_historial_desfases',{fecha_desde:desde,fecha_hasta:hasta}),
+    llamar('recetas_listar',{filtros:{}}),
+    llamar('produccion_historial',{filtros:{fecha_desde:desde,fecha_hasta:hasta,sede:'Ambas'}}),
+    llamar('disponible_hoy',{fecha:hasta,sede:'San Antonio'}),
+    llamar('disponible_hoy',{fecha:hasta,sede:'Capri'})
+  ]);
+  const ventasFilas=filasDe(v),conteosFilas=filasDe(c),recetasFilas=filasDe(r),produccionesFilas=filasDe(p);
+  if(!v.ok||!c.ok||!d.ok){estado.innerHTML=`<p class="aud-error">No se pudo completar el análisis: ${escapeHtml((!v.ok&&v.error)||(!c.ok&&c.error)||(!d.ok&&d.error)||'error desconocido')}</p>`;return;}
+  const fechas=rangoFechas(desde,hasta);const ventas=agruparVentas(ventasFilas,desde,hasta);const conteos=agruparConteos(conteosFilas,desde,hasta);const desfases=mapaDesfases(d,desde,hasta);
+  pintarHallazgos(conteosFilas,ventasFilas,recetasFilas,produccionesFilas);
+  pintarResumen([resumenSede('San Antonio',fechas,ventas,conteos,desfases,sa),resumenSede('Capri',fechas,ventas,conteos,desfases,capri)]);
+  pintarDetalle(fechas,ventas,conteos,desfases);
+  estado.innerHTML='<p class="aud-ok"><strong>Análisis terminado.</strong> Verde significa que el cambio físico quedó explicado; rojo requiere revisar registros o nombres.</p>';
+}
+document.getElementById('btn-analizar').addEventListener('click',conBotonProtegido(document.getElementById('btn-analizar'),analizar));
+analizar();
+</script>
+</body>
+</html>
