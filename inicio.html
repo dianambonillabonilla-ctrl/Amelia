@@ -17,6 +17,7 @@
       <a href="inicio.html" class="activo">Inicio de turno</a>
       <a href="caja.html" id="nav-caja" class="oculto">Caja</a>
       <a href="dashboard.html">Disponible Hoy</a>
+      <a href="auditoria-chanchostilla.html" data-solo-rol="Administrador">Auditoría Chanchostilla</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
@@ -52,7 +53,10 @@
             <h2 style="margin:0">Resumen administrativo de hoy</h2>
             <p style="margin:4px 0 0;color:var(--grey);font-size:.84rem">San Antonio y Capri en una sola vista. Solo incluye ventas cerradas en FUDO.</p>
           </div>
-          <button class="btn fantasma" id="btn-actualizar-admin" type="button">Sincronizar FUDO</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a class="btn fantasma" href="auditoria-chanchostilla.html" style="text-decoration:none">Auditar Chanchostilla</a>
+            <button class="btn fantasma" id="btn-actualizar-admin" type="button">Sincronizar FUDO</button>
+          </div>
         </div>
         <p id="admin-sync-estado" style="display:none;margin:10px 0 0;font-size:.82rem"></p>
         <div id="admin-contenido"><p class="vacio">Cargando información administrativa…</p></div>
