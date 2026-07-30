@@ -6,7 +6,7 @@
 <title>Dilana OS — Inicio de turno</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-  .inicio-wrap{max-width:920px;margin:0 auto}.bienvenida{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:stretch}.perfil-card{background:linear-gradient(135deg,#0B1F3A,#16305A);color:white;border-radius:14px;padding:26px}.perfil-card h1,.perfil-card h2{color:white}.perfil-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.perfil-dato{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px}.perfil-dato span{display:block;font-size:.72rem;opacity:.72;text-transform:uppercase}.perfil-dato strong{display:block;margin-top:5px}.paso{border-left:4px solid var(--gold)}.recordatorio-rappi{background:#FFF3E6;border:2px solid #E47911;border-radius:12px;padding:16px;font-weight:700;color:#8B4100}.acciones-inicio{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.accion{display:block;text-decoration:none;background:white;border:1px solid var(--line);border-radius:12px;padding:18px}.accion strong{display:block;color:var(--navy);margin-bottom:5px}.accion span{font-size:.82rem;color:var(--grey)}.accion.principal{border-color:var(--gold);background:#FFFDF7}.oculto{display:none!important}@media(max-width:760px){.bienvenida{grid-template-columns:1fr}.perfil-datos{grid-template-columns:1fr}}
+  .inicio-wrap{max-width:920px;margin:0 auto}.bienvenida{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:stretch}.perfil-card{background:linear-gradient(135deg,#0B1F3A,#16305A);color:white;border-radius:14px;padding:26px}.perfil-card h1,.perfil-card h2{color:white}.perfil-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.perfil-dato{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px}.perfil-dato span{display:block;font-size:.72rem;opacity:.72;text-transform:uppercase}.perfil-dato strong{display:block;margin-top:5px}.paso{border-left:4px solid var(--gold)}.recordatorio-rappi{background:#FFF3E6;border:2px solid #E47911;border-radius:12px;padding:16px;font-weight:700;color:#8B4100}.acciones-inicio{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.accion{display:block;text-decoration:none;background:white;border:1px solid var(--line);border-radius:12px;padding:18px}.accion strong{display:block;color:var(--navy);margin-bottom:5px}.accion span{font-size:.82rem;color:var(--grey)}.accion.principal{border-color:var(--gold);background:#FFFDF7}.oculto{display:none!important}.admin-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.admin-kpi{border:1px solid var(--line);border-radius:10px;padding:13px;background:#FBFAF6}.admin-kpi span{display:block;color:var(--grey);font-size:.7rem;text-transform:uppercase}.admin-kpi strong{display:block;color:var(--navy);font-size:1.2rem;margin-top:5px}.admin-sedes{display:grid;grid-template-columns:1fr 1fr;gap:12px}.admin-sede{border:1px solid var(--line);border-radius:10px;padding:14px}.admin-sede-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:9px}.admin-detalle{font-size:.82rem;line-height:1.65;color:var(--grey)}.admin-detalle strong{color:var(--navy)}@media(max-width:760px){.bienvenida{grid-template-columns:1fr}.perfil-datos{grid-template-columns:1fr}.admin-kpis{grid-template-columns:1fr 1fr}.admin-sedes{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -46,6 +46,17 @@
         </section>
       </div>
 
+      <section id="resumen-admin" class="card oculto" style="margin-top:20px;border-top:4px solid var(--navy)">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0">Resumen administrativo de hoy</h2>
+            <p style="margin:4px 0 0;color:var(--grey);font-size:.84rem">San Antonio y Capri en una sola vista.</p>
+          </div>
+          <button class="btn fantasma" id="btn-actualizar-admin" type="button">Actualizar ventas</button>
+        </div>
+        <div id="admin-contenido"><p class="vacio">Cargando información administrativa…</p></div>
+      </section>
+
       <section id="bloque-caja" class="card oculto" style="margin-top:20px;border:2px solid var(--gold)">
         <h2>2. Abrir mi caja</h2>
         <div class="recordatorio-rappi">⚠ No olvides prender Rappi al iniciar el turno.</div>
@@ -74,6 +85,79 @@ document.getElementById('nombre-usuario').textContent = usuario.nombre || usuari
 document.getElementById('rol-usuario').textContent = usuario.rol || '—';
 document.getElementById('sede-usuario').textContent = usuario.sede || '—';
 selectSector.innerHTML = '<option value="">Elige tu función</option>' + opciones.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
+
+const dineroAdmin = valor => Number(valor || 0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
+
+function estadoCajaAdmin(data){
+  if(!data || !data.ok) return {texto:'Sin información',clase:'aviso'};
+  if(!data.apertura) return {texto:'Sin abrir',clase:'aviso'};
+  if(data.apertura.estado === 'Cerrado') return {texto:'Cerrada',clase:'ok'};
+  return {texto:'Abierta',clase:'ok'};
+}
+
+function fechaSyncAdmin(valor){
+  if(!valor) return 'Sin sincronización registrada';
+  const d = new Date(valor);
+  return isNaN(d.getTime()) ? String(valor) : d.toLocaleString('es-CO');
+}
+
+function tarjetaSedeAdmin(item){
+  if(!item.resumen || !item.resumen.ok){
+    return `<div class="admin-sede"><strong>${escapeHtml(item.sede)}</strong><p style="color:var(--red);font-size:.82rem">No se pudo cargar esta sede.</p></div>`;
+  }
+  const caja = estadoCajaAdmin(item.caja);
+  const r = item.resumen;
+  return `<div class="admin-sede">
+    <div class="admin-sede-head"><strong>${escapeHtml(item.sede)}</strong><span class="badge ${caja.clase}">Caja ${escapeHtml(caja.texto)}</span></div>
+    <div style="font-size:1.25rem;font-weight:800;color:var(--navy);margin-bottom:3px">${dineroAdmin(r.ventas_fudo_total)}</div>
+    <div style="font-size:.76rem;color:var(--grey);margin-bottom:8px">${escapeHtml(r.ventas_fudo_cantidad || 0)} registros de venta</div>
+    <div class="admin-detalle">
+      Pagos: <strong>${dineroAdmin(r.pagos_fudo_total)}</strong><br>
+      Efectivo esperado: <strong>${dineroAdmin(r.pagos_efectivo_esperado)}</strong><br>
+      Descuentos: <strong>${dineroAdmin(r.descuentos_total)}</strong> · Propinas: <strong>${dineroAdmin(r.propinas_total)}</strong><br>
+      Traslados pendientes: <strong>${escapeHtml(r.traslados_pendientes || 0)}</strong> · Producciones: <strong>${escapeHtml(r.producciones_registradas || 0)}</strong>
+    </div>
+  </div>`;
+}
+
+async function cargarResumenAdmin(){
+  const bloque = document.getElementById('resumen-admin');
+  const cont = document.getElementById('admin-contenido');
+  if(usuario.rol !== 'Administrador'){
+    bloque.classList.add('oculto');
+    return;
+  }
+  bloque.classList.remove('oculto');
+  cont.innerHTML = '<p class="vacio">Cargando ventas y cajas…</p>';
+  const sedes = ['San Antonio','Capri'];
+  const respuestas = await Promise.all([
+    llamar('turno_resumen_cierre',{fecha:hoy,sede:sedes[0]}),
+    llamar('turno_resumen_cierre',{fecha:hoy,sede:sedes[1]}),
+    llamar('caja_estado',{fecha:hoy,sede:sedes[0]}),
+    llamar('caja_estado',{fecha:hoy,sede:sedes[1]})
+  ]);
+  const items = [
+    {sede:sedes[0],resumen:respuestas[0],caja:respuestas[2]},
+    {sede:sedes[1],resumen:respuestas[1],caja:respuestas[3]}
+  ];
+  const validos = items.filter(i=>i.resumen && i.resumen.ok);
+  if(!validos.length){
+    cont.innerHTML = '<p style="color:var(--red)">No se pudo cargar la información administrativa. Revisa la conexión y vuelve a actualizar.</p>';
+    return;
+  }
+  const sumar = campo => validos.reduce((acc,i)=>acc+Number(i.resumen[campo]||0),0);
+  const syncVentas = validos.map(i=>i.resumen.sync_ventas_en).filter(Boolean).sort().pop();
+  const syncPagos = validos.map(i=>i.resumen.sync_pagos_en).filter(Boolean).sort().pop();
+  cont.innerHTML = `
+    <div class="admin-kpis">
+      <div class="admin-kpi"><span>Ventas del día</span><strong>${dineroAdmin(sumar('ventas_fudo_total'))}</strong></div>
+      <div class="admin-kpi"><span>Registros de venta</span><strong>${escapeHtml(sumar('ventas_fudo_cantidad'))}</strong></div>
+      <div class="admin-kpi"><span>Pagos registrados</span><strong>${dineroAdmin(sumar('pagos_fudo_total'))}</strong></div>
+      <div class="admin-kpi"><span>Efectivo esperado</span><strong>${dineroAdmin(sumar('pagos_efectivo_esperado'))}</strong></div>
+    </div>
+    <div class="admin-sedes">${items.map(tarjetaSedeAdmin).join('')}</div>
+    <p style="margin:12px 0 0;color:var(--grey);font-size:.75rem">Última sincronización: ventas ${escapeHtml(fechaSyncAdmin(syncVentas))} · pagos ${escapeHtml(fechaSyncAdmin(syncPagos))}. Los valores corresponden a lo sincronizado desde FUDO.</p>`;
+}
 
 function accionesParaSector(sector){
   const mapa = {
@@ -123,7 +207,9 @@ document.getElementById('btn-confirmar-sector').addEventListener('click', conBot
   avisarGuardado('Función de hoy confirmada: '+sector+'.');
 }));
 
+document.getElementById('btn-actualizar-admin').addEventListener('click',conBotonProtegido(document.getElementById('btn-actualizar-admin'),cargarResumenAdmin));
 cargarSector();
+cargarResumenAdmin();
 </script>
 </body>
 </html>
