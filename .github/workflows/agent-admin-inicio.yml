@@ -1,0 +1,185 @@
+name: Agregar resumen administrativo al inicio
+
+on:
+  push:
+    branches:
+      - agent/unificar-estado-caja-conteo
+    paths:
+      - .github/workflows/agent-admin-inicio.yml
+
+permissions:
+  contents: write
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/unificar-estado-caja-conteo
+          fetch-depth: 0
+
+      - name: Agregar panel administrativo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('dashboard.html')
+          text = path.read_text(encoding='utf-8')
+
+          anchor_card = '''      <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+    </div>
+
+    <!-- De un vistazo, antes de cualquier detalle: cuántas cosas piden atención hoy. En verde con
+'''
+          replacement_card = '''      <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+    </div>
+
+    <!-- Solo Administrador: una vista gerencial compacta de las dos sedes, sin abrir otra pantalla. -->
+    <div class="card" id="card-admin-dia" style="display:none; margin-bottom:20px; border-top:4px solid var(--navy)">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px">
+        <div>
+          <h2 style="margin:0">Resumen administrativo</h2>
+          <p style="margin:4px 0 0; color:var(--grey); font-size:.84rem">Ventas y caja de San Antonio y Capri en una sola vista.</p>
+        </div>
+        <strong id="admin-fecha" style="color:var(--navy)"></strong>
+      </div>
+      <div id="admin-resumen"><p class="vacio">Cargando resumen administrativo…</p></div>
+    </div>
+
+    <!-- De un vistazo, antes de cualquier detalle: cuántas cosas piden atención hoy. En verde con
+'''
+          if anchor_card not in text:
+              raise SystemExit('No se encontró el punto para insertar la tarjeta administrativa')
+          text = text.replace(anchor_card, replacement_card, 1)
+
+          anchor_call = '''  const usuario = Sesion.usuario();
+  const consultasPendientes = usuario
+'''
+          replacement_call = '''  const usuario = Sesion.usuario();
+  // No frena el resto del Inicio: el resumen gerencial carga en paralelo y solo existe para Admin.
+  cargarResumenAdministrativo_(fecha);
+  const consultasPendientes = usuario
+'''
+          if anchor_call not in text:
+              raise SystemExit('No se encontró el punto para iniciar el resumen administrativo')
+          text = text.replace(anchor_call, replacement_call, 1)
+
+          anchor_functions = '''  poblarSelectorIngredientes_(entradasStockActual.map(s => s.producto));
+}
+
+// Franja de arriba: 4 números clicables que resumen el día antes de entrar en cualquier detalle.
+'''
+          admin_functions = r'''  poblarSelectorIngredientes_(entradasStockActual.map(s => s.producto));
+}
+
+const dineroAdmin_ = valor => Number(valor || 0).toLocaleString('es-CO', {
+  style: 'currency', currency: 'COP', maximumFractionDigits: 0
+});
+
+function estadoCajaAdmin_(data) {
+  if (!data || !data.ok) return { texto: 'Sin información', clase: 'aviso' };
+  if (!data.apertura) return { texto: 'Sin abrir', clase: 'aviso' };
+  if (data.apertura.estado === 'Cerrado') return { texto: 'Cerrada', clase: 'ok' };
+  return { texto: 'Abierta', clase: 'ok' };
+}
+
+function fechaHoraAdmin_(valor) {
+  if (!valor) return 'sin sincronización registrada';
+  const d = new Date(valor);
+  return isNaN(d) ? String(valor) : d.toLocaleString('es-CO');
+}
+
+function filaSedeAdmin_(item) {
+  if (!item.resumen || !item.resumen.ok) {
+    return `<div class="card" style="margin:0; padding:14px"><strong>${escapeHtml(item.sede)}</strong><p style="color:var(--red); margin:8px 0 0">No se pudo cargar: ${escapeHtml((item.resumen && item.resumen.error) || 'error desconocido')}</p></div>`;
+  }
+  const caja = estadoCajaAdmin_(item.caja);
+  const r = item.resumen;
+  return `<div class="card" style="margin:0; padding:14px">
+    <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px">
+      <strong style="font-size:1rem">${escapeHtml(item.sede)}</strong>
+      <span class="badge ${caja.clase}">Caja ${escapeHtml(caja.texto)}</span>
+    </div>
+    <div style="font-size:1.25rem; font-weight:800; color:var(--navy)">${dineroAdmin_(r.ventas_fudo_total)}</div>
+    <div style="color:var(--grey); font-size:.78rem; margin-bottom:9px">${escapeHtml(r.ventas_fudo_cantidad || 0)} registros de venta</div>
+    <div style="font-size:.82rem; line-height:1.65">
+      Pagos: <strong>${dineroAdmin_(r.pagos_fudo_total)}</strong><br>
+      Efectivo esperado: <strong>${dineroAdmin_(r.pagos_efectivo_esperado)}</strong><br>
+      Descuentos: <strong>${dineroAdmin_(r.descuentos_total)}</strong> · Propinas: <strong>${dineroAdmin_(r.propinas_total)}</strong><br>
+      Traslados pendientes: <strong>${escapeHtml(r.traslados_pendientes || 0)}</strong> · Producciones: <strong>${escapeHtml(r.producciones_registradas || 0)}</strong>
+    </div>
+  </div>`;
+}
+
+async function cargarResumenAdministrativo_(fecha) {
+  const card = document.getElementById('card-admin-dia');
+  const cont = document.getElementById('admin-resumen');
+  const usuario = Sesion.usuario();
+  if (!card || !cont || !usuario || usuario.rol !== 'Administrador') {
+    if (card) card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+  document.getElementById('admin-fecha').textContent = fecha;
+  cont.innerHTML = '<p class="vacio">Cargando ventas y cajas…</p>';
+
+  const sedes = ['San Antonio', 'Capri'];
+  const respuestas = await Promise.all([
+    llamar('turno_resumen_cierre', { fecha, sede: sedes[0] }),
+    llamar('turno_resumen_cierre', { fecha, sede: sedes[1] }),
+    llamar('caja_estado', { fecha, sede: sedes[0] }),
+    llamar('caja_estado', { fecha, sede: sedes[1] })
+  ]);
+  const items = [
+    { sede: sedes[0], resumen: respuestas[0], caja: respuestas[2] },
+    { sede: sedes[1], resumen: respuestas[1], caja: respuestas[3] }
+  ];
+  const validos = items.filter(i => i.resumen && i.resumen.ok);
+  if (!validos.length) {
+    cont.innerHTML = '<p style="color:var(--red); margin:0">No se pudo cargar el resumen administrativo. Revisa la conexión con Apps Script y vuelve a actualizar.</p>';
+    return;
+  }
+
+  const sumar = campo => validos.reduce((acc, i) => acc + Number(i.resumen[campo] || 0), 0);
+  const totalVentas = sumar('ventas_fudo_total');
+  const registros = sumar('ventas_fudo_cantidad');
+  const pagos = sumar('pagos_fudo_total');
+  const efectivo = sumar('pagos_efectivo_esperado');
+  const syncVentas = validos.map(i => i.resumen.sync_ventas_en).filter(Boolean).sort().pop();
+  const syncPagos = validos.map(i => i.resumen.sync_pagos_en).filter(Boolean).sort().pop();
+
+  cont.innerHTML = `
+    <div class="resumen-dia" style="margin-bottom:14px">
+      <div class="stat ok"><div class="valor" style="font-size:1.35rem">${dineroAdmin_(totalVentas)}</div><div class="etiqueta">Ventas del día</div></div>
+      <div class="stat ok"><div class="valor">${escapeHtml(registros)}</div><div class="etiqueta">Registros de venta</div></div>
+      <div class="stat ok"><div class="valor" style="font-size:1.25rem">${dineroAdmin_(pagos)}</div><div class="etiqueta">Pagos registrados</div></div>
+      <div class="stat ok"><div class="valor" style="font-size:1.25rem">${dineroAdmin_(efectivo)}</div><div class="etiqueta">Efectivo esperado</div></div>
+    </div>
+    <div class="grid grid-2" style="gap:12px">${items.map(filaSedeAdmin_).join('')}</div>
+    <p style="margin:12px 0 0; color:var(--grey); font-size:.76rem">
+      Última sincronización: ventas ${escapeHtml(fechaHoraAdmin_(syncVentas))} · pagos ${escapeHtml(fechaHoraAdmin_(syncPagos))}.
+      Los valores reflejan lo que ya se ha sincronizado desde FUDO.
+    </p>`;
+}
+
+// Franja de arriba: 4 números clicables que resumen el día antes de entrar en cualquier detalle.
+'''
+          if anchor_functions not in text:
+              raise SystemExit('No se encontró el punto para insertar las funciones administrativas')
+          text = text.replace(anchor_functions, admin_functions, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Ejecutar pruebas
+        run: npm test
+
+      - name: Guardar cambio
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Agregar resumen administrativo al inicio"
+          git push origin agent/unificar-estado-caja-conteo
