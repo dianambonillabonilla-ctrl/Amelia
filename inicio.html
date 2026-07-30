@@ -50,10 +50,11 @@
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
           <div>
             <h2 style="margin:0">Resumen administrativo de hoy</h2>
-            <p style="margin:4px 0 0;color:var(--grey);font-size:.84rem">San Antonio y Capri en una sola vista.</p>
+            <p style="margin:4px 0 0;color:var(--grey);font-size:.84rem">San Antonio y Capri en una sola vista. Solo incluye ventas cerradas en FUDO.</p>
           </div>
-          <button class="btn fantasma" id="btn-actualizar-admin" type="button">Actualizar ventas</button>
+          <button class="btn fantasma" id="btn-actualizar-admin" type="button">Sincronizar FUDO</button>
         </div>
+        <p id="admin-sync-estado" style="display:none;margin:10px 0 0;font-size:.82rem"></p>
         <div id="admin-contenido"><p class="vacio">Cargando información administrativa…</p></div>
       </section>
 
@@ -99,6 +100,13 @@ function fechaSyncAdmin(valor){
   if(!valor) return 'Sin sincronización registrada';
   const d = new Date(valor);
   return isNaN(d.getTime()) ? String(valor) : d.toLocaleString('es-CO');
+}
+
+function fechaDesplazadaAdmin(fecha,dias){
+  const partes=String(fecha).split('-').map(Number);
+  const d=new Date(partes[0],partes[1]-1,partes[2]+dias,12,0,0);
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 
 function tarjetaSedeAdmin(item){
@@ -159,6 +167,34 @@ async function cargarResumenAdmin(){
     <p style="margin:12px 0 0;color:var(--grey);font-size:.75rem">Última sincronización: ventas ${escapeHtml(fechaSyncAdmin(syncVentas))} · pagos ${escapeHtml(fechaSyncAdmin(syncPagos))}. Los valores corresponden a lo sincronizado desde FUDO.</p>`;
 }
 
+async function sincronizarYRecargarAdmin(){
+  const estado=document.getElementById('admin-sync-estado');
+  estado.style.display='block';
+  estado.style.color='var(--grey)';
+  estado.textContent='Sincronizando ventas cerradas y pagos con FUDO…';
+
+  // La API de FUDO interpreta los límites sin zona horaria. Pedir un día antes y uno después cubre
+  // completamente el día de Colombia (UTC-5); el resumen final vuelve a filtrar exclusivamente HOY.
+  const fechaDesde=fechaDesplazadaAdmin(hoy,-1);
+  const fechaHasta=fechaDesplazadaAdmin(hoy,1);
+  const ventas=await llamar('fudo_api_sincronizar_ventas',{fecha_desde:fechaDesde,fecha_hasta:fechaHasta});
+  if(!ventas.ok){
+    estado.style.color='var(--red)';
+    estado.textContent='No se pudieron sincronizar las ventas: '+(ventas.error||'error desconocido');
+    return;
+  }
+  const pagos=await llamar('fudo_api_sincronizar_pagos',{fecha_desde:fechaDesde,fecha_hasta:fechaHasta});
+  if(!pagos.ok){
+    estado.style.color='var(--red)';
+    estado.textContent='Las ventas se sincronizaron, pero fallaron los pagos: '+(pagos.error||'error desconocido');
+    await cargarResumenAdmin();
+    return;
+  }
+  await cargarResumenAdmin();
+  estado.style.color='var(--green)';
+  estado.textContent=`FUDO actualizado: ${ventas.importados||0} línea(s) nueva(s) de venta y ${pagos.importados||0} pago(s) nuevo(s). Las mesas en curso aparecerán cuando se cierren.`;
+}
+
 function accionesParaSector(sector){
   const mapa = {
     'Cocina': [
@@ -207,7 +243,7 @@ document.getElementById('btn-confirmar-sector').addEventListener('click', conBot
   avisarGuardado('Función de hoy confirmada: '+sector+'.');
 }));
 
-document.getElementById('btn-actualizar-admin').addEventListener('click',conBotonProtegido(document.getElementById('btn-actualizar-admin'),cargarResumenAdmin));
+document.getElementById('btn-actualizar-admin').addEventListener('click',conBotonProtegido(document.getElementById('btn-actualizar-admin'),sincronizarYRecargarAdmin));
 cargarSector();
 cargarResumenAdmin();
 </script>
