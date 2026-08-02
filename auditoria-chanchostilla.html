@@ -6,7 +6,7 @@
 <title>Dilana OS — Auditoría Chanchostilla</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-  .aud-wrap{max-width:1180px;margin:0 auto}.aud-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.aud-kpi{border:1px solid var(--line);border-radius:11px;padding:14px;background:#FBFAF6}.aud-kpi span{display:block;color:var(--grey);font-size:.72rem;text-transform:uppercase}.aud-kpi strong{display:block;color:var(--navy);font-size:1.35rem;margin-top:5px}.aud-sedes{display:grid;grid-template-columns:1fr 1fr;gap:14px}.aud-sede{border:1px solid var(--line);border-radius:12px;padding:16px}.aud-ok{color:var(--green)}.aud-error{color:var(--red);font-weight:700}.aud-aviso{color:var(--amber);font-weight:700}.aud-tabla{overflow-x:auto}.aud-tabla table{min-width:950px}.aud-tabla td,.aud-tabla th{font-size:.8rem}.aud-detalle{border-top:1px solid var(--line);padding:10px 0}.aud-detalle summary{cursor:pointer;font-weight:700}.cadena-costilla{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:8px;margin:12px 0}.cadena-resumen{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px;margin:12px 0;max-width:620px}.cadena-paso{border:1px solid var(--line);border-radius:10px;padding:13px;background:#FBFAF6}.cadena-paso span{display:block;font-size:.68rem;color:var(--grey);text-transform:uppercase}.cadena-paso strong{display:block;margin-top:4px;color:var(--navy);font-size:1.15rem}.oculto{display:none!important}@media(max-width:800px){.aud-kpis{grid-template-columns:1fr 1fr}.aud-sedes{grid-template-columns:1fr}.cadena-costilla{grid-template-columns:1fr 1fr}.cadena-resumen{grid-template-columns:1fr 1fr}}
+  .aud-wrap{max-width:1180px;margin:0 auto}.aud-sedes{display:grid;grid-template-columns:1fr 1fr;gap:16px}.aud-sede{border:1px solid var(--line);border-radius:14px;padding:18px;background:white}.total-plato{border:2px solid var(--navy);border-radius:13px;padding:17px;background:#F7F8FB;margin:12px 0}.total-plato span{display:block;color:var(--grey);font-size:.72rem;text-transform:uppercase}.total-plato strong{display:block;color:var(--navy);font-size:2.1rem;margin-top:4px}.ingredientes{display:grid;gap:8px}.ingrediente{display:grid;grid-template-columns:minmax(150px,1fr) 105px;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:11px 13px}.ingrediente.limitante{border-color:var(--amber);background:#FFF9EB}.ingrediente-nombre strong{display:block;color:var(--navy)}.ingrediente-nombre small{display:block;color:var(--grey);margin-top:3px;line-height:1.35}.ingrediente-platos{text-align:right}.ingrediente-platos strong{font-size:1.3rem;color:var(--navy)}.ingrediente-platos span{display:block;font-size:.68rem;color:var(--grey);text-transform:uppercase}.costilla-desglose{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:8px}.costilla-dato{background:#F7F6F2;border-radius:8px;padding:8px}.costilla-dato span{display:block;font-size:.64rem;color:var(--grey);text-transform:uppercase}.costilla-dato strong{font-size:.92rem;color:var(--navy)}.aud-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0}.aud-kpi{border:1px solid var(--line);border-radius:10px;padding:12px;background:#FBFAF6}.aud-kpi span{display:block;color:var(--grey);font-size:.68rem;text-transform:uppercase}.aud-kpi strong{display:block;color:var(--navy);font-size:1.2rem;margin-top:4px}.aud-tabla{overflow-x:auto}.aud-tabla table{min-width:880px}.aud-tabla td,.aud-tabla th{font-size:.8rem}.aud-detalle{border-top:1px solid var(--line);padding:10px 0}.aud-detalle summary{cursor:pointer;font-weight:700}.ok{color:var(--green)}.error{color:var(--red);font-weight:700}.aviso{color:var(--amber);font-weight:700}.oculto{display:none!important}@media(max-width:820px){.aud-sedes{grid-template-columns:1fr}.aud-kpis{grid-template-columns:1fr 1fr}.costilla-desglose{grid-template-columns:1fr}.ingrediente{grid-template-columns:1fr 82px}}
 </style>
 </head>
 <body>
@@ -28,8 +28,8 @@
       <section class="card" style="border-top:4px solid var(--navy)">
         <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
           <div>
-            <h2 style="margin:0">¿Está funcionando bien el sistema para este plato?</h2>
-            <p style="margin:5px 0 0;color:var(--grey);font-size:.86rem">Cruza ventas FUDO, conteos físicos y conciliación desde el primer conteo registrado.</p>
+            <h2 style="margin:0">Disponibilidad completa y por ingrediente</h2>
+            <p style="margin:5px 0 0;color:var(--grey);font-size:.86rem">El total del plato es el menor alcance entre Costilla, Panceta, Papas, Cebolla y Alioli.</p>
           </div>
           <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
             <div class="campo" style="margin:0"><label>Desde</label><input type="date" id="fecha-desde" value="2026-07-20"></div>
@@ -40,22 +40,21 @@
         <div id="estado" style="margin-top:12px"></div>
       </section>
 
-      <section class="card">
-        <h2>Cómo interpreta Dilana la costilla</h2>
-        <p style="color:var(--grey);font-size:.86rem">La costilla cruda está en el Centro de Producción. A los restaurantes llega como Costilla Preparada entera y allí se pica, se retiran los huesos y se mezcla con reducción.</p>
-        <div class="cadena-costilla">
-          <div class="cadena-paso"><span>Centro de Producción</span><strong>Costilla San Luis Entera</strong></div>
-          <div class="cadena-paso"><span>Después de cocción</span><strong>Costilla Preparada entera</strong></div>
-          <div class="cadena-paso"><span>En el restaurante</span><strong>Picado y retiro de huesos</strong></div>
-          <div class="cadena-paso"><span>Se agrega</span><strong>Reducción Balsámica</strong></div>
-          <div class="cadena-paso"><span>Lista para venta</span><strong>Costilla Preparada Picada</strong></div>
-        </div>
-        <p style="margin-bottom:0;font-size:.8rem;color:var(--grey)">Conversión provisional: 3.120 g de Costilla Preparada entera + 656 g de reducción producen 2.690 g de Costilla Preparada Picada.</p>
+      <section id="resumen" class="card oculto">
+        <h2>Chanchostillas disponibles al corte</h2>
+        <div id="resumen-contenido"></div>
       </section>
 
-      <section id="hallazgos" class="card card-alerta aviso oculto"><h2>Hallazgos del sistema</h2><div id="hallazgos-contenido"></div></section>
-      <section id="resumen" class="card oculto"><h2>Resumen del periodo</h2><div id="resumen-contenido"></div></section>
-      <section id="detalle" class="card oculto"><h2>Conciliación día por día</h2><p style="color:var(--grey);font-size:.84rem">Las dos etapas de costilla aparecen dentro de la tabla de conteo y consumo esperado.</p><div id="detalle-contenido"></div></section>
+      <section id="hallazgos" class="card card-alerta aviso oculto">
+        <h2>Hallazgos para revisar</h2>
+        <div id="hallazgos-contenido"></div>
+      </section>
+
+      <section id="historico" class="card oculto">
+        <h2>Ventas y conteos por día</h2>
+        <p style="color:var(--grey);font-size:.84rem">Esta sección permite comprobar qué se vendió y qué quedó contado en cada sede.</p>
+        <div id="historico-contenido"></div>
+      </section>
     </div>
   </main>
 </div>
@@ -73,27 +72,25 @@ if(usuario){
 document.getElementById('fecha-hasta').value=fechaLocalHoy_();
 
 const RECETA={
-  'Costilla Preparada Picada':85,
-  'Panceta Pre-Ahumada':75,
-  'Papas Listas':100,
-  'Cebolla Elaborada':50,
-  'Alioli':30
+  costilla:85,
+  panceta:75,
+  papas:100,
+  cebolla:50,
+  alioli:30
 };
-const COSTILLA={
-  cruda:'Costilla San Luis Entera',
-  entera:'Costilla Preparada',
-  picada:'Costilla Preparada Picada',
+const NOMBRES={
+  costillaEntera:'Costilla Preparada',
+  costillaPicada:'Costilla Preparada Picada',
   reduccion:'Reducción Balsámica Preparada',
-  entradaEntera:3120,
-  entradaReduccion:656,
-  salidaPicada:2690
+  panceta:'Panceta Pre-Ahumada',
+  papas:'Papas Listas',
+  cebolla:'Cebolla Elaborada',
+  alioli:'Alioli'
 };
-const COMPONENTES=Object.keys(RECETA);
-const COMPONENTES_TABLA=[COSTILLA.entera,COSTILLA.picada,'Panceta Pre-Ahumada','Papas Listas','Cebolla Elaborada','Alioli'];
-const ITEMS_CONTEO=Array.from(new Set(COMPONENTES_TABLA.concat([COSTILLA.cruda,COSTILLA.reduccion])));
+const RENDIMIENTO_COSTILLA={entera:3120,reduccion:656,salida:2690};
+const numero=v=>Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:1});
 const normalizar=normalizarTexto;
 const esCancelada=v=>v===true||['si','sí','true','1'].includes(normalizar(v));
-const numero=v=>Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:1});
 
 function filasDe(res){
   if(!res||!res.ok)return[];
@@ -109,154 +106,160 @@ function fechaDe(v){
   const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:'';
 }
-function sedeValida(s){return s==='San Antonio'||s==='Capri';}
-function ventaEsChanchostilla(v){return ['chanchostilla','cono chanchostilla'].includes(normalizar(v.producto));}
-function canonConteo(producto){
-  const n=normalizar(producto);
-  const exacto=ITEMS_CONTEO.find(x=>normalizar(x)===n);
-  if(exacto)return exacto;
-  if(n==='cebollita de amelia')return 'Cebolla Elaborada';
-  if(n==='costilla cruda'||n==='costilla san luis')return COSTILLA.cruda;
-  return null;
-}
-function agruparVentas(filas,desde,hasta){
-  const mapa={};
-  filas.filter(v=>ventaEsChanchostilla(v)&&!esCancelada(v.cancelada)).forEach(v=>{
-    const fecha=fechaDe(v.creacion||v.fecha);const sede=v.sede||'Sin identificar';
-    if(fecha<desde||fecha>hasta||!sedeValida(sede))return;
-    const k=fecha+'|'+sede;
-    mapa[k]=(mapa[k]||0)+Number(v.cantidad||0);
-  });
-  return mapa;
-}
-function agruparConteos(filas,desde,hasta){
-  const mapa={};
-  filas.forEach(c=>{
-    const fecha=fechaDe(c.fecha);const sede=c.sede;const canon=canonConteo(c.producto);
-    if(fecha<desde||fecha>hasta||!sedeValida(sede)||!canon)return;
-    const k=[fecha,sede,canon].join('|');
-    mapa[k]=(mapa[k]||0)+Number(c.cantidad||0);
-  });
-  return mapa;
-}
-function mapaDesfases(res,desde,hasta){
-  const mapa={};
-  const comida=(res&&res.ok&&Array.isArray(res.comida))?res.comida:[];
-  comida.forEach(r=>{
-    const fecha=fechaDe(r.fecha);const canon=canonConteo(r.ingrediente);
-    if(!canon||fecha<desde||fecha>hasta||!sedeValida(r.sede))return;
-    mapa[[fecha,r.sede,canon].join('|')]=Number(r.implicito||0);
-  });
-  return mapa;
-}
 function rangoFechas(desde,hasta){
   const out=[];const d=new Date(desde+'T12:00:00');const fin=new Date(hasta+'T12:00:00');
   while(d<=fin){out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));d.setDate(d.getDate()+1);}return out;
 }
-function valorConteo(conteos,fecha,sede,producto){return conteos[[fecha,sede,producto].join('|')];}
-function consumoEsperado(producto,unidades){
-  if(producto===COSTILLA.entera){
-    return unidades*RECETA[COSTILLA.picada]*COSTILLA.entradaEntera/COSTILLA.salidaPicada;
-  }
-  return unidades*Number(RECETA[producto]||0);
-}
-function convertirCostilla(entera,reduccion,picada){
-  const e=Number(entera||0);const r=Number(reduccion||0);const p=Number(picada||0);
-  const porEntera=e*COSTILLA.salidaPicada/COSTILLA.entradaEntera;
-  const porReduccion=r*COSTILLA.salidaPicada/COSTILLA.entradaReduccion;
-  const producible=Math.max(0,Math.min(porEntera,porReduccion));
-  let limitante='Costilla Preparada entera';
-  if(porReduccion<porEntera)limitante='Reducción Balsámica Preparada';
-  if(e<=0&&r<=0)limitante='Costilla Preparada entera y Reducción Balsámica Preparada';
-  return {entera:e,reduccion:r,picada:p,producible,total:p+producible,platos:Math.floor((p+producible)/RECETA[COSTILLA.picada]),limitante};
-}
-function costillaEnFecha(conteos,fecha,sede){
-  return convertirCostilla(
-    valorConteo(conteos,fecha,sede,COSTILLA.entera),
-    valorConteo(conteos,fecha,sede,COSTILLA.reduccion),
-    valorConteo(conteos,fecha,sede,COSTILLA.picada)
-  );
-}
 function entradaStock(disponible,nombre){
   const stock=disponible&&disponible.ok&&disponible.data&&disponible.data.stock_ingredientes||{};
-  const clave=Object.keys(stock).find(k=>normalizar(k)===normalizar(nombre)||normalizar(stock[k]&&stock[k].nombre)===normalizar(nombre));
-  return clave?Number(stock[clave].cantidad||0):0;
+  const clave=Object.keys(stock).find(k=>normalizar(k)===normalizar(nombre)||normalizar(stock[k]&&stock[k].producto)===normalizar(nombre));
+  if(!clave)return {cantidad:0,unidad:'g',sinDato:true};
+  return {cantidad:Number(stock[clave].cantidad||0),unidad:stock[clave].unidad||'g',sinDato:false};
 }
 function detalleReceta(disponible,nombre){
   const mapa=disponible&&disponible.ok&&disponible.data&&disponible.data.disponibilidad_receta||{};
   const clave=Object.keys(mapa).find(k=>normalizar(k)===normalizar(nombre)||normalizar(mapa[k]&&mapa[k].producto)===normalizar(nombre));
   return clave?mapa[clave]:null;
 }
-function costillaDisponible(disponible){
-  const entera=entradaStock(disponible,COSTILLA.entera);
-  const reduccion=entradaStock(disponible,COSTILLA.reduccion);
-  const picada=entradaStock(disponible,COSTILLA.picada);
-  const det=detalleReceta(disponible,COSTILLA.picada);
-  if(det){
-    const total=Number(det.preparaciones_posibles||0);
-    const producible=Number(det.producible||0);
-    return {entera,reduccion,picada,producible,total,platos:Math.floor(total/RECETA[COSTILLA.picada]),limitante:det.cadena_limitante||det.ingrediente_limitante||'—'};
+function cantidadDisponibleProducto(disponible,nombre){
+  const det=detalleReceta(disponible,nombre);
+  if(det&&det.preparaciones_posibles!==null&&det.preparaciones_posibles!==undefined){
+    return {cantidad:Number(det.preparaciones_posibles||0),sinDato:!!det.limitante_sin_dato,limitante:det.cadena_limitante||det.ingrediente_limitante||''};
   }
-  return convertirCostilla(entera,reduccion,picada);
+  const stock=entradaStock(disponible,nombre);
+  return {cantidad:stock.cantidad,sinDato:stock.sinDato,limitante:''};
 }
-function resumenSede(sede,fechas,ventas,conteos,desfases,disponible){
-  const vendidas=fechas.reduce((a,f)=>a+(ventas[f+'|'+sede]||0),0);
-  const diasVenta=fechas.filter(f=>(ventas[f+'|'+sede]||0)>0).length;
-  const diasConteo=fechas.filter(f=>ITEMS_CONTEO.some(c=>conteos[[f,sede,c].join('|')]!==undefined)).length;
-  const clavesDif=Object.keys(desfases).filter(k=>k.includes('|'+sede+'|')&&Math.abs(desfases[k])>=1);
-  const diasDif=new Set(clavesDif.map(k=>k.split('|')[0])).size;
-  const plato=(disponible&&disponible.ok&&disponible.data&&disponible.data.platos||[]).find(p=>['chanchostilla','cono chanchostilla'].includes(normalizar(p.producto)));
-  return {sede,vendidas,diasVenta,diasConteo,diasDif,disponibles:plato?plato.preparaciones_posibles:null,limitante:plato?(plato.cadena_limitante||plato.ingrediente_limitante):'—',costilla:costillaDisponible(disponible)};
+function calcularCostilla(disponible){
+  const entera=entradaStock(disponible,NOMBRES.costillaEntera).cantidad;
+  const picada=entradaStock(disponible,NOMBRES.costillaPicada).cantidad;
+  const reduccion=entradaStock(disponible,NOMBRES.reduccion).cantidad;
+  const picadaPorEntera=entera*RENDIMIENTO_COSTILLA.salida/RENDIMIENTO_COSTILLA.entera;
+  const picadaPorReduccion=reduccion*RENDIMIENTO_COSTILLA.salida/RENDIMIENTO_COSTILLA.reduccion;
+  const adicional=Math.max(0,Math.min(picadaPorEntera,picadaPorReduccion));
+  const totalPicada=picada+adicional;
+  return {
+    entera,picada,reduccion,adicional,totalPicada,
+    platosListos:Math.floor(picada/RECETA.costilla),
+    platosAdicionales:Math.floor(adicional/RECETA.costilla),
+    platos:Math.floor(totalPicada/RECETA.costilla)
+  };
 }
-function pintarResumen(items){
+function calcularSede(sede,disponible){
+  const costilla=calcularCostilla(disponible);
+  const panceta=cantidadDisponibleProducto(disponible,NOMBRES.panceta);
+  const papas=cantidadDisponibleProducto(disponible,NOMBRES.papas);
+  const cebolla=cantidadDisponibleProducto(disponible,NOMBRES.cebolla);
+  const alioli=cantidadDisponibleProducto(disponible,NOMBRES.alioli);
+  const componentes=[
+    {clave:'costilla',nombre:'Costilla',platos:costilla.platos,cantidad:costilla.totalPicada,unidad:'g',detalle:costilla},
+    {clave:'panceta',nombre:'Panceta Pre-Ahumada',platos:Math.floor(panceta.cantidad/RECETA.panceta),cantidad:panceta.cantidad,unidad:'g',sinDato:panceta.sinDato,subLimitante:panceta.limitante},
+    {clave:'papas',nombre:'Papas Listas',platos:Math.floor(papas.cantidad/RECETA.papas),cantidad:papas.cantidad,unidad:'g',sinDato:papas.sinDato,subLimitante:papas.limitante},
+    {clave:'cebolla',nombre:'Cebolla Elaborada',platos:Math.floor(cebolla.cantidad/RECETA.cebolla),cantidad:cebolla.cantidad,unidad:'g',sinDato:cebolla.sinDato,subLimitante:cebolla.limitante},
+    {clave:'alioli',nombre:'Alioli',platos:Math.floor(alioli.cantidad/RECETA.alioli),cantidad:alioli.cantidad,unidad:'g',sinDato:alioli.sinDato,subLimitante:alioli.limitante}
+  ];
+  const total=Math.min.apply(null,componentes.map(c=>c.platos));
+  const limitantes=componentes.filter(c=>c.platos===total).map(c=>c.nombre);
+  return {sede,total,limitantes,componentes};
+}
+function htmlComponente(c,total){
+  let detalle=`${numero(c.cantidad)} ${escapeHtml(c.unidad)} disponibles`;
+  if(c.sinDato)detalle='Falta un conteo confiable para este componente';
+  if(c.subLimitante)detalle+=` · cadena: ${escapeHtml(c.subLimitante)}`;
+  let extra='';
+  if(c.clave==='costilla'){
+    const d=c.detalle;
+    extra=`<div class="costilla-desglose">
+      <div class="costilla-dato"><span>Listos con picada</span><strong>${d.platosListos} platos</strong></div>
+      <div class="costilla-dato"><span>Adicionales con preparada + reducción</span><strong>${d.platosAdicionales} platos</strong></div>
+      <div class="costilla-dato"><span>Reducción disponible</span><strong>${numero(d.reduccion)} g</strong></div>
+    </div>`;
+  }
+  return `<div class="ingrediente ${c.platos===total?'limitante':''}">
+    <div class="ingrediente-nombre"><strong>${escapeHtml(c.nombre)}</strong><small>${detalle}</small>${extra}</div>
+    <div class="ingrediente-platos"><strong>${c.platos}</strong><span>platos</span></div>
+  </div>`;
+}
+function pintarResumen(sedes){
   document.getElementById('resumen').classList.remove('oculto');
-  document.getElementById('resumen-contenido').innerHTML='<div class="aud-sedes">'+items.map(s=>{
-    const c=s.costilla;
-    return `<div class="aud-sede"><h3 style="margin-top:0">${escapeHtml(s.sede)}</h3><div class="aud-kpis"><div class="aud-kpi"><span>Vendidas</span><strong>${numero(s.vendidas)}</strong></div><div class="aud-kpi"><span>Días con venta</span><strong>${s.diasVenta}</strong></div><div class="aud-kpi"><span>Días con conteo</span><strong>${s.diasConteo}</strong></div><div class="aud-kpi"><span>Días con diferencia</span><strong class="${s.diasDif?'aud-error':'aud-ok'}">${s.diasDif}</strong></div></div><p><strong>Disponibles reales del plato:</strong> ${s.disponibles===null?'—':numero(s.disponibles)}<br><strong>Limitante general:</strong> ${escapeHtml(s.limitante||'—')}</p><div class="cadena-resumen"><div class="cadena-paso"><span>Reducción disponible</span><strong>${numero(c.reduccion)} g</strong></div><div class="cadena-paso"><span>Platos que puede producir la costilla</span><strong>${numero(c.platos)}</strong></div></div><p style="font-size:.8rem;color:var(--grey)">El cálculo de platos considera la costilla picada ya lista y la que puede obtenerse de la costilla preparada entera.</p></div>`;
-  }).join('')+'</div>';
+  document.getElementById('resumen-contenido').innerHTML='<div class="aud-sedes">'+sedes.map(s=>`<article class="aud-sede">
+    <h3 style="margin:0">${escapeHtml(s.sede)}</h3>
+    <div class="total-plato"><span>Total completo de Chanchostilla</span><strong>${s.total} platos</strong></div>
+    <p style="font-size:.82rem;color:var(--grey);margin-top:-2px">Limitante: <strong>${escapeHtml(s.limitantes.join(', '))}</strong></p>
+    <div class="ingredientes">${s.componentes.map(c=>htmlComponente(c,s.total)).join('')}</div>
+  </article>`).join('')+'</div>';
 }
-function pintarHallazgos(conteos,ventas,recetas,producciones){
+function agruparVentas(filas,desde,hasta){
+  const mapa={};
+  filas.filter(v=>['chanchostilla','cono chanchostilla'].includes(normalizar(v.producto))&&!esCancelada(v.cancelada)).forEach(v=>{
+    const f=fechaDe(v.creacion||v.fecha);const sede=v.sede;
+    if(f<desde||f>hasta||!['San Antonio','Capri'].includes(sede))return;
+    mapa[f+'|'+sede]=(mapa[f+'|'+sede]||0)+Number(v.cantidad||0);
+  });
+  return mapa;
+}
+function canonConteo(nombre){
+  const n=normalizar(nombre);
+  if(n==='cebollita de amelia')return NOMBRES.cebolla;
+  const lista=Object.values(NOMBRES);
+  return lista.find(x=>normalizar(x)===n)||null;
+}
+function agruparConteos(filas,desde,hasta){
+  const mapa={};
+  filas.forEach(r=>{
+    const f=fechaDe(r.fecha),sede=r.sede,prod=canonConteo(r.producto);
+    if(!prod||f<desde||f>hasta||!['San Antonio','Capri'].includes(sede))return;
+    mapa[[f,sede,prod].join('|')]=(mapa[[f,sede,prod].join('|')]||0)+Number(r.cantidad||0);
+  });
+  return mapa;
+}
+function pintarHistorico(fechas,ventas,conteos){
+  document.getElementById('historico').classList.remove('oculto');
+  const conActividad=fechas.filter(f=>['San Antonio','Capri'].some(s=>(ventas[f+'|'+s]||0)>0||Object.keys(conteos).some(k=>k.startsWith(f+'|'+s+'|'))));
+  document.getElementById('historico-contenido').innerHTML=conActividad.slice().reverse().map(f=>`<details class="aud-detalle"><summary>${escapeHtml(f)}</summary>${['San Antonio','Capri'].map(s=>{
+    const u=ventas[f+'|'+s]||0;
+    const filas=[NOMBRES.costillaEntera,NOMBRES.costillaPicada,NOMBRES.panceta,NOMBRES.papas,NOMBRES.cebolla,NOMBRES.alioli];
+    return `<h3>${escapeHtml(s)} · ${u} vendida(s)</h3><div class="aud-tabla"><table><thead><tr><th>Componente</th><th>Conteo registrado</th><th>Consumo esperado por Chanchostilla</th></tr></thead><tbody>${filas.map(p=>{
+      let esperado='—';
+      if(p===NOMBRES.costillaPicada)esperado=numero(u*RECETA.costilla)+' g';
+      if(p===NOMBRES.panceta)esperado=numero(u*RECETA.panceta)+' g';
+      if(p===NOMBRES.papas)esperado=numero(u*RECETA.papas)+' g';
+      if(p===NOMBRES.cebolla)esperado=numero(u*RECETA.cebolla)+' g';
+      if(p===NOMBRES.alioli)esperado=numero(u*RECETA.alioli)+' g';
+      if(p===NOMBRES.costillaEntera)esperado=numero(u*RECETA.costilla*RENDIMIENTO_COSTILLA.entera/RENDIMIENTO_COSTILLA.salida)+' g equivalentes';
+      const valor=conteos[[f,s,p].join('|')];
+      return `<tr><td>${escapeHtml(p)}</td><td>${valor===undefined?'—':numero(valor)+' g'}</td><td>${esperado}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  }).join('')}</details>`).join('')||'<p class="vacio">No hay actividad en el rango elegido.</p>';
+}
+function pintarHallazgos(sedes,conteosFilas){
   const h=[];
-  const recetaActiva=recetas.some(r=>normalizar(r.producto)==='cono chanchostilla'&&!['archivado','inactivo','pendiente','borrador'].includes(normalizar(r.estado)));
-  const recetaDirecta=recetas.some(r=>normalizar(r.producto)==='chanchostilla'&&!['archivado','inactivo','pendiente','borrador'].includes(normalizar(r.estado)));
-  if(recetaActiva&&!recetaDirecta)h.push('FUDO vende “Chanchostilla”, pero la receta activa se llama “Cono Chanchostilla”.');
-  if(conteos.some(c=>normalizar(c.producto)==='cebollita de amelia'))h.push('Hay conteos bajo “Cebollita de Amelia” separados de “Cebolla Elaborada”. En esta auditoría se unifican.');
-  const hayProduccionPicada=producciones.some(p=>normalizar(p.item||p.producto||p.producto_obtenido)==='costilla preparada picada');
-  if(!hayProduccionPicada)h.push('No hay producción registrada de Costilla Preparada Picada. La disponibilidad puede proyectarse, pero no se puede certificar la transformación histórica de la costilla entera.');
-  if(!ventas.length)h.push('No se recibieron filas de ventas FUDO para el periodo elegido.');
+  sedes.forEach(s=>{
+    s.componentes.filter(c=>c.sinDato).forEach(c=>h.push(`${s.sede}: falta contar ${c.nombre}.`));
+  });
+  if(conteosFilas.some(r=>normalizar(r.producto)==='cebollita de amelia'))h.push('Todavía existen conteos con el nombre “Cebollita de Amelia”; la auditoría los interpreta como Cebolla Elaborada.');
   const box=document.getElementById('hallazgos');
   if(!h.length){box.classList.add('oculto');return;}
-  box.classList.remove('oculto');document.getElementById('hallazgos-contenido').innerHTML='<ul>'+h.map(x=>`<li>${escapeHtml(x)}</li>`).join('')+'</ul>';
+  box.classList.remove('oculto');
+  document.getElementById('hallazgos-contenido').innerHTML='<ul>'+h.map(x=>`<li>${escapeHtml(x)}</li>`).join('')+'</ul>';
 }
-function pintarDetalle(fechas,ventas,conteos,desfases){
-  const conActividad=fechas.filter(f=>['San Antonio','Capri'].some(s=>(ventas[f+'|'+s]||0)>0||ITEMS_CONTEO.some(c=>conteos[[f,s,c].join('|')]!==undefined)||ITEMS_CONTEO.some(c=>desfases[[f,s,c].join('|')]!==undefined)));
-  document.getElementById('detalle').classList.remove('oculto');
-  document.getElementById('detalle-contenido').innerHTML=conActividad.slice().reverse().map(fecha=>`<details class="aud-detalle"><summary>${escapeHtml(fecha)}</summary>${['San Antonio','Capri'].map(sede=>{
-    const u=ventas[fecha+'|'+sede]||0;const c=costillaEnFecha(conteos,fecha,sede);
-    return `<h3>${escapeHtml(sede)} · ${u} Chanchostilla(s)</h3><div class="cadena-resumen"><div class="cadena-paso"><span>Reducción disponible</span><strong>${numero(c.reduccion)} g</strong></div><div class="cadena-paso"><span>Platos que puede producir la costilla</span><strong>${numero(c.platos)}</strong></div></div><p style="font-size:.78rem;color:var(--grey)">La costilla cruda del Centro de Producción no se suma a la sede hasta cocinarse y trasladarse.</p><div class="aud-tabla"><table><thead><tr><th>Componente o etapa</th><th>Conteo registrado</th><th>Consumo o transformación esperada</th><th>Diferencia no explicada</th><th>Lectura</th></tr></thead><tbody>${COMPONENTES_TABLA.map(comp=>{const count=conteos[[fecha,sede,comp].join('|')];const esperado=consumoEsperado(comp,u);const dif=desfases[[fecha,sede,comp].join('|')];let lectura=dif===undefined?'Sin conciliación para este componente':Math.abs(dif)<1?'Cuadra':'Revisar';if(comp===COSTILLA.entera&&dif===undefined)lectura='Equivalente para producir la costilla picada vendida';return `<tr><td>${escapeHtml(comp)}</td><td>${count===undefined?'—':numero(count)+' g'}</td><td>${numero(esperado)} g${comp===COSTILLA.entera?' equivalentes':''}</td><td class="${dif===undefined?'':Math.abs(dif)<1?'aud-ok':'aud-error'}">${dif===undefined?'—':numero(dif)+' g'}</td><td>${escapeHtml(lectura)}</td></tr>`;}).join('')}</tbody></table></div>`;
-  }).join('')}</details>`).join('')||'<p class="vacio">No hay actividad para mostrar.</p>';
-}
-
 async function analizar(){
   const desde=document.getElementById('fecha-desde').value;const hasta=document.getElementById('fecha-hasta').value;
   if(!desde||!hasta||desde>hasta){alert('Revisa el rango de fechas.');return;}
-  const estado=document.getElementById('estado');estado.innerHTML='<p class="vacio">Cruzando ventas, conteos, recetas y conciliación…</p>';
-  const [v,c,d,r,p,sa,capri]=await Promise.all([
-    llamar('fudo_items_listar',{filtros:{fecha_desde:desde,fecha_hasta:hasta}}),
-    llamar('conteos_historial',{filtros:{fecha_desde:desde,fecha_hasta:hasta,sede:'Ambas'}}),
-    llamar('conciliacion_historial_desfases',{fecha_desde:desde,fecha_hasta:hasta}),
-    llamar('recetas_listar',{filtros:{}}),
-    llamar('produccion_historial',{filtros:{fecha_desde:desde,fecha_hasta:hasta,sede:'Ambas'}}),
+  const estado=document.getElementById('estado');estado.innerHTML='<p class="vacio">Calculando disponibilidad y revisando el histórico…</p>';
+  const [sa,capri,v,c]=await Promise.all([
     llamar('disponible_hoy',{fecha:hasta,sede:'San Antonio'}),
-    llamar('disponible_hoy',{fecha:hasta,sede:'Capri'})
+    llamar('disponible_hoy',{fecha:hasta,sede:'Capri'}),
+    llamar('fudo_items_listar',{filtros:{fecha_desde:desde,fecha_hasta:hasta}}),
+    llamar('conteos_historial',{filtros:{fecha_desde:desde,fecha_hasta:hasta,sede:'Ambas'}})
   ]);
-  const ventasFilas=filasDe(v),conteosFilas=filasDe(c),recetasFilas=filasDe(r),produccionesFilas=filasDe(p);
-  if(!v.ok||!c.ok||!d.ok){estado.innerHTML=`<p class="aud-error">No se pudo completar el análisis: ${escapeHtml((!v.ok&&v.error)||(!c.ok&&c.error)||(!d.ok&&d.error)||'error desconocido')}</p>`;return;}
-  const fechas=rangoFechas(desde,hasta);const ventas=agruparVentas(ventasFilas,desde,hasta);const conteos=agruparConteos(conteosFilas,desde,hasta);const desfases=mapaDesfases(d,desde,hasta);
-  pintarHallazgos(conteosFilas,ventasFilas,recetasFilas,produccionesFilas);
-  pintarResumen([resumenSede('San Antonio',fechas,ventas,conteos,desfases,sa),resumenSede('Capri',fechas,ventas,conteos,desfases,capri)]);
-  pintarDetalle(fechas,ventas,conteos,desfases);
-  estado.innerHTML='<p class="aud-ok"><strong>Análisis terminado.</strong> Las dos costillas están en la tabla; arriba solo se muestran reducción y platos posibles.</p>';
+  if(!sa.ok||!capri.ok||!v.ok||!c.ok){estado.innerHTML='<p class="error">No se pudo completar el análisis. Actualiza la página y vuelve a intentarlo.</p>';return;}
+  const sedes=[calcularSede('San Antonio',sa),calcularSede('Capri',capri)];
+  const ventasFilas=filasDe(v),conteosFilas=filasDe(c);
+  pintarResumen(sedes);
+  pintarHallazgos(sedes,conteosFilas);
+  const fechas=rangoFechas(desde,hasta);
+  pintarHistorico(fechas,agruparVentas(ventasFilas,desde,hasta),agruparConteos(conteosFilas,desde,hasta));
+  estado.innerHTML='<p class="ok"><strong>Análisis terminado.</strong> El total corresponde al menor alcance entre todos los ingredientes.</p>';
 }
 document.getElementById('btn-analizar').addEventListener('click',conBotonProtegido(document.getElementById('btn-analizar'),analizar));
 analizar();
