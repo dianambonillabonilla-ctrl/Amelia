@@ -57,3 +57,4 @@ jobs:
           git add apps-script/Recetas.gs .github/workflows/unificar-falafel.yml
           git commit -m "Unificar Falafel listo y plato de venta"
           git push
+# reintento 2026-08-02
