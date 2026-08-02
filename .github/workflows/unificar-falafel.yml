@@ -1,0 +1,59 @@
+name: Unificar Falafel
+
+on:
+  push:
+    paths:
+      - '.github/workflows/unificar-falafel.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Actualizar mapeo de Falafel
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps-script/Recetas.gs')
+          s = p.read_text(encoding='utf-8')
+          old = """function claveRecetaVenta_(producto, recetaMap, indice) {
+  const directa = claveProducto_(producto, indice);
+  if (recetaMap[directa]) return directa;
+  const alias = {
+    'falafel': 'Falafel',
+    'wafflebonitos': 'Waffle Bonitos'
+  };
+  const destino = alias[normalizar_(producto)];
+  return destino ? claveProducto_(destino, indice) : directa;
+}"""
+          new = """function claveRecetaVenta_(producto, recetaMap, indice) {
+  // Algunos nombres de venta coinciden con una preparación contada. En esos casos el alias de
+  // venta debe evaluarse ANTES de la coincidencia directa, para no confundir el plato con el
+  // preparado. Ejemplo: FUDO vende 'Falafel', pero el inventario también cuenta 'Falafel'.
+  const alias = {
+    'falafel': 'Plato Falafel',
+    'wafflebonitos': 'Waffle Bonitos'
+  };
+  const destino = alias[normalizar_(producto)];
+  if (destino) {
+    const claveAlias = claveProducto_(destino, indice);
+    if (recetaMap[claveAlias]) return claveAlias;
+  }
+  const directa = claveProducto_(producto, indice);
+  return directa;
+}"""
+          if old not in s:
+              raise SystemExit('No se encontró el bloque esperado de claveRecetaVenta_')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+          Path('.github/workflows/unificar-falafel.yml').unlink()
+          PY
+      - name: Guardar cambio
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps-script/Recetas.gs .github/workflows/unificar-falafel.yml
+          git commit -m "Unificar Falafel listo y plato de venta"
+          git push
