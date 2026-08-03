@@ -1,0 +1,75 @@
+name: Ajustar papas y Centro de Producción
+
+on:
+  push:
+    paths:
+      - '.github/workflows/ajustar-papas-centro-produccion.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar cambios
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('auditoria-chanchostilla.html')
+          s=p.read_text(encoding='utf-8')
+
+          s=s.replace("sal:'Sal marina molida'", "sal:'Sal'")
+          s=s.replace("sal:'Sal Marina Molida'", "sal:'Sal'")
+          s=s.replace("Sal marina molida", "Sal")
+          s=s.replace("Sal Marina Molida", "Sal")
+
+          if '.apoyo-centro{' not in s:
+              s=s.replace('.ok{color:var(--green)}', '.apoyo-centro{margin-top:16px;border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:12px;padding:14px;background:#fffaf0}.apoyo-centro h4{margin:0 0 6px;color:var(--navy)}.apoyo-centro p{margin:4px 0;color:var(--grey);font-size:.8rem}.apoyo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.apoyo-item{background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px}.apoyo-item span{display:block;font-size:.68rem;color:var(--grey)}.apoyo-item strong{display:block;color:var(--navy);margin-top:2px}.ok{color:var(--green)}')
+              s=s.replace('@media(max-width:760px){.costilla-detalle,.papas-detalle,.traza-grid{grid-template-columns:1fr}', '@media(max-width:760px){.costilla-detalle,.papas-detalle,.traza-grid,.apoyo-grid{grid-template-columns:1fr}')
+
+          if 'function apoyoCentro(' not in s:
+              bloque = '''function apoyoCentro(filas,fecha){
+const transferibles=['Costilla Preparada','Costilla Preparada Picada','Panceta Pre-Ahumada','Papas Pre-Fritas','Ajo Preparado','Sal','Perejil Picado','Cebolla en Pluma','Alioli','Reducción Balsámica Preparada'];
+const producir=['Costilla San Luis Entera','Papa Capira','Panceta Entera'];
+const tomar=(nombre,tipo)=>{const r=ultimo(filas,'Centro de Producción',nombre,fecha);return r&&Number(r.cantidad||0)>0?{nombre,tipo,cantidad:Number(r.cantidad||0),unidad:r.unidad||'g',registro:r}:null};
+return [...transferibles.map(n=>tomar(n,'trasladar')),...producir.map(n=>tomar(n,'producir'))].filter(Boolean)}
+function htmlCentro(items){if(!items||!items.length)return `<div class="apoyo-centro"><h4>Apoyo desde Centro de Producción</h4><p>No hay conteos positivos disponibles hasta la fecha seleccionada.</p></div>`;return `<div class="apoyo-centro"><h4>Apoyo desde Centro de Producción</h4><p>Estas existencias no se suman al disponible local. Sirven para sugerir traslados o producción.</p><div class="apoyo-grid">${items.map(i=>`<div class="apoyo-item"><span>${i.tipo==='trasladar'?'Disponible para trasladar':'Requiere producción antes de trasladar'}</span><strong>${escapeHtml(i.nombre)} · ${numero(i.cantidad)} ${escapeHtml(i.unidad)}</strong><span>${fechaBonita(fechaOp(i.registro))} · ${escapeHtml(i.registro.punto_conteo||'General')}</span></div>`).join('')}</div></div>`}
+'''
+              s=s.replace('function calcular(sede,d,filas,fecha){', bloque+'function calcular(sede,d,filas,fecha){')
+
+          s=s.replace("return{sede,fecha,total,limitantes:comps.filter(c=>c.platos===total).map(c=>c.nombre),comps}}", "return{sede,fecha,total,limitantes:comps.filter(c=>c.platos===total).map(c=>c.nombre),comps,centro:apoyoCentro(filas,fecha)}}")
+
+          patron_render = r"(document\.getElementById\('sede-contenido'\)\.innerHTML=`<article class=\"aud-sede\">.*?<div class=\"listos-grid\">\$\{s\.comps\.map\(c=>htmlComp\(c,s\.total\)\)\.join\(''\)\}</div>)(</article>`})"
+          s,n = re.subn(patron_render, r"\1${htmlCentro(s.centro)}\2", s, count=1, flags=re.S)
+          if n==0 and '${htmlCentro(s.centro)}' not in s:
+              raise SystemExit('No se pudo insertar el apoyo de Centro de Producción en render')
+
+          viejo = "const [sa,ca,hsa,hca]=await Promise.all([llamar('disponible_hoy',{fecha,sede:'San Antonio'}),llamar('disponible_hoy',{fecha,sede:'Capri'}),llamar('conteos_historial',{sede:'San Antonio',fecha_hasta:fecha,limite:5000}),llamar('conteos_historial',{sede:'Capri',fecha_hasta:fecha,limite:5000})]);"
+          nuevo = "const [sa,ca,hsa,hca,hcp]=await Promise.all([llamar('disponible_hoy',{fecha,sede:'San Antonio'}),llamar('disponible_hoy',{fecha,sede:'Capri'}),llamar('conteos_historial',{sede:'San Antonio',fecha_hasta:fecha,limite:5000}),llamar('conteos_historial',{sede:'Capri',fecha_hasta:fecha,limite:5000}),llamar('conteos_historial',{sede:'Centro de Producción',fecha_hasta:fecha,limite:5000})]);"
+          if viejo in s:
+              s=s.replace(viejo,nuevo)
+          elif "hca]=await Promise.all" in s:
+              raise SystemExit('La llamada analizar cambió y requiere revisión manual')
+
+          viejo2="const filas=[...filasHistorial(hsa),...filasHistorial(hca)];"
+          nuevo2="const filas=[...filasHistorial(hsa),...filasHistorial(hca),...filasHistorial(hcp)];"
+          s=s.replace(viejo2,nuevo2)
+
+          if "sal:'Sal marina molida'" in s or 'Sal marina molida' in s:
+              raise SystemExit('Todavía quedan referencias a sal marina')
+          if "Centro de Producción" not in s:
+              raise SystemExit('No quedó incorporado Centro de Producción')
+
+          p.write_text(s,encoding='utf-8')
+          Path('.github/workflows/ajustar-papas-centro-produccion.yml').unlink()
+          PY
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add auditoria-chanchostilla.html .github/workflows/ajustar-papas-centro-produccion.yml
+          git commit -m "Usar sal normal y mostrar apoyo desde Centro de Producción"
+          git push
