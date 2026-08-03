@@ -1,0 +1,56 @@
+name: Corregir cebolla roja directo
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-cebolla-roja-directo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar corrección
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('auditoria-chanchostilla.html')
+          s=p.read_text(encoding='utf-8')
+
+          s=s.replace("cebolla:'Cebolla Pluma',alioli:'Alioli'", "cebolla:'Cebolla Pluma',cebollaRoja:'Cebolla Roja',alioli:'Alioli'")
+
+          anchor="\n/** Suma, por ingrediente"
+          fn="\nfunction cebollaDisponible(d,filas,sede,fecha){const pluma=stock(d,N.cebolla),roja=stock(d,N.cebollaRoja);const rp=ultimo(filas,sede,N.cebolla,fecha)||relacionado(filas,sede,REL.cebolla,fecha);const rr=ultimo(filas,sede,N.cebollaRoja,fecha)||ultimo(filas,sede,'cebolla cruda',fecha);if(pluma.sinDato&&rp){pluma.cantidad=Math.max(0,Number(rp.cantidad||0));pluma.sinDato=false}if(roja.sinDato&&rr){roja.cantidad=Math.max(0,Number(rr.cantidad||0));roja.sinDato=false}const total=Math.max(0,pluma.cantidad)+Math.max(0,roja.cantidad);return{clave:'cebolla',nombre:'Cebolla',stock:{cantidad:total,unidad:'g'},platos:Math.max(0,Math.floor(total/RECETA.cebolla)),registro:rp||rr,detalle:{pluma,roja},registros:{pluma:rp,roja:rr}}}\n"
+          if 'function cebollaDisponible' not in s:
+              if anchor not in s: raise SystemExit('No se encontró punto de inserción')
+              s=s.replace(anchor,fn+anchor,1)
+
+          old="componente(d,filas,sede,'cebolla',N.cebolla,RECETA.cebolla,fecha)"
+          if old not in s: raise SystemExit('No se encontró cálculo viejo')
+          s=s.replace(old,"cebollaDisponible(d,filas,sede,fecha)",1)
+
+          old_generic="if(c.clave==='papas'){"
+          pos=s.find(old_generic)
+          if pos<0: raise SystemExit('No se encontró render papas')
+          end=s.find("return `<div class=\"listo-card ${c.platos===total?'limitante':''}\"><div class=\"listo-top\"><div class=\"listo-nombre\"><strong>${escapeHtml(c.nombre)}</strong>",pos)
+          if end<0: raise SystemExit('No se encontró render genérico')
+          special="if(c.clave==='cebolla'){const d=c.detalle;return `<div class=\"listo-card ${c.platos===total?'limitante':''}\"><div class=\"listo-top\"><div class=\"listo-nombre\"><strong>Cebolla</strong><div class=\"cantidad\">${numero(c.stock.cantidad)} g disponibles entre pluma y roja por picar</div></div><div class=\"listo-platos\"><strong>${c.platos}</strong><span>platos</span></div></div><div class=\"papas-detalle\"><div class=\"mini\"><span>Cebolla Pluma lista</span><strong>${numero(d.pluma.cantidad)} g</strong>${traza(c.registros.pluma)}</div><div class=\"mini\"><span>Cebolla Roja por picar</span><strong>${numero(d.roja.cantidad)} g</strong>${traza(c.registros.roja)}</div></div><div class=\"formula\">La Cebolla Roja cuenta como disponible porque solo requiere picarse. Cebolla Corazones queda reservada para falafel.</div></div>`}\n"
+          if "Cebolla Roja por picar" not in s:
+              s=s[:end]+special+s[end:]
+
+          if "cebollaDisponible(d,filas,sede,fecha)" not in s or "cebollaRoja:'Cebolla Roja'" not in s:
+              raise SystemExit('La corrección no quedó aplicada')
+
+          p.write_text(s,encoding='utf-8')
+          Path('.github/workflows/fix-cebolla-roja-directo.yml').unlink()
+          PY
+      - name: Guardar
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add auditoria-chanchostilla.html .github/workflows/fix-cebolla-roja-directo.yml
+          git commit -m "Contar cebolla roja como disponible para picar"
+          git push
