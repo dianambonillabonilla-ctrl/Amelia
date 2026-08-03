@@ -1,0 +1,139 @@
+name: Optimizar conteos por lote
+
+on:
+  push:
+    paths:
+      - '.github/workflows/optimizar-conteos-lote.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reemplazar guardado lento
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('apps-script/Conteos.gs')
+          s = p.read_text(encoding='utf-8')
+
+          nuevo = r'''function conteoRegistrar_(items, usuario, opciones) {
+  opciones = opciones || {};
+  const errorValidacion = validarItemsConteo_(items, usuario, opciones);
+  if (errorValidacion) return { ok: false, error: errorValidacion };
+
+  const turnoPorDefecto = opciones.omitir_obligatorios_del_dia
+    ? 'Cierre de turno'
+    : turnoOportuno_(items[0].fecha, items[0].sede, usuario);
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    return { ok: false, error: 'Otro conteo se está guardando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+
+  let n = 0;
+  let actualizados = 0;
+  try {
+    const sh = sheet_(SHEET_NAMES.CONTEOS);
+    const data = sh.getDataRange().getValues();
+    const headers = data.length ? data[0] : ['id','fecha','sede','punto_conteo','turno','producto','unidad','cantidad','usuario','timestamp'];
+    const col = {};
+    headers.forEach(function (h, i) { col[h] = i; });
+    const indice = indiceCatalogo_();
+    const ahora = new Date();
+
+    // Índice en memoria: se lee Conteos_Manuales una sola vez para todo el envío.
+    const existentes = {};
+    for (let r = 1; r < data.length; r++) {
+      const fila = data[r];
+      const clave = [
+        formatearFecha_(fila[col.fecha]),
+        fila[col.sede],
+        fila[col.punto_conteo],
+        fila[col.turno],
+        claveProducto_(fila[col.producto], indice)
+      ].join('|');
+      existentes[clave] = r + 1;
+    }
+
+    const nuevas = [];
+    items.forEach(function (it) {
+      const turnoItem = it.turno || turnoPorDefecto;
+      const datos = neutralizarObjetoFormulas_({
+        id: Utilities.getUuid(),
+        fecha: it.fecha,
+        sede: it.sede,
+        punto_conteo: it.punto_conteo || 'Café',
+        turno: turnoItem,
+        producto: it.producto,
+        unidad: it.unidad,
+        cantidad: it.cantidad,
+        usuario: usuario.nombre,
+        timestamp: ahora
+      });
+
+      catalogoAsegurar_(it.producto, it.unidad);
+      const clave = [it.fecha, it.sede, datos.punto_conteo, turnoItem, claveProducto_(it.producto, indice)].join('|');
+      const filaExistente = existentes[clave];
+
+      if (filaExistente) {
+        const anterior = data[filaExistente - 1].slice();
+        headers.forEach(function (h, c) {
+          if (h === 'id') return;
+          if (datos[h] !== undefined) data[filaExistente - 1][c] = datos[h];
+        });
+        actualizados++;
+        auditoriaRegistrar_(usuario, 'conteo_corregido', 'Conteo', anterior[col.id],
+          { cantidad: anterior[col.cantidad], usuario: anterior[col.usuario], timestamp: anterior[col.timestamp] },
+          { cantidad: datos.cantidad, usuario: datos.usuario, timestamp: datos.timestamp },
+          it.sede);
+      } else {
+        const filaNueva = headers.map(function (h) { return datos[h] !== undefined ? datos[h] : ''; });
+        nuevas.push(filaNueva);
+        existentes[clave] = data.length + nuevas.length;
+      }
+      n++;
+    });
+
+    // Una sola escritura para correcciones existentes.
+    if (data.length > 1) {
+      sh.getRange(2, 1, data.length - 1, headers.length).setValues(data.slice(1));
+    }
+    // Una sola escritura para filas nuevas.
+    if (nuevas.length) {
+      sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, headers.length).setValues(nuevas);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+
+  try {
+    revisarAlertas_(items[0].fecha);
+  } catch (err) {
+    Logger.log('revisarAlertas_ falló tras conteo_registrar: ' + err.message);
+  }
+
+  return { ok: true, registrados: n, actualizados: actualizados };
+}
+'''
+
+          patron = re.compile(r'function conteoRegistrar_\(items, usuario, opciones\) \{.*?\n\}\n\n/\*\*\n \* Espejo servidor', re.S)
+          reemplazo = nuevo + '\n/**\n * Espejo servidor'
+          s2, n = patron.subn(reemplazo, s, count=1)
+          if n != 1:
+              raise SystemExit('No se encontró el bloque conteoRegistrar_ esperado')
+          p.write_text(s2, encoding='utf-8')
+          Path('.github/workflows/optimizar-conteos-lote.yml').unlink()
+          PY
+      - name: Guardar cambio
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps-script/Conteos.gs .github/workflows/optimizar-conteos-lote.yml
+          git commit -m "Optimizar guardado de conteos por lote"
+          git push
