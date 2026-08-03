@@ -15,9 +15,9 @@
 Sesion.requerir();const usuario=Sesion.usuario();if(usuario){montarBarraUsuario();if(usuario.rol!=='Administrador'){alert('Esta auditoría es solo para Administración.');location.href='inicio.html';}}
 document.getElementById('fecha-hasta').value=fechaLocalHoy_();
 const RECETA={costilla:85,panceta:75,papas:100,cebolla:50,alioli:30};
-const N={costillaEntera:'Costilla Preparada',costillaPicada:'Costilla Preparada Picada',reduccion:'Reducción Balsámica Preparada',panceta:'Panceta Pre-Ahumada',papas:'Papas Listas',papasPre:'Papas Pre-Fritas',ajo:'Ajo Preparado',sal:'Sal',perejil:'Perejil Picado',cebolla:'Cebolla en Pluma',alioli:'Alioli'};
+const N={costillaEntera:'Costilla Preparada',costillaPicada:'Costilla Preparada Picada',reduccion:'Reducción Balsámica Preparada',panceta:'Panceta Pre-Ahumada',papas:'Papas Listas',papasPre:'Papas Pre-Fritas',ajo:'Ajo Preparado',sal:'Sal',perejil:'Perejil Picado',cebolla:'Cebolla Pluma',alioli:'Alioli'};
 // La receta de Papas Listas usa Sal. Sal marina es un producto diferente.
-const REL={cebolla:['Cebolla Elaborada','Cebollita de Amelia','Cebolla en Pluma (sin limon)'],panceta:['Panceta Entera'],alioli:['Aceite de oliva','Aceite Girasol','Huevos A'],sal:['Sal normal']};
+const REL={cebolla:['Cebolla en Pluma','Cebolla Elaborada','Cebollita de Amelia','Cebollita de Amelia Preparada','Cebolla Amelia','Cebolla en Pluma (sin limon)','Cebolla en Pluma (sin limón)'],panceta:['Panceta Entera'],alioli:['Aceite de oliva','Aceite Girasol','Huevos A'],sal:['Sal normal']};
 const R={entera:3120,reduccion:656,salida:2690};
 const RP={pre:1754,ajo:20,sal:10,perejil:20,salida:1000};
 const norm=normalizarTexto;const numero=v=>Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:1});let datosSedes=[],sedeActiva=0,datosCP=null;
