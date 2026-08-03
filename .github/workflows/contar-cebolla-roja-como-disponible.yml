@@ -1,0 +1,56 @@
+name: Contar cebolla roja como disponible
+
+on:
+  push:
+    paths:
+      - '.github/workflows/contar-cebolla-roja-como-disponible.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ajustar disponibilidad de cebolla
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('auditoria-chanchostilla.html')
+          s=p.read_text(encoding='utf-8')
+
+          old="const N={costillaEntera:'Costilla Preparada',costillaPicada:'Costilla Preparada Picada',reduccion:'Reducción Balsámica Preparada',panceta:'Panceta Pre-Ahumada',papas:'Papas Listas',papasPre:'Papas Pre-Fritas',ajo:'Ajo Preparado',sal:'Sal',perejil:'Perejil Picado',cebolla:'Cebolla Pluma',alioli:'Alioli'};"
+          new="const N={costillaEntera:'Costilla Preparada',costillaPicada:'Costilla Preparada Picada',reduccion:'Reducción Balsámica Preparada',panceta:'Panceta Pre-Ahumada',papas:'Papas Listas',papasPre:'Papas Pre-Fritas',ajo:'Ajo Preparado',sal:'Sal',perejil:'Perejil Picado',cebolla:'Cebolla Pluma',cebollaRoja:'Cebolla Roja',alioli:'Alioli'};"
+          if old not in s: raise SystemExit('No se encontró constante N')
+          s=s.replace(old,new)
+
+          marker="function papas(d,filas,sede,fecha){"
+          idx=s.find(marker)
+          if idx<0: raise SystemExit('No se encontró función papas')
+          end=s.find("\n/** Suma",idx)
+          if end<0: raise SystemExit('No se encontró fin de papas')
+          insert="\nfunction cebolla(d,filas,sede,fecha){const pluma=stock(d,N.cebolla),roja=stock(d,N.cebollaRoja);const registroPluma=ultimo(filas,sede,N.cebolla,fecha)||relacionado(filas,sede,REL.cebolla,fecha);const registroRoja=ultimo(filas,sede,N.cebollaRoja,fecha)||ultimo(filas,sede,'cebolla cruda',fecha);if(pluma.sinDato&&registroPluma){pluma.cantidad=Math.max(0,Number(registroPluma.cantidad||0));pluma.unidad=registroPluma.unidad||'g';pluma.sinDato=false}if(roja.sinDato&&registroRoja){roja.cantidad=Math.max(0,Number(registroRoja.cantidad||0));roja.unidad=registroRoja.unidad||'g';roja.sinDato=false}const total=Math.max(0,pluma.cantidad)+Math.max(0,roja.cantidad);return{clave:'cebolla',nombre:'Cebolla',stock:{cantidad:total,unidad:'g'},platos:Math.max(0,Math.floor(total/RECETA.cebolla)),detalle:{pluma,roja},registros:{pluma:registroPluma,roja:registroRoja}}}\n"
+          s=s[:end]+insert+s[end:]
+
+          oldcalc="componente(d,filas,sede,'cebolla',N.cebolla,RECETA.cebolla,fecha)"
+          if oldcalc not in s: raise SystemExit('No se encontró cálculo anterior de cebolla')
+          s=s.replace(oldcalc,"cebolla(d,filas,sede,fecha)")
+
+          generic="return `<div class=\"listo-card ${c.platos===total?'limitante':''}\"><div class=\"listo-top\"><div class=\"listo-nombre\"><strong>${escapeHtml(c.nombre)}</strong><div class=\"cantidad\">${numero(c.stock.cantidad)} ${escapeHtml(c.stock.unidad||'')}</div></div><div class=\"listo-platos\"><strong>${c.platos}</strong><span>platos</span></div></div>${traza(c.registro)}</div>`}"
+          if generic not in s: raise SystemExit('No se encontró bloque genérico')
+          special="if(c.clave==='cebolla'){const d=c.detalle;return `<div class=\"listo-card ${c.platos===total?'limitante':''}\"><div class=\"listo-top\"><div class=\"listo-nombre\"><strong>Cebolla</strong><div class=\"cantidad\">${numero(c.stock.cantidad)} g disponibles entre lista y por picar</div></div><div class=\"listo-platos\"><strong>${c.platos}</strong><span>platos</span></div></div><div class=\"papas-detalle\"><div class=\"mini\"><span>Cebolla Pluma lista</span><strong>${numero(d.pluma.cantidad)} g</strong>${traza(c.registros.pluma)}</div><div class=\"mini\"><span>Cebolla Roja disponible para picar</span><strong>${numero(d.roja.cantidad)} g</strong>${traza(c.registros.roja)}</div></div><div class=\"formula\">La Cebolla Roja cuenta como disponible para vender porque solo requiere picarse. Cebolla Corazones se mantiene separada para falafel y no se suma aquí.</div></div>`}\n"+generic
+          s=s.replace(generic,special)
+
+          if "cebolla(d,filas,sede,fecha)" not in s or "Cebolla Roja disponible para picar" not in s:
+              raise SystemExit('No quedó aplicada la nueva lógica')
+          p.write_text(s,encoding='utf-8')
+          Path('.github/workflows/contar-cebolla-roja-como-disponible.yml').unlink()
+          PY
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add auditoria-chanchostilla.html .github/workflows/contar-cebolla-roja-como-disponible.yml
+          git commit -m "Sumar Cebolla Roja como disponible tras picar"
+          git push
