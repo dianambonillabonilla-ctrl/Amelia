@@ -14,7 +14,10 @@
 <script src="assets/config.js"></script><script>
 Sesion.requerir();const usuario=Sesion.usuario();if(usuario){montarBarraUsuario();if(usuario.rol!=='Administrador'){alert('Esta auditoría es solo para Administración.');location.href='inicio.html';}}
 document.getElementById('fecha-hasta').value=fechaLocalHoy_();
-const RECETA={costilla:85,panceta:75,papas:100,cebolla:50,alioli:30};
+// Gramos por Chanchostilla, tomados de la receta activa "Cono Chanchostilla" (Recetas, confirmada
+// 16 jul 2026). El alioli estaba en 30 g aquí, que es el gramaje de OTRO plato ("Alioli de
+// Amelia"), no el de Chanchostilla (35 g) — eso inflaba cuántas Chanchostillas alcanzaba el alioli.
+const RECETA={costilla:85,panceta:75,papas:100,cebolla:50,alioli:35};
 const N={costillaEntera:'Costilla Preparada',costillaPicada:'Costilla Preparada Picada',reduccion:'Reducción Balsámica Preparada',panceta:'Panceta Pre-Ahumada',papas:'Papas Listas',papasPre:'Papas Pre-Fritas',ajo:'Ajo Preparado',sal:'Sal normal',perejil:'Perejil Picado',cebolla:'Cebolla en Pluma',alioli:'Alioli'};
 // Sal normal es el nombre oficial de la receta (corregido: las Papas Listas NO usan sal marina).
 // Estos son nombres históricos con los que se pudo haber contado el mismo insumo en alguna sede —
