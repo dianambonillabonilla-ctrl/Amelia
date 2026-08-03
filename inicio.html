@@ -18,6 +18,7 @@
       <a href="caja.html" id="nav-caja" class="oculto">Caja</a>
       <a href="dashboard.html">Disponible Hoy</a>
       <a href="auditoria-chanchostilla.html" data-solo-rol="Administrador">Auditoría Chanchostilla</a>
+      <a href="conciliacion-chanchostilla.html" data-solo-rol="Administrador">Conciliar Chanchostilla</a>
       <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
       <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar producción</a>
       <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
@@ -55,6 +56,7 @@
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <a class="btn fantasma" href="auditoria-chanchostilla.html" style="text-decoration:none">Auditar Chanchostilla</a>
+            <a class="btn fantasma" href="conciliacion-chanchostilla.html" style="text-decoration:none">Conciliar Chanchostilla</a>
             <button class="btn fantasma" id="btn-actualizar-admin" type="button">Sincronizar FUDO</button>
           </div>
         </div>
@@ -177,8 +179,6 @@ async function sincronizarYRecargarAdmin(){
   estado.style.color='var(--grey)';
   estado.textContent='Sincronizando ventas cerradas y pagos con FUDO…';
 
-  // La API de FUDO interpreta los límites sin zona horaria. Pedir un día antes y uno después cubre
-  // completamente el día de Colombia (UTC-5); el resumen final vuelve a filtrar exclusivamente HOY.
   const fechaDesde=fechaDesplazadaAdmin(hoy,-1);
   const fechaHasta=fechaDesplazadaAdmin(hoy,1);
   const ventas=await llamar('fudo_api_sincronizar_ventas',{fecha_desde:fechaDesde,fecha_hasta:fechaHasta});
