@@ -1,0 +1,46 @@
+name: Forzar integración conciliación Chanchostilla
+on:
+  push:
+    paths:
+      - '.github/workflows/integrar-conciliacion-chanchostilla-v2.yml'
+permissions:
+  contents: write
+jobs:
+  integrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integrar enlaces
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          targets=['inicio.html','dashboard.html','auditoria-chanchostilla.html','conteo.html','producir.html','traslados.html','gestiones.html','diagnostico.html','caja.html']
+          for name in targets:
+              p=Path(name)
+              if not p.exists(): continue
+              s=p.read_text(encoding='utf-8')
+              if name!='conciliacion-chanchostilla.html' and 'href="conciliacion-chanchostilla.html"' not in s:
+                  marker='<a href="auditoria-chanchostilla.html" data-solo-rol="Administrador">Auditoría Chanchostilla</a>'
+                  if marker in s:
+                      s=s.replace(marker,marker+'\n      <a href="conciliacion-chanchostilla.html" data-solo-rol="Administrador">Conciliar Chanchostilla</a>',1)
+                  else:
+                      marker='<a href="auditoria-chanchostilla.html">Auditoría Chanchostilla</a>'
+                      if marker in s:
+                          s=s.replace(marker,marker+'\n      <a href="conciliacion-chanchostilla.html" data-solo-rol="Administrador">Conciliar Chanchostilla</a>',1)
+              if name=='inicio.html' and 'Conciliar Chanchostilla</a>' not in s:
+                  marker='<a class="btn fantasma" href="auditoria-chanchostilla.html" style="text-decoration:none">Auditar Chanchostilla</a>'
+                  if marker in s:
+                      s=s.replace(marker,marker+'\n            <a class="btn fantasma" href="conciliacion-chanchostilla.html" style="text-decoration:none">Conciliar Chanchostilla</a>',1)
+              p.write_text(s,encoding='utf-8')
+          assert 'href="conciliacion-chanchostilla.html"' in Path('inicio.html').read_text(encoding='utf-8')
+          assert 'href="conciliacion-chanchostilla.html"' in Path('dashboard.html').read_text(encoding='utf-8')
+          Path('.github/workflows/integrar-conciliacion-chanchostilla-v2.yml').unlink()
+          PY
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Mostrar conciliación Chanchostilla dentro de la aplicación"
+          git push
