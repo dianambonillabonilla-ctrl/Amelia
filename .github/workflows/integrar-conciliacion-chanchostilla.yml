@@ -1,0 +1,69 @@
+name: Integrar conciliación Chanchostilla
+
+on:
+  push:
+    paths:
+      - '.github/workflows/integrar-conciliacion-chanchostilla.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Agregar acceso al menú y al inicio administrativo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          enlace = '<a href="conciliacion-chanchostilla.html" data-solo-rol="Administrador">Conciliar Chanchostilla</a>'
+          modificados = []
+
+          for p in Path('.').glob('*.html'):
+              s = p.read_text(encoding='utf-8')
+              original = s
+
+              # No duplicar el enlace en la propia pantalla, donde ya existe como activo.
+              if p.name != 'conciliacion-chanchostilla.html' and 'auditoria-chanchostilla.html' in s and 'href="conciliacion-chanchostilla.html"' not in s:
+                  variantes = [
+                      '<a href="auditoria-chanchostilla.html" data-solo-rol="Administrador">Auditoría Chanchostilla</a>',
+                      '<a href="auditoria-chanchostilla.html">Auditoría Chanchostilla</a>',
+                      '<a href="auditoria-chanchostilla.html" class="activo">Auditoría Chanchostilla</a>',
+                      '<a href="auditoria-chanchostilla.html">Disponibilidad Chanchostilla</a>'
+                  ]
+                  for v in variantes:
+                      if v in s:
+                          s = s.replace(v, v + '\n      ' + enlace, 1)
+                          break
+
+              # Botón destacado dentro del resumen administrativo de Inicio.
+              if p.name == 'inicio.html' and 'href="conciliacion-chanchostilla.html"' not in s:
+                  boton_aud = '<a class="btn fantasma" href="auditoria-chanchostilla.html" style="text-decoration:none">Auditar Chanchostilla</a>'
+                  boton_con = '<a class="btn fantasma" href="conciliacion-chanchostilla.html" style="text-decoration:none">Conciliar Chanchostilla</a>'
+                  if boton_aud in s:
+                      s = s.replace(boton_aud, boton_aud + '\n            ' + boton_con, 1)
+
+              if s != original:
+                  p.write_text(s, encoding='utf-8')
+                  modificados.append(p.name)
+
+          # Verificaciones mínimas.
+          inicio = Path('inicio.html').read_text(encoding='utf-8')
+          dashboard = Path('dashboard.html').read_text(encoding='utf-8')
+          if 'href="conciliacion-chanchostilla.html"' not in inicio:
+              raise SystemExit('No se agregó el acceso en inicio.html')
+          if 'href="conciliacion-chanchostilla.html"' not in dashboard:
+              raise SystemExit('No se agregó el acceso en dashboard.html')
+
+          print('Archivos modificados:', ', '.join(modificados))
+          Path('.github/workflows/integrar-conciliacion-chanchostilla.yml').unlink()
+          PY
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.html' .github/workflows/integrar-conciliacion-chanchostilla.yml
+          git commit -m "Integrar conciliación Chanchostilla en la aplicación"
+          git push
