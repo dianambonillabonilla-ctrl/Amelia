@@ -33,7 +33,12 @@ document.querySelectorAll('#sede-tabs .tab').forEach(b=>b.addEventListener('clic
   cargar();
 }));
 function numero(v){return Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:2});}
-function obtenerStock(data){const raw=data&&data.data&&data.data.stock_ingredientes?data.data.stock_ingredientes:{};return Object.keys(raw).map(k=>{const r=raw[k]||{};return{nombre:r.producto||k,cantidad:r.cantidad,unidad:r.unidad||'',sinDato:!!r.sin_dato};});}
+// stock_ingredientes solo trae productos con al menos un dato real (conteo, compra, producción o
+// traslado) — ver obtenerUltimoStockPorIngrediente_ en DisponibleHoy.gs, que descarta cualquier
+// producto sin unidad reconocible en ninguna sede. Si aparece aquí, ya tiene un dato válido; el
+// "falta contar" real (nunca registrado) se distingue en la pestaña "Para cuánto alcanza", donde
+// el backend sí lo marca por ingrediente limitante (limitante_sin_dato).
+function obtenerStock(data){const raw=data&&data.data&&data.data.stock_ingredientes?data.data.stock_ingredientes:{};return Object.keys(raw).map(k=>{const r=raw[k]||{};return{nombre:r.producto||k,cantidad:r.cantidad,unidad:r.unidad||''};});}
 function obtenerPlatos(data){return data&&data.data&&Array.isArray(data.data.platos)?data.data.platos:[];}
 // Misma comparación que dashboard.html (pintarAlertaInsumos_): un producto con "Stock mínimo"
 // configurado en el Catálogo cuya cantidad actual quedó por debajo, o que llegó a cero sin mínimo
@@ -118,9 +123,16 @@ async function cargar(){
     ]);
     if(!res||!res.ok)throw new Error((res&&res.error)||'No respondió Disponible Hoy');
     const stock=obtenerStock(res).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
-    document.getElementById('stock').innerHTML=stock.length?stock.map(x=>`<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${x.sinDato?'<span class="sin-dato">Sin dato</span>':numero(x.cantidad)}</td><td>${escapeHtml(x.unidad)}</td><td>${x.sinDato?'Falta conteo':'Registrado'}</td></tr>`).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
+    document.getElementById('stock').innerHTML=stock.length?stock.map(x=>`<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${numero(x.cantidad)}</td><td>${escapeHtml(x.unidad)}</td><td>Registrado</td></tr>`).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
     const platos=obtenerPlatos(res).sort((a,b)=>String(a.producto||'').localeCompare(String(b.producto||''),'es'));
-    document.getElementById('platos').innerHTML=platos.length?platos.map(x=>`<tr><td><strong>${escapeHtml(x.producto||'')}</strong></td><td>${x.preparaciones_posibles===null?'—':numero(x.preparaciones_posibles)}</td><td>${escapeHtml(x.cadena_limitante||x.ingrediente_limitante||'—')}</td></tr>`).join(''):'<tr><td colspan="3">No se recibieron platos.</td></tr>';
+    // limitante_sin_dato: el insumo que topa la producción NUNCA se ha contado (dato faltante), no
+    // "confirmado en cero" — sin esta distinción, un 0 por falta de conteo se ve igual que un 0
+    // real de agotamiento. Ver limitanteRaiz_/cadenaLimitante_ en DisponibleHoy.gs.
+    document.getElementById('platos').innerHTML=platos.length?platos.map(x=>{
+      const limitanteTexto=escapeHtml(x.cadena_limitante||x.ingrediente_limitante||'—');
+      const limitante=x.limitante_sin_dato?`⚠️ falta contar: ${limitanteTexto}`:limitanteTexto;
+      return `<tr><td><strong>${escapeHtml(x.producto||'')}</strong></td><td>${x.preparaciones_posibles===null?'—':numero(x.preparaciones_posibles)}</td><td>${limitante}</td></tr>`;
+    }).join(''):'<tr><td colspan="3">No se recibieron platos.</td></tr>';
     const catalogo=catalogoRes&&catalogoRes.ok?catalogoRes.data:[];
     const gestionesAbiertas=gestionesRes&&gestionesRes.ok?gestionesRes.data:[];
     pintarComprar_(res.data.stock_ingredientes||{},catalogo,sede,gestionesAbiertas);
