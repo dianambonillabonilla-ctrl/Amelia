@@ -496,6 +496,53 @@ function diagnosticarCatalogoDuplicados_() {
   return { total_productos: catalogo.length, sospechosos: sospechosos };
 }
 
+/**
+ * Candidatos a "esto no hace falta en el catálogo" — pedido real: "existen cosas del catálogo que
+ * no son necesarias, ¿cómo depuramos eso?". A diferencia de diagnosticarCatalogoDuplicados_ (que
+ * busca el MISMO producto escrito dos veces), esto busca productos SIN ninguna actividad real: no
+ * aparecen en ningún conteo, compra/ajuste, receta (ni como plato ni como ingrediente), producción
+ * ni traslado — y nadie configuró que se vigile (sin "Stock mínimo" ni "Frecuencia de conteo").
+ * Ambas señales son intencionales: si alguien configuró un mínimo o una frecuencia para un
+ * producto nuevo que todavía no se ha usado, eso NO es basura, es algo que se está preparando para
+ * usar — no debe aparecer aquí solo por no tener historial todavía.
+ *
+ * Nunca borra nada solo: devuelve la lista para que un Administrador decida y confirme, igual que
+ * los duplicados de catálogo (catalogo_eliminar ya exige rol Administrador en Code.gs).
+ */
+function diagnosticarCatalogoSinUso_() {
+  const catalogo = leerTabla_(SHEET_NAMES.CATALOGO).filter(function (c) { return c.nombre_estandar; });
+
+  const usados = {};
+  const marcarUsado = function (texto) {
+    if (!texto) return;
+    usados[normalizar_(texto)] = true;
+  };
+  const hojasConColumnas = [
+    { hoja: SHEET_NAMES.CONTEOS, columnas: ['producto'] },
+    { hoja: SHEET_NAMES.AJUSTES_INVENTARIO, columnas: ['producto'] },
+    { hoja: SHEET_NAMES.RECETAS, columnas: ['producto', 'ingrediente'] },
+    { hoja: SHEET_NAMES.PRODUCCIONES, columnas: ['item'] },
+    { hoja: SHEET_NAMES.TRASLADOS, columnas: ['producto'] }
+  ];
+  hojasConColumnas.forEach(function (spec) {
+    leerTabla_(spec.hoja).forEach(function (fila) {
+      spec.columnas.forEach(function (col) { marcarUsado(fila[col]); });
+    });
+  });
+
+  const sinUso = catalogo.filter(function (c) {
+    const tieneUso = usados[normalizar_(c.nombre_estandar)] || (c.nombre_fudo && usados[normalizar_(c.nombre_fudo)]);
+    const tieneMinimo = c.stock_minimo !== '' && c.stock_minimo !== null && c.stock_minimo !== undefined;
+    const tieneFrecuencia = !!c.frecuencia_conteo;
+    return !tieneUso && !tieneMinimo && !tieneFrecuencia;
+  }).map(function (c) {
+    return { id: c.id, nombre_estandar: c.nombre_estandar, categoria: c.categoria || '', unidad_base: c.unidad_base || '' };
+  });
+
+  Logger.log('Catálogo: ' + catalogo.length + ' productos revisados, ' + sinUso.length + ' sin ninguna actividad ni vigilancia configurada.');
+  return { total_productos: catalogo.length, sin_uso: sinUso };
+}
+
 /** Distancia de edición (Levenshtein) clásica entre dos strings — usada por sonNombresParecidos_ para sugerir posibles duplicados de catálogo o alias de compras. */
 function distanciaEdicion_(a, b) {
   const m = a.length, n = b.length;

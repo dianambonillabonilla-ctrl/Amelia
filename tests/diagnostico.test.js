@@ -261,6 +261,46 @@ assert.ok(parLimon.a_id && parLimon.b_id, 'el par Limón / Limón Tahití debe t
 
 console.log('diagnosticarCatalogoDuplicados_: OK');
 
+// --- diagnosticarCatalogoSinUso_ ------------------------------------------------------------------
+// Pedido real: "existen cosas del catálogo que no son necesarias, ¿cómo depuramos eso?" — productos
+// sin ninguna actividad (conteo, compra/ajuste, receta, producción, traslado) y sin nada que indique
+// que se están preparando para usarse (stock_minimo o frecuencia_conteo configurados).
+(function () {
+  const catalogoSinUso = [
+    { id: 'id-usado-conteo', nombre_estandar: 'Papa' }, // aparece en Conteos_Manuales
+    { id: 'id-usado-receta', nombre_estandar: 'Costilla Preparada' }, // aparece en Recetas (producto)
+    { id: 'id-usado-ingrediente', nombre_estandar: 'Aioli' }, // aparece en Recetas (ingrediente)
+    { id: 'id-usado-compra', nombre_estandar: 'Aceite Girasol' }, // aparece en Ajustes_Inventario
+    { id: 'id-usado-produccion', nombre_estandar: 'Papas Listas' }, // aparece en Producciones
+    { id: 'id-usado-traslado', nombre_estandar: 'Panceta Pre-Ahumada' }, // aparece en Traslados
+    { id: 'id-con-minimo', nombre_estandar: 'Sal Marina', stock_minimo: 500 }, // sin actividad pero vigilado
+    { id: 'id-con-frecuencia', nombre_estandar: 'Ajo Preparado', frecuencia_conteo: 'Diario' }, // sin actividad pero programado
+    { id: 'id-fantasma', nombre_estandar: 'Producto Fantasma' } // sin actividad, sin mínimo, sin frecuencia -> candidato
+  ];
+  const tablas = {
+    catalogo: catalogoSinUso,
+    conteos: [{ producto: 'Papa' }],
+    ajustes: [{ producto: 'Aceite Girasol' }],
+    recetas: [{ producto: 'Costilla Preparada', ingrediente: 'Aioli' }],
+    producciones: [{ item: 'Papas Listas' }],
+    traslados: [{ producto: 'Panceta Pre-Ahumada' }]
+  };
+  const diagnosticoSinUso = cargar('apps-script/Diagnostico.gs', {
+    SHEET_NAMES: {
+      CATALOGO: 'catalogo', CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes',
+      RECETAS: 'recetas', PRODUCCIONES: 'producciones', TRASLADOS: 'traslados'
+    },
+    Logger: { log: () => {} },
+    leerTabla_: (nombre) => tablas[nombre] || [],
+    normalizar_: normalizarMock_
+  });
+  const sinUsoResultado = diagnosticoSinUso.diagnosticarCatalogoSinUso_();
+  assert.equal(sinUsoResultado.total_productos, 9);
+  const nombresSinUso = sinUsoResultado.sin_uso.map((s) => s.nombre_estandar);
+  assert.deepEqual(nombresSinUso, ['Producto Fantasma'], 'solo el producto sin actividad NI mínimo NI frecuencia debe marcarse');
+  console.log('diagnosticarCatalogoSinUso_: OK');
+})();
+
 // --- sonNombresParecidos_: pedido real "que busque bien nombres similares porque sí los tiene" ---
 // (antes solo agarraba palabra de más AL FINAL o una distancia de edición muy corta — se perdía
 // casos reales como un conector "de" de más EN MEDIO del nombre, o palabras en otro orden).
