@@ -5,11 +5,16 @@
 <title>Dilana OS — Inventario y abastecimiento</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-.wrap{max-width:1200px;margin:auto}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.tab{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.tab.activo{background:var(--navy);color:#fff}.panel{display:none}.panel.activo{display:block}.estado{padding:12px;border-radius:10px;margin:12px 0}.ok{background:#edf8f1;color:var(--green)}.error{background:#fff0f0;color:var(--red)}.aviso{background:#fff8e8;color:#7b5700}.tabla-wrap{overflow:auto}.tabla-wrap table{min-width:850px}.filtros{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.campo{min-width:180px}.campo label{display:block;font-size:.75rem;color:var(--grey);margin-bottom:5px}.campo input,.campo select{width:100%}.sin-dato{color:var(--grey);font-style:italic}.nota{font-size:.82rem;color:var(--grey)}
+.wrap{max-width:1200px;margin:auto}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.sede-tabs{display:flex;gap:6px;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.tab.activo{background:var(--navy);color:#fff}.panel{display:none}.panel.activo{display:block}.estado{padding:12px;border-radius:10px;margin:12px 0}.ok{background:#edf8f1;color:var(--green)}.error{background:#fff0f0;color:var(--red)}.aviso{background:#fff8e8;color:#7b5700}.tabla-wrap{overflow:auto}.tabla-wrap table{min-width:850px}.filtros{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.campo{min-width:180px}.campo label{display:block;font-size:.75rem;color:var(--grey);margin-bottom:5px}.campo input,.campo select{width:100%}.sin-dato{color:var(--grey);font-style:italic}.nota{font-size:.82rem;color:var(--grey)}
 </style>
 </head>
 <body><div class="shell"><aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside><main class="main"><div class="topbar"><h1>Inventario y abastecimiento</h1><div id="barra-usuario"></div></div><div class="wrap">
-<section class="card"><div class="filtros"><div class="campo"><label>Fecha</label><input type="date" id="fecha"></div><div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option><option>Centro de Producción</option></select></div><button class="btn dorado" id="cargar">Actualizar</button></div><div id="estado" class="estado aviso">Cargando…</div><p class="nota">Versión estable de recuperación. Aceite Freidora y Aceite Girasol se mantienen separados.</p></section>
+<section class="card"><div class="filtros"><div class="campo"><label>Fecha</label><input type="date" id="fecha"></div><div class="campo"><label>Sede</label><div class="sede-tabs" id="sede-tabs">
+<button type="button" class="tab activo" data-sede="Ambas">Empresa</button>
+<button type="button" class="tab" data-sede="Centro de Producción">Centro de Producción</button>
+<button type="button" class="tab" data-sede="San Antonio">San Antonio</button>
+<button type="button" class="tab" data-sede="Capri">Capri</button>
+</div></div><button class="btn dorado" id="cargar">Actualizar</button></div><div id="estado" class="estado aviso">Cargando…</div><p class="nota">Versión estable de recuperación. Aceite Freidora y Aceite Girasol se mantienen separados.</p></section>
 <div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button><button class="tab" data-p="comprar">Qué comprar<span id="comprar-contador"></span></button></div>
 <section id="inventario" class="panel activo"><div class="card"><h2>Inventario registrado</h2><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Estado</th></tr></thead><tbody id="stock"></tbody></table></div></div></section>
 <section id="alcance" class="panel"><div class="card"><h2>Alcance informado por el backend</h2><div class="tabla-wrap"><table><thead><tr><th>Plato</th><th>Preparaciones posibles</th><th>Limitante</th></tr></thead><tbody id="platos"></tbody></table></div></div></section>
@@ -20,6 +25,13 @@
 Sesion.requerir();requerirRol_(['Administrador','Encargado','Lectura']);montarBarraUsuario();
 const fecha=document.getElementById('fecha');fecha.value=fechaLocalHoy_();
 const estado=document.getElementById('estado');
+let sedeActual='Ambas';
+document.querySelectorAll('#sede-tabs .tab').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#sede-tabs .tab').forEach(x=>x.classList.remove('activo'));
+  b.classList.add('activo');
+  sedeActual=b.dataset.sede;
+  cargar();
+}));
 function numero(v){return Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:2});}
 function obtenerStock(data){const raw=data&&data.data&&data.data.stock_ingredientes?data.data.stock_ingredientes:{};return Object.keys(raw).map(k=>{const r=raw[k]||{};return{nombre:r.producto||k,cantidad:r.cantidad,unidad:r.unidad||'',sinDato:!!r.sin_dato};});}
 function obtenerPlatos(data){return data&&data.data&&Array.isArray(data.data.platos)?data.data.platos:[];}
@@ -97,7 +109,7 @@ function pintarComprar_(stockIngredientes,catalogoCompleto,sede,gestionesAbierta
 
 async function cargar(){
   estado.className='estado aviso';estado.textContent='Consultando la sede…';
-  const sede=document.getElementById('sede').value;
+  const sede=sedeActual;
   try{
     const [res,catalogoRes,gestionesRes]=await Promise.all([
       llamar('disponible_hoy',{fecha:fecha.value,sede}),
@@ -121,6 +133,6 @@ async function cargar(){
   }
 }
 document.getElementById('cargar').addEventListener('click',cargar);
-document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('activo'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('activo'));b.classList.add('activo');document.getElementById(b.dataset.p).classList.add('activo');}));
+document.querySelectorAll('.tabs > .tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tabs > .tab').forEach(x=>x.classList.remove('activo'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('activo'));b.classList.add('activo');document.getElementById(b.dataset.p).classList.add('activo');}));
 cargar();
 </script></body></html>
