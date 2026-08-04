@@ -394,12 +394,12 @@ function ocultarNavSegunRol_(rolActual) {
 }
 
 // Corta en seco el acceso a una página completa si el rol no está permitido (ej. importar.html) —
-// por si alguien entra directo por URL en vez de por el menú. Redirige al dashboard.
+// por si alguien entra directo por URL en vez de por el menú. Redirige a Inicio.
 function requerirRol_(rolesPermitidos) {
   const u = Sesion.usuario();
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
-    window.location.href = 'dashboard.html';
+    window.location.href = 'inicio.html';
   }
 }
 

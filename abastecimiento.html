@@ -10,9 +10,10 @@
 </head>
 <body><div class="shell"><aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside><main class="main"><div class="topbar"><h1>Inventario y abastecimiento</h1><div id="barra-usuario"></div></div><div class="wrap">
 <section class="card"><div class="filtros"><div class="campo"><label>Fecha</label><input type="date" id="fecha"></div><div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option><option>Centro de Producción</option></select></div><button class="btn dorado" id="cargar">Actualizar</button></div><div id="estado" class="estado aviso">Cargando…</div><p class="nota">Versión estable de recuperación. Aceite Freidora y Aceite Girasol se mantienen separados.</p></section>
-<div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button></div>
+<div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button><button class="tab" data-p="comprar">Qué comprar<span id="comprar-contador"></span></button></div>
 <section id="inventario" class="panel activo"><div class="card"><h2>Inventario registrado</h2><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Estado</th></tr></thead><tbody id="stock"></tbody></table></div></div></section>
 <section id="alcance" class="panel"><div class="card"><h2>Alcance informado por el backend</h2><div class="tabla-wrap"><table><thead><tr><th>Plato</th><th>Preparaciones posibles</th><th>Limitante</th></tr></thead><tbody id="platos"></tbody></table></div></div></section>
+<section id="comprar" class="panel"><div class="card"><h2>Qué comprar</h2><p class="nota">Productos agotados o por debajo del "Stock mínimo" configurado en el Catálogo, comparados contra el inventario actual de esta sede.</p><p id="comprar-vacio" class="nota" style="display:none"></p><p id="comprar-pendientes" class="nota" style="display:none"></p><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Actual</th><th>Mínimo</th><th>Estado</th><th></th></tr></thead><tbody id="comprar-cuerpo"></tbody></table></div></div></section>
 </div></main></div>
 <script src="assets/config.js"></script>
 <script>
@@ -22,19 +23,100 @@ const estado=document.getElementById('estado');
 function numero(v){return Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:2});}
 function obtenerStock(data){const raw=data&&data.data&&data.data.stock_ingredientes?data.data.stock_ingredientes:{};return Object.keys(raw).map(k=>{const r=raw[k]||{};return{nombre:r.producto||k,cantidad:r.cantidad,unidad:r.unidad||'',sinDato:!!r.sin_dato};});}
 function obtenerPlatos(data){return data&&data.data&&Array.isArray(data.data.platos)?data.data.platos:[];}
+// Misma comparación que dashboard.html (pintarAlertaInsumos_): un producto con "Stock mínimo"
+// configurado en el Catálogo cuya cantidad actual quedó por debajo, o que llegó a cero sin mínimo
+// configurado (agotado). "Nunca contado" no cuenta como agotado — es un dato faltante, no un cero
+// confirmado.
+function evaluarQueComprar_(stockIngredientes,catalogoCompleto,sede){
+  const catalogo=(!sede||sede==='Ambas')?catalogoCompleto:catalogoCompleto.filter(p=>!p.sede||p.sede==='Ambas'||p.sede===sede);
+  const evaluados=catalogo.map(p=>{
+    const stock=stockIngredientes[normalizarTexto(p.nombre_estandar)]||null;
+    const partes=partesCategoria(p.categoria);
+    const tieneMinimo=p.stock_minimo!==''&&p.stock_minimo!==null&&p.stock_minimo!==undefined;
+    const nuncaContado=stock===null;
+    return Object.assign({},p,{
+      _actual:stock?Number(stock.cantidad):0,
+      _unidad:stock?stock.unidad:p.unidad_base,
+      _categoria:partes.principal||'Sin categoría',
+      _tieneMinimo:tieneMinimo,
+      _nuncaContado:nuncaContado,
+      _agotado:!tieneMinimo&&!nuncaContado&&Number(stock.cantidad)<=0
+    });
+  });
+  const bajos=evaluados.filter(p=>!p._nuncaContado&&((p._tieneMinimo&&p._actual<Number(p.stock_minimo))||p._agotado));
+  const pendientesPrimerConteo=evaluados.filter(p=>p._nuncaContado&&p._tieneMinimo);
+  bajos.sort((a,b)=>a._categoria.localeCompare(b._categoria,'es')||a.nombre_estandar.localeCompare(b.nombre_estandar,'es'));
+  return{catalogo,bajos,pendientesPrimerConteo};
+}
+
+function pintarComprar_(stockIngredientes,catalogoCompleto,sede,gestionesAbiertas){
+  const cuerpo=document.getElementById('comprar-cuerpo');
+  const vacio=document.getElementById('comprar-vacio');
+  const pendientesEl=document.getElementById('comprar-pendientes');
+  const contador=document.getElementById('comprar-contador');
+  if(!catalogoCompleto.length){
+    cuerpo.innerHTML='';contador.textContent='';
+    vacio.style.display='block';vacio.textContent='Todavía no hay productos en el catálogo.';
+    pendientesEl.style.display='none';
+    return;
+  }
+  const{catalogo,bajos,pendientesPrimerConteo}=evaluarQueComprar_(stockIngredientes,catalogoCompleto,sede);
+  contador.textContent=bajos.length?' ('+bajos.length+')':'';
+  if(pendientesPrimerConteo.length){
+    pendientesEl.style.display='block';
+    pendientesEl.textContent='ℹ️ '+pendientesPrimerConteo.length+' producto'+(pendientesPrimerConteo.length===1?'':'s')+' con mínimo configurado sin ningún conteo todavía (no aparece'+(pendientesPrimerConteo.length===1?'':'n')+' abajo hasta su primer conteo): '+pendientesPrimerConteo.map(p=>p.nombre_estandar).join(', ')+'.';
+  }else{
+    pendientesEl.style.display='none';
+  }
+  if(!bajos.length){
+    cuerpo.innerHTML='';
+    vacio.style.display='block';
+    vacio.textContent=catalogo.some(p=>p.stock_minimo!==''&&p.stock_minimo!==null&&p.stock_minimo!==undefined)
+      ?'Nada por debajo del mínimo configurado ahora mismo en esta sede.'
+      :'Todavía no configuraste "Stock mínimo" en el Catálogo de productos — sin eso solo se avisa cuando algo llega a cero.';
+    return;
+  }
+  vacio.style.display='none';
+  cuerpo.innerHTML=bajos.map(p=>{
+    const gestion=(gestionesAbiertas||[]).find(g=>normalizarTexto(g.producto)===normalizarTexto(p.nombre_estandar)&&(sede==='Ambas'||g.sede===sede));
+    const accion=gestion
+      ?'<span class="sin-dato">📋 '+escapeHtml(gestion.estado)+(gestion.nota?' — '+escapeHtml(gestion.nota):'')+'</span>'
+      :(sede&&sede!=='Ambas'
+        ?'<button class="btn fantasma btn-abrir-gestion" data-producto="'+escapeHtml(p.nombre_estandar)+'" data-sede="'+escapeHtml(sede)+'" type="button">Marcar gestión</button>'
+        :'<a href="gestiones.html">Abrir gestión →</a>');
+    return '<tr><td><strong>'+escapeHtml(p.nombre_estandar)+'</strong></td><td>'+escapeHtml(p._categoria)+'</td><td>'+numero(p._actual)+' '+escapeHtml(p._unidad||'')+'</td><td>'+(p._tieneMinimo?numero(p.stock_minimo)+' '+escapeHtml(p._unidad||''):'—')+'</td><td>'+(p._agotado?'Agotado':'Bajo mínimo')+'</td><td>'+accion+'</td></tr>';
+  }).join('');
+  cuerpo.querySelectorAll('.btn-abrir-gestion').forEach(btn=>{
+    btn.addEventListener('click',conBotonProtegido(btn,async()=>{
+      const nota=prompt('¿Qué está pasando con "'+btn.dataset.producto+'"? (ej. "ya se pidió, llega el viernes"). Puedes dejarlo vacío.')||'';
+      const data=await llamar('gestion_crear',{item:{producto:btn.dataset.producto,sede:btn.dataset.sede,nota}});
+      if(data.ok){avisarGuardado('Gestión abierta.');cargar();}else{alert(data.error);}
+    }));
+  });
+}
+
 async function cargar(){
   estado.className='estado aviso';estado.textContent='Consultando la sede…';
+  const sede=document.getElementById('sede').value;
   try{
-    const res=await llamar('disponible_hoy',{fecha:fecha.value,sede:document.getElementById('sede').value});
+    const [res,catalogoRes,gestionesRes]=await Promise.all([
+      llamar('disponible_hoy',{fecha:fecha.value,sede}),
+      llamar('catalogo_listar'),
+      llamar('gestiones_listar',{filtro:{estado:'abiertas',sede:sede==='Ambas'?undefined:sede}})
+    ]);
     if(!res||!res.ok)throw new Error((res&&res.error)||'No respondió Disponible Hoy');
     const stock=obtenerStock(res).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
     document.getElementById('stock').innerHTML=stock.length?stock.map(x=>`<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${x.sinDato?'<span class="sin-dato">Sin dato</span>':numero(x.cantidad)}</td><td>${escapeHtml(x.unidad)}</td><td>${x.sinDato?'Falta conteo':'Registrado'}</td></tr>`).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
     const platos=obtenerPlatos(res).sort((a,b)=>String(a.producto||'').localeCompare(String(b.producto||''),'es'));
     document.getElementById('platos').innerHTML=platos.length?platos.map(x=>`<tr><td><strong>${escapeHtml(x.producto||'')}</strong></td><td>${x.preparaciones_posibles===null?'—':numero(x.preparaciones_posibles)}</td><td>${escapeHtml(x.cadena_limitante||x.ingrediente_limitante||'—')}</td></tr>`).join(''):'<tr><td colspan="3">No se recibieron platos.</td></tr>';
+    const catalogo=catalogoRes&&catalogoRes.ok?catalogoRes.data:[];
+    const gestionesAbiertas=gestionesRes&&gestionesRes.ok?gestionesRes.data:[];
+    pintarComprar_(res.data.stock_ingredientes||{},catalogo,sede,gestionesAbiertas);
     estado.className='estado ok';estado.textContent='Datos cargados correctamente.';
   }catch(e){
     document.getElementById('stock').innerHTML='<tr><td colspan="4">No fue posible cargar.</td></tr>';
     document.getElementById('platos').innerHTML='<tr><td colspan="3">No fue posible cargar.</td></tr>';
+    document.getElementById('comprar-cuerpo').innerHTML='<tr><td colspan="6">No fue posible cargar.</td></tr>';
     estado.className='estado error';estado.textContent='Error: '+(e.message||e);
   }
 }

@@ -13,17 +13,7 @@
 <div class="shell">
   <aside class="sidebar">
     <div class="marca">Dilana <span>OS</span></div>
-    <nav>
-      <a href="inicio.html" class="activo">Inicio</a>
-      <a href="abastecimiento.html">Inventario y abastecimiento</a>
-      <a href="caja.html" data-solo-rol="Administrador,Encargado,Cocina">Caja</a>
-      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
-      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Producción</a>
-      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
-      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
-      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
-      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
-    </nav>
+    <nav id="menu-nav"></nav>
   </aside>
   <main class="main">
     <div class="topbar"><h1>Inicio</h1><div id="barra-usuario"></div></div>
@@ -34,7 +24,7 @@
       </section>
       <div class="grupos">
         <section class="grupo hoy"><h2>1. Hoy</h2><p>Lo primero que debes revisar para tomar decisiones.</p><div class="acciones">
-          <a class="accion principal" href="abastecimiento.html"><strong>Inventario y abastecimiento</strong><span>Qué tengo, para cuánto alcanza y qué debo hacer.</span></a>
+          <a class="accion principal" href="abastecimiento.html"><strong>Inventario y abastecimiento</strong><span>Qué tengo, para cuánto alcanza y qué debo comprar.</span></a>
           <a class="accion" href="caja.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Caja</strong><span>Apertura, movimientos y cierre del turno.</span></a>
         </div></section>
         <section class="grupo operacion"><h2>2. Registrar operación</h2><p>Movimientos que cambian el inventario.</p><div class="acciones">
@@ -73,7 +63,6 @@ Sesion.requerir();
 montarBarraUsuario();
 const u=Sesion.usuario();
 if(u){document.getElementById('saludo').textContent='Bienvenida, '+(u.nombre||'');}
-ocultarNavSegunRol_(u?u.rol:null);
 </script>
 </body>
 </html>
