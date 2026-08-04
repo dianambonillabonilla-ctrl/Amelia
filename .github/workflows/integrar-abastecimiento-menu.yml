@@ -1,4 +1,4 @@
-name: Integrar abastecimiento al menu
+name: Organizar menu funcional
 on:
   push:
     paths:
@@ -6,30 +6,102 @@ on:
 permissions:
   contents: write
 jobs:
-  integrar:
+  organizar:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Agregar entrada al menu central
+      - name: Agrupar menu y unificar Inicio
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('assets/config.js')
-          s = p.read_text(encoding='utf-8')
-          enlace = "  { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador', 'Encargado', 'Lectura'] },"
-          if enlace not in s:
-              ancla = "  { href: 'dashboard.html', texto: 'Disponible Hoy' },"
-              if ancla not in s:
-                  raise SystemExit('No se encontro el ancla Disponible Hoy')
-              s = s.replace(ancla, ancla + '\n' + enlace, 1)
-              p.write_text(s, encoding='utf-8')
-          if enlace not in p.read_text(encoding='utf-8'):
-              raise SystemExit('No se pudo insertar la entrada')
+          import re
+
+          config = Path('assets/config.js')
+          s = config.read_text(encoding='utf-8')
+          nuevo_menu = r'''const MENU_PRINCIPAL = [
+            { grupo: 'HOY' },
+            { href: 'inicio.html', texto: 'Inicio de turno' },
+            { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+
+            { grupo: 'REGISTRAR OPERACIÓN' },
+            { href: 'conteo.html', texto: 'Conteo de inventario', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+            { href: 'producir.html', texto: 'Producción', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+            { href: 'traslados.html', texto: 'Traslados', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+            { href: 'compras.html', texto: 'Compras', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+            { href: 'gestiones.html', texto: 'Novedades', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+
+            { grupo: 'CONTROL Y REVISIÓN' },
+            { href: 'conciliacion.html', texto: 'Conciliación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'inventario-ubicacion.html', texto: 'Inventario por ubicación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'libro-inventario.html', texto: 'Libro de inventario', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'historial-conteos.html', texto: 'Histórico de conteos', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'historial-producciones.html', texto: 'Histórico de producción', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'historial-mermas.html', texto: 'Histórico de mermas', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'historial-conciliacion.html', texto: 'Histórico de conciliación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+            { href: 'historial-cierres-turno.html', texto: 'Histórico de cierres', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+
+            { grupo: 'CONFIGURACIÓN' },
+            { href: 'recetas.html', texto: 'Recetas', soloRol: ['Administrador'] },
+            { href: 'catalogo.html', texto: 'Catálogo de productos', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+            { href: 'fudo.html', texto: 'Panel FUDO', soloRol: ['Administrador', 'Encargado'] },
+            { href: 'importar.html', texto: 'Importar de FUDO', soloRol: ['Administrador'] },
+            { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] },
+            { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'] },
+            { href: 'base-caja.html', texto: 'Base de caja anterior', soloRol: ['Administrador'] }
+          ];'''
+          s, c1 = re.subn(r"const MENU_PRINCIPAL = \[.*?\n\];", nuevo_menu, s, count=1, flags=re.S)
+          if c1 != 1:
+              raise SystemExit('No se pudo reemplazar MENU_PRINCIPAL')
+
+          nueva_funcion = r'''function montarMenu_(rolActual) {
+            const nav = document.getElementById('menu-nav');
+            if (!nav) return;
+            const actual = window.location.pathname.split('/').pop();
+            let html = '';
+            let grupoPendiente = '';
+            MENU_PRINCIPAL.forEach(function (item) {
+              if (item.grupo) {
+                grupoPendiente = item.grupo;
+                return;
+              }
+              const visible = !item.soloRol || item.soloRol.indexOf(rolActual) !== -1;
+              if (!visible) return;
+              if (grupoPendiente) {
+                html += `<div class="nav-grupo">${escapeHtml(grupoPendiente)}</div>`;
+                grupoPendiente = '';
+              }
+              const clase = item.href === actual ? ' class="activo"' : '';
+              html += `<a href="${escapeHtml(item.href)}"${clase}>${escapeHtml(item.texto)}</a>`;
+            });
+            nav.innerHTML = html;
+          }'''
+          s, c2 = re.subn(r"function montarMenu_\(rolActual\) \{.*?\n\}", nueva_funcion, s, count=1, flags=re.S)
+          if c2 != 1:
+              raise SystemExit('No se pudo reemplazar montarMenu_')
+          config.write_text(s, encoding='utf-8')
+
+          inicio = Path('inicio.html')
+          h = inicio.read_text(encoding='utf-8')
+          h, c3 = re.subn(r'<nav>.*?</nav>', '<nav id="menu-nav"></nav>', h, count=1, flags=re.S)
+          if c3 != 1:
+              raise SystemExit('No se pudo unificar el menu de Inicio')
+          inicio.write_text(h, encoding='utf-8')
+
+          styles = Path('assets/styles.css')
+          css = styles.read_text(encoding='utf-8')
+          regla = '''\n.sidebar .nav-grupo{margin:18px 12px 6px;padding-top:10px;border-top:1px solid rgba(255,255,255,.15);font-size:.64rem;letter-spacing:.09em;font-weight:800;color:rgba(255,255,255,.55)}\n.sidebar .nav-grupo:first-child{margin-top:4px;border-top:0;padding-top:0}\n'''
+          if '.sidebar .nav-grupo' not in css:
+              styles.write_text(css + regla, encoding='utf-8')
           PY
-      - name: Guardar cambio
+      - name: Guardar cambios en main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/config.js
-          git commit -m "Integrar Inventario y abastecimiento al menu"
-          git push
+          git add assets/config.js assets/styles.css inicio.html
+          if git diff --cached --quiet; then
+            echo "No hubo cambios"
+          else
+            git commit -m "Organizar navegación en grupos funcionales"
+            git push
+          fi
