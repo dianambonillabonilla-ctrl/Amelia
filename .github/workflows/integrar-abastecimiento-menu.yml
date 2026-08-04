@@ -1,0 +1,35 @@
+name: Integrar abastecimiento al menu
+on:
+  push:
+    paths:
+      - '.github/workflows/integrar-abastecimiento-menu.yml'
+permissions:
+  contents: write
+jobs:
+  integrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Agregar entrada al menu central
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('assets/config.js')
+          s = p.read_text(encoding='utf-8')
+          enlace = "  { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador', 'Encargado', 'Lectura'] },"
+          if enlace not in s:
+              ancla = "  { href: 'dashboard.html', texto: 'Disponible Hoy' },"
+              if ancla not in s:
+                  raise SystemExit('No se encontro el ancla Disponible Hoy')
+              s = s.replace(ancla, ancla + '\n' + enlace, 1)
+              p.write_text(s, encoding='utf-8')
+          if enlace not in p.read_text(encoding='utf-8'):
+              raise SystemExit('No se pudo insertar la entrada')
+          PY
+      - name: Guardar cambio
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/config.js
+          git commit -m "Integrar Inventario y abastecimiento al menu"
+          git push
