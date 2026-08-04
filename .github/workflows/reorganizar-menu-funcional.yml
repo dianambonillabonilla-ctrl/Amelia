@@ -1,0 +1,99 @@
+name: Reorganizar menu funcional
+on:
+  push:
+    paths:
+      - '.github/workflows/reorganizar-menu-funcional.yml'
+permissions:
+  contents: write
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reorganizar navegación
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('assets/config.js')
+          s = p.read_text(encoding='utf-8')
+          inicio = s.index('const MENU_PRINCIPAL = [')
+          fin = s.index('// Pinta el nombre/rol del usuario', inicio)
+          nuevo = r'''const MENU_PRINCIPAL = [
+  {
+    grupo: 'Hoy', abierto: true, items: [
+      { href: 'inicio.html', texto: 'Inicio de turno' },
+      { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador', 'Encargado', 'Cocina'] }
+    ]
+  },
+  {
+    grupo: 'Registrar operación', items: [
+      { href: 'conteo.html', texto: 'Conteo de inventario', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+      { href: 'producir.html', texto: 'Producción', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+      { href: 'traslados.html', texto: 'Traslados', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+      { href: 'compras.html', texto: 'Compras', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+      { href: 'gestiones.html', texto: 'Reportar novedad', soloRol: ['Administrador', 'Encargado', 'Cocina'] }
+    ]
+  },
+  {
+    grupo: 'Control y revisión', items: [
+      { href: 'conciliacion.html', texto: 'Conciliación general', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'libro-inventario.html', texto: 'Libro de inventario', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'inventario-ubicacion.html', texto: 'Inventario por ubicación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'historial-conteos.html', texto: 'Conteos anteriores', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'historial-producciones.html', texto: 'Producciones anteriores', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'historial-mermas.html', texto: 'Mermas anteriores', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'historial-conciliacion.html', texto: 'Conciliaciones anteriores', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'historial-cierres-turno.html', texto: 'Cierres de turno', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
+      { href: 'base-caja.html', texto: 'Caja histórica anterior', soloRol: ['Administrador', 'Encargado', 'Cocina'] }
+    ]
+  },
+  {
+    grupo: 'Configuración', items: [
+      { href: 'recetas.html', texto: 'Recetas', soloRol: ['Administrador'] },
+      { href: 'catalogo.html', texto: 'Catálogo de productos', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+      { href: 'fudo.html', texto: 'Panel FUDO', soloRol: ['Administrador', 'Encargado'] },
+      { href: 'importar.html', texto: 'Importar desde FUDO', soloRol: ['Administrador'] },
+      { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] },
+      { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'] }
+    ]
+  }
+];
+
+function montarMenu_(rolActual) {
+  const nav = document.getElementById('menu-nav');
+  if (!nav) return;
+  const actual = window.location.pathname.split('/').pop() || 'inicio.html';
+  nav.innerHTML = MENU_PRINCIPAL.map(function (grupo, indice) {
+    const visibles = grupo.items.filter(function (item) {
+      return !item.soloRol || item.soloRol.indexOf(rolActual) !== -1;
+    });
+    if (!visibles.length) return '';
+    const contieneActual = visibles.some(function (item) { return item.href === actual; });
+    const abierto = grupo.abierto || contieneActual;
+    const enlaces = visibles.map(function (item) {
+      const clase = item.href === actual ? ' class="activo"' : '';
+      return `<a href="${escapeHtml(item.href)}"${clase} style="display:block;padding:9px 12px 9px 18px">${escapeHtml(item.texto)}</a>`;
+    }).join('');
+    return `<details ${abierto ? 'open' : ''} style="margin-bottom:6px"><summary style="cursor:pointer;padding:10px 12px;font-weight:800;color:inherit;list-style:none">${escapeHtml(grupo.grupo)}</summary><div>${enlaces}</div></details>`;
+  }).join('');
+}
+
+'''
+          s = s[:inicio] + nuevo + s[fin:]
+          p.write_text(s, encoding='utf-8')
+
+          p2 = Path('inicio.html')
+          h = p2.read_text(encoding='utf-8')
+          h = re.sub(r'<nav>.*?</nav>', '<nav id="menu-nav"></nav>', h, count=1, flags=re.S)
+          p2.write_text(h, encoding='utf-8')
+          PY
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/config.js inicio.html
+          git commit -m "Reorganizar menu por funciones"
+          git push
