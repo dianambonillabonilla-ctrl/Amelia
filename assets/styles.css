@@ -192,3 +192,6 @@ label { font-size: .8rem; color: var(--grey); display: block; margin-bottom: 4px
 }
 .chip:hover { border-color: var(--gold); }
 .chip.activo { background: var(--navy); border-color: var(--navy); color: white; }
+
+.sidebar .nav-grupo{margin:18px 12px 6px;padding-top:10px;border-top:1px solid rgba(255,255,255,.15);font-size:.64rem;letter-spacing:.09em;font-weight:800;color:rgba(255,255,255,.55)}
+.sidebar .nav-grupo:first-child{margin-top:4px;border-top:0;padding-top:0}
