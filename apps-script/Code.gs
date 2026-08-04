@@ -125,7 +125,8 @@ function configurarHojas() {
     Pagos_FUDO: ['id_pago', 'id_venta', 'fecha', 'creacion', 'monto', 'cancelado', 'metodo_pago', 'metodo_tipo',
       'sede', 'archivo_origen', 'importado_por', 'importado_en'],
     Base_Caja: ['id', 'fecha', 'sede', 'efectivo_fudo', 'caja_fuerte', 'efectivo_caja_menor', 'pendiente',
-      'gastos', 'cuadre', 'usuario', 'timestamp', 'observacion'],
+      'gastos', 'cuadre', 'usuario', 'timestamp', 'observacion',
+      'entregado_administrador_total', 'diferencia_caja_fuerte'],
     Caja_Turno: ['id', 'fecha', 'sede', 'estado', 'base_inicial', 'hora_apertura', 'usuario_apertura_id',
       'usuario_apertura', 'rappi_encendido', 'efectivo_contado', 'efectivo_esperado', 'diferencia',
       'entrega_cierre', 'base_siguiente', 'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre'],
@@ -411,6 +412,12 @@ function handleRequest_(e, method) {
       case 'caja_cerrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(cajaCerrar_(params.item, sesion.usuario));
+      case 'caja_entregado_total_dia':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
+        return jsonOut_({ ok: true, total: cajaEntregadoTotalDia_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'caja_conciliacion_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
+        return jsonOut_(cajaConciliacionListar_(params.filtros, sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));

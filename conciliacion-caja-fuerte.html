@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dilana OS — Conciliación Caja Fuerte</title>
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+.cc-resumen{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.cc-tile{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff}
+.cc-tile span{display:block;font-size:.68rem;color:var(--grey);text-transform:uppercase}
+.cc-tile strong{display:block;font-size:1.3rem;color:var(--navy);margin-top:3px}
+@media(max-width:760px){.cc-resumen{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav id="menu-nav"></nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>Conciliación Caja Fuerte</h1>
+      <div id="barra-usuario"></div>
+    </div>
+
+    <div class="card">
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Cruza, día por día, lo que Caja_Turno/Caja_Movimientos dicen que se entregó de verdad al
+        administrador (entregas registradas durante el turno + lo entregado al cerrar) contra lo
+        que quedó anotado en Base de Caja como depositado en la Caja Fuerte. La Caja Fuerte es
+        física y propia de cada sede — San Antonio y Capri nunca se mezclan en este cruce.
+      </p>
+      <div class="grid grid-4" style="margin-bottom:14px">
+        <div class="campo">
+          <label>Sede</label>
+          <select id="filtro-sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+          </select>
+        </div>
+        <div class="campo"><label>Desde (vacío = todo el histórico)</label><input type="date" id="filtro-desde"></div>
+        <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta"></div>
+        <div class="campo" style="display:flex; align-items:flex-end">
+          <button class="btn dorado" id="btn-filtrar" style="width:100%">Conciliar</button>
+        </div>
+      </div>
+      <div class="cc-resumen" id="cc-resumen" style="display:none">
+        <div class="cc-tile"><span>Días revisados</span><strong id="r-dias">0</strong></div>
+        <div class="cc-tile"><span>Cuadran</span><strong id="r-cuadran" style="color:var(--green)">0</strong></div>
+        <div class="cc-tile"><span>Con diferencia</span><strong id="r-diferencia" style="color:var(--red)">0</strong></div>
+        <div class="cc-tile"><span>Sin registrar en Base de Caja</span><strong id="r-sin-registrar" style="color:var(--amber)">0</strong></div>
+      </div>
+      <p id="cc-total-diferencia" style="display:none; font-weight:700"></p>
+      <p id="estado" class="vacio">Elige sede y presiona Conciliar.</p>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>Fecha</th><th>Entregado en turno</th><th>Entregado al cerrar</th><th>Total entregado</th>
+          <th>Caja Fuerte (Base de Caja)</th><th>Diferencia</th><th>Estado</th><th>Recibió al cierre</th>
+        </tr></thead>
+        <tbody id="tabla-conciliacion"><tr><td colspan="8" class="vacio">Sin resultados todavía.</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador', 'Encargado']);
+montarBarraUsuario();
+restringirSelectorSede_(document.getElementById('filtro-sede'));
+
+function formatoMoneda_(n) {
+  if (n === null || n === undefined || n === '') return '—';
+  return '$' + Number(n).toLocaleString('es-CO');
+}
+
+document.getElementById('btn-filtrar').addEventListener('click', conBotonProtegido(document.getElementById('btn-filtrar'), conciliar));
+document.getElementById('filtro-sede').addEventListener('change', conciliar);
+conciliar();
+
+async function conciliar() {
+  const sede = document.getElementById('filtro-sede').value;
+  const fecha_desde = document.getElementById('filtro-desde').value;
+  const fecha_hasta = document.getElementById('filtro-hasta').value;
+  const estado = document.getElementById('estado');
+  estado.textContent = 'Consultando…';
+  document.getElementById('cc-resumen').style.display = 'none';
+  document.getElementById('cc-total-diferencia').style.display = 'none';
+
+  const data = await llamar('caja_conciliacion_listar', { filtros: { sede, fecha_desde, fecha_hasta } });
+  if (!data.ok) { estado.textContent = ''; alert(data.error); return; }
+
+  const filas = data.data || [];
+  const resumen = data.resumen || { dias: 0, cuadran: 0, con_diferencia: 0, sin_registrar: 0, diferencia_total: 0 };
+  document.getElementById('r-dias').textContent = resumen.dias;
+  document.getElementById('r-cuadran').textContent = resumen.cuadran;
+  document.getElementById('r-diferencia').textContent = resumen.con_diferencia;
+  document.getElementById('r-sin-registrar').textContent = resumen.sin_registrar;
+  document.getElementById('cc-resumen').style.display = 'grid';
+
+  const totalEl = document.getElementById('cc-total-diferencia');
+  if (resumen.con_diferencia) {
+    totalEl.style.display = 'block';
+    totalEl.style.color = 'var(--red)';
+    totalEl.textContent = 'Diferencia acumulada: ' + formatoMoneda_(resumen.diferencia_total) +
+      ' (positivo = hay más registrado en Caja Fuerte que lo entregado; negativo = falta registrar).';
+  }
+
+  estado.textContent = filas.length ? '' : 'No hay turnos cerrados en este rango para ' + sede + '.';
+  pintar(filas);
+}
+
+function pintar(filas) {
+  const body = document.getElementById('tabla-conciliacion');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="8" class="vacio">Sin resultados en este rango.</td></tr>'; return; }
+  body.innerHTML = filas.map(f => {
+    let badge;
+    if (!f.registrado_en_base_caja) badge = '<span class="badge aviso">Falta registrar en Base de Caja</span>';
+    else if (f.cuadra) badge = '<span class="badge ok">Cuadra</span>';
+    else badge = `<span class="badge alerta">${escapeHtml(formatoMoneda_(f.diferencia))}</span>`;
+    return `<tr>
+      <td>${escapeHtml(f.fecha)}</td>
+      <td>${escapeHtml(formatoMoneda_(f.entregas_movimiento))}</td>
+      <td>${escapeHtml(formatoMoneda_(f.entrega_cierre))}</td>
+      <td><strong>${escapeHtml(formatoMoneda_(f.entregado_administrador_total))}</strong></td>
+      <td>${f.registrado_en_base_caja ? escapeHtml(formatoMoneda_(f.caja_fuerte_base_caja)) : '—'}</td>
+      <td>${f.registrado_en_base_caja ? escapeHtml(formatoMoneda_(f.diferencia)) : '—'}</td>
+      <td>${badge}</td>
+      <td>${escapeHtml(f.persona_recibe_cierre || '—')}</td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

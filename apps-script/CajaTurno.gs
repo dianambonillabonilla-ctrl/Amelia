@@ -95,6 +95,23 @@ function cajaMovimientosResumen_(movimientos) {
   return resumen;
 }
 
+/**
+ * Cuánto se entregó DE VERDAD al administrador ese día en esa sede, sumando las dos formas en que
+ * el dinero sale de la caja hacia él: las entregas registradas durante el turno (Caja_Movimientos,
+ * tipo "Entrega administrador") más lo que se le entrega al cerrar (Caja_Turno.entrega_cierre — lo
+ * que sobra después de apartar la base del turno siguiente). Esto es lo que en teoría debería
+ * terminar guardado en la Caja Fuerte de esa sede — ver cajaConciliacionListar_ (ConciliacionCaja.gs)
+ * y baseCajaGuardar_ (BaseCaja.gs), que lo usan para avisar cuando Base_Caja.caja_fuerte no coincide.
+ */
+function cajaEntregadoTotalDia_(fecha, sede) {
+  cajaAsegurarEstructura_();
+  const fechaFmt = formatearFecha_(fecha);
+  const turno = cajaTurnoFila_(fechaFmt, sede);
+  const entregasMovimiento = cajaMovimientosResumen_(cajaMovimientosDelDia_(fechaFmt, sede)).entregas_administrador;
+  const entregaCierre = (turno && turno.estado === 'Cerrado') ? (Number(turno.entrega_cierre) || 0) : 0;
+  return Number((entregasMovimiento + entregaCierre).toFixed(2));
+}
+
 function cajaEfectivoFudoDia_(fecha, sede) {
   const fudo = typeof turnoResumenCierre_ === 'function'
     ? turnoResumenCierre_(fecha, sede)

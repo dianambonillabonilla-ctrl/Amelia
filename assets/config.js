@@ -329,6 +329,7 @@ const MENU_PRINCIPAL = [
   { href: 'historial-conciliacion.html', texto: 'Histórico de conciliación', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
   { href: 'historial-cierres-turno.html', texto: 'Histórico de cierres', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
   { href: 'base-caja.html', texto: 'Base de caja (histórico anterior)', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
+  { href: 'conciliacion-caja-fuerte.html', texto: 'Conciliación Caja Fuerte', soloRol: ['Administrador', 'Encargado'] },
   { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] },
   { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'] }
 ];

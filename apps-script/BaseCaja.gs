@@ -71,12 +71,26 @@ function baseCajaGuardar_(item, usuario) {
   const anterior = baseCajaFilaAnterior_(fecha, item.sede);
   const cuadre = anterior.existe ? baseCajaCalcularCuadre_(anterior, actual) : 0;
 
+  // Cruce contra Caja_Turno/Caja_Movimientos (ver cajaEntregadoTotalDia_ en CajaTurno.gs): antes
+  // "Caja Fuerte" se digitaba aquí sin comparar contra lo que de verdad quedó registrado como
+  // entregado al administrador ese día — los dos números podían quedar distintos sin que nadie se
+  // diera cuenta. typeof-guard porque este archivo también se prueba solo, sin CajaTurno.gs cargado
+  // (ver tests/base-caja.test.js).
+  const entregadoAdministrador = typeof cajaEntregadoTotalDia_ === 'function'
+    ? cajaEntregadoTotalDia_(fecha, item.sede)
+    : null;
+  const diferenciaCajaFuerte = entregadoAdministrador === null
+    ? null
+    : Number((actual.caja_fuerte - entregadoAdministrador).toFixed(2));
+
   const cambios = Object.assign({
     fecha: fecha,
     sede: item.sede,
     usuario: usuario.nombre,
     timestamp: new Date(),
-    observacion: item.observacion || ''
+    observacion: item.observacion || '',
+    entregado_administrador_total: entregadoAdministrador === null ? '' : entregadoAdministrador,
+    diferencia_caja_fuerte: diferenciaCajaFuerte === null ? '' : diferenciaCajaFuerte
   }, actual, { cuadre: cuadre });
   // observacion es texto libre — sin esto, algo como "=HYPERLINK(...)" se guardaba tal cual y
   // Sheets lo interpretaba como fórmula al abrir la hoja (auditoría de seguridad, jul 2026).
@@ -104,8 +118,26 @@ function baseCajaGuardar_(item, usuario) {
     auditoriaRegistrar_(usuario, 'base_caja_no_cuadra', 'BaseCaja', fecha + '|' + item.sede, null,
       { cuadre: cuadre }, item.sede, cuadre > 0 ? 'Sobrante en caja' : 'Faltante en caja');
   }
+  // Mismo criterio que arriba, pero cruzando contra lo que Caja_Turno/Caja_Movimientos dicen que se
+  // entregó de verdad — pedido real: "se entrega dinero al administrador y se guarda en caja
+  // fuerte pero todo debe de coincidir". null = ese día no hay datos de Caja_Turno con qué cruzar
+  // (turno anterior a que existiera ese módulo, o nunca se abrió caja ese día en esa sede).
+  if (diferenciaCajaFuerte !== null && diferenciaCajaFuerte !== 0) {
+    auditoriaRegistrar_(usuario, 'base_caja_fuerte_no_coincide', 'BaseCaja', fecha + '|' + item.sede, null,
+      { caja_fuerte: actual.caja_fuerte, entregado_administrador_total: entregadoAdministrador, diferencia: diferenciaCajaFuerte },
+      item.sede,
+      diferenciaCajaFuerte > 0
+        ? 'Caja Fuerte registrada tiene más de lo que se entregó al administrador'
+        : 'Caja Fuerte registrada tiene menos de lo que se entregó al administrador');
+  }
 
-  return { ok: true, cuadre: cuadre, actualizado: filaExistente !== -1 };
+  return {
+    ok: true,
+    cuadre: cuadre,
+    actualizado: filaExistente !== -1,
+    entregado_administrador_total: entregadoAdministrador,
+    diferencia_caja_fuerte: diferenciaCajaFuerte
+  };
 }
 
 function baseCajaListar_(filtros, usuario) {

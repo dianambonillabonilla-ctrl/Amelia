@@ -48,6 +48,7 @@
         <div class="campo">
           <label>Caja Fuerte (depositado hoy)</label>
           <input type="number" step="1" id="bc-caja-fuerte" value="0">
+          <p id="bc-entregado-real" style="margin:4px 0 0; font-size:.78rem; color:var(--grey)"></p>
         </div>
         <div class="campo">
           <label>Efectivo Caja Menor (contado)</label>
@@ -96,17 +97,25 @@ function formatoMoneda_(n) {
 // Precarga "Efectivo ingresa FUDO" con lo que el sistema ya calcula como efectivo esperado según
 // FUDO (turno_resumen_cierre) — solo si el campo está vacío, para no pisar algo que ya se digitó
 // a mano. Si el registro de ese día ya existe, se precarga todo el formulario con lo guardado.
+//
+// "Caja Fuerte" también se compara contra caja_entregado_total_dia (Caja_Turno/Caja_Movimientos:
+// entregas registradas durante el turno + lo entregado al cerrar) — antes este campo se digitaba
+// a ciegas, sin nada que avisara si no coincidía con lo que de verdad se entregó al administrador.
+let entregadoRealActual = null;
 async function cargarDia_() {
   const fecha = document.getElementById('bc-fecha').value;
   const sede = document.getElementById('bc-sede').value;
   document.getElementById('bc-resultado').style.display = 'none';
   document.getElementById('bc-anterior').textContent = '';
+  document.getElementById('bc-entregado-real').textContent = '';
   if (!fecha || !sede) return;
 
-  const [dataDia, dataResumen] = await Promise.all([
+  const [dataDia, dataResumen, dataEntregado] = await Promise.all([
     llamar('base_caja_dia', { fecha, sede }),
-    llamar('turno_resumen_cierre', { fecha, sede })
+    llamar('turno_resumen_cierre', { fecha, sede }),
+    llamar('caja_entregado_total_dia', { fecha, sede })
   ]);
+  const entregadoReal = dataEntregado.ok ? Number(dataEntregado.total) || 0 : null;
 
   if (dataDia.ok && dataDia.item) {
     const it = dataDia.item;
@@ -116,18 +125,31 @@ async function cargarDia_() {
     document.getElementById('bc-pendiente').value = it.pendiente;
     document.getElementById('bc-gastos').value = it.gastos;
     document.getElementById('bc-observacion').value = it.observacion || '';
-    mostrarResultado_(Number(it.cuadre));
+    mostrarResultado_(Number(it.cuadre), it.diferencia_caja_fuerte === '' ? null : Number(it.diferencia_caja_fuerte));
   } else {
-    document.getElementById('bc-caja-fuerte').value = 0;
+    // Sin registro todavía: se sugiere directamente lo que Caja_Turno dice que se entregó, en vez
+    // de arrancar en 0 y dejar que alguien lo escriba de memoria.
+    document.getElementById('bc-caja-fuerte').value = entregadoReal || 0;
     document.getElementById('bc-pendiente').value = 0;
     document.getElementById('bc-gastos').value = 0;
     document.getElementById('bc-observacion').value = '';
     document.getElementById('bc-caja-menor').value = '';
     if (dataResumen.ok) document.getElementById('bc-efectivo-fudo').value = dataResumen.pagos_efectivo_esperado || 0;
   }
+  entregadoRealActual = entregadoReal;
+  mostrarEntregadoReal_();
 }
 
-function mostrarResultado_(cuadre) {
+function mostrarEntregadoReal_() {
+  const el = document.getElementById('bc-entregado-real');
+  if (entregadoRealActual === null) { el.textContent = ''; return; }
+  const tipeado = Number(document.getElementById('bc-caja-fuerte').value) || 0;
+  el.textContent = 'Según Caja_Turno se entregó ' + formatoMoneda_(entregadoRealActual) + ' ese día.';
+  el.style.color = Math.abs(tipeado - entregadoRealActual) < 0.5 ? 'var(--green)' : 'var(--red)';
+}
+document.getElementById('bc-caja-fuerte').addEventListener('input', mostrarEntregadoReal_);
+
+function mostrarResultado_(cuadre, diferenciaCajaFuerte) {
   const el = document.getElementById('bc-resultado');
   el.style.display = 'block';
   if (cuadre === 0) {
@@ -136,6 +158,9 @@ function mostrarResultado_(cuadre) {
   } else {
     el.style.color = 'var(--red)';
     el.textContent = (cuadre > 0 ? '⚠ Sobra ' : '⚠ Falta ') + formatoMoneda_(Math.abs(cuadre)) + ' — no cuadra, revisa antes de dejarlo así.';
+  }
+  if (diferenciaCajaFuerte !== undefined && diferenciaCajaFuerte !== null && diferenciaCajaFuerte !== 0) {
+    el.textContent += ' · ⚠ La Caja Fuerte digitada no coincide con lo entregado según Caja_Turno (diferencia ' + formatoMoneda_(diferenciaCajaFuerte) + ').';
   }
 }
 
@@ -157,7 +182,7 @@ document.getElementById('btn-guardar-caja').addEventListener('click', conBotonPr
   const data = await llamar('base_caja_guardar', { item });
   if (!data.ok) { alert(data.error); return; }
   avisarGuardado('Cuadre de caja guardado.');
-  mostrarResultado_(Number(data.cuadre));
+  mostrarResultado_(Number(data.cuadre), data.diferencia_caja_fuerte);
   cargarHistorial_();
 }));
 
