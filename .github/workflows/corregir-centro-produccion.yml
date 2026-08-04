@@ -1,0 +1,97 @@
+name: Corregir Centro de Produccion
+on:
+  push:
+    paths:
+      - '.github/workflows/corregir-centro-produccion.yml'
+permissions:
+  contents: write
+jobs:
+  corregir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar reglas correctas de CP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('assets/abastecimiento.js')
+          s = p.read_text(encoding='utf-8')
+
+          s = s.replace("  ventas: {},\n  fecha: ''", "  ventas: {},\n  produccionCP: {},\n  fecha: ''")
+
+          marcador = "function construirPlatosBackend(respuesta) {"
+          idx = s.find(marcador)
+          if idx < 0:
+              raise SystemExit('No se encontró construirPlatosBackend')
+          fin = s.find("\n}\n\nfunction construirRecetas", idx)
+          if fin < 0:
+              raise SystemExit('No se encontró fin de construirPlatosBackend')
+          insertar = '''\n\nfunction construirProduccionCP(respuesta) {
+  const out = {};
+  filas(respuesta).forEach(row => {
+    if (row.sede !== 'Centro de Producción') return;
+    const nombre = row.item || row.producto || '';
+    if (!nombre) return;
+    const clave = canonical(nombre);
+    const cantidad = Number(row.cantidad);
+    if (!Number.isFinite(cantidad)) return;
+    if (!out[clave]) {
+      out[clave] = { nombre, cantidad: 0, unidad: row.unidad || '', banderaSinDato: false };
+    }
+    if (out[clave].unidad && row.unidad && normalizarTexto(out[clave].unidad) !== normalizarTexto(row.unidad)) return;
+    out[clave].cantidad += cantidad;
+    if (!ESTADO.productos[clave]) {
+      ESTADO.productos[clave] = { nombre, categoria: 'Producción', unidad: row.unidad || '' };
+    }
+  });
+  return out;
+}'''
+          s = s[:fin+2] + insertar + s[fin+2:]
+
+          viejo_stock = "function stockDe(sede, clave) {\n  return ESTADO.stock[sede]?.[canonical(clave)] || null;\n}"
+          nuevo_stock = "function stockDe(sede, clave) {\n  const k = canonical(clave);\n  if (sede === 'Centro de Producción') return ESTADO.produccionCP[k] || null;\n  return ESTADO.stock[sede]?.[k] || null;\n}"
+          if viejo_stock not in s:
+              raise SystemExit('No se encontró stockDe')
+          s = s.replace(viejo_stock, nuevo_stock)
+
+          viejo_alcance = "function alcancePlato(platoClave, sede) {\n  const backend = ESTADO.platosBackend[sede]?.[platoClave];\n  const directo = calculoDirecto(platoClave, sede);"
+          nuevo_alcance = "function alcancePlato(platoClave, sede) {\n  const directo = calculoDirecto(platoClave, sede);\n  if (sede === 'Centro de Producción') {\n    return {\n      platos: directo?.platos ?? 0,\n      fuente: 'Producción registrada en CP',\n      limitante: directo?.limitante || '',\n      corregido: false,\n      backend: 0\n    };\n  }\n  const backend = ESTADO.platosBackend[sede]?.[platoClave];"
+          if viejo_alcance not in s:
+              raise SystemExit('No se encontró alcancePlato')
+          s = s.replace(viejo_alcance, nuevo_alcance)
+
+          viejo_filtro = "  let claves = Object.keys(ESTADO.productos).filter(clave => !categoria || ESTADO.productos[clave].categoria === categoria);\n  claves = claves.filter(clave => {\n    if (mostrarSinConteo) return true;\n    if (sede === 'Empresa') return SEDES.some(s => stockDe(s, clave)?.cantidad !== null && stockDe(s, clave)?.cantidad !== undefined);\n    const item = stockDe(sede, clave);\n    return item?.cantidad !== null && item?.cantidad !== undefined;\n  });"
+          nuevo_filtro = "  let claves = Object.keys(ESTADO.productos).filter(clave => !categoria || ESTADO.productos[clave].categoria === categoria);\n  claves = claves.filter(clave => {\n    if (sede === 'Centro de Producción') return Boolean(ESTADO.produccionCP[canonical(clave)]);\n    if (sede === 'Empresa') {\n      const existeCP = Boolean(ESTADO.produccionCP[canonical(clave)]);\n      const existeSede = ['San Antonio', 'Capri'].some(s => stockDe(s, clave)?.cantidad !== null && stockDe(s, clave)?.cantidad !== undefined);\n      return mostrarSinConteo ? (existeCP || existeSede || Boolean(ESTADO.productos[clave])) : (existeCP || existeSede);\n    }\n    if (mostrarSinConteo) return true;\n    const item = stockDe(sede, clave);\n    return item?.cantidad !== null && item?.cantidad !== undefined;\n  });"
+          if viejo_filtro not in s:
+              raise SystemExit('No se encontró filtro de inventario')
+          s = s.replace(viejo_filtro, nuevo_filtro)
+
+          s = s.replace("head.innerHTML = '<tr><th>Producto</th><th>Centro de Producción</th><th>San Antonio</th><th>Capri</th><th>Total confiable</th></tr>';", "head.innerHTML = '<tr><th>Producto</th><th>Producción registrada en CP</th><th>San Antonio</th><th>Capri</th><th>Total sedes (sin CP)</th></tr>';")
+          s = s.replace("const validos = items.filter(item => item && item.cantidad !== null && !aceiteFreidoraInconsistente(clave, item));", "const validos = items.slice(1).filter(item => item && item.cantidad !== null && !aceiteFreidoraInconsistente(clave, item));")
+
+          viejo_promise = "const [cp, sa, capri, catalogoRes, recetasRes, ventasRes] = await Promise.all([\n      llamar('disponible_hoy', { fecha, sede: 'Centro de Producción' }),\n      llamar('disponible_hoy', { fecha, sede: 'San Antonio' }),\n      llamar('disponible_hoy', { fecha, sede: 'Capri' }),\n      llamar('catalogo_listar', { filtros: {} }),\n      llamar('recetas_listar', { filtros: {} }),\n      llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: fecha } })\n    ]);"
+          nuevo_promise = "const [cp, sa, capri, catalogoRes, recetasRes, ventasRes, produccionCPRes] = await Promise.all([\n      llamar('disponible_hoy', { fecha, sede: 'Centro de Producción' }),\n      llamar('disponible_hoy', { fecha, sede: 'San Antonio' }),\n      llamar('disponible_hoy', { fecha, sede: 'Capri' }),\n      llamar('catalogo_listar', { filtros: {} }),\n      llamar('recetas_listar', { filtros: {} }),\n      llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: fecha } }),\n      llamar('produccion_listar', { fecha })\n    ]);"
+          if viejo_promise not in s:
+              raise SystemExit('No se encontró Promise.all')
+          s = s.replace(viejo_promise, nuevo_promise)
+
+          s = s.replace("    construirRecetas(filas(recetasRes));\n    construirVentas", "    construirRecetas(filas(recetasRes));\n    ESTADO.produccionCP = construirProduccionCP(produccionCPRes);\n    construirVentas")
+          s = s.replace("    if (!ventasRes?.ok) fallas.push('Ventas FUDO');", "    if (!ventasRes?.ok) fallas.push('Ventas FUDO');\n    if (!produccionCPRes?.ok) fallas.push('Producción de CP');")
+          s = s.replace("estado.textContent = 'Análisis actualizado correctamente.';", "estado.textContent = 'Análisis actualizado. Centro de Producción muestra únicamente lo registrado en Producción para la fecha elegida.';")
+
+          p.write_text(s, encoding='utf-8')
+
+          h = Path('abastecimiento.html')
+          html = h.read_text(encoding='utf-8')
+          html = html.replace('<p class="nota"><strong>Aceite Freidora</strong> y <strong>Aceite Girasol</strong> permanecen separados. Las preparaciones ya contadas se usan antes de proyectar producción desde materia prima.</p>', '<p class="nota"><strong>Centro de Producción</strong> muestra únicamente los ítems registrados en Producción para la fecha elegida. No incluye bebidas, aseo ni materias primas de las sedes. <strong>Aceite Freidora</strong> y <strong>Aceite Girasol</strong> permanecen separados.</p>')
+          h.write_text(html, encoding='utf-8')
+          PY
+          node --check assets/abastecimiento.js
+      - name: Guardar corrección
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/abastecimiento.js abastecimiento.html
+          git commit -m "Corregir Centro de Producción como producción registrada" || exit 0
+          git push
