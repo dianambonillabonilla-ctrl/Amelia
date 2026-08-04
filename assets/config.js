@@ -310,6 +310,7 @@ function conBotonProtegido(boton, fn) {
 // según el rol de quien entró, marcando como activo el enlace de la página actual.
 const MENU_PRINCIPAL = [
   { href: 'dashboard.html', texto: 'Disponible Hoy' },
+  { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
   { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
   { href: 'conteo.html', texto: 'Registrar conteo', soloRol: ['Administrador', 'Encargado', 'Cocina'] },
   { href: 'historial-conteos.html', texto: 'Histórico de conteos', soloRol: ['Administrador', 'Encargado', 'Lectura'] },
