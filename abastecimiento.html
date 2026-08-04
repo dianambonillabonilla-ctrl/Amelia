@@ -146,7 +146,16 @@ async function cargar(){
     ]);
     if(!res||!res.ok)throw new Error((res&&res.error)||'No respondió Disponible Hoy');
     const stock=obtenerStock(res).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
-    document.getElementById('stock').innerHTML=stock.length?stock.map(x=>`<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${numero(x.cantidad)}</td><td>${escapeHtml(x.unidad)}</td><td>Registrado</td></tr>`).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
+    document.getElementById('stock').innerHTML=stock.length?stock.map(x=>{
+      // aUnidadBase_ (apps-script/Recetas.gs) siempre convierte litros a ml (×1000) antes de guardar
+      // el conteo, así que un producto líquido llega aquí en "ml" — un total de cientos de miles de
+      // ml (cientos de litros) para UN producto de un solo local casi siempre es una unidad mal
+      // elegida al contar (ej. seleccionar "l" con la cantidad pensada en ml). Se avisa, no se
+      // corrige solo: la corrección real requiere revisar/editar el conteo original.
+      const sospechoso=x.unidad==='ml'&&x.cantidad>=100000;
+      const advertencia=sospechoso?` <span class="sin-dato" title="Revisa si esta cantidad se registró en la unidad correcta (litros vs. mililitros).">⚠️ revisar unidad</span>`:'';
+      return `<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${numero(x.cantidad)}${advertencia}</td><td>${escapeHtml(x.unidad)}</td><td>Registrado</td></tr>`;
+    }).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
     const ventas28=itemsRes&&itemsRes.ok?ventasPorProducto28_(itemsRes.data):{};
     const platos=obtenerPlatos(res)
       .map(x=>Object.assign({},x,{_ventas28:ventas28[normalizarTexto(x.producto||'')]||0}))
