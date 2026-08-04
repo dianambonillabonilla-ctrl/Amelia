@@ -17,7 +17,7 @@
 </div></div><button class="btn dorado" id="cargar">Actualizar</button></div><div id="estado" class="estado aviso">Cargando…</div><p class="nota">Versión estable de recuperación. Aceite Freidora y Aceite Girasol se mantienen separados.</p></section>
 <div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button><button class="tab" data-p="comprar">Qué comprar<span id="comprar-contador"></span></button></div>
 <section id="inventario" class="panel activo"><div class="card"><h2>Inventario registrado</h2><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Estado</th></tr></thead><tbody id="stock"></tbody></table></div></div></section>
-<section id="alcance" class="panel"><div class="card"><h2>Alcance informado por el backend</h2><div class="tabla-wrap"><table><thead><tr><th>Plato</th><th>Preparaciones posibles</th><th>Limitante</th></tr></thead><tbody id="platos"></tbody></table></div></div></section>
+<section id="alcance" class="panel"><div class="card"><h2>Alcance informado por el backend</h2><p class="nota">Ordenado por ventas FUDO de los últimos 28 días (de mayor a menor) — lo que más se vende primero.</p><div class="tabla-wrap"><table><thead><tr><th>Plato</th><th>Ventas (28 días)</th><th>Preparaciones posibles</th><th>Limitante</th></tr></thead><tbody id="platos"></tbody></table></div></div></section>
 <section id="comprar" class="panel"><div class="card"><h2>Qué comprar</h2><p class="nota">Productos agotados o por debajo del "Stock mínimo" configurado en el Catálogo, comparados contra el inventario actual de esta sede.</p><p id="comprar-vacio" class="nota" style="display:none"></p><p id="comprar-pendientes" class="nota" style="display:none"></p><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Actual</th><th>Mínimo</th><th>Estado</th><th></th></tr></thead><tbody id="comprar-cuerpo"></tbody></table></div></div></section>
 </div></main></div>
 <script src="assets/config.js"></script>
@@ -112,34 +112,60 @@ function pintarComprar_(stockIngredientes,catalogoCompleto,sede,gestionesAbierta
   });
 }
 
+// "yyyy-MM-dd" menos N días, en fecha local (mismo criterio que frecuenciasDelDia_/fechaLocalHoy_
+// en assets/config.js) — evita el corrimiento de día que da restar milisegundos en UTC.
+function fechaMenosDias_(fechaStr,dias){
+  const [y,m,d]=fechaStr.split('-').map(Number);
+  const f=new Date(y,m-1,d);
+  f.setDate(f.getDate()-dias);
+  return f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-'+String(f.getDate()).padStart(2,'0');
+}
+// Cuántas unidades se vendieron de cada producto en Fudo_Items (ya normalizado/deduplicado por
+// FudoVentas.gs), sin contar ventas canceladas — para ordenar "Para cuánto alcanza" por lo que más
+// rota primero, no alfabéticamente.
+function ventasPorProducto28_(items){
+  const totales={};
+  (items||[]).forEach(it=>{
+    if(it.cancelada)return;
+    const clave=normalizarTexto(it.producto);
+    totales[clave]=(totales[clave]||0)+(Number(it.cantidad)||0);
+  });
+  return totales;
+}
+
 async function cargar(){
   estado.className='estado aviso';estado.textContent='Consultando la sede…';
   const sede=sedeActual;
   try{
-    const [res,catalogoRes,gestionesRes]=await Promise.all([
+    const fechaDesde28=fechaMenosDias_(fecha.value,28);
+    const [res,catalogoRes,gestionesRes,itemsRes]=await Promise.all([
       llamar('disponible_hoy',{fecha:fecha.value,sede}),
       llamar('catalogo_listar'),
-      llamar('gestiones_listar',{filtro:{estado:'abiertas',sede:sede==='Ambas'?undefined:sede}})
+      llamar('gestiones_listar',{filtro:{estado:'abiertas',sede:sede==='Ambas'?undefined:sede}}),
+      llamar('fudo_items_listar',{filtros:{fecha_desde:fechaDesde28,fecha_hasta:fecha.value,sede}})
     ]);
     if(!res||!res.ok)throw new Error((res&&res.error)||'No respondió Disponible Hoy');
     const stock=obtenerStock(res).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
     document.getElementById('stock').innerHTML=stock.length?stock.map(x=>`<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${numero(x.cantidad)}</td><td>${escapeHtml(x.unidad)}</td><td>Registrado</td></tr>`).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
-    const platos=obtenerPlatos(res).sort((a,b)=>String(a.producto||'').localeCompare(String(b.producto||''),'es'));
+    const ventas28=itemsRes&&itemsRes.ok?ventasPorProducto28_(itemsRes.data):{};
+    const platos=obtenerPlatos(res)
+      .map(x=>Object.assign({},x,{_ventas28:ventas28[normalizarTexto(x.producto||'')]||0}))
+      .sort((a,b)=>b._ventas28-a._ventas28||String(a.producto||'').localeCompare(String(b.producto||''),'es'));
     // limitante_sin_dato: el insumo que topa la producción NUNCA se ha contado (dato faltante), no
     // "confirmado en cero" — sin esta distinción, un 0 por falta de conteo se ve igual que un 0
     // real de agotamiento. Ver limitanteRaiz_/cadenaLimitante_ en DisponibleHoy.gs.
     document.getElementById('platos').innerHTML=platos.length?platos.map(x=>{
       const limitanteTexto=escapeHtml(x.cadena_limitante||x.ingrediente_limitante||'—');
       const limitante=x.limitante_sin_dato?`⚠️ falta contar: ${limitanteTexto}`:limitanteTexto;
-      return `<tr><td><strong>${escapeHtml(x.producto||'')}</strong></td><td>${x.preparaciones_posibles===null?'—':numero(x.preparaciones_posibles)}</td><td>${limitante}</td></tr>`;
-    }).join(''):'<tr><td colspan="3">No se recibieron platos.</td></tr>';
+      return `<tr><td><strong>${escapeHtml(x.producto||'')}</strong></td><td>${numero(x._ventas28)}</td><td>${x.preparaciones_posibles===null?'—':numero(x.preparaciones_posibles)}</td><td>${limitante}</td></tr>`;
+    }).join(''):'<tr><td colspan="4">No se recibieron platos.</td></tr>';
     const catalogo=catalogoRes&&catalogoRes.ok?catalogoRes.data:[];
     const gestionesAbiertas=gestionesRes&&gestionesRes.ok?gestionesRes.data:[];
     pintarComprar_(res.data.stock_ingredientes||{},catalogo,sede,gestionesAbiertas);
     estado.className='estado ok';estado.textContent='Datos cargados correctamente.';
   }catch(e){
     document.getElementById('stock').innerHTML='<tr><td colspan="4">No fue posible cargar.</td></tr>';
-    document.getElementById('platos').innerHTML='<tr><td colspan="3">No fue posible cargar.</td></tr>';
+    document.getElementById('platos').innerHTML='<tr><td colspan="4">No fue posible cargar.</td></tr>';
     document.getElementById('comprar-cuerpo').innerHTML='<tr><td colspan="6">No fue posible cargar.</td></tr>';
     estado.className='estado error';estado.textContent='Error: '+(e.message||e);
   }
