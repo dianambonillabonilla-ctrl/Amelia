@@ -1,44 +1,67 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dilana OS — Inventario y abastecimiento</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-.wrap{max-width:1200px;margin:auto}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.tab{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.tab.activo{background:var(--navy);color:#fff}.panel{display:none}.panel.activo{display:block}.estado{padding:12px;border-radius:10px;margin:12px 0}.ok{background:#edf8f1;color:var(--green)}.error{background:#fff0f0;color:var(--red)}.aviso{background:#fff8e8;color:#7b5700}.tabla-wrap{overflow:auto}.tabla-wrap table{min-width:850px}.filtros{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.campo{min-width:180px}.campo label{display:block;font-size:.75rem;color:var(--grey);margin-bottom:5px}.campo input,.campo select{width:100%}.sin-dato{color:var(--grey);font-style:italic}.nota{font-size:.82rem;color:var(--grey)}
+.wrap{max-width:1280px;margin:auto}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.tab-principal,.tab-sede{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.tab-principal.activo,.tab-sede.activo{background:var(--navy);color:#fff}.panel-principal{display:none}.panel-principal.activo{display:block}.filtros{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.campo{min-width:170px}.campo label{display:block;font-size:.73rem;color:var(--grey);margin-bottom:5px}.campo input,.campo select{width:100%}.tabla-wrap{overflow:auto}.tabla-wrap table{min-width:900px}.estado{padding:12px;border-radius:10px;margin:12px 0}.estado.ok{background:#edf8f1;color:var(--green)}.estado.aviso{background:#fff8e8;color:#7b5700}.estado.error{background:#fff0f0;color:var(--red)}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.kpi{border:1px solid var(--line);border-radius:11px;padding:13px;background:#fbfaf6}.kpi span{display:block;color:var(--grey);font-size:.68rem;text-transform:uppercase}.kpi strong{display:block;color:var(--navy);font-size:1.15rem;margin-top:5px}.detalle{display:block;font-size:.7rem;color:var(--grey);margin-top:3px}.sin-dato{color:var(--grey);font-style:italic}.alerta{color:var(--red);font-weight:700}.nota{font-size:.82rem;color:var(--grey)}.badge{display:inline-block;border-radius:999px;padding:4px 8px;font-size:.72rem;font-weight:700}.bien{background:#edf8f1;color:var(--green)}.medio{background:#fff8e8;color:#7b5700}.critico{background:#fff0f0;color:var(--red)}.corregida{background:#f1f8ff}.paso{border:1px solid var(--line);border-left:5px solid var(--navy);border-radius:10px;padding:14px;margin:12px 0}.paso h3{margin-top:0}.paso h3 span{display:inline-flex;width:25px;height:25px;border-radius:50%;align-items:center;justify-content:center;background:var(--navy);color:#fff;margin-right:6px}@media(max-width:780px){.kpis{grid-template-columns:1fr 1fr}}
 </style>
 </head>
-<body><div class="shell"><aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside><main class="main"><div class="topbar"><h1>Inventario y abastecimiento</h1><div id="barra-usuario"></div></div><div class="wrap">
-<section class="card"><div class="filtros"><div class="campo"><label>Fecha</label><input type="date" id="fecha"></div><div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option><option>Centro de Producción</option></select></div><button class="btn dorado" id="cargar">Actualizar</button></div><div id="estado" class="estado aviso">Cargando…</div><p class="nota">Versión estable de recuperación. Aceite Freidora y Aceite Girasol se mantienen separados.</p></section>
-<div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button></div>
-<section id="inventario" class="panel activo"><div class="card"><h2>Inventario registrado</h2><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Estado</th></tr></thead><tbody id="stock"></tbody></table></div></div></section>
-<section id="alcance" class="panel"><div class="card"><h2>Alcance informado por el backend</h2><div class="tabla-wrap"><table><thead><tr><th>Plato</th><th>Preparaciones posibles</th><th>Limitante</th></tr></thead><tbody id="platos"></tbody></table></div></div></section>
-</div></main></div>
+<body>
+<div class="shell">
+  <aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside>
+  <main class="main">
+    <div class="topbar"><h1>Inventario y abastecimiento</h1><div id="barra-usuario"></div></div>
+    <div class="wrap">
+      <section class="card">
+        <div class="filtros">
+          <div class="campo"><label>Fecha de corte</label><input type="date" id="fecha"></div>
+          <div class="campo"><label>Categoría</label><select id="categoria"><option value="">Todas</option></select></div>
+          <div class="campo"><label>Días de seguridad</label><input type="number" id="seguridad" min="0" step="0.5" value="1"></div>
+          <div class="campo"><label><input type="checkbox" id="mostrar-sin-conteo"> Mostrar productos sin conteo</label></div>
+          <button class="btn dorado" id="actualizar">Actualizar análisis</button>
+        </div>
+        <p class="nota"><strong>Aceite Freidora</strong> y <strong>Aceite Girasol</strong> permanecen separados. Las preparaciones ya contadas se usan antes de proyectar producción desde materia prima.</p>
+        <div id="estado" class="estado aviso">Cargando…</div>
+      </section>
+
+      <div class="tabs">
+        <button class="tab-principal activo" data-panel="inventario">Qué tengo</button>
+        <button class="tab-principal" data-panel="alcance">Para cuánto alcanza</button>
+        <button class="tab-principal" data-panel="acciones">Qué debo hacer</button>
+      </div>
+
+      <section id="panel-inventario" class="panel-principal activo">
+        <div class="card">
+          <h2>Inventario por sede</h2>
+          <div class="tabs">
+            <button class="tab-sede activo" data-sede="Empresa">Empresa</button>
+            <button class="tab-sede" data-sede="Centro de Producción">Centro de Producción</button>
+            <button class="tab-sede" data-sede="San Antonio">San Antonio</button>
+            <button class="tab-sede" data-sede="Capri">Capri</button>
+          </div>
+          <div id="inventario-resumen" class="kpis"></div>
+          <div class="tabla-wrap"><table><thead id="inventario-head"></thead><tbody id="inventario-body"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="panel-alcance" class="panel-principal">
+        <div class="card">
+          <h2>Alcance ordenado por ventas FUDO</h2>
+          <p class="nota">El más vendido aparece primero. Una fila azul indica que el inventario preparado corrigió un cero del backend.</p>
+          <div class="tabla-wrap"><table><thead><tr><th>#</th><th>Plato</th><th>Vendidos 28 días</th><th>Promedio diario</th><th>San Antonio</th><th>Capri</th><th>Total sedes</th><th>CP</th><th>Cobertura</th><th>Explicación</th></tr></thead><tbody id="alcance-body"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="panel-acciones" class="panel-principal">
+        <div class="card"><h2>Plan de abastecimiento en orden</h2><div id="acciones"></div></div>
+      </section>
+    </div>
+  </main>
+</div>
 <script src="assets/config.js"></script>
-<script>
-Sesion.requerir();requerirRol_(['Administrador','Encargado','Lectura']);montarBarraUsuario();
-const fecha=document.getElementById('fecha');fecha.value=fechaLocalHoy_();
-const estado=document.getElementById('estado');
-function numero(v){return Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:2});}
-function obtenerStock(data){const raw=data&&data.data&&data.data.stock_ingredientes?data.data.stock_ingredientes:{};return Object.keys(raw).map(k=>{const r=raw[k]||{};return{nombre:r.producto||k,cantidad:r.cantidad,unidad:r.unidad||'',sinDato:!!r.sin_dato};});}
-function obtenerPlatos(data){return data&&data.data&&Array.isArray(data.data.platos)?data.data.platos:[];}
-async function cargar(){
-  estado.className='estado aviso';estado.textContent='Consultando la sede…';
-  try{
-    const res=await llamar('disponible_hoy',{fecha:fecha.value,sede:document.getElementById('sede').value});
-    if(!res||!res.ok)throw new Error((res&&res.error)||'No respondió Disponible Hoy');
-    const stock=obtenerStock(res).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
-    document.getElementById('stock').innerHTML=stock.length?stock.map(x=>`<tr><td><strong>${escapeHtml(x.nombre)}</strong></td><td>${x.sinDato?'<span class="sin-dato">Sin dato</span>':numero(x.cantidad)}</td><td>${escapeHtml(x.unidad)}</td><td>${x.sinDato?'Falta conteo':'Registrado'}</td></tr>`).join(''):'<tr><td colspan="4">No se recibió inventario.</td></tr>';
-    const platos=obtenerPlatos(res).sort((a,b)=>String(a.producto||'').localeCompare(String(b.producto||''),'es'));
-    document.getElementById('platos').innerHTML=platos.length?platos.map(x=>`<tr><td><strong>${escapeHtml(x.producto||'')}</strong></td><td>${x.preparaciones_posibles===null?'—':numero(x.preparaciones_posibles)}</td><td>${escapeHtml(x.cadena_limitante||x.ingrediente_limitante||'—')}</td></tr>`).join(''):'<tr><td colspan="3">No se recibieron platos.</td></tr>';
-    estado.className='estado ok';estado.textContent='Datos cargados correctamente.';
-  }catch(e){
-    document.getElementById('stock').innerHTML='<tr><td colspan="4">No fue posible cargar.</td></tr>';
-    document.getElementById('platos').innerHTML='<tr><td colspan="3">No fue posible cargar.</td></tr>';
-    estado.className='estado error';estado.textContent='Error: '+(e.message||e);
-  }
-}
-document.getElementById('cargar').addEventListener('click',cargar);
-document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('activo'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('activo'));b.classList.add('activo');document.getElementById(b.dataset.p).classList.add('activo');}));
-cargar();
-</script></body></html>
+<script src="assets/abastecimiento.js"></script>
+</body>
+</html>
