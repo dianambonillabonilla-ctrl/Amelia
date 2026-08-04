@@ -2,68 +2,68 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Inicio de turno</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dilana OS — Inicio</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-  .inicio-wrap{max-width:920px;margin:0 auto}.bienvenida{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:stretch}.perfil-card{background:linear-gradient(135deg,#0B1F3A,#16305A);color:white;border-radius:14px;padding:26px}.perfil-card h1,.perfil-card h2{color:white}.perfil-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.perfil-dato{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px}.perfil-dato span{display:block;font-size:.72rem;opacity:.72;text-transform:uppercase}.perfil-dato strong{display:block;margin-top:5px}.paso{border-left:4px solid var(--gold)}.recordatorio-rappi{background:#FFF3E6;border:2px solid #E47911;border-radius:12px;padding:16px;font-weight:700;color:#8B4100}.acciones-inicio{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.accion{display:block;text-decoration:none;background:white;border:1px solid var(--line);border-radius:12px;padding:18px}.accion strong{display:block;color:var(--navy);margin-bottom:5px}.accion span{font-size:.82rem;color:var(--grey)}.accion.principal{border-color:var(--gold);background:#FFFDF7}.oculto{display:none!important}.admin-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.admin-kpi{border:1px solid var(--line);border-radius:10px;padding:13px;background:#FBFAF6}.admin-kpi span{display:block;color:var(--grey);font-size:.7rem;text-transform:uppercase}.admin-kpi strong{display:block;color:var(--navy);font-size:1.2rem;margin-top:5px}.admin-sedes{display:grid;grid-template-columns:1fr 1fr;gap:12px}.admin-sede{border:1px solid var(--line);border-radius:10px;padding:14px}.admin-sede-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:9px}.admin-detalle{font-size:.82rem;line-height:1.65;color:var(--grey)}.admin-detalle strong{color:var(--navy)}@media(max-width:760px){.bienvenida{grid-template-columns:1fr}.perfil-datos{grid-template-columns:1fr}.admin-kpis{grid-template-columns:1fr 1fr}.admin-sedes{grid-template-columns:1fr}}
+.inicio-wrap{max-width:1180px;margin:0 auto}.hero{background:linear-gradient(135deg,#0B1F3A,#17355f);color:#fff;border-radius:16px;padding:24px;margin-bottom:18px}.hero h1{color:#fff;margin:0 0 6px}.hero p{margin:0;opacity:.82}.grupos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.grupo{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}.grupo h2{margin:0 0 6px;font-size:1.05rem;color:var(--navy)}.grupo>p{margin:0 0 14px;color:var(--grey);font-size:.82rem}.acciones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.accion{display:block;text-decoration:none;border:1px solid var(--line);border-radius:11px;padding:13px;background:#fbfaf6;transition:.15s}.accion:hover{transform:translateY(-1px);border-color:var(--gold)}.accion strong{display:block;color:var(--navy);font-size:.9rem}.accion span{display:block;color:var(--grey);font-size:.75rem;margin-top:4px}.accion.principal{background:#fff9e8;border-color:var(--gold)}.accion.principal strong{font-size:1rem}.grupo.hoy{border-top:5px solid var(--gold)}.grupo.operacion{border-top:5px solid #2b6cb0}.grupo.control{border-top:5px solid #2f855a}.grupo.config{border-top:5px solid #805ad5}.nota{margin-top:18px;padding:12px;border-radius:10px;background:#f5f7fa;color:var(--grey);font-size:.8rem}@media(max-width:850px){.grupos{grid-template-columns:1fr}.acciones{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="shell">
   <aside class="sidebar">
     <div class="marca">Dilana <span>OS</span></div>
-    <nav id="menu-nav"></nav>
+    <nav>
+      <a href="inicio.html" class="activo">Inicio</a>
+      <a href="abastecimiento.html">Inventario y abastecimiento</a>
+      <a href="caja.html" data-solo-rol="Administrador,Encargado,Cocina">Caja</a>
+      <a href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina">Registrar conteo</a>
+      <a href="producir.html" data-solo-rol="Administrador,Encargado,Cocina">Producción</a>
+      <a href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina">Traslados</a>
+      <a href="compras.html" data-solo-rol="Administrador,Encargado,Cocina">Compras</a>
+      <a href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura">Conciliación</a>
+      <a href="diagnostico.html" data-solo-rol="Administrador">Diagnóstico</a>
+    </nav>
   </aside>
   <main class="main">
-    <div class="topbar"><h1>Inicio de turno</h1><div id="barra-usuario"></div></div>
+    <div class="topbar"><h1>Inicio</h1><div id="barra-usuario"></div></div>
     <div class="inicio-wrap">
-      <div class="bienvenida">
-        <section class="perfil-card">
-          <p style="margin:0 0 6px;opacity:.8">Bienvenida/o</p>
-          <h1 id="nombre-usuario">—</h1>
-          <p style="margin:0;opacity:.82">Antes de empezar, confirma qué función tendrás hoy.</p>
-          <div class="perfil-datos">
-            <div class="perfil-dato"><span>Rol del sistema</span><strong id="rol-usuario">—</strong></div>
-            <div class="perfil-dato"><span>Sede</span><strong id="sede-usuario">—</strong></div>
-            <div class="perfil-dato"><span>Función de hoy</span><strong id="sector-actual">Sin elegir</strong></div>
-          </div>
-        </section>
-        <section class="card paso" style="margin:0">
-          <h2>1. Mi función de hoy</h2>
-          <p style="color:var(--grey);font-size:.86rem">Elige la función que realmente vas a realizar en este turno.</p>
-          <div class="campo"><label for="sector">Función / sector</label><select id="sector"></select></div>
-          <button class="btn dorado" id="btn-confirmar-sector">Confirmar función</button>
-        </section>
+      <section class="hero">
+        <h1 id="saludo">Bienvenida</h1>
+        <p>Todo el sistema organizado por tareas: qué revisar hoy, qué registrar, qué controlar y qué configurar.</p>
+      </section>
+      <div class="grupos">
+        <section class="grupo hoy"><h2>1. Hoy</h2><p>Lo primero que debes revisar para tomar decisiones.</p><div class="acciones">
+          <a class="accion principal" href="abastecimiento.html"><strong>Inventario y abastecimiento</strong><span>Qué tengo, para cuánto alcanza y qué debo hacer.</span></a>
+          <a class="accion" href="caja.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Caja</strong><span>Apertura, movimientos y cierre del turno.</span></a>
+        </div></section>
+        <section class="grupo operacion"><h2>2. Registrar operación</h2><p>Movimientos que cambian el inventario.</p><div class="acciones">
+          <a class="accion" href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Conteo de inventario</strong><span>Registrar existencias reales por sede y ubicación.</span></a>
+          <a class="accion" href="producir.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Producción</strong><span>Registrar productos preparados y rendimientos.</span></a>
+          <a class="accion" href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Traslados</strong><span>Mover inventario entre Centro de Producción y sedes.</span></a>
+          <a class="accion" href="compras.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Compras</strong><span>Ingresar materias primas, bebidas, aseo y empaques.</span></a>
+          <a class="accion" href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Novedades</strong><span>Reportar faltantes, daños o situaciones del turno.</span></a>
+        </div></section>
+        <section class="grupo control"><h2>3. Control y revisión</h2><p>Consultar diferencias, ubicaciones e históricos.</p><div class="acciones">
+          <a class="accion" href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Conciliación</strong><span>Comparar inventario esperado contra inventario físico.</span></a>
+          <a class="accion" href="inventario-ubicacion.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Inventario por ubicación</strong><span>Ver qué hay en cada cocina, nevera o bodega.</span></a>
+          <a class="accion" href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Libro de inventario</strong><span>Movimientos y saldo de cada producto.</span></a>
+          <a class="accion" href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de conteos</strong><span>Revisar conteos anteriores.</span></a>
+          <a class="accion" href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de producción</strong><span>Consultar producciones registradas.</span></a>
+          <a class="accion" href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de mermas</strong><span>Consultar pérdidas y desperdicios.</span></a>
+          <a class="accion" href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de conciliación</strong><span>Resultados de conciliaciones anteriores.</span></a>
+          <a class="accion" href="historial-cierres-turno.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de cierres</strong><span>Revisar cierres de caja y turno.</span></a>
+        </div></section>
+        <section class="grupo config" data-solo-rol="Administrador"><h2>4. Configuración</h2><p>Información maestra que permite que los cálculos funcionen.</p><div class="acciones">
+          <a class="accion" href="recetas.html"><strong>Recetas</strong><span>Platos, subrecetas, cantidades y rendimientos.</span></a>
+          <a class="accion" href="catalogo.html"><strong>Catálogo de productos</strong><span>Materias primas, bebidas, aseo, empaques y nombres FUDO.</span></a>
+          <a class="accion" href="fudo.html"><strong>Panel FUDO</strong><span>Estado de ventas e integración.</span></a>
+          <a class="accion" href="importar.html"><strong>Importar de FUDO</strong><span>Cargar ventas para consumo y cobertura.</span></a>
+          <a class="accion" href="diagnostico.html"><strong>Diagnóstico</strong><span>Detectar nombres duplicados, faltantes y errores.</span></a>
+          <a class="accion" href="usuarios.html"><strong>Usuarios</strong><span>Permisos, sedes y roles.</span></a>
+        </div></section>
       </div>
-
-      <section id="resumen-admin" class="card oculto" style="margin-top:20px;border-top:4px solid var(--navy)">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-          <div>
-            <h2 style="margin:0">Resumen administrativo de hoy</h2>
-            <p style="margin:4px 0 0;color:var(--grey);font-size:.84rem">San Antonio y Capri en una sola vista. Solo incluye ventas cerradas en FUDO.</p>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <a class="btn fantasma" href="auditoria-chanchostilla.html" style="text-decoration:none">Auditar Chanchostilla</a>
-            <a class="btn fantasma" href="conciliacion-chanchostilla.html" style="text-decoration:none">Conciliar Chanchostilla</a>
-            <button class="btn fantasma" id="btn-actualizar-admin" type="button">Sincronizar FUDO</button>
-          </div>
-        </div>
-        <p id="admin-sync-estado" style="display:none;margin:10px 0 0;font-size:.82rem"></p>
-        <div id="admin-contenido"><p class="vacio">Cargando información administrativa…</p></div>
-      </section>
-
-      <section id="bloque-caja" class="card oculto" style="margin-top:20px;border:2px solid var(--gold)">
-        <h2>2. Abrir mi caja</h2>
-        <div class="recordatorio-rappi">⚠ No olvides prender Rappi al iniciar el turno.</div>
-        <p>Tu función de hoy es <strong>Caja</strong>. Debes abrir la caja y contar la base antes de empezar a recibir pagos.</p>
-        <a class="btn dorado" href="caja.html" style="display:inline-block;text-decoration:none">Ir a abrir caja</a>
-      </section>
-
-      <section id="bloque-acciones" class="card oculto" style="margin-top:20px">
-        <h2>Lo que necesitas hoy</h2>
-        <div class="acciones-inicio" id="acciones-sector"></div>
-      </section>
+      <div class="nota">Las auditorías específicas de Chanchostilla ya no aparecen como módulos principales. Se consultan dentro de Conciliación cuando corresponda.</div>
     </div>
   </main>
 </div>
@@ -71,174 +71,9 @@
 <script>
 Sesion.requerir();
 montarBarraUsuario();
-const usuario = Sesion.usuario();
-const hoy = fechaLocalHoy_();
-const selectSector = document.getElementById('sector');
-const permitidos = String(usuario.sectores_permitidos || '').split(',').map(s=>s.trim()).filter(Boolean);
-const opciones = permitidos.length ? permitidos : (usuario.rol === 'Administrador' || usuario.rol === 'Encargado' ? SECTORES_DISPONIBLES : []);
-
-document.getElementById('nombre-usuario').textContent = usuario.nombre || usuario.usuario || 'Usuario';
-document.getElementById('rol-usuario').textContent = usuario.rol || '—';
-document.getElementById('sede-usuario').textContent = usuario.sede || '—';
-selectSector.innerHTML = '<option value="">Elige tu función</option>' + opciones.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
-
-const dineroAdmin = valor => Number(valor || 0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
-
-function estadoCajaAdmin(data){
-  if(!data || !data.ok) return {texto:'Sin información',clase:'aviso'};
-  if(!data.apertura) return {texto:'Sin abrir',clase:'aviso'};
-  if(data.apertura.estado === 'Cerrado') return {texto:'Cerrada',clase:'ok'};
-  return {texto:'Abierta',clase:'ok'};
-}
-
-function fechaSyncAdmin(valor){
-  if(!valor) return 'Sin sincronización registrada';
-  const d = new Date(valor);
-  return isNaN(d.getTime()) ? String(valor) : d.toLocaleString('es-CO');
-}
-
-function fechaDesplazadaAdmin(fecha,dias){
-  const partes=String(fecha).split('-').map(Number);
-  const d=new Date(partes[0],partes[1]-1,partes[2]+dias,12,0,0);
-  const p=n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-}
-
-function tarjetaSedeAdmin(item){
-  if(!item.resumen || !item.resumen.ok){
-    return `<div class="admin-sede"><strong>${escapeHtml(item.sede)}</strong><p style="color:var(--red);font-size:.82rem">No se pudo cargar esta sede.</p></div>`;
-  }
-  const caja = estadoCajaAdmin(item.caja);
-  const r = item.resumen;
-  return `<div class="admin-sede">
-    <div class="admin-sede-head"><strong>${escapeHtml(item.sede)}</strong><span class="badge ${caja.clase}">Caja ${escapeHtml(caja.texto)}</span></div>
-    <div style="font-size:1.25rem;font-weight:800;color:var(--navy);margin-bottom:3px">${dineroAdmin(r.ventas_fudo_total)}</div>
-    <div style="font-size:.76rem;color:var(--grey);margin-bottom:8px">${escapeHtml(r.ventas_fudo_cantidad || 0)} registros de venta</div>
-    <div class="admin-detalle">
-      Pagos: <strong>${dineroAdmin(r.pagos_fudo_total)}</strong><br>
-      Efectivo esperado: <strong>${dineroAdmin(r.pagos_efectivo_esperado)}</strong><br>
-      Descuentos: <strong>${dineroAdmin(r.descuentos_total)}</strong> · Propinas: <strong>${dineroAdmin(r.propinas_total)}</strong><br>
-      Traslados pendientes: <strong>${escapeHtml(r.traslados_pendientes || 0)}</strong> · Producciones: <strong>${escapeHtml(r.producciones_registradas || 0)}</strong>
-    </div>
-  </div>`;
-}
-
-async function cargarResumenAdmin(){
-  const bloque = document.getElementById('resumen-admin');
-  const cont = document.getElementById('admin-contenido');
-  if(usuario.rol !== 'Administrador'){
-    bloque.classList.add('oculto');
-    return;
-  }
-  bloque.classList.remove('oculto');
-  cont.innerHTML = '<p class="vacio">Cargando ventas y cajas…</p>';
-  const sedes = ['San Antonio','Capri'];
-  const respuestas = await Promise.all([
-    llamar('turno_resumen_cierre',{fecha:hoy,sede:sedes[0]}),
-    llamar('turno_resumen_cierre',{fecha:hoy,sede:sedes[1]}),
-    llamar('caja_estado',{fecha:hoy,sede:sedes[0]}),
-    llamar('caja_estado',{fecha:hoy,sede:sedes[1]})
-  ]);
-  const items = [
-    {sede:sedes[0],resumen:respuestas[0],caja:respuestas[2]},
-    {sede:sedes[1],resumen:respuestas[1],caja:respuestas[3]}
-  ];
-  const validos = items.filter(i=>i.resumen && i.resumen.ok);
-  if(!validos.length){
-    cont.innerHTML = '<p style="color:var(--red)">No se pudo cargar la información administrativa. Revisa la conexión y vuelve a actualizar.</p>';
-    return;
-  }
-  const sumar = campo => validos.reduce((acc,i)=>acc+Number(i.resumen[campo]||0),0);
-  const syncVentas = validos.map(i=>i.resumen.sync_ventas_en).filter(Boolean).sort().pop();
-  const syncPagos = validos.map(i=>i.resumen.sync_pagos_en).filter(Boolean).sort().pop();
-  cont.innerHTML = `
-    <div class="admin-kpis">
-      <div class="admin-kpi"><span>Ventas del día</span><strong>${dineroAdmin(sumar('ventas_fudo_total'))}</strong></div>
-      <div class="admin-kpi"><span>Registros de venta</span><strong>${escapeHtml(sumar('ventas_fudo_cantidad'))}</strong></div>
-      <div class="admin-kpi"><span>Pagos registrados</span><strong>${dineroAdmin(sumar('pagos_fudo_total'))}</strong></div>
-      <div class="admin-kpi"><span>Efectivo esperado</span><strong>${dineroAdmin(sumar('pagos_efectivo_esperado'))}</strong></div>
-    </div>
-    <div class="admin-sedes">${items.map(tarjetaSedeAdmin).join('')}</div>
-    <p style="margin:12px 0 0;color:var(--grey);font-size:.75rem">Última sincronización: ventas ${escapeHtml(fechaSyncAdmin(syncVentas))} · pagos ${escapeHtml(fechaSyncAdmin(syncPagos))}. Los valores corresponden a lo sincronizado desde FUDO.</p>`;
-}
-
-async function sincronizarYRecargarAdmin(){
-  const estado=document.getElementById('admin-sync-estado');
-  estado.style.display='block';
-  estado.style.color='var(--grey)';
-  estado.textContent='Sincronizando ventas cerradas y pagos con FUDO…';
-
-  const fechaDesde=fechaDesplazadaAdmin(hoy,-1);
-  const fechaHasta=fechaDesplazadaAdmin(hoy,1);
-  const ventas=await llamar('fudo_api_sincronizar_ventas',{fecha_desde:fechaDesde,fecha_hasta:fechaHasta});
-  if(!ventas.ok){
-    estado.style.color='var(--red)';
-    estado.textContent='No se pudieron sincronizar las ventas: '+(ventas.error||'error desconocido');
-    return;
-  }
-  const pagos=await llamar('fudo_api_sincronizar_pagos',{fecha_desde:fechaDesde,fecha_hasta:fechaHasta});
-  if(!pagos.ok){
-    estado.style.color='var(--red)';
-    estado.textContent='Las ventas se sincronizaron, pero fallaron los pagos: '+(pagos.error||'error desconocido');
-    await cargarResumenAdmin();
-    return;
-  }
-  await cargarResumenAdmin();
-  estado.style.color='var(--green)';
-  estado.textContent=`FUDO actualizado: ${ventas.importados||0} línea(s) nueva(s) de venta y ${pagos.importados||0} pago(s) nuevo(s). Las mesas en curso aparecerán cuando se cierren.`;
-}
-
-function accionesParaSector(sector){
-  const mapa = {
-    'Cocina': [
-      ['Registrar producción','producir.html','Anota lo preparado durante el turno.'],
-      ['Registrar conteo','conteo.html','Cuenta los productos asignados a Cocina.'],
-      ['Traslados','traslados.html','Envía o recibe productos entre sedes.']
-    ],
-    'Café': [
-      ['Registrar conteo','conteo.html','Cuenta bebidas, café, postres y productos asignados.'],
-      ['Traslados','traslados.html','Confirma lo recibido o enviado.'],
-      ['Reportar novedad','gestiones.html','Deja constancia de un faltante o problema.']
-    ],
-    'Bebidas': [
-      ['Registrar conteo','conteo.html','Cuenta bebidas y productos asignados.'],
-      ['Traslados','traslados.html','Confirma lo recibido o enviado.'],
-      ['Reportar novedad','gestiones.html','Deja constancia de un faltante o problema.']
-    ],
-    'Caja': [
-      ['Abrir y manejar caja','caja.html','Base, Rappi, movimientos de efectivo y cierre.'],
-      ['Registrar conteo','conteo.html','Completa los productos asignados a Caja.'],
-      ['Traslados','traslados.html','Confirma entregas pendientes.']
-    ]
-  };
-  return mapa[sector] || [['Disponible Hoy','dashboard.html','Revisa pendientes y existencias del día.']];
-}
-
-function pintarSector(sector){
-  document.getElementById('sector-actual').textContent = sector || 'Sin elegir';
-  document.getElementById('bloque-caja').classList.toggle('oculto', sector !== 'Caja');
-  document.getElementById('nav-caja').classList.toggle('oculto', sector !== 'Caja' && usuario.rol !== 'Administrador' && usuario.rol !== 'Encargado');
-  document.getElementById('bloque-acciones').classList.toggle('oculto', !sector);
-  document.getElementById('acciones-sector').innerHTML = accionesParaSector(sector).map(a=>`<a class="accion ${a[1]==='caja.html'?'principal':''}" href="${a[1]}"><strong>${escapeHtml(a[0])}</strong><span>${escapeHtml(a[2])}</span></a>`).join('');
-}
-
-async function cargarSector(){
-  const data = await llamar('turno_sector_hoy',{fecha:hoy});
-  if(data.ok && data.sector){ selectSector.value=data.sector; pintarSector(data.sector); }
-}
-
-document.getElementById('btn-confirmar-sector').addEventListener('click', conBotonProtegido(document.getElementById('btn-confirmar-sector'), async()=>{
-  const sector=selectSector.value;
-  if(!sector){alert('Elige tu función de hoy.');return;}
-  const data=await llamar('turno_sector_elegir',{fecha:hoy,sector});
-  if(!data.ok){alert(data.error);return;}
-  pintarSector(sector);
-  avisarGuardado('Función de hoy confirmada: '+sector+'.');
-}));
-
-document.getElementById('btn-actualizar-admin').addEventListener('click',conBotonProtegido(document.getElementById('btn-actualizar-admin'),sincronizarYRecargarAdmin));
-cargarSector();
-cargarResumenAdmin();
+const u=Sesion.usuario();
+if(u){document.getElementById('saludo').textContent='Bienvenida, '+(u.nombre||'');}
+ocultarNavSegunRol_(u?u.rol:null);
 </script>
 </body>
 </html>
