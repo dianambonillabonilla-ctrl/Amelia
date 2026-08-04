@@ -15,10 +15,11 @@
 <button type="button" class="tab" data-sede="San Antonio">San Antonio</button>
 <button type="button" class="tab" data-sede="Capri">Capri</button>
 </div></div><button class="btn dorado" id="cargar">Actualizar</button></div><div id="estado" class="estado aviso">Cargando…</div><p class="nota">Versión estable de recuperación. Aceite Freidora y Aceite Girasol se mantienen separados.</p></section>
-<div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button><button class="tab" data-p="comprar">Qué comprar<span id="comprar-contador"></span></button></div>
+<div class="tabs"><button class="tab activo" data-p="inventario">Inventario de la sede</button><button class="tab" data-p="alcance">Para cuánto alcanza</button><button class="tab" data-p="comprar">Qué comprar<span id="comprar-contador"></span></button><button class="tab" data-p="conteohoy">Conteo de hoy<span id="conteohoy-contador"></span></button></div>
 <section id="inventario" class="panel activo"><div class="card"><h2>Inventario registrado</h2><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Estado</th></tr></thead><tbody id="stock"></tbody></table></div></div></section>
 <section id="alcance" class="panel"><div class="card"><h2>Alcance informado por el backend</h2><p class="nota">Ordenado por ventas FUDO de los últimos 28 días (de mayor a menor) — lo que más se vende primero.</p><div class="tabla-wrap"><table><thead><tr><th>Plato</th><th>Ventas (28 días)</th><th>Preparaciones posibles</th><th>Limitante</th></tr></thead><tbody id="platos"></tbody></table></div></div></section>
 <section id="comprar" class="panel"><div class="card"><h2>Qué comprar</h2><p class="nota">Productos agotados o por debajo del "Stock mínimo" configurado en el Catálogo, comparados contra el inventario actual de esta sede. "Qué hacer" prioriza siempre trasladar antes que producir, y producir antes que comprar — nunca se recomienda comprar un plato terminado.</p><p id="comprar-vacio" class="nota" style="display:none"></p><p id="comprar-pendientes" class="nota" style="display:none"></p><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Actual</th><th>Mínimo</th><th>Estado</th><th>Qué hacer</th><th></th></tr></thead><tbody id="comprar-cuerpo"></tbody></table></div></div></section>
+<section id="conteohoy" class="panel"><div class="card"><h2>Conteo de hoy — todos los productos</h2><p class="nota">Absolutamente todos los productos del catálogo, contados hoy o no, en la unidad con la que se contaron. Primero lo pendiente y obligatorio hoy, luego lo ya contado, al final lo que no toca contar hoy.</p><div class="campo" style="max-width:320px"><label>Buscar producto</label><input type="text" id="conteohoy-buscar" placeholder="Filtrar por nombre…"></div><p id="conteohoy-aviso" class="nota" style="display:none"></p><div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>¿Toca hoy?</th><th>Estado</th><th>Conteo(s) de hoy</th></tr></thead><tbody id="conteohoy-cuerpo"></tbody></table></div></div></section>
 </div></main></div>
 <script src="assets/config.js"></script>
 <script>
@@ -143,6 +144,84 @@ function pintarComprar_(stockIngredientes,catalogoCompleto,sede,gestionesAbierta
   });
 }
 
+// ABSOLUTAMENTE todos los productos del catálogo, no solo los "obligatorios hoy": para cada uno,
+// si ya se contó hoy (en cualquier punto/sede, en la unidad que sea) y si tocaba contarlo hoy según
+// su frecuencia (frecuenciasDelDia_, mismo criterio que conteo.html). Pendiente-y-obligatorio
+// primero, luego lo ya contado, al final lo que no toca hoy.
+function evaluarConteoHoy_(catalogo,conteosHoy,sede,fechaStr){
+  const frecuenciasHoy=frecuenciasDelDia_(fechaStr);
+  const porProducto={};
+  (conteosHoy||[]).forEach(c=>{
+    const clave=normalizarTexto(c.producto);
+    if(!porProducto[clave])porProducto[clave]=[];
+    porProducto[clave].push(c);
+  });
+  return catalogo.map(p=>{
+    const clave=normalizarTexto(p.nombre_estandar);
+    const conteos=porProducto[clave]||[];
+    const aplicaSede=sede==='Ambas'||!p.sede||p.sede==='Ambas'||p.sede===sede;
+    const tocaHoy=aplicaSede&&!!p.frecuencia_conteo&&frecuenciasHoy.includes(p.frecuencia_conteo);
+    const contado=conteos.length>0;
+    const prioridad=(tocaHoy&&!contado)?0:(contado?1:2);
+    return{
+      nombre:p.nombre_estandar,
+      categoria:partesCategoria(p.categoria).principal||'Sin categoría',
+      tocaHoy:tocaHoy,
+      contado:contado,
+      conteos:conteos,
+      prioridad:prioridad
+    };
+  }).sort((a,b)=>a.prioridad-b.prioridad||a.nombre.localeCompare(b.nombre,'es'));
+}
+
+let conteoHoyFilasActuales_=[];
+function renderizarFilasConteoHoy_(){
+  const cuerpo=document.getElementById('conteohoy-cuerpo');
+  const texto=normalizarTexto(document.getElementById('conteohoy-buscar').value);
+  const filtradas=texto?conteoHoyFilasActuales_.filter(f=>normalizarTexto(f.nombre).indexOf(texto)!==-1):conteoHoyFilasActuales_;
+  if(!filtradas.length){
+    cuerpo.innerHTML='<tr><td colspan="5">Ningún producto coincide con la búsqueda.</td></tr>';
+    return;
+  }
+  cuerpo.innerHTML=filtradas.map(f=>{
+    const estado=f.contado?'Contado':(f.tocaHoy?'Pendiente':'No aplica hoy');
+    const estadoAttr=f.contado?'':(f.tocaHoy?' style="color:var(--red); font-weight:700"':' class="sin-dato"');
+    const detalle=f.conteos.length
+      ?f.conteos.map(c=>{
+          const punto=escapeHtml(c.punto_conteo||'—');
+          const sedeTxt=c.sede?' · '+escapeHtml(c.sede):'';
+          return punto+sedeTxt+': '+numero(c.cantidad)+' '+escapeHtml(c.unidad||'');
+        }).join('<br>')
+      :'—';
+    return `<tr><td><strong>${escapeHtml(f.nombre)}</strong></td><td>${escapeHtml(f.categoria)}</td><td>${f.tocaHoy?'Sí':'No'}</td><td${estadoAttr}>${estado}</td><td>${detalle}</td></tr>`;
+  }).join('');
+}
+document.getElementById('conteohoy-buscar').addEventListener('input',renderizarFilasConteoHoy_);
+
+function pintarConteoHoy_(catalogo,conteosHoy,sede,fechaStr,permitido){
+  const contador=document.getElementById('conteohoy-contador');
+  const aviso=document.getElementById('conteohoy-aviso');
+  if(!permitido){
+    conteoHoyFilasActuales_=[];
+    document.getElementById('conteohoy-cuerpo').innerHTML='';
+    aviso.style.display='block';
+    aviso.textContent='Tu rol no tiene permiso para ver los conteos registrados (requiere Administrador, Encargado o Cocina).';
+    contador.textContent='';
+    return;
+  }
+  aviso.style.display='none';
+  if(!catalogo.length){
+    conteoHoyFilasActuales_=[];
+    document.getElementById('conteohoy-cuerpo').innerHTML='<tr><td colspan="5">Todavía no hay productos en el catálogo.</td></tr>';
+    contador.textContent='';
+    return;
+  }
+  conteoHoyFilasActuales_=evaluarConteoHoy_(catalogo,conteosHoy,sede,fechaStr);
+  const pendientes=conteoHoyFilasActuales_.filter(f=>f.prioridad===0).length;
+  contador.textContent=pendientes?' ('+pendientes+' pendiente'+(pendientes===1?'':'s')+')':'';
+  renderizarFilasConteoHoy_();
+}
+
 // "yyyy-MM-dd" menos N días, en fecha local (mismo criterio que frecuenciasDelDia_/fechaLocalHoy_
 // en assets/config.js) — evita el corrimiento de día que da restar milisegundos en UTC.
 function fechaMenosDias_(fechaStr,dias){
@@ -169,11 +248,14 @@ async function cargar(){
   const sede=sedeActual;
   try{
     const fechaDesde28=fechaMenosDias_(fecha.value,28);
-    const [res,catalogoRes,gestionesRes,itemsRes]=await Promise.all([
+    const [res,catalogoRes,gestionesRes,itemsRes,conteoHoyRes]=await Promise.all([
       llamar('disponible_hoy',{fecha:fecha.value,sede}),
       llamar('catalogo_listar'),
       llamar('gestiones_listar',{filtro:{estado:'abiertas',sede:sede==='Ambas'?undefined:sede}}),
-      llamar('fudo_items_listar',{filtros:{fecha_desde:fechaDesde28,fecha_hasta:fecha.value,sede}})
+      llamar('fudo_items_listar',{filtros:{fecha_desde:fechaDesde28,fecha_hasta:fecha.value,sede}}),
+      // conteo_listar exige rol Administrador/Encargado/Cocina (no Lectura) — se resuelve aparte,
+      // sin bloquear el resto de la pantalla si el rol actual no tiene acceso.
+      llamar('conteo_listar',{fecha:fecha.value,sede:sede==='Ambas'?undefined:sede})
     ]);
     if(!res||!res.ok)throw new Error((res&&res.error)||'No respondió Disponible Hoy');
     const stock=obtenerStock(res).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
@@ -213,11 +295,13 @@ async function cargar(){
       });
     }
     pintarComprar_(res.data.stock_ingredientes||{},catalogo,sede,gestionesAbiertas,stockOtrasSedes,res.data.disponibilidad_receta||{});
+    pintarConteoHoy_(catalogo,conteoHoyRes&&conteoHoyRes.ok?conteoHoyRes.data:[],sede,fecha.value,!!(conteoHoyRes&&conteoHoyRes.ok));
     estado.className='estado ok';estado.textContent='Datos cargados correctamente.';
   }catch(e){
     document.getElementById('stock').innerHTML='<tr><td colspan="4">No fue posible cargar.</td></tr>';
     document.getElementById('platos').innerHTML='<tr><td colspan="4">No fue posible cargar.</td></tr>';
     document.getElementById('comprar-cuerpo').innerHTML='<tr><td colspan="7">No fue posible cargar.</td></tr>';
+    document.getElementById('conteohoy-cuerpo').innerHTML='<tr><td colspan="5">No fue posible cargar.</td></tr>';
     estado.className='estado error';estado.textContent='Error: '+(e.message||e);
   }
 }
