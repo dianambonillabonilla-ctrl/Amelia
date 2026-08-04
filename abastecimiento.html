@@ -31,6 +31,7 @@
         <button class="tab-principal activo" data-panel="inventario">Qué tengo</button>
         <button class="tab-principal" data-panel="alcance">Para cuánto alcanza</button>
         <button class="tab-principal" data-panel="acciones">Qué debo hacer</button>
+        <button class="tab-principal" data-panel="conteohoy">Conteo de hoy</button>
       </div>
 
       <section id="panel-inventario" class="panel-principal activo">
@@ -57,6 +58,17 @@
 
       <section id="panel-acciones" class="panel-principal">
         <div class="card"><h2>Plan de abastecimiento en orden</h2><div id="acciones"></div></div>
+      </section>
+
+      <section id="panel-conteohoy" class="panel-principal">
+        <div class="card">
+          <h2>Conteo de hoy — todos los productos</h2>
+          <p class="nota">Absolutamente todos los productos del catálogo, contados hoy o no, en la unidad con la que se contaron. Primero lo pendiente y obligatorio hoy, luego lo ya contado, al final lo que no toca hoy.</p>
+          <div class="campo" style="max-width:320px"><label>Buscar producto</label><input type="text" id="conteohoy-buscar"></div>
+          <p id="conteohoy-aviso" class="nota" style="display:none"></p>
+          <div id="conteohoy-resumen" class="kpis"></div>
+          <div class="tabla-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>¿Toca hoy?</th><th>Estado</th><th>Conteo(s) de hoy</th></tr></thead><tbody id="conteohoy-body"></tbody></table></div>
+        </div>
       </section>
     </div>
   </main>
