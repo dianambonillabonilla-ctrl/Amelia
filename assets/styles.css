@@ -195,3 +195,93 @@ label { font-size: .8rem; color: var(--grey); display: block; margin-bottom: 4px
 
 .sidebar .nav-grupo{margin:18px 12px 6px;padding-top:10px;border-top:1px solid rgba(255,255,255,.15);font-size:.64rem;letter-spacing:.09em;font-weight:800;color:rgba(255,255,255,.55)}
 .sidebar .nav-grupo:first-child{margin-top:4px;border-top:0;padding-top:0}
+
+/* Utilidad genérica para ocultar secciones completas (antes vivía solo dentro del <style> de
+   caja.html; no choca con nada más porque nunca se había reutilizado su nombre). */
+.oculto { display: none !important; }
+
+/* Modo incrustado: cuando una página de histórico se abre dentro del <iframe> de historiales.html
+   (con ?embed=1 en la URL) no debe repetir su propio sidebar y topbar — ya está el de historiales.html
+   por fuera. Fuera de ese iframe (link directo, marcador viejo) la página se ve completa como siempre. */
+body.embebido .sidebar, body.embebido .topbar { display: none; }
+body.embebido .main { padding: 16px; max-width: none; }
+
+/* Tarjetas de acceso rápido de inicio.html cuando son enlaces (<a class="tile">) — sin esto,
+   el navegador subraya el texto y dibuja el color de visitado de <a> encima del estilo de .tile. */
+.tiles a.tile, .tiles a.tile:visited, .tiles a.tile:hover, .tiles a.tile:active, .tiles a.tile:focus, .tiles a.tile * { text-decoration: none !important; }
+.tiles a.tile { display: block; color: var(--ink); transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.tiles a.tile:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(11,31,58,.08); border-color: var(--gold); }
+.tiles a.tile strong { display: block; color: var(--navy); font-size: .98rem; margin-bottom: 6px; line-height: 1.25; }
+.tiles a.tile span { display: block; color: var(--grey); font-size: .82rem; line-height: 1.45; }
+
+/* ===== Caja (antes en el <style> propio de caja.html) =====
+   Todo bajo .caja-wrap: caja.html reutiliza nombres genéricos como .estado, que en otras
+   páginas (ej. abastecimiento.html) significa algo visualmente distinto — sin el prefijo,
+   una sola hoja de estilos compartida haría que una de las dos páginas se viera mal. */
+.caja-wrap { max-width: 1050px; }
+.caja-wrap .cabecera-caja { background: linear-gradient(135deg,#0B1F3A,#17345f); color: #fff; border-radius: 15px; padding: 22px 25px; margin-bottom: 18px; display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+.caja-wrap .cabecera-caja h2 { color: #fff; margin: 0; }
+.caja-wrap .perfil { opacity: .8; margin: 5px 0 0; }
+.caja-wrap .estado { padding: 8px 14px; border-radius: 999px; font-weight: 700; background: rgba(255,255,255,.14); }
+.caja-wrap .estado.abierta { background: #DDF1E5; color: #22603E; }
+.caja-wrap .estado.cerrada { background: #FBEAEA; color: #8A2F2A; }
+.caja-wrap .dinero-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(165px,1fr)); gap: 12px; }
+.caja-wrap .dinero { border: 1px solid var(--line); background: #FBFAF6; border-radius: 11px; padding: 15px; }
+.caja-wrap .dinero span { display: block; color: var(--grey); font-size: .72rem; text-transform: uppercase; }
+.caja-wrap .dinero strong { display: block; margin-top: 7px; font-size: 1.35rem; color: var(--navy); }
+.caja-wrap .dinero.principal { border-color: var(--green); background: #F2F8F4; }
+.caja-wrap .dinero.principal strong { color: var(--green); }
+.caja-wrap .rappi { background: #FFF3E6; border: 2px solid #E47911; border-radius: 12px; padding: 16px; color: #8B4100; display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+.caja-wrap .rappi-ok { background: #F2F8F4; border: 1px solid var(--green); color: var(--green); border-radius: 12px; padding: 15px; font-weight: 700; }
+.caja-wrap .dos-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.caja-wrap .movimiento { display: grid; grid-template-columns: 170px 120px 1fr 160px; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
+.caja-wrap .positivo { color: var(--green); font-weight: 700; }
+.caja-wrap .negativo { color: var(--red); font-weight: 700; }
+.caja-wrap .diferencia { font-weight: 700; margin: 8px 0; }
+.caja-wrap .advertencia { background: #FFF8E8; border-left: 4px solid var(--gold); padding: 12px; border-radius: 7px; font-size: .85rem; }
+@media (max-width: 780px) {
+  .caja-wrap .dos-columnas { grid-template-columns: 1fr; }
+  .caja-wrap .cabecera-caja { flex-direction: column; align-items: flex-start; }
+  .caja-wrap .movimiento { grid-template-columns: 1fr 1fr; }
+}
+
+/* ===== Inventario y abastecimiento (antes en el <style> propio de abastecimiento.html) =====
+   Todo bajo .wrap por la misma razón que arriba: .campo, .estado, .badge, .tabs y .nota ya
+   significan otra cosa en el resto de la app (formularios, badges de conciliación, pestañas
+   de Disponible Hoy/Históricos), así que sin el prefijo esta página rompería a las demás
+   al compartir una sola hoja de estilos. */
+.wrap { max-width: 1280px; margin: auto; }
+.wrap .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.wrap .tab-principal, .wrap .tab-sede { border: 1px solid var(--line); background: #fff; color: var(--navy); border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+.wrap .tab-principal.activo, .wrap .tab-sede.activo { background: var(--navy); color: #fff; }
+.wrap .panel-principal { display: none; }
+.wrap .panel-principal.activo { display: block; }
+.wrap .filtros { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.wrap .campo { min-width: 170px; }
+.wrap .campo label { display: block; font-size: .73rem; color: var(--grey); margin-bottom: 5px; }
+.wrap .campo input, .wrap .campo select { width: 100%; }
+.wrap .tabla-wrap { overflow: auto; }
+.wrap .tabla-wrap table { min-width: 900px; }
+.wrap .estado { padding: 12px; border-radius: 10px; margin: 12px 0; }
+.wrap .estado.ok { background: #edf8f1; color: var(--green); }
+.wrap .estado.aviso { background: #fff8e8; color: #7b5700; }
+.wrap .estado.error { background: #fff0f0; color: var(--red); }
+.wrap .kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin: 12px 0; }
+.wrap .kpi { border: 1px solid var(--line); border-radius: 11px; padding: 13px; background: #fbfaf6; }
+.wrap .kpi span { display: block; color: var(--grey); font-size: .68rem; text-transform: uppercase; }
+.wrap .kpi strong { display: block; color: var(--navy); font-size: 1.15rem; margin-top: 5px; }
+.wrap .detalle { display: block; font-size: .7rem; color: var(--grey); margin-top: 3px; }
+.wrap .sin-dato { color: var(--grey); font-style: italic; }
+.wrap .alerta { color: var(--red); font-weight: 700; }
+.wrap .nota { font-size: .82rem; color: var(--grey); }
+.wrap .badge { display: inline-block; border-radius: 999px; padding: 4px 8px; font-size: .72rem; font-weight: 700; }
+.wrap .bien { background: #edf8f1; color: var(--green); }
+.wrap .medio { background: #fff8e8; color: #7b5700; }
+.wrap .critico { background: #fff0f0; color: var(--red); }
+.wrap .corregida { background: #f1f8ff; }
+.wrap .paso { border: 1px solid var(--line); border-left: 5px solid var(--navy); border-radius: 10px; padding: 14px; margin: 12px 0; }
+.wrap .paso h3 { margin-top: 0; }
+.wrap .paso h3 span { display: inline-flex; width: 25px; height: 25px; border-radius: 50%; align-items: center; justify-content: center; background: var(--navy); color: #fff; margin-right: 6px; }
+@media (max-width: 780px) {
+  .wrap .kpis { grid-template-columns: 1fr 1fr; }
+}
