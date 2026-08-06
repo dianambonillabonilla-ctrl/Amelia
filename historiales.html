@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dilana OS — Históricos</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="marca">Dilana <span>OS</span></div>
+    <nav id="menu-nav"></nav>
+  </aside>
+  <main class="main">
+    <div class="topbar"><h1>Históricos</h1><div id="barra-usuario"></div></div>
+    <section class="card">
+      <p>Consulta los registros anteriores desde una sola pantalla.</p>
+      <div class="tabs" id="tabs-historicos">
+        <button class="tab-btn activo" data-url="historial-conteos.html">Conteos</button>
+        <button class="tab-btn" data-url="historial-producciones.html">Producción</button>
+        <button class="tab-btn" data-url="historial-mermas.html">Mermas</button>
+        <button class="tab-btn" data-url="historial-conciliacion.html">Conciliación</button>
+        <button class="tab-btn" data-url="historial-cierres-turno.html">Cierres</button>
+      </div>
+      <iframe id="frame-historico" src="historial-conteos.html" title="Históricos" style="width:100%;min-height:72vh;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+    </section>
+  </main>
+</div>
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador','Encargado','Lectura']);
+montarBarraUsuario();
+const frame=document.getElementById('frame-historico');
+document.querySelectorAll('#tabs-historicos .tab-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('#tabs-historicos .tab-btn').forEach(b=>b.classList.remove('activo'));
+    btn.classList.add('activo');
+    frame.src=btn.dataset.url;
+  });
+});
+</script>
+</body>
+</html>
