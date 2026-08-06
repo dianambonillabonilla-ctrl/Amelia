@@ -95,3 +95,5 @@ jobs:
           git add assets/abastecimiento.js abastecimiento.html
           git commit -m "Corregir Centro de Producción como producción registrada" || exit 0
           git push
+
+# ejecución solicitada 2026-08-04

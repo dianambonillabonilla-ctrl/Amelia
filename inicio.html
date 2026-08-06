@@ -6,7 +6,37 @@
 <title>Dilana OS — Inicio</title>
 <link rel="stylesheet" href="assets/styles.css">
 <style>
-.inicio-wrap{max-width:1180px;margin:0 auto}.hero{background:linear-gradient(135deg,#0B1F3A,#17355f);color:#fff;border-radius:16px;padding:24px;margin-bottom:18px}.hero h1{color:#fff;margin:0 0 6px}.hero p{margin:0;opacity:.82}.grupos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.grupo{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}.grupo h2{margin:0 0 6px;font-size:1.05rem;color:var(--navy)}.grupo>p{margin:0 0 14px;color:var(--grey);font-size:.82rem}.acciones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.accion{display:block;text-decoration:none;border:1px solid var(--line);border-radius:11px;padding:13px;background:#fbfaf6;transition:.15s}.accion:hover{transform:translateY(-1px);border-color:var(--gold)}.accion strong{display:block;color:var(--navy);font-size:.9rem}.accion span{display:block;color:var(--grey);font-size:.75rem;margin-top:4px}.accion.principal{background:#fff9e8;border-color:var(--gold)}.accion.principal strong{font-size:1rem}.grupo.hoy{border-top:5px solid var(--gold)}.grupo.operacion{border-top:5px solid #2b6cb0}.grupo.control{border-top:5px solid #2f855a}.grupo.config{border-top:5px solid #805ad5}.nota{margin-top:18px;padding:12px;border-radius:10px;background:#f5f7fa;color:var(--grey);font-size:.8rem}@media(max-width:850px){.grupos{grid-template-columns:1fr}.acciones{grid-template-columns:1fr}}
+  .tiles a.tile,
+  .tiles a.tile:visited,
+  .tiles a.tile:hover,
+  .tiles a.tile:active,
+  .tiles a.tile:focus,
+  .tiles a.tile * {
+    text-decoration: none !important;
+  }
+  .tiles a.tile {
+    display: block;
+    color: var(--ink);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .tiles a.tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(11,31,58,.08);
+    border-color: var(--gold);
+  }
+  .tiles a.tile strong {
+    display: block;
+    color: var(--navy);
+    font-size: .98rem;
+    margin-bottom: 6px;
+    line-height: 1.25;
+  }
+  .tiles a.tile span {
+    display: block;
+    color: var(--grey);
+    font-size: .82rem;
+    line-height: 1.45;
+  }
 </style>
 </head>
 <body>
@@ -17,44 +47,47 @@
   </aside>
   <main class="main">
     <div class="topbar"><h1>Inicio</h1><div id="barra-usuario"></div></div>
-    <div class="inicio-wrap">
-      <section class="hero">
-        <h1 id="saludo">Bienvenida</h1>
-        <p>Todo el sistema organizado por tareas: qué revisar hoy, qué registrar, qué controlar y qué configurar.</p>
-      </section>
-      <div class="grupos">
-        <section class="grupo hoy"><h2>1. Hoy</h2><p>Lo primero que debes revisar para tomar decisiones.</p><div class="acciones">
-          <a class="accion principal" href="abastecimiento.html"><strong>Inventario y abastecimiento</strong><span>Qué tengo, para cuánto alcanza y qué debo comprar.</span></a>
-          <a class="accion" href="caja.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Caja</strong><span>Apertura, movimientos y cierre del turno.</span></a>
-        </div></section>
-        <section class="grupo operacion"><h2>2. Registrar operación</h2><p>Movimientos que cambian el inventario.</p><div class="acciones">
-          <a class="accion" href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Conteo de inventario</strong><span>Registrar existencias reales por sede y ubicación.</span></a>
-          <a class="accion" href="producir.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Producción</strong><span>Registrar productos preparados y rendimientos.</span></a>
-          <a class="accion" href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Traslados</strong><span>Mover inventario entre Centro de Producción y sedes.</span></a>
-          <a class="accion" href="compras.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Compras</strong><span>Ingresar materias primas, bebidas, aseo y empaques.</span></a>
-          <a class="accion" href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Novedades</strong><span>Reportar faltantes, daños o situaciones del turno.</span></a>
-        </div></section>
-        <section class="grupo control"><h2>3. Control y revisión</h2><p>Consultar diferencias, ubicaciones e históricos.</p><div class="acciones">
-          <a class="accion" href="conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Conciliación</strong><span>Comparar inventario esperado contra inventario físico.</span></a>
-          <a class="accion" href="inventario-ubicacion.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Inventario por ubicación</strong><span>Ver qué hay en cada cocina, nevera o bodega.</span></a>
-          <a class="accion" href="libro-inventario.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Libro de inventario</strong><span>Movimientos y saldo de cada producto.</span></a>
-          <a class="accion" href="historial-conteos.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de conteos</strong><span>Revisar conteos anteriores.</span></a>
-          <a class="accion" href="historial-producciones.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de producción</strong><span>Consultar producciones registradas.</span></a>
-          <a class="accion" href="historial-mermas.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de mermas</strong><span>Consultar pérdidas y desperdicios.</span></a>
-          <a class="accion" href="historial-conciliacion.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de conciliación</strong><span>Resultados de conciliaciones anteriores.</span></a>
-          <a class="accion" href="historial-cierres-turno.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Histórico de cierres</strong><span>Revisar cierres de caja y turno.</span></a>
-        </div></section>
-        <section class="grupo config" data-solo-rol="Administrador"><h2>4. Configuración</h2><p>Información maestra que permite que los cálculos funcionen.</p><div class="acciones">
-          <a class="accion" href="recetas.html"><strong>Recetas</strong><span>Platos, subrecetas, cantidades y rendimientos.</span></a>
-          <a class="accion" href="catalogo.html"><strong>Catálogo de productos</strong><span>Materias primas, bebidas, aseo, empaques y nombres FUDO.</span></a>
-          <a class="accion" href="fudo.html"><strong>Panel FUDO</strong><span>Estado de ventas e integración.</span></a>
-          <a class="accion" href="importar.html"><strong>Importar de FUDO</strong><span>Cargar ventas para consumo y cobertura.</span></a>
-          <a class="accion" href="diagnostico.html"><strong>Diagnóstico</strong><span>Detectar nombres duplicados, faltantes y errores.</span></a>
-          <a class="accion" href="usuarios.html"><strong>Usuarios</strong><span>Permisos, sedes y roles.</span></a>
-        </div></section>
+    <section class="card">
+      <h2 id="saludo">Bienvenida</h2>
+      <p>Selecciona una tarea según tu rol. El menú lateral muestra únicamente los módulos que tienes autorizados.</p>
+    </section>
+    <section class="card">
+      <h2>Hoy</h2>
+      <div class="tiles">
+        <a class="tile" href="abastecimiento.html" data-solo-rol="Administrador,Encargado,Lectura"><strong>Inventario y abastecimiento</strong><span>Disponibilidad, cobertura y necesidades.</span></a>
+        <a class="tile" href="caja.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Caja</strong><span>Apertura, movimientos y cierre.</span></a>
       </div>
-      <div class="nota">Las auditorías específicas de Chanchostilla ya no aparecen como módulos principales. Se consultan dentro de Conciliación cuando corresponda.</div>
-    </div>
+    </section>
+    <section class="card">
+      <h2>Registrar operación</h2>
+      <div class="tiles">
+        <a class="tile" href="conteo.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Conteo</strong><span>Registrar existencias reales.</span></a>
+        <a class="tile" href="producir.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Producción</strong><span>Preparaciones y rendimientos.</span></a>
+        <a class="tile" href="traslados.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Traslados</strong><span>Movimientos entre sedes.</span></a>
+        <a class="tile" href="compras.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Compras</strong><span>Ingreso de materias primas e insumos.</span></a>
+        <a class="tile" href="gestiones.html" data-solo-rol="Administrador,Encargado,Cocina"><strong>Novedades</strong><span>Faltantes, daños y situaciones del turno.</span></a>
+      </div>
+    </section>
+    <section class="card" data-solo-rol="Administrador,Encargado,Lectura">
+      <h2>Control y revisión</h2>
+      <div class="tiles">
+        <a class="tile" href="conciliacion.html"><strong>Conciliación</strong><span>Esperado frente a inventario físico.</span></a>
+        <a class="tile" href="inventario-ubicacion.html"><strong>Inventario por ubicación</strong><span>Existencias por cocina, nevera y bodega.</span></a>
+        <a class="tile" href="libro-inventario.html"><strong>Libro de inventario</strong><span>Movimientos y saldos.</span></a>
+        <a class="tile" href="historiales.html"><strong>Históricos</strong><span>Conteos, producción, mermas, conciliaciones y cierres.</span></a>
+      </div>
+    </section>
+    <section class="card" data-solo-rol="Administrador">
+      <h2>Configuración</h2>
+      <div class="tiles">
+        <a class="tile" href="recetas.html"><strong>Recetas</strong><span>Platos, subrecetas y rendimientos.</span></a>
+        <a class="tile" href="catalogo.html"><strong>Catálogo</strong><span>Productos, unidades y nombres FUDO.</span></a>
+        <a class="tile" href="fudo.html"><strong>Panel FUDO</strong><span>Estado de la integración.</span></a>
+        <a class="tile" href="importar.html"><strong>Importar FUDO</strong><span>Cargar ventas al sistema.</span></a>
+        <a class="tile" href="diagnostico.html"><strong>Diagnóstico</strong><span>Duplicados, faltantes y errores.</span></a>
+        <a class="tile" href="usuarios.html"><strong>Usuarios</strong><span>Roles, sedes y permisos.</span></a>
+      </div>
+    </section>
   </main>
 </div>
 <script src="assets/config.js"></script>
@@ -62,7 +95,7 @@
 Sesion.requerir();
 montarBarraUsuario();
 const u=Sesion.usuario();
-if(u){document.getElementById('saludo').textContent='Bienvenida, '+(u.nombre||'');}
+if(u) document.getElementById('saludo').textContent='Bienvenida, '+(u.nombre||'');
 </script>
 </body>
 </html>

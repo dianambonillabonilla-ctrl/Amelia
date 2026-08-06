@@ -47,71 +47,156 @@ function conteoRegistrar_(items, usuario, opciones) {
   const errorValidacion = validarItemsConteo_(items, usuario, opciones);
   if (errorValidacion) return { ok: false, error: errorValidacion };
 
-  // A qué 'turno' pertenece este envío si no lo trae explícito — 'Inicio de turno' si ayer no se
-  // cerró el turno de esta sede y el sector de hoy de quien guarda todavía no completó su conteo
-  // de inicio; 'Cierre de turno' en cualquier otro caso (el comportamiento de siempre). Se calcula
-  // UNA vez por envío (todos los items de un mismo "Guardar conteo" son la misma sesión: misma
-  // fecha/sede) — ver turnoOportuno_ en Turnos.gs. Pedido real: "cuando no se registre conteo de
-  // cierre... debe de pedir conteo de inicio de turno y después el conteo de cierre de turno".
+  // A qué 'turno' pertenece este envío si no lo trae explícito — se calcula una sola vez.
   const turnoPorDefecto = opciones.omitir_obligatorios_del_dia
     ? 'Cierre de turno'
     : turnoOportuno_(items[0].fecha, items[0].sede, usuario);
 
-  // Busca-o-inserta por fila (conteoBuscarFila_ lee, después se decide actualizar o appendRowFromObj_)
-  // bajo un lock de todo el script: sin esto, dos solicitudes simultáneas para la MISMA combinación
-  // de fecha/sede/punto/turno/producto (ej. doble clic, o dos personas guardando el mismo cierre a
-  // la vez) podían no encontrarse la una a la otra todavía y ambas insertar una fila nueva, en vez
-  // de que la segunda corrija la primera (auditoría de seguridad, jul 2026).
+  // Un único lock protege toda la operación. Dentro se leen las hojas una sola vez y se escriben
+  // filas completas, evitando el patrón anterior de releer Conteos_Manuales por cada producto.
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
     return { ok: false, error: 'Otro conteo se está guardando ahora mismo — espera un momento y vuelve a intentarlo.' };
   }
-  let n = 0;
+
+  let registrados = 0;
   let actualizados = 0;
   try {
     const ahora = new Date();
+
+    // Asegurar el catálogo una sola vez por combinación producto/unidad, no una vez por cada fila.
+    const catalogoVistos = {};
+    items.forEach(function (it) {
+      const claveCatalogo = normalizar_(it.producto) + '|' + normalizar_(it.unidad);
+      if (catalogoVistos[claveCatalogo]) return;
+      catalogoVistos[claveCatalogo] = true;
+      catalogoAsegurar_(it.producto, it.unidad);
+    });
+
+    const sh = sheet_(SHEET_NAMES.CONTEOS);
+    const data = sh.getDataRange().getValues();
+    const headers = data.length ? data[0] : [];
+    if (!headers.length) {
+      throw new Error('La hoja Conteos_Manuales no tiene encabezados. Corre configurarHojas().');
+    }
+
+    const col = {};
+    headers.forEach(function (h, i) { col[h] = i; });
+    ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp']
+      .forEach(function (h) {
+        if (col[h] === undefined) {
+          throw new Error('Falta la columna "' + h + '" en Conteos_Manuales. Corre configurarHojas().');
+        }
+      });
+
+    const indiceCatalogo = indiceCatalogo_();
+    const claveFila = function (fecha, sede, punto, turno, producto) {
+      return [
+        formatearFecha_(fecha),
+        sede || '',
+        punto || 'Café',
+        turno || 'Cierre de turno',
+        claveProducto_(producto, indiceCatalogo)
+      ].join('|');
+    };
+
+    // Índice de lo ya guardado: una sola lectura completa para todo el envío.
+    const existentes = {};
+    for (let r = 1; r < data.length; r++) {
+      const fila = data[r];
+      const clave = claveFila(
+        fila[col.fecha],
+        fila[col.sede],
+        fila[col.punto_conteo],
+        fila[col.turno],
+        fila[col.producto]
+      );
+      // Se conserva la fila más reciente si el histórico ya contenía duplicados.
+      existentes[clave] = { filaHoja: r + 1, valores: fila.slice() };
+    }
+
+    const nuevas = [];
+    const actualizaciones = [];
+    const auditorias = [];
+    const pendientesNuevas = {};
+
     items.forEach(function (it) {
       const turnoItem = it.turno || turnoPorDefecto;
-      // neutralizarObjetoFormulas_ (Code.gs): 'producto'/'unidad' son texto libre — sin esto, algo
-      // como "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al abrir
-      // la hoja (auditoría de seguridad, jul 2026). appendRowFromObj_ ya protege el conteo NUEVO;
-      // esto protege también corregir uno existente, que escribe directo con setValue más abajo.
+      const punto = it.punto_conteo || 'Café';
+      const clave = claveFila(it.fecha, it.sede, punto, turnoItem, it.producto);
       const datos = neutralizarObjetoFormulas_({
         id: Utilities.getUuid(),
         fecha: it.fecha,
         sede: it.sede,
-        punto_conteo: it.punto_conteo || 'Café',
+        punto_conteo: punto,
         turno: turnoItem,
         producto: it.producto,
         unidad: it.unidad,
-        cantidad: it.cantidad,
+        cantidad: Number(it.cantidad),
         usuario: usuario.nombre,
         timestamp: ahora
       });
-      catalogoAsegurar_(it.producto, it.unidad);
-      const existente = conteoBuscarFila_(Object.assign({}, it, { turno: turnoItem }));
-      if (existente) {
-        // Antes de sobrescribir, se guarda qué había — sin esto, corregir un conteo borraba todo
-        // rastro del valor original: no quedaba forma de saber si se contó mal desde el principio
-        // o si alguien lo "corrigió" después (auditoría de seguridad, jul 2026).
-        const filaAnterior = existente.sh.getRange(existente.fila, 1, 1, existente.headers.length).getValues()[0];
-        const valorAnterior = {};
-        existente.headers.forEach(function (h, c) { valorAnterior[h] = filaAnterior[c]; });
 
-        existente.headers.forEach(function (h, c) {
+      const existente = existentes[clave];
+      if (existente) {
+        const anterior = existente.valores.slice();
+        const nuevaFila = anterior.slice();
+        headers.forEach(function (h, c) {
           if (h === 'id') return;
-          if (datos[h] !== undefined) existente.sh.getRange(existente.fila, c + 1).setValue(datos[h]);
+          if (datos[h] !== undefined) nuevaFila[c] = datos[h];
         });
+        actualizaciones.push({ filaHoja: existente.filaHoja, valores: nuevaFila });
+        existente.valores = nuevaFila;
         actualizados++;
-        auditoriaRegistrar_(usuario, 'conteo_corregido', 'Conteo', valorAnterior.id,
-          { cantidad: valorAnterior.cantidad, usuario: valorAnterior.usuario, timestamp: valorAnterior.timestamp },
-          { cantidad: datos.cantidad, usuario: datos.usuario, timestamp: datos.timestamp },
-          it.sede);
+        auditorias.push({
+          id: anterior[col.id],
+          sede: it.sede,
+          anterior: {
+            cantidad: anterior[col.cantidad],
+            usuario: anterior[col.usuario],
+            timestamp: anterior[col.timestamp]
+          },
+          nuevo: {
+            cantidad: datos.cantidad,
+            usuario: datos.usuario,
+            timestamp: datos.timestamp
+          }
+        });
+      } else if (pendientesNuevas[clave] !== undefined) {
+        // Doble producto dentro del mismo envío: la última cantidad reemplaza la anterior.
+        const idx = pendientesNuevas[clave];
+        const filaPendiente = nuevas[idx];
+        headers.forEach(function (h, c) {
+          if (h === 'id') return;
+          if (datos[h] !== undefined) filaPendiente[c] = datos[h];
+        });
       } else {
-        appendRowFromObj_(SHEET_NAMES.CONTEOS, datos);
+        const nuevaFila = headers.map(function (h) {
+          return datos[h] !== undefined ? datos[h] : '';
+        });
+        pendientesNuevas[clave] = nuevas.length;
+        nuevas.push(nuevaFila);
+        registrados++;
       }
-      n++;
     });
+
+    // Una escritura por fila corregida, pero la fila completa en una sola llamada.
+    actualizaciones.forEach(function (act) {
+      sh.getRange(act.filaHoja, 1, 1, headers.length).setValues([act.valores]);
+    });
+
+    // Todos los conteos nuevos se agregan en una sola escritura por lotes.
+    if (nuevas.length) {
+      sh.getRange(sh.getLastRow() + 1, 1, nuevas.length, headers.length).setValues(nuevas);
+    }
+
+    // La auditoría se conserva después de completar las escrituras principales.
+    auditorias.forEach(function (a) {
+      auditoriaRegistrar_(usuario, 'conteo_corregido', 'Conteo', a.id,
+        a.anterior, a.nuevo, a.sede);
+    });
+
+    SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();
   }
@@ -122,7 +207,12 @@ function conteoRegistrar_(items, usuario, opciones) {
     Logger.log('revisarAlertas_ falló tras conteo_registrar: ' + err.message);
   }
 
-  return { ok: true, registrados: n, actualizados: actualizados };
+  return {
+    ok: true,
+    registrados: registrados,
+    actualizados: actualizados,
+    procesados: registrados + actualizados
+  };
 }
 
 /**
