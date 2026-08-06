@@ -45,6 +45,27 @@ function neutralizarObjetoFormulasMock_(obj) {
   return limpio;
 }
 
+// Hoja falsa para conteoRegistrar_ (Conteos.gs) desde que guarda por lotes con getRange/setValues
+// en vez de appendRowFromObj_ (jul-ago 2026): sin esto cada mock tenía que reinventar getLastRow/
+// getRange a mano, y algunos se quedaron con una versión vieja que no soporta escribir. `filas`
+// es el array (compartido y mutable) de objetos {header: valor} que hace de "hoja" — dos
+// conteoRegistrar_ sucesivos sobre el mismo array ven lo que el anterior ya guardó, igual que
+// pasaría contra un Google Sheet real.
+function fakeHojaConteos_(headers, filas) {
+  const filaAValores = (obj) => headers.map((h) => (obj[h] !== undefined ? obj[h] : ''));
+  const valoresAFila = (valores) => { const o = {}; headers.forEach((h, i) => { o[h] = valores[i]; }); return o; };
+  return {
+    getDataRange: () => ({ getValues: () => [headers].concat(filas.map(filaAValores)) }),
+    getLastRow: () => filas.length + 1,
+    getRange: (fila, col, numRows, numCols) => ({
+      setValues: (valores) => {
+        valores.forEach((v, i) => { filas[fila - 2 + i] = valoresAFila(v); });
+      }
+    })
+  };
+}
+const CONTEOS_HEADERS_ = ['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp'];
+
 // LockService.getScriptLock() ahora envuelve conteoRegistrar_/trasladoConfirmar_/trasladoObservar_/
 // compraRegistrarFactura_ (auditoría de seguridad, jul 2026: sin esto, dos solicitudes simultáneas
 // podían leer el mismo estado antes de que ninguna escribiera — duplicados/confirmaciones perdidas).
@@ -1420,7 +1441,8 @@ const conteosRegistrarMod = cargar('apps-script/Conteos.gs', {
   catalogoAsegurar_: () => {},
   appendRowFromObj_: (hoja, fila) => { if (hoja === 'conteos') conteosGuardados.push(fila); },
   Utilities: { getUuid: () => 'conteo-id' },
-  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
+  sheet_: () => fakeHojaConteos_(CONTEOS_HEADERS_, conteosGuardados),
+  SpreadsheetApp: { flush: () => {} },
   revisarAlertas_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
@@ -1448,7 +1470,7 @@ const conteosBloqueadoMod = cargar('apps-script/Conteos.gs', {
   catalogoAsegurar_: () => {},
   appendRowFromObj_: () => { throw new Error('no debe llegar a escribir con el lock ocupado'); },
   Utilities: { getUuid: () => 'conteo-id' },
-  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
+  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto', 'unidad', 'cantidad', 'usuario', 'timestamp']] }) }),
   revisarAlertas_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
@@ -1470,9 +1492,15 @@ let filasConteoCorregido = [
 ];
 const hojaConteoCorregido = {
   getDataRange: () => ({ getValues: () => filasConteoCorregido }),
+  getLastRow: () => filasConteoCorregido.length,
   getRange: (r, c, numRows, numCols) => {
     if (numRows !== undefined) {
-      return { getValues: () => [filasConteoCorregido[r - 1].slice(c - 1, c - 1 + numCols)] };
+      return {
+        getValues: () => [filasConteoCorregido[r - 1].slice(c - 1, c - 1 + numCols)],
+        // conteoRegistrar_ ahora escribe la fila corregida completa de una vez (guardado por
+        // lotes) en vez de una celda a la vez — sin esto la corrección nunca llegaba a filasConteoCorregido.
+        setValues: (valores) => { valores.forEach((v, i) => { filasConteoCorregido[r - 1 + i] = v.slice(); }); }
+      };
     }
     return { setValue: (v) => { filasConteoCorregido[r - 1][c - 1] = v; } };
   }
@@ -1496,6 +1524,7 @@ const conteosCorregirMod = cargar('apps-script/Conteos.gs', {
   },
   Session: { getScriptTimeZone: () => 'UTC' },
   sheet_: () => hojaConteoCorregido,
+  SpreadsheetApp: { flush: () => {} },
   revisarAlertas_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
@@ -1538,7 +1567,8 @@ const conteosProduccionMod = cargar('apps-script/Conteos.gs', {
   catalogoAsegurar_: () => {},
   appendRowFromObj_: (hoja, fila) => { if (hoja === 'conteos') conteosGuardadosProduccion.push(fila); },
   Utilities: { getUuid: () => 'conteo-id-produccion' },
-  sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id']] }) }),
+  sheet_: () => fakeHojaConteos_(CONTEOS_HEADERS_, conteosGuardadosProduccion),
+  SpreadsheetApp: { flush: () => {} },
   revisarAlertas_: () => {},
   sedeEscrituraPermitida_: sedeEscrituraPermitidaMock_,
   indiceCatalogo_: indiceCatalogoVacioMock_,
@@ -2356,13 +2386,8 @@ function cargarConteosConTurno_(turnoDevuelto) {
       formatDate: (d) => ((d instanceof Date) ? d : new Date(d)).toISOString().slice(0, 10)
     },
     Session: { getScriptTimeZone: () => 'UTC' },
-    sheet_: () => ({
-      getDataRange: () => ({
-        getValues: () => [['id', 'fecha', 'sede', 'punto_conteo', 'turno', 'producto']].concat(
-          conteosGuardadosTurno.map(r => [r.id, r.fecha, r.sede, r.punto_conteo, r.turno, r.producto])
-        )
-      })
-    }),
+    sheet_: () => fakeHojaConteos_(CONTEOS_HEADERS_, conteosGuardadosTurno),
+    SpreadsheetApp: { flush: () => {} },
     revisarAlertas_: () => {},
     sedeEscrituraPermitida_: () => true,
     indiceCatalogo_: indiceCatalogoVacioMock_,
