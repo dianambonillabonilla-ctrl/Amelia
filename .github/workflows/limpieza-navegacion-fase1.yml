@@ -22,7 +22,6 @@ jobs:
         run: |
           from pathlib import Path
 
-          # 1) inicio.html: reemplazar el menú fijo por la fuente única de assets/config.js.
           inicio = Path('inicio.html')
           texto = inicio.read_text(encoding='utf-8')
           comienzo = texto.find('    <nav>')
@@ -33,7 +32,6 @@ jobs:
           texto = texto[:comienzo] + '    <nav id="menu-nav"></nav>' + texto[fin:]
           inicio.write_text(texto, encoding='utf-8')
 
-          # 2) config.js: base-caja deja de aparecer en el menú, pero el archivo se conserva.
           config = Path('assets/config.js')
           texto = config.read_text(encoding='utf-8')
           linea_base = "  { href: 'base-caja.html', texto: 'Base de caja anterior', soloRol: ['Administrador'] }\n"
@@ -41,14 +39,12 @@ jobs:
           if linea_base not in texto:
               raise SystemExit('No se encontró la entrada Base de caja anterior en config.js')
           texto = texto.replace(linea_base, '')
-          # La entrada anterior queda como última del arreglo: retirar su coma final.
-          texto = texto.replace(linea_diag, linea_diag.rstrip(',\n') + '\n')
+          texto = texto.replace(linea_diag, "  { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] }\n")
           texto = texto.replace('// por si alguien entra directo por URL en vez de por el menú. Redirige al dashboard.',
                                 '// por si alguien entra directo por URL en vez de por el menú. Redirige al inicio.')
           texto = texto.replace("window.location.href = 'dashboard.html';", "window.location.href = 'inicio.html';")
           config.write_text(texto, encoding='utf-8')
 
-          # 3) Todos los enlaces sueltos hacia el home antiguo pasan al inicio actual.
           for archivo in Path('.').rglob('*.html'):
               if archivo.name == 'dashboard.html':
                   continue
@@ -57,14 +53,13 @@ jobs:
               if nuevo != contenido:
                   archivo.write_text(nuevo, encoding='utf-8')
 
-          # El workflow es temporal; se elimina en el mismo commit de resultado.
           Path('.github/workflows/limpieza-navegacion-fase1.yml').unlink()
 
       - name: Verificar cambios
         run: |
           grep -q '<nav id="menu-nav"></nav>' inicio.html
           ! grep -q "Base de caja anterior" assets/config.js
-          ! grep -R "dashboard.html" --include='*.html' --include='*.js' . --exclude='dashboard.html'
+          ! grep -R "dashboard.html" --include='*.html' --include='*.js' --exclude='dashboard.html' .
           git diff --check
 
       - name: Guardar cambios
