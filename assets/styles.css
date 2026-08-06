@@ -120,6 +120,10 @@ tr:hover td { background: #FBFAF6; }
 .btn:hover { background: var(--navy-light); }
 .btn.dorado { background: var(--gold); color: var(--navy); }
 .btn.fantasma { background: none; border: 1px solid var(--line); color: var(--ink); }
+/* Sin esto un botón deshabilitado (ej. "Cerrar caja" cuando hay diferencia y no eres
+   Administrador) se veía exactamente igual que uno activo — se podía hacer clic sin que
+   pasara nada, sin ninguna pista de por qué. */
+.btn:disabled, .btn:disabled:hover { background: var(--line); color: var(--grey); cursor: not-allowed; }
 
 input, select {
   font-family: 'Montserrat', sans-serif;
