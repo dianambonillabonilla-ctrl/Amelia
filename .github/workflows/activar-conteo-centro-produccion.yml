@@ -1,0 +1,37 @@
+name: Activar conteo Centro de Producción
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activar-conteo-centro-produccion.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  activar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Insertar complemento de conteo
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('conteo.html')
+          s = p.read_text(encoding='utf-8')
+          marca = '<script src="assets/conteo-centro-produccion.js"></script>'
+          if marca not in s:
+              s = s.replace('</body>', marca + '\n</body>')
+          p.write_text(s, encoding='utf-8')
+          Path('.github/workflows/activar-conteo-centro-produccion.yml').unlink()
+      - name: Verificar y guardar
+        run: |
+          grep -q 'assets/conteo-centro-produccion.js' conteo.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Aplicar lista fija de conteo al Centro de Producción"
+          git push
