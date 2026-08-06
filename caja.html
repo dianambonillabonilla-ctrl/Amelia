@@ -158,6 +158,8 @@ async function cargar(){
     document.getElementById('base-contada').value=data.base_esperada||0;
     document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
     document.getElementById('fuerte-contada-apertura').value=data.caja_fuerte_esperada||0;
+    document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
+    document.getElementById('fuerte-contada-apertura').value=data.caja_fuerte_esperada||0;
     mostrar('sin-abrir');diferenciaApertura();return;
   }
   if(data.apertura.estado==='Cerrado'){
@@ -176,6 +178,8 @@ async function cargar(){
   document.getElementById('d-esperado').textContent=dinero(data.efectivo_esperado);
   document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
   document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
+  document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
+  document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
   document.getElementById('abierta-por').textContent=data.apertura.usuario_apertura||'—';
   document.getElementById('abierta-hora').textContent=new Date(data.apertura.hora_apertura).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
   const rappi=String(data.apertura.rappi_encendido).toLowerCase()==='true';
@@ -183,6 +187,7 @@ async function cargar(){
   document.getElementById('mov-entrega').value=usuario.nombre||'';
   document.getElementById('cierre-contado').value=Math.max(0,Number(data.efectivo_esperado||0));
   document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
+  document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
   document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
   const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
   mostrar('abierta');calculoCierre();

@@ -635,6 +635,9 @@ function handleRequest_(e, method) {
       case 'diagnostico_catalogo_duplicados':
         requiereAdmin_(sesion.usuario);
         return jsonOut_({ ok: true, data: diagnosticarCatalogoDuplicados_() });
+      case 'diagnostico_catalogo_sin_uso':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_({ ok: true, data: diagnosticarCatalogoSinUso_() });
       case 'migrar_recetas_julio_2026':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(migrarRecetasJulio2026_());

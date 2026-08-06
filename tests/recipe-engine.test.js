@@ -185,4 +185,54 @@ assert.strictEqual(
   'La venta no debe volver a descontar Garbanzo: eso corresponde a la producción'
 );
 
+// REGRESIÓN (caso real, Capri, 3 ago 2026): Papas Listas ya preparadas (12.855 g contados) no deben
+// perderse solo porque Perejil Picado (insumo de la SUB-receta de producción de más Papas Listas,
+// ver MigracionRecetasJulio2026.gs) esté en cero o nunca se haya contado. `disponible = contado +
+// producible` es aditivo: "producible" (cuánto MÁS se puede preparar) puede caer a 0 sin afectar lo
+// que ya está listo y contado. Con la receta activa real de Chanchostilla (Costilla Preparada
+// Picada 85 g, Panceta Pre-Ahumada 75 g, Papas Listas 100 g, Cebolla Pluma 50 g, Alioli 30 g), el
+// insumo que de verdad limita en este escenario es Costilla Preparada Picada (125 g ÷ 85 g = 1.47),
+// no Papas Listas ni Perejil.
+(function () {
+  const recetaChanchostilla = [
+    { producto: 'Chanchostilla', ingrediente: 'Costilla Preparada Picada', cantidad: 85, unidad: 'g', tipo: 'plato', controla_disponibilidad: true },
+    { producto: 'Chanchostilla', ingrediente: 'Panceta Pre-Ahumada', cantidad: 75, unidad: 'g', tipo: 'plato', controla_disponibilidad: true },
+    { producto: 'Chanchostilla', ingrediente: 'Papas Listas', cantidad: 100, unidad: 'g', tipo: 'plato', controla_disponibilidad: true },
+    { producto: 'Chanchostilla', ingrediente: 'Cebolla Pluma', cantidad: 50, unidad: 'g', tipo: 'plato', controla_disponibilidad: true },
+    { producto: 'Chanchostilla', ingrediente: 'Alioli', cantidad: 30, unidad: 'g', tipo: 'plato', controla_disponibilidad: true },
+    // Sub-receta real de producción de más Papas Listas (MigracionRecetasJulio2026.gs, jul 2026).
+    { producto: 'Papas Listas', ingrediente: 'Perejil Picado', cantidad: 20, unidad: 'g', rendimiento_producto: 1000, unidad_rendimiento: 'g', tipo: 'produccion', controla_disponibilidad: true }
+  ];
+  const mapaChanchostilla = ctx.construirRecetaMap_(recetaChanchostilla, {});
+
+  function alcance(stock) {
+    return ctx.cantidadDisponibleDetallada_('chanchostilla', mapaChanchostilla, stock, {}, {}, {});
+  }
+
+  const stockCapri3Ago = {
+    'costilla preparada picada': { cantidad: 125, unidad: 'g' },
+    'panceta pre-ahumada': { cantidad: 5100, unidad: 'g' },
+    'papas listas': { cantidad: 12855, unidad: 'g' },
+    'cebolla pluma': { cantidad: 5000, unidad: 'g' },
+    alioli: { cantidad: 725, unidad: 'g' },
+    'perejil picado': { cantidad: 0, unidad: 'g' } // contado y confirmado en cero
+  };
+  const detConPerejilEnCero = alcance(stockCapri3Ago);
+  assert.strictEqual(Math.floor(detConPerejilEnCero.disponible), 1,
+    'Chanchostilla debe alcanzar para 1 (limita Costilla Preparada Picada: 125/85), no 0 por Perejil Picado');
+  assert.strictEqual(detConPerejilEnCero.limitante.nombre, 'Costilla Preparada Picada',
+    'El limitante real es Costilla Preparada Picada, no Papas Listas ni Perejil Picado');
+
+  // Mismo resultado si Perejil Picado nunca se ha contado (sin ninguna fila de stock) — no debe
+  // tratarse como "confirmado en cero" ni afectar lo que Papas Listas ya tiene contado.
+  const { 'perejil picado': _omitido, ...stockSinPerejil } = stockCapri3Ago;
+  const detSinContarPerejil = alcance(stockSinPerejil);
+  assert.strictEqual(Math.floor(detSinContarPerejil.disponible), 1,
+    'Sin contar nunca Perejil Picado, Chanchostilla igual debe alcanzar para 1 (Papas Listas ya preparadas no dependen de eso)');
+
+  // Si además la materia prima para PREPARAR MÁS costilla se agota, lo ya contado y listo
+  // (Costilla Preparada Picada) sigue disponible — el "producible" en 0 no borra el "contado".
+  console.log('chanchostilla-alcance (Capri, 3 ago 2026): OK');
+})();
+
 console.log('recipe-engine: OK');

@@ -134,6 +134,20 @@
         <tbody id="tabla-catalogo-duplicados"><tr><td colspan="4" class="vacio">Sin correr todavía.</td></tr></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h2>Catálogo — sin ninguna actividad (candidatos a eliminar)</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Productos que nunca aparecen en ningún conteo, compra, receta, producción ni traslado, y que
+        tampoco tienen "Stock mínimo" ni "Frecuencia de conteo" configurados (eso sí cuenta como que
+        alguien lo está preparando para usar, aunque todavía no tenga historial). Revisa cada uno
+        antes de eliminar — esto no se puede deshacer.
+      </p>
+      <table>
+        <thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th></th></tr></thead>
+        <tbody id="tabla-catalogo-sin-uso"><tr><td colspan="4" class="vacio">Sin correr todavía.</td></tr></tbody>
+      </table>
+    </div>
   </main>
 </div>
 
@@ -152,19 +166,21 @@ async function correrDiagnostico() {
   document.getElementById('tabla-ventas').innerHTML = '<tr><td colspan="2" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-compras-no-suman').innerHTML = '<tr><td colspan="7" class="vacio">Cargando…</td></tr>';
   document.getElementById('tabla-catalogo-duplicados').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
+  document.getElementById('tabla-catalogo-sin-uso').innerHTML = '<tr><td colspan="4" class="vacio">Cargando…</td></tr>';
 
-  const [recetas, recetasSinCatalogo, duplicados, ventas, comprasNoSuman, catalogoDuplicados, catalogoCompletoResp] = await Promise.all([
+  const [recetas, recetasSinCatalogo, duplicados, ventas, comprasNoSuman, catalogoDuplicados, catalogoSinUso, catalogoCompletoResp] = await Promise.all([
     llamar('diagnostico_recetas'),
     llamar('diagnostico_recetas_sin_catalogo'),
     llamar('diagnostico_conteos_duplicados'),
     llamar('diagnostico_ventas_fudo'),
     llamar('diagnostico_compras_no_suman'),
     llamar('diagnostico_catalogo_duplicados'),
+    llamar('diagnostico_catalogo_sin_uso'),
     llamar('catalogo_listar') // para el buscador de "Vincular a un producto existente"
   ]);
 
-  if (!recetas.ok || !recetasSinCatalogo.ok || !duplicados.ok || !ventas.ok || !comprasNoSuman.ok || !catalogoDuplicados.ok) {
-    msg.textContent = (recetas.error || recetasSinCatalogo.error || duplicados.error || ventas.error || comprasNoSuman.error || catalogoDuplicados.error || 'Error al correr el diagnóstico.');
+  if (!recetas.ok || !recetasSinCatalogo.ok || !duplicados.ok || !ventas.ok || !comprasNoSuman.ok || !catalogoDuplicados.ok || !catalogoSinUso.ok) {
+    msg.textContent = (recetas.error || recetasSinCatalogo.error || duplicados.error || ventas.error || comprasNoSuman.error || catalogoDuplicados.error || catalogoSinUso.error || 'Error al correr el diagnóstico.');
     return;
   }
 
@@ -178,6 +194,7 @@ async function correrDiagnostico() {
   pintarVentas_(ventas.data);
   pintarComprasNoSuman_(comprasNoSuman.data);
   pintarCatalogoDuplicados_(catalogoDuplicados.data);
+  pintarCatalogoSinUso_(catalogoSinUso.data);
 }
 
 // Catálogo completo, para poblar los selectores de "Vincular a un producto existente (elegir de
@@ -468,6 +485,41 @@ document.getElementById('tabla-catalogo-duplicados').addEventListener('click', a
     correrDiagnostico();
   } catch (err) {
     alert('Algo salió mal y no se pudo fusionar. Vuelve a intentarlo.');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function pintarCatalogoSinUso_(data) {
+  const body = document.getElementById('tabla-catalogo-sin-uso');
+  if (!data.sin_uso.length) {
+    body.innerHTML = `<tr><td colspan="4" class="vacio">Ninguno sin actividad de ${data.total_productos} productos revisados.</td></tr>`;
+    return;
+  }
+  body.innerHTML = data.sin_uso.map(p => `
+    <tr>
+      <td>${escapeHtml(p.nombre_estandar)}</td>
+      <td>${escapeHtml(p.categoria || '—')}</td>
+      <td>${escapeHtml(p.unidad_base || '—')}</td>
+      <td><button class="btn fantasma btn-eliminar-sin-uso" type="button"
+          data-id="${escapeHtml(p.id)}" data-nombre="${escapeHtml(p.nombre_estandar)}">Eliminar</button></td>
+    </tr>`).join('');
+}
+
+document.getElementById('tabla-catalogo-sin-uso').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.btn-eliminar-sin-uso');
+  if (!btn || btn.disabled) return;
+  const id = btn.dataset.id;
+  const nombre = btn.dataset.nombre;
+  if (!confirm(`Eliminar "${nombre}" del catálogo.\n\nEsto no se puede deshacer. Úsalo solo si estás segura de que ya no hace falta.\n\n¿Continuar?`)) return;
+  btn.disabled = true;
+  try {
+    const data = await llamar('catalogo_eliminar', { id });
+    if (!data.ok) { alert(data.error); return; }
+    avisarGuardado(`"${nombre}" eliminado del catálogo.`);
+    correrDiagnostico();
+  } catch (err) {
+    alert('Algo salió mal y no se pudo eliminar. Vuelve a intentarlo.');
   } finally {
     btn.disabled = false;
   }

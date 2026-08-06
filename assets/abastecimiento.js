@@ -407,6 +407,88 @@ function renderAcciones(acciones, objetivoDias) {
     <div class="paso"><h3><span>3</span> Revisar materia prima antes de comprar</h3><p class="nota">La compra debe hacerse sobre materia prima, nunca sobre platos terminados. Objetivo: ${numero(objetivoDias)} días de cobertura.</p>${tablaAcciones(acciones.revisar, columnasRevision)}</div>`;
 }
 
+// CONTEO DE HOY — pedido real: "necesito que hagas primero el análisis de todos los productos por
+// separado, absolutamente todos que estén contados y en las unidades que sean y los que no, que
+// sean para conteo del día de hoy". A diferencia de renderInventario (que solo muestra lo que ya
+// tiene algún dato), esto lista TODO el catálogo — incluido lo nunca contado — cruzado contra
+// conteo_listar del día exacto (fecha, sin filtrar sede: se ven las 3 sedes juntas), y marca cuáles
+// tocaban hoy según frecuencia_conteo (mismo criterio que conteo.html: frecuenciasDelDia_).
+// conteo_listar exige rol Administrador/Encargado/Cocina (no Lectura) — se resuelve aparte para no
+// romper el resto del análisis si el rol actual no tiene acceso.
+function construirConteoHoy(catalogoRows, conteoRes, fecha) {
+  if (!conteoRes || !conteoRes.ok) {
+    ESTADO.conteoHoyFilas = null;
+    ESTADO.conteoHoyError = (conteoRes && conteoRes.error) || 'Tu rol no tiene permiso para ver los conteos registrados.';
+    return;
+  }
+  const frecuenciasHoy = frecuenciasDelDia_(fecha);
+  const porProducto = {};
+  filas(conteoRes).forEach(c => {
+    const clave = normalizarTexto(c.producto);
+    if (!porProducto[clave]) porProducto[clave] = [];
+    porProducto[clave].push(c);
+  });
+  ESTADO.conteoHoyError = null;
+  ESTADO.conteoHoyFilas = catalogoRows.filter(p => p.nombre_estandar).map(p => {
+    const clave = normalizarTexto(p.nombre_estandar);
+    const conteos = porProducto[clave] || [];
+    const tocaHoy = !!p.frecuencia_conteo && frecuenciasHoy.includes(p.frecuencia_conteo);
+    const contado = conteos.length > 0;
+    const prioridad = (tocaHoy && !contado) ? 0 : (contado ? 1 : 2);
+    return {
+      nombre: p.nombre_estandar,
+      categoria: p.categoria || 'Sin categoría',
+      tocaHoy,
+      contado,
+      conteos,
+      prioridad
+    };
+  }).sort((a, b) => a.prioridad - b.prioridad || a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+function renderConteoHoy() {
+  const aviso = document.getElementById('conteohoy-aviso');
+  if (!ESTADO.conteoHoyFilas) {
+    aviso.style.display = 'block';
+    aviso.textContent = ESTADO.conteoHoyError || 'Sin datos.';
+    document.getElementById('conteohoy-resumen').innerHTML = '';
+    document.getElementById('conteohoy-body').innerHTML = '';
+    return;
+  }
+  aviso.style.display = 'none';
+  const pendientes = ESTADO.conteoHoyFilas.filter(f => f.prioridad === 0).length;
+  const contados = ESTADO.conteoHoyFilas.filter(f => f.contado).length;
+  document.getElementById('conteohoy-resumen').innerHTML = `
+    <div class="kpi"><span>Pendientes hoy</span><strong>${pendientes}</strong></div>
+    <div class="kpi"><span>Contados hoy</span><strong>${contados}</strong></div>
+    <div class="kpi"><span>Total catálogo</span><strong>${ESTADO.conteoHoyFilas.length}</strong></div>`;
+  pintarFilasConteoHoy();
+}
+
+function pintarFilasConteoHoy() {
+  const body = document.getElementById('conteohoy-body');
+  if (!ESTADO.conteoHoyFilas) return;
+  const texto = normalizarTexto(document.getElementById('conteohoy-buscar').value);
+  const filtradas = texto ? ESTADO.conteoHoyFilas.filter(f => normalizarTexto(f.nombre).indexOf(texto) !== -1) : ESTADO.conteoHoyFilas;
+  if (!filtradas.length) {
+    body.innerHTML = '<tr><td colspan="5">Ningún producto coincide con la búsqueda.</td></tr>';
+    return;
+  }
+  body.innerHTML = filtradas.map(f => {
+    const estadoTexto = f.contado ? 'Contado' : (f.tocaHoy ? 'Pendiente' : 'No aplica hoy');
+    const claseEstado = f.contado ? 'bien' : (f.tocaHoy ? 'critico' : 'medio');
+    const detalle = f.conteos.length
+      ? f.conteos.map(c => {
+          const punto = escapeHtml(c.punto_conteo || '—');
+          const sedeTxt = c.sede ? ' · ' + escapeHtml(c.sede) : '';
+          return `${punto}${sedeTxt}: ${numero(c.cantidad, 2)} ${escapeHtml(c.unidad || '')}`;
+        }).join('<br>')
+      : '—';
+    return `<tr><td><strong>${escapeHtml(f.nombre)}</strong></td><td>${escapeHtml(f.categoria)}</td><td>${f.tocaHoy ? 'Sí' : 'No'}</td><td><span class="badge ${claseEstado}">${estadoTexto}</span></td><td>${detalle}</td></tr>`;
+  }).join('');
+}
+document.getElementById('conteohoy-buscar').addEventListener('input', pintarFilasConteoHoy);
+
 async function cargar() {
   const estado = document.getElementById('estado');
   const boton = document.getElementById('actualizar');
@@ -416,13 +498,14 @@ async function cargar() {
   try {
     const fecha = fechaInput.value;
     const desde = restarDias(fecha, 28);
-    const [cp, sa, capri, catalogoRes, recetasRes, ventasRes] = await Promise.all([
+    const [cp, sa, capri, catalogoRes, recetasRes, ventasRes, conteoRes] = await Promise.all([
       llamar('disponible_hoy', { fecha, sede: 'Centro de Producción' }),
       llamar('disponible_hoy', { fecha, sede: 'San Antonio' }),
       llamar('disponible_hoy', { fecha, sede: 'Capri' }),
       llamar('catalogo_listar', { filtros: {} }),
       llamar('recetas_listar', { filtros: {} }),
-      llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: fecha } })
+      llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: fecha } }),
+      llamar('conteo_listar', { fecha })
     ]);
     construirCatalogo(filas(catalogoRes));
     ESTADO.stock = {
@@ -438,9 +521,11 @@ async function cargar() {
     construirRecetas(filas(recetasRes));
     construirVentas(filas(ventasRes), desde, fecha);
     ESTADO.fecha = fecha;
+    construirConteoHoy(filas(catalogoRes), conteoRes, fecha);
     poblarCategorias();
     renderInventario();
     renderAlcance();
+    renderConteoHoy();
     const fallas = [];
     if (!cp?.ok) fallas.push('Centro de Producción');
     if (!sa?.ok) fallas.push('San Antonio');
