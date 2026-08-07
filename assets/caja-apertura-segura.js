@@ -126,17 +126,13 @@
     }
   }
 
-  function validarAntesDeAbrir(evento) {
-    const boton = document.getElementById('abrir');
-    if (!boton || evento.target !== boton) return;
-
-    if (fudoNoConfiable()) {
-      evento.preventDefault();
-      evento.stopImmediatePropagation();
-      alert('No se puede abrir la caja porque FUDO no está sincronizado. Actualiza e inténtalo nuevamente.');
-      return;
-    }
-  }
+  // Abrir caja NO depende de que FUDO esté al día: el conteo se compara contra la base que dejó el
+  // cierre anterior, no contra pagos de hoy — cajaAbrir_ (backend) nunca exige FUDO confiable, solo
+  // cajaCerrar_ lo hace (el efectivo esperado sí depende de los pagos del día). Bloquear "Abrir
+  // caja" aquí era una restricción inventada del lado del navegador sin respaldo en el backend: le
+  // impedía a un Administrador abrir una caja cuyo conteo físico coincidía exactamente, solo porque
+  // la API de FUDO había fallado un momento antes. El aviso (pintarEstadoFudo) se mantiene — informa,
+  // no bloquea.
 
   function validarAntesDeCerrar(evento) {
     const boton = document.getElementById('cerrar');
@@ -153,7 +149,6 @@
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', pintarDiferencias);
     });
-    document.addEventListener('click', validarAntesDeAbrir, true);
     document.addEventListener('click', validarAntesDeCerrar, true);
     setInterval(pintarEstadoFudo, 700);
     setTimeout(function () {
