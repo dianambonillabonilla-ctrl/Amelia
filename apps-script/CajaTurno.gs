@@ -25,6 +25,33 @@ const CAJA_COLUMNAS_MOVIMIENTOS_ = [
 function cajaAsegurarEstructura_() {
   asegurarColumnas_(sheet_(SHEET_NAMES.CAJA_TURNO), CAJA_COLUMNAS_TURNO_);
   asegurarColumnas_(sheet_(SHEET_NAMES.CAJA_MOVIMIENTOS), CAJA_COLUMNAS_MOVIMIENTOS_);
+  cajaMigrarHistorico_();
+}
+
+/**
+ * Correcciones puntuales de historia real (venían de CajaV2.gs, antes de consolidar todo aquí):
+ * el millón que se guardó en la caja fuerte de San Antonio el 2026-08-02, la entrega de $550.000
+ * hecha en Capri el mismo rango de fechas, y la devolución de ese millón (ya lo tiene la
+ * administradora, la caja fuerte física de San Antonio está en cero) — fechada el mismo día que la
+ * de Capri porque cajaSaldoFuerteAntes_ solo cuenta movimientos ANTERIORES a la fecha consultada:
+ * si se fecha el mismo día que "hoy", ese día todavía muestra la diferencia vieja.
+ */
+function cajaMigrarHistorico_() {
+  const filas = leerTabla_(SHEET_NAMES.CAJA_MOVIMIENTOS);
+  const ids = {};
+  filas.forEach(function (r) { ids[String(r.id || '')] = true; });
+  const migraciones = [
+    { id: 'migracion-caja-fuerte-sa-20260802', fecha: '2026-08-02', sede: 'San Antonio', tipo: 'Envío a caja fuerte', valor: 1000000, persona_entrega: 'Giselle', persona_recibe: 'Caja fuerte', motivo: 'Migrado desde observación histórica: guardé un millón en caja fuerte' },
+    { id: 'migracion-entrega-admin-capri-20260803', fecha: '2026-08-03', sede: 'Capri', tipo: 'Entrega administrador desde caja', valor: 550000, persona_entrega: 'Giselle', persona_recibe: 'Diana', motivo: 'Migrado desde observación histórica: entregué 550 en efectivo a Diana' },
+    { id: 'migracion-retiro-fuerte-sa-20260803', fecha: '2026-08-03', sede: 'San Antonio', tipo: 'Entrega administrador desde caja fuerte', valor: 1000000, persona_entrega: 'Caja fuerte', persona_recibe: 'Diana', motivo: 'Migrado desde observación histórica: el millón que estaba en la caja fuerte de San Antonio ya lo tiene Diana, la caja fuerte física está en cero' }
+  ];
+  migraciones.forEach(function (m) {
+    if (ids[m.id]) return;
+    m.hora = new Date(m.fecha + 'T20:00:00');
+    m.usuario = 'Migración histórica';
+    m.timestamp = new Date();
+    appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS, m);
+  });
 }
 
 function cajaPuedeCerrar_(usuario, fecha) {
@@ -49,14 +76,28 @@ function cajaLeerEstadoFudo_(fecha, sede) {
   catch (e) { return { ok:false, pendiente:true, error:'No se pudo leer el último estado de FUDO.' }; }
 }
 
+/**
+ * Sin credenciales de la API configuradas (instalación sin la integración activa, o pruebas) el
+ * cuadre con FUDO no aplica — se sigue exactamente como antes de que existiera esta validación, sin
+ * bloquear ni exigir observaciones de más por algo que aquí ni siquiera está prendido.
+ */
+function cajaFudoCredencialesConfiguradas_() {
+  if (typeof PropertiesService === 'undefined') return false;
+  const props = PropertiesService.getScriptProperties();
+  return !!(props.getProperty('FUDO_API_KEY') && props.getProperty('FUDO_API_SECRET'));
+}
+
 /** Sincronización pesada: solo se ejecuta al abrir, cerrar o solicitarla expresamente. */
 function cajaSincronizarFudo_(fecha, sede, usuario, forzar) {
   const fechaFmt = formatearFecha_(fecha);
+  if (!cajaFudoCredencialesConfiguradas_()) {
+    return { ok: true, aplica: false, fecha: fechaFmt, sede: sede, sincronizado_en: '', error: '' };
+  }
   const cache = CacheService.getScriptCache();
   const key = cajaFudoCacheKey_(fechaFmt, sede);
   if (!forzar) return cajaLeerEstadoFudo_(fechaFmt, sede);
 
-  const resultado = { ok:false, fecha:fechaFmt, sede:sede, sincronizado_en:new Date(), ventas:null, pagos:null, error:'' };
+  const resultado = { ok:false, aplica: true, fecha:fechaFmt, sede:sede, sincronizado_en:new Date(), ventas:null, pagos:null, error:'' };
   try {
     if (typeof fudoApiSincronizarVentas_ !== 'function' || typeof fudoApiSincronizarPagos_ !== 'function') {
       throw new Error('La integración API de FUDO no está disponible.');
@@ -172,18 +213,29 @@ function cajaAbrir_(item, usuario) {
   const existente = cajaTurnoFila_(fecha,item.sede);
   if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'La caja ya se cerró'} : {ok:true,ya_abierta:true,item:existente};
 
+  // Abrir NO depende de los pagos de HOY: la base esperada viene del cierre anterior, no de FUDO
+  // (solo cerrar sí lo necesita, ver cajaCerrar_). Se intenta sincronizar para que el aviso en
+  // pantalla esté al día, pero un fallo de la API nunca debe impedir abrir la caja — antes esto
+  // bloqueaba a cualquiera, incluida la Administradora, aunque el conteo físico coincidiera
+  // exactamente con lo esperado.
   const syncFudo = cajaSincronizarFudo_(fecha,item.sede,usuario,true);
-  if (!syncFudo.ok) return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'No se pudo abrir porque FUDO no sincronizó: '+syncFudo.error,fudo_sync:syncFudo};
 
   const baseEsperada = cajaBaseEsperada_(fecha,item.sede);
   const fuerteEsperada = cajaSaldoFuerteAntes_(fecha,item.sede);
   const baseInicial = Number(item.base_inicial)||0;
   const fuerteInicial = Number(item.caja_fuerte_inicial)||0;
+  const difApertura = Number((baseInicial-baseEsperada).toFixed(2));
+  const difFuerteApertura = Number((fuerteInicial-fuerteEsperada).toFixed(2));
+  // Con diferencia (en efectivo o en caja fuerte), solo un Administrador puede aprobar la
+  // apertura — el frontend ya bloquea el botón, pero eso solo protege el navegador.
+  if ((difApertura !== 0 || difFuerteApertura !== 0) && usuario.rol !== 'Administrador') {
+    return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+  }
   const fila = {
     id:Utilities.getUuid(),fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,
-    diferencia_apertura:Number((baseInicial-baseEsperada).toFixed(2)),observacion_apertura:item.observacion_apertura||'',
+    diferencia_apertura:difApertura,observacion_apertura:item.observacion_apertura||'',
     caja_fuerte_esperada_apertura:fuerteEsperada,caja_fuerte_inicial:fuerteInicial,
-    diferencia_caja_fuerte_apertura:Number((fuerteInicial-fuerteEsperada).toFixed(2)),
+    diferencia_caja_fuerte_apertura:difFuerteApertura,
     hora_apertura:new Date(),usuario_apertura_id:usuario.id,usuario_apertura:usuario.nombre,
     efectivo_fudo_al_abrir:cajaEfectivoFudoDia_(fecha,item.sede),rappi_encendido:false
   };
@@ -192,12 +244,18 @@ function cajaAbrir_(item, usuario) {
   return {ok:true,item:fila,fudo_sync:syncFudo};
 }
 
-/** Consulta rápida: no llama la API. Devuelve el estado local y el último estado conocido de FUDO. */
+/**
+ * Al abrir la pantalla de Caja o pulsar "Actualizar" (ambos llegan aquí): si la última
+ * sincronización conocida ya expiró del caché (CAJA_FUDO_CACHE_SEGUNDOS_) o nunca se hizo, se
+ * sincroniza ahora mismo contra la API real antes de calcular nada — así el cuadre nunca se
+ * calcula contra un dato de FUDO que ya lleva rato desactualizado sin que nadie se entere.
+ */
 function cajaEstado_(fecha, sede, usuario) {
   cajaAsegurarEstructura_();
   if (!fecha || !sede) return {ok:false,error:'Falta la fecha o la sede'};
   const fechaFmt = formatearFecha_(fecha);
-  const syncFudo = cajaLeerEstadoFudo_(fechaFmt,sede);
+  let syncFudo = cajaLeerEstadoFudo_(fechaFmt,sede);
+  if (syncFudo.pendiente) syncFudo = cajaSincronizarFudo_(fechaFmt,sede,usuario,true);
   const apertura = cajaTurnoFila_(fechaFmt,sede);
   if (!apertura) return {
     ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fechaFmt,sede),caja_fuerte_esperada:cajaSaldoFuerteAntes_(fechaFmt,sede),
@@ -256,8 +314,19 @@ function cajaCerrar_(item,usuario) {
   if(apertura.estado==='Cerrado')return {ok:true,ya_cerrado:true};
   if(!cajaPuedeCerrar_(usuario,fecha))return {ok:false,error:'No tienes permiso para cerrar la caja.'};
 
+  // El efectivo esperado SÍ depende de los pagos de HOY, así que aquí (a diferencia de abrir) una
+  // sincronización que no se pudo confirmar sí importa: un Encargado/Cocina no puede declarar el
+  // cierre "cuadrado" con un número que podría estar mal; un Administrador sí puede, pero dejando
+  // una observación explícita de que cerró sin esa confirmación (mismo patrón que una diferencia
+  // de dinero, más abajo).
   const syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,true);
-  if(!syncFudo.ok)return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'No se puede cerrar porque FUDO no sincronizó: '+syncFudo.error,fudo_sync:syncFudo};
+  const fudoConfiable=syncFudo.ok;
+  if(!fudoConfiable&&usuario.rol!=='Administrador'){
+    return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'No se pudo confirmar los pagos de FUDO al día. Espera a que sincronice o pide a un Administrador que autorice el cierre.',fudo_sync:syncFudo};
+  }
+  if(!fudoConfiable&&!String(item.observacion||'').trim()){
+    return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'FUDO no está sincronizado. Escribe una observación para cerrar de todas formas.',fudo_sync:syncFudo};
+  }
 
   const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
   const contado=Number(item.efectivo_contado)||0, fuerteContada=Number(item.caja_fuerte_contada)||0;
@@ -268,5 +337,5 @@ function cajaCerrar_(item,usuario) {
 
   cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
   auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
-  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:true};
+  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable};
 }
