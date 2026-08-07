@@ -276,12 +276,20 @@ function cajaSincronizarAhora_(fecha,sede,usuario) {
   return cajaSincronizarFudo_(fecha,sede,usuario,true);
 }
 
+/**
+ * `usuario` es obligatorio: confirmar Rappi deja rastro de quién lo confirmó, y una llamada que se
+ * olvide de pasarlo (la ruta de Code.gs lo hacía) grababa rappi_confirmado_por en blanco sin que
+ * nadie se enterara — se prefiere fallar a guardar una confirmación anónima.
+ */
 function cajaRappiMarcar_(fecha,sede,usuario) {
+  if(!fecha||!sede)return {ok:false,error:'Falta la fecha o la sede'};
+  if(!usuario||!usuario.nombre)return {ok:false,error:'No se pudo identificar quién confirma Rappi.'};
+  if(!sedeEscrituraPermitida_(usuario,sede))return {ok:false,error:'No puedes confirmar Rappi de otra sede'};
   const fechaFmt=formatearFecha_(fecha), turno=cajaTurnoFila_(fechaFmt,sede);
   if(!turno)return {ok:false,error:'Primero hay que abrir la caja.'};
   if(turno.estado==='Cerrado')return {ok:false,error:'La caja ya está cerrada.'};
-  cajaTurnoActualizarFila_(fechaFmt,sede,{rappi_encendido:true,rappi_confirmado_por:usuario?.nombre||'',rappi_confirmado_en:new Date()});
-  return {ok:true};
+  cajaTurnoActualizarFila_(fechaFmt,sede,{rappi_encendido:true,rappi_confirmado_por:usuario.nombre,rappi_confirmado_en:new Date()});
+  return {ok:true,rappi_confirmado_por:usuario.nombre};
 }
 
 function cajaMovimientoRegistrar_(item,usuario) {
