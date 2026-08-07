@@ -38,7 +38,8 @@ const ACCIONES_OMITIDAS = new Set([
   'produccion_con_obligatorios_registrar', 'usuarios_guardar', 'usuario_resetear_password',
   'traslado_crear', 'traslado_confirmar', 'traslado_observar', 'traslado_resolver',
   'migrar_recetas_julio_2026', 'base_caja_guardar',
-  'caja_abrir', 'caja_rappi_marcar', 'caja_movimiento_registrar', 'caja_cerrar'
+  'caja_abrir', 'caja_rappi_marcar', 'caja_movimiento_registrar', 'caja_cerrar',
+  'caja_sincronizar_ahora'
 ]);
 
 const HOY = '2026-07-26';

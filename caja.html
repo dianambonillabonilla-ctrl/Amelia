@@ -67,8 +67,10 @@
             <div class="dinero"><span>Dinero contado al abrir</span><strong id="d-base">$0</strong></div>
             <div class="dinero"><span>Efectivo FUDO desde apertura</span><strong id="d-fudo">$0</strong></div>
             <div class="dinero"><span>Otros ingresos</span><strong id="d-ingresos">$0</strong></div>
+            <div class="dinero"><span>Retiro de caja fuerte</span><strong id="d-retiro-fuerte">$0</strong></div>
             <div class="dinero"><span>Enviado a caja fuerte</span><strong id="d-envio-fuerte">$0</strong></div>
-            <div class="dinero"><span>Entregado al administrador</span><strong id="d-entregas">$0</strong></div>
+            <div class="dinero"><span>Entregado al admin (desde caja)</span><strong id="d-entregas">$0</strong></div>
+            <div class="dinero"><span>Entregado al admin (desde fuerte)</span><strong id="d-entregas-fuerte">$0</strong></div>
             <div class="dinero"><span>Gastos y salidas</span><strong id="d-gastos">$0</strong></div>
             <div class="dinero principal"><span>Efectivo esperado en caja</span><strong id="d-esperado">$0</strong></div>
             <div class="dinero principal"><span>Esperado en caja fuerte</span><strong id="d-fuerte">$0</strong></div>
@@ -149,13 +151,6 @@ function pintarFudoSync(){
     el.style.color='var(--red)';
   }
 }
-function diferenciaApertura(){
-  if(!estadoActual||estadoActual.apertura)return;
-  const dif=Number(document.getElementById('base-contada').value||0)-Number(estadoActual.base_esperada||0);
-  const el=document.getElementById('diferencia-apertura');
-  el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
-  el.style.color=dif===0?'var(--green)':'var(--red)';
-}
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
@@ -198,13 +193,12 @@ async function cargar(){
     const esAdmin=usuario.rol==='Administrador';
     document.getElementById('apertura-solo-lectura').classList.toggle('oculto',!esAdmin);
     document.getElementById('apertura-form').classList.toggle('oculto',esAdmin);
-    if(!esAdmin){
-      document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
-      document.getElementById('base-contada').value=data.base_esperada||0;
-      document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
-      document.getElementById('fuerte-contada-apertura').value=data.caja_fuerte_esperada||0;
-    }
-    mostrar('sin-abrir');diferenciaApertura();return;
+    // Precargar esperados siempre (también para Admin, por si abre de todas formas).
+    document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
+    document.getElementById('base-contada').value=data.base_esperada||0;
+    document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
+    document.getElementById('fuerte-contada-apertura').value=data.caja_fuerte_esperada||0;
+    mostrar('sin-abrir');return;
   }
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent='Caja cerrada';document.getElementById('estado').classList.add('cerrada');
@@ -213,15 +207,18 @@ async function cargar(){
     mostrar('cerrada');return;
   }
   document.getElementById('estado').textContent='Caja abierta';document.getElementById('estado').classList.add('abierta');
+  const resumen=data.movimientos_resumen||{};
   document.getElementById('d-base').textContent=dinero(data.apertura.base_inicial);
   document.getElementById('d-fudo').textContent=dinero(data.pagos_efectivo_esperado);
-  document.getElementById('d-ingresos').textContent=dinero(data.movimientos_resumen.otros_ingresos);
-  document.getElementById('d-envio-fuerte').textContent='−'+dinero(data.movimientos_resumen.envios_caja_fuerte||0);
-  document.getElementById('d-entregas').textContent='−'+dinero(data.movimientos_resumen.entregas_administrador||0);
-  document.getElementById('d-gastos').textContent='−'+dinero(data.movimientos_resumen.gastos);
+  document.getElementById('d-ingresos').textContent=dinero(resumen.otros_ingresos);
+  document.getElementById('d-retiro-fuerte').textContent='+'+dinero(resumen.retiros_caja_fuerte||0);
+  document.getElementById('d-envio-fuerte').textContent='−'+dinero(resumen.envios_caja_fuerte||0);
+  // Solo las entregas desde caja operativa restan del efectivo esperado; las de caja fuerte
+  // restan del saldo fuerte (se muestran aparte para que el desglose sume con el total).
+  document.getElementById('d-entregas').textContent='−'+dinero(resumen.entregas_admin_caja||0);
+  document.getElementById('d-entregas-fuerte').textContent='−'+dinero(resumen.entregas_admin_caja_fuerte||0);
+  document.getElementById('d-gastos').textContent='−'+dinero(resumen.gastos);
   document.getElementById('d-esperado').textContent=dinero(data.efectivo_esperado);
-  document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
-  document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
   document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
   document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
   document.getElementById('abierta-por').textContent=data.apertura.usuario_apertura||'—';
@@ -232,16 +229,19 @@ async function cargar(){
   document.getElementById('cierre-contado').value=Math.max(0,Number(data.efectivo_esperado||0));
   document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
   document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
-  document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
   const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
   mostrar('abierta');calculoCierre();
 }
-document.getElementById('base-contada').addEventListener('input',diferenciaApertura);
 document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
 document.getElementById('cierre-base').addEventListener('input',calculoCierre);
 document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
 document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
-fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
+fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);
+// Actualizar fuerza re-sync de FUDO (los fallos ya no se cachean 5 min) y luego recarga el estado.
+document.getElementById('actualizar').addEventListener('click',async()=>{
+  try{await llamar('caja_sincronizar_ahora',parametros());}catch(e){}
+  cargar();
+});
 // El Administrador es super usuario: normalmente solo revisa si la caja está abierta (por eso el
 // formulario queda oculto por defecto), pero puede abrirla él mismo si de verdad hace falta.
 document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
@@ -251,7 +251,9 @@ document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
 });
 document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{
   const item={...parametros(),base_inicial:document.getElementById('base-contada').value,caja_fuerte_inicial:document.getElementById('fuerte-contada-apertura').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()};
-  if(Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)&&!item.observacion_apertura){alert('La base no coincide. Escribe una observación.');return;}
+  const difBase=Number(item.base_inicial)!==Number(estadoActual.base_esperada||0);
+  const difFuerte=Number(item.caja_fuerte_inicial)!==Number(estadoActual.caja_fuerte_esperada||0);
+  if((difBase||difFuerte)&&!item.observacion_apertura){alert('Hay una diferencia al abrir. Escribe una observación.');return;}
   const r=await llamar('caja_abrir',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja abierta. Ahora confirma Rappi.');cargar();
 }));
 document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
@@ -264,10 +266,13 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
   const contado=Number(document.getElementById('cierre-contado').value||0);const base=Number(document.getElementById('cierre-base').value||0);
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
-  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
+  const fuerteContada=Number(document.getElementById('cierre-fuerte').value||0);
+  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:fuerteContada,base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
   if(!item.persona_recibe_cierre){alert('Escribe quién verifica el cierre.');return;}
   if(estadoActual.cuadre_confiable===false&&!item.observacion){alert('FUDO no está sincronizado. Escribe una observación antes de cerrar.');return;}
-  if(contado!==Number(estadoActual.efectivo_esperado||0)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
+  const difEfectivo=contado!==Number(estadoActual.efectivo_esperado||0);
+  const difFuerte=fuerteContada!==Number(estadoActual.caja_fuerte_esperada||0);
+  if((difEfectivo||difFuerte)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
 }));
 cargar();

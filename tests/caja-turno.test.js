@@ -32,6 +32,14 @@ function exigirFalla(env, cuerpo, queHace) {
   return r;
 }
 
+/** Primera apertura del día: esperado = 0, así que cualquier base > 0 necesita observación de Admin. */
+function itemAbrir(baseInicial, extras) {
+  return Object.assign({
+    fecha: HOY, sede: SEDE, base_inicial: baseInicial,
+    observacion_apertura: baseInicial ? 'Base inicial de prueba' : ''
+  }, extras || {});
+}
+
 // --- 1. Apertura obligatoria antes de registrar movimientos o cerrar ------------------------------
 
 (function () {
@@ -51,12 +59,12 @@ function exigirFalla(env, cuerpo, queHace) {
     item: { fecha: HOY, sede: SEDE, efectivo_contado: 100000 }
   }), 'cerrar una caja que nunca se abrió');
 
-  const abrir = exigir(env, p({ action: 'caja_abrir', item: { fecha: HOY, sede: SEDE, base_inicial: 50000 } }), 'abrir la caja');
+  const abrir = exigir(env, p({ action: 'caja_abrir', item: itemAbrir(50000) }), 'abrir la caja');
   assert.equal(abrir.item.base_inicial, 50000);
   assert.equal(abrir.item.estado, 'Abierto');
 
   // Abrir de nuevo el mismo día es idempotente, no crea una segunda apertura.
-  const reabrir = exigir(env, p({ action: 'caja_abrir', item: { fecha: HOY, sede: SEDE, base_inicial: 99999 } }), 'reabrir el mismo día');
+  const reabrir = exigir(env, p({ action: 'caja_abrir', item: itemAbrir(99999) }), 'reabrir el mismo día');
   assert.ok(reabrir.ya_abierta, 'la segunda apertura del mismo día debe reconocer que ya estaba abierta');
   assert.equal(reabrir.item.base_inicial, 50000, 'no debe pisar la base inicial original');
 })();
@@ -67,7 +75,7 @@ function exigirFalla(env, cuerpo, queHace) {
   const { env, token } = nuevoEntornoConAdmin();
   const p = (cuerpo) => Object.assign({ token }, cuerpo);
 
-  exigir(env, p({ action: 'caja_abrir', item: { fecha: HOY, sede: SEDE, base_inicial: 50000 } }), 'abrir la caja');
+  exigir(env, p({ action: 'caja_abrir', item: itemAbrir(50000) }), 'abrir la caja');
   const estadoSinMovimientos = exigir(env, p({ action: 'caja_estado', fecha: HOY, sede: SEDE }), 'ver el estado recién abierta');
   assert.equal(estadoSinMovimientos.efectivo_esperado, 50000, 'sin ventas ni movimientos, el esperado es solo la base inicial');
 
@@ -113,7 +121,7 @@ function exigirFalla(env, cuerpo, queHace) {
   const { env, token } = nuevoEntornoConAdmin();
   const p = (cuerpo) => Object.assign({ token }, cuerpo);
 
-  exigir(env, p({ action: 'caja_abrir', item: { fecha: HOY, sede: SEDE, base_inicial: 50000 } }), 'abrir la caja');
+  exigir(env, p({ action: 'caja_abrir', item: itemAbrir(50000) }), 'abrir la caja');
   exigir(env, p({
     action: 'caja_movimiento_registrar',
     item: {
@@ -123,14 +131,20 @@ function exigirFalla(env, cuerpo, queHace) {
   }), 'registrar una entrega');
 
   // Esperado = 50000 (base) - 20000 (entrega) = 30000 (sin ventas de FUDO en la prueba).
-  const cierreExacto = exigir(env, p({
+  // La base siguiente no puede superar lo contado (evita que el día siguiente espere plata que no hay).
+  exigirFalla(env, p({
     action: 'caja_cerrar',
     item: { fecha: HOY, sede: SEDE, efectivo_contado: 30000, base_siguiente: 50000 }
+  }), 'cerrar dejando una base siguiente mayor al contado');
+
+  const cierreExacto = exigir(env, p({
+    action: 'caja_cerrar',
+    item: { fecha: HOY, sede: SEDE, efectivo_contado: 30000, base_siguiente: 20000 }
   }), 'cerrar la caja contando exactamente lo esperado');
   assert.equal(cierreExacto.efectivo_esperado, 30000);
   assert.equal(cierreExacto.diferencia, 0, 'contar justo lo esperado no debe dejar ni sobrante ni faltante');
-  assert.equal(cierreExacto.entrega_cierre, 30000 - 50000, 'con un contado menor a la base siguiente, la entrega de cierre puede ser negativa (no alcanza a dejar la base completa)');
-  assert.equal(cierreExacto.base_siguiente, 50000);
+  assert.equal(cierreExacto.entrega_cierre, 10000, 'contado − base siguiente = lo que se entrega al cierre');
+  assert.equal(cierreExacto.base_siguiente, 20000);
 
   // Cerrar de nuevo el mismo día no debe recalcular ni duplicar.
   const yaCerrado = exigir(env, p({
@@ -150,12 +164,13 @@ function exigirFalla(env, cuerpo, queHace) {
   const { env, token } = nuevoEntornoConAdmin();
   const p = (cuerpo) => Object.assign({ token }, cuerpo);
 
-  exigir(env, p({ action: 'caja_abrir', item: { fecha: HOY, sede: SEDE, base_inicial: 50000 } }), 'abrir la caja');
+  exigir(env, p({ action: 'caja_abrir', item: itemAbrir(50000) }), 'abrir la caja');
 
   // Faltante: se contaron 45000 pero se esperaban 50000 (sin movimientos ni ventas).
+  // base_siguiente debe caber en lo contado.
   const faltante = exigir(env, p({
     action: 'caja_cerrar',
-    item: { fecha: HOY, sede: SEDE, efectivo_contado: 45000, base_siguiente: 50000 }
+    item: { fecha: HOY, sede: SEDE, efectivo_contado: 45000, base_siguiente: 45000, observacion: 'faltan 5.000' }
   }), 'cerrar con faltante');
   assert.equal(faltante.diferencia, -5000);
 })();
@@ -167,10 +182,11 @@ function exigirFalla(env, cuerpo, queHace) {
   const p = (cuerpo) => Object.assign({ token }, cuerpo);
 
   exigirFalla(env, p({ action: 'caja_rappi_marcar', fecha: HOY, sede: SEDE }), 'marcar Rappi sin caja abierta');
-  exigir(env, p({ action: 'caja_abrir', item: { fecha: HOY, sede: SEDE, base_inicial: 50000 } }), 'abrir la caja');
+  exigir(env, p({ action: 'caja_abrir', item: itemAbrir(50000) }), 'abrir la caja');
   exigir(env, p({ action: 'caja_rappi_marcar', fecha: HOY, sede: SEDE }), 'marcar Rappi encendido');
   const estado = exigir(env, p({ action: 'caja_estado', fecha: HOY, sede: SEDE }), 'ver el estado tras marcar Rappi');
   assert.equal(estado.apertura.rappi_encendido, true);
+  assert.equal(estado.apertura.rappi_confirmado_por, 'Diana', 'debe guardar quién confirmó Rappi');
 })();
 
 // --- 5. Permisos: quién puede abrir/cerrar la caja de qué sede -------------------------------------
@@ -184,18 +200,19 @@ function exigirFalla(env, cuerpo, queHace) {
   const cajaCerrar_ = env.ctx.cajaCerrar_;
   const usuarioCocinaSA = { id: 'u-cocina', nombre: 'Juan', rol: 'Cocina', sede: SEDE };
 
-  const propiaSede = cajaAbrir_({ fecha: HOY, sede: SEDE, base_inicial: 1000 }, usuarioCocinaSA);
+  // Sin cierre previo el esperado es 0 — Cocina solo puede abrir si cuenta exactamente eso.
+  const propiaSede = cajaAbrir_({ fecha: HOY, sede: SEDE, base_inicial: 0 }, usuarioCocinaSA);
   assert.ok(propiaSede.ok, 'Cocina de San Antonio debe poder abrir la caja de su propia sede');
 
-  const otraSede = cajaAbrir_({ fecha: HOY, sede: OTRA_SEDE, base_inicial: 1000 }, usuarioCocinaSA);
+  const otraSede = cajaAbrir_({ fecha: HOY, sede: OTRA_SEDE, base_inicial: 0 }, usuarioCocinaSA);
   assert.strictEqual(otraSede.ok, false, 'Cocina de San Antonio NO debe poder abrir la caja de Capri');
 
   // Sin sector "Caja" asignado hoy, Cocina no puede cerrar aunque haya abierto la caja.
-  const cierreSinSector = cajaCerrar_({ fecha: HOY, sede: SEDE, efectivo_contado: 1000 }, usuarioCocinaSA);
+  const cierreSinSector = cajaCerrar_({ fecha: HOY, sede: SEDE, efectivo_contado: 0 }, usuarioCocinaSA);
   assert.strictEqual(cierreSinSector.ok, false, 'sin el sector "Caja" asignado hoy, Cocina no debe poder cerrar la caja');
 
   env.ctx.turnoSectorElegir_(HOY, 'Caja', usuarioCocinaSA);
-  const cierreConSector = cajaCerrar_({ fecha: HOY, sede: SEDE, efectivo_contado: 1000 }, usuarioCocinaSA);
+  const cierreConSector = cajaCerrar_({ fecha: HOY, sede: SEDE, efectivo_contado: 0 }, usuarioCocinaSA);
   assert.ok(cierreConSector.ok, 'con el sector "Caja" asignado hoy, sí debe poder cerrar la caja');
 })();
 

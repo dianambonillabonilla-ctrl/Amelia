@@ -112,7 +112,9 @@ function cajaSincronizarFudo_(fecha, sede, usuario, forzar) {
     resultado.error = error?.message || String(error);
     resultado.sincronizado_en = new Date();
   }
-  cache.put(key, JSON.stringify(resultado), CAJA_FUDO_CACHE_SEGUNDOS_);
+  // Solo se cachea un sync exitoso. Un fallo no debe "congelar" el cuadre como no confiable
+  // durante 5 minutos: al pulsar Actualizar (o volver a consultar) tiene que poder reintentar.
+  if (resultado.ok) cache.put(key, JSON.stringify(resultado), CAJA_FUDO_CACHE_SEGUNDOS_);
   return resultado;
 }
 
@@ -231,6 +233,9 @@ function cajaAbrir_(item, usuario) {
   if ((difApertura !== 0 || difFuerteApertura !== 0) && usuario.rol !== 'Administrador') {
     return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
   }
+  if ((difApertura !== 0 || difFuerteApertura !== 0) && !String(item.observacion_apertura || '').trim()) {
+    return {ok:false,error:'Hay una diferencia al abrir. Debes escribir una observación.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+  }
   const fila = {
     id:Utilities.getUuid(),fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,
     diferencia_apertura:difApertura,observacion_apertura:item.observacion_apertura||'',
@@ -331,11 +336,13 @@ function cajaCerrar_(item,usuario) {
   const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
   const contado=Number(item.efectivo_contado)||0, fuerteContada=Number(item.caja_fuerte_contada)||0;
   const baseSiguiente=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente)||0:contado;
+  if(baseSiguiente>contado)return {ok:false,error:'La base siguiente no puede ser mayor que el efectivo contado.'};
   const dif=Number((contado-calculo.esperado).toFixed(2)), difFuerte=Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
   if((dif!==0||difFuerte!==0)&&usuario.rol!=='Administrador')return {ok:false,error:'Hay una diferencia. Solo un Administrador puede cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte};
   if((dif!==0||difFuerte!==0)&&!String(item.observacion||'').trim())return {ok:false,error:'Hay una diferencia. Debes escribir una observación.'};
 
-  cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
+  const entregaCierre=Number((contado-baseSiguiente).toFixed(2));
+  cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:entregaCierre,persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
   auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
-  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable};
+  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,entrega_cierre:entregaCierre,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable};
 }

@@ -401,13 +401,16 @@ function handleRequest_(e, method) {
         return jsonOut_(cajaEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'caja_rappi_marcar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(cajaRappiMarcar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+        return jsonOut_(cajaRappiMarcar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'caja_movimiento_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(cajaMovimientoRegistrar_(params.item, sesion.usuario));
       case 'caja_movimientos_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
         return jsonOut_({ ok: true, data: cajaMovimientosListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'caja_sincronizar_ahora':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaSincronizarAhora_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'caja_cerrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(cajaCerrar_(params.item, sesion.usuario));

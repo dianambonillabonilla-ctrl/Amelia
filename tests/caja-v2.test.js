@@ -178,14 +178,29 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(turnos.length, 0);
 }
 
-// Administrador SÍ puede abrir con diferencia.
+// Administrador SÍ puede abrir con diferencia, pero necesita observación.
 {
   const { ctx, turnos } = construirEntorno_();
+  const sinObs = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 50000, caja_fuerte_inicial: 100000 }, administrador);
+  assert.equal(sinObs.ok, false, 'Administrador no debe poder abrir con diferencia sin observación');
+  assert.match(sinObs.error, /observación/i);
+  assert.equal(turnos.length, 0);
+
   const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 50000, caja_fuerte_inicial: 100000, observacion_apertura: 'caja fuerte vacía, reportado' }, administrador);
   assert.equal(r.ok, true, 'Administrador debe poder abrir aunque haya diferencia');
   assert.equal(turnos.length, 1);
   assert.equal(turnos[0].diferencia_apertura, 50000);
   assert.equal(turnos[0].diferencia_caja_fuerte_apertura, 100000);
+}
+
+// base_siguiente mayor al contado no debe aceptarse (corrupcía la base del día siguiente).
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 80000, base_siguiente: 100000, observacion: 'faltante' }, administrador);
+  assert.equal(r.ok, false, 'base_siguiente > contado debe rechazarse');
+  assert.match(r.error, /base siguiente/i);
+  assert.equal(turnos[0].estado, 'Abierto');
 }
 
 // --- Sin credenciales de FUDO configuradas, cuadre_confiable no debe bloquear nada -----------------
