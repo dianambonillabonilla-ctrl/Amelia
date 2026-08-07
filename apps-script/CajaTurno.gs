@@ -4,6 +4,7 @@
  * Fuente única:
  * - Caja_Turno: apertura, base esperada, Rappi y cierre.
  * - Caja_Movimientos: entregas al administrador, gastos y otros ingresos.
+ * - API FUDO: ventas cerradas y pagos actualizados antes de calcular el efectivo.
  *
  * Efectivo esperado = efectivo contado al abrir
  *   + efectivo FUDO registrado desde la apertura
@@ -13,6 +14,7 @@
  */
 
 const CAJA_TIPOS_MOVIMIENTO_ = ['Entrega administrador', 'Gasto', 'Otro ingreso'];
+const CAJA_FUDO_CACHE_SEGUNDOS_ = 120;
 
 const CAJA_COLUMNAS_TURNO_ = [
   'id', 'fecha', 'sede', 'estado',
@@ -43,6 +45,66 @@ function cajaFechaMs_(valor) {
   if (!valor) return 0;
   const d = valor instanceof Date ? valor : new Date(valor);
   return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function cajaFudoCacheKey_(fecha, sede) {
+  return 'CAJA_FUDO_SYNC|' + fecha + '|' + sede;
+}
+
+/**
+ * Actualiza ventas y pagos desde la API de FUDO antes de calcular Caja.
+ * Se usa un caché corto para que abrir la pantalla varias veces no dispare llamadas repetidas.
+ * Al abrir y cerrar se usa forzar=true, porque esos dos momentos deben quedar auditados con datos
+ * recién consultados.
+ */
+function cajaSincronizarFudo_(fecha, sede, usuario, forzar) {
+  const fechaFmt = formatearFecha_(fecha);
+  const cache = CacheService.getScriptCache();
+  const key = cajaFudoCacheKey_(fechaFmt, sede);
+  if (!forzar) {
+    const guardado = cache.get(key);
+    if (guardado) {
+      try {
+        const previo = JSON.parse(guardado);
+        previo.desde_cache = true;
+        return previo;
+      } catch (e) {}
+    }
+  }
+
+  const inicio = new Date();
+  const resultado = {
+    ok: false,
+    fecha: fechaFmt,
+    sede: sede,
+    sincronizado_en: inicio,
+    ventas: null,
+    pagos: null,
+    error: ''
+  };
+
+  try {
+    if (typeof fudoApiSincronizarVentas_ !== 'function' || typeof fudoApiSincronizarPagos_ !== 'function') {
+      throw new Error('La integración API de FUDO no está disponible en esta versión de Apps Script.');
+    }
+    resultado.ventas = fudoApiSincronizarVentas_(fechaFmt, fechaFmt, usuario, { sede: 'Automática' });
+    if (!resultado.ventas || resultado.ventas.ok === false) {
+      throw new Error((resultado.ventas && resultado.ventas.error) || 'No se pudieron sincronizar las ventas de FUDO.');
+    }
+    resultado.pagos = fudoApiSincronizarPagos_(fechaFmt, fechaFmt, usuario, { sede: 'Automática' });
+    if (!resultado.pagos || resultado.pagos.ok === false) {
+      throw new Error((resultado.pagos && resultado.pagos.error) || 'No se pudieron sincronizar los pagos de FUDO.');
+    }
+    resultado.ok = true;
+    resultado.sincronizado_en = new Date();
+  } catch (error) {
+    resultado.ok = false;
+    resultado.error = error && error.message ? error.message : String(error);
+    resultado.sincronizado_en = new Date();
+  }
+
+  cache.put(key, JSON.stringify(resultado), CAJA_FUDO_CACHE_SEGUNDOS_);
+  return resultado;
 }
 
 function cajaTurnoFila_(fecha, sede) {
@@ -155,6 +217,11 @@ function cajaAbrir_(item, usuario) {
     return { ok: true, ya_abierta: true, item: existente };
   }
 
+  const syncFudo = cajaSincronizarFudo_(fecha, item.sede, usuario, true);
+  if (!syncFudo.ok) {
+    return { ok: false, codigo: 'FUDO_NO_SINCRONIZADO', error: 'No se puede abrir la caja porque FUDO no pudo sincronizarse: ' + syncFudo.error, fudo_sync: syncFudo };
+  }
+
   const baseEsperada = cajaBaseEsperada_(fecha, item.sede);
   const baseInicial = Number(item.base_inicial) || 0;
   const diferenciaApertura = Number((baseInicial - baseEsperada).toFixed(2));
@@ -175,25 +242,29 @@ function cajaAbrir_(item, usuario) {
   };
   appendRowFromObj_(SHEET_NAMES.CAJA_TURNO, fila);
   auditoriaRegistrar_(usuario, 'caja_abrir', 'CajaTurno', fecha + '|' + item.sede, null,
-    { base_esperada: baseEsperada, base_inicial: baseInicial, diferencia_apertura: diferenciaApertura },
+    { base_esperada: baseEsperada, base_inicial: baseInicial, diferencia_apertura: diferenciaApertura, fudo_sync: syncFudo.sincronizado_en },
     item.sede, item.observacion_apertura || '');
-  return { ok: true, item: fila };
+  return { ok: true, item: fila, fudo_sync: syncFudo };
 }
 
 function cajaEstado_(fecha, sede, usuario) {
   cajaAsegurarEstructura_();
   if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
-  const apertura = cajaTurnoFila_(fecha, sede);
+  const fechaFmt = formatearFecha_(fecha);
+  const syncFudo = cajaSincronizarFudo_(fechaFmt, sede, usuario, false);
+  const apertura = cajaTurnoFila_(fechaFmt, sede);
   if (!apertura) {
     return {
       ok: true,
       abierta: false,
-      base_esperada: cajaBaseEsperada_(fecha, sede),
-      puede_cerrar: cajaPuedeCerrar_(usuario, fecha)
+      base_esperada: cajaBaseEsperada_(fechaFmt, sede),
+      puede_cerrar: cajaPuedeCerrar_(usuario, fechaFmt),
+      fudo_sync: syncFudo,
+      cuadre_confiable: syncFudo.ok
     };
   }
-  const movimientos = cajaMovimientosDelDia_(fecha, sede);
-  const calculo = cajaEfectivoEsperado_(apertura, movimientos, fecha, sede);
+  const movimientos = cajaMovimientosDelDia_(fechaFmt, sede);
+  const calculo = cajaEfectivoEsperado_(apertura, movimientos, fechaFmt, sede);
   return {
     ok: true,
     abierta: apertura.estado === 'Abierto',
@@ -202,7 +273,9 @@ function cajaEstado_(fecha, sede, usuario) {
     pagos_efectivo_esperado: calculo.pagos_efectivo_esperado,
     pagos_efectivo_dia: calculo.pagos_efectivo_dia,
     efectivo_esperado: calculo.esperado,
-    puede_cerrar: cajaPuedeCerrar_(usuario, fecha)
+    puede_cerrar: cajaPuedeCerrar_(usuario, fechaFmt),
+    fudo_sync: syncFudo,
+    cuadre_confiable: syncFudo.ok
   };
 }
 
@@ -286,6 +359,16 @@ function cajaCerrar_(item, usuario) {
     return { ok: false, error: 'Falta el efectivo contado' };
   }
 
+  const syncFudo = cajaSincronizarFudo_(fecha, item.sede, usuario, true);
+  if (!syncFudo.ok) {
+    return {
+      ok: false,
+      codigo: 'FUDO_NO_SINCRONIZADO',
+      error: 'No se puede cerrar ni declarar cuadrada la caja porque FUDO no pudo sincronizarse: ' + syncFudo.error,
+      fudo_sync: syncFudo
+    };
+  }
+
   const movimientos = cajaMovimientosDelDia_(fecha, item.sede);
   const calculo = cajaEfectivoEsperado_(apertura, movimientos, fecha, item.sede);
   const efectivoContado = Number(item.efectivo_contado) || 0;
@@ -316,7 +399,8 @@ function cajaCerrar_(item, usuario) {
       diferencia: diferencia,
       entrega_cierre: entregaCierre,
       persona_recibe_cierre: item.persona_recibe_cierre || '',
-      base_siguiente: baseSiguiente
+      base_siguiente: baseSiguiente,
+      fudo_sync: syncFudo.sincronizado_en
     }, item.sede, item.observacion || '');
 
   return {
@@ -326,6 +410,8 @@ function cajaCerrar_(item, usuario) {
     diferencia: diferencia,
     entrega_cierre: entregaCierre,
     persona_recibe_cierre: item.persona_recibe_cierre || '',
-    base_siguiente: baseSiguiente
+    base_siguiente: baseSiguiente,
+    fudo_sync: syncFudo,
+    cuadre_confiable: true
   };
 }
