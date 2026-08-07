@@ -140,6 +140,9 @@ function fudoApiPeticionPagina_(recurso, opciones) {
   params.push.apply(params, fudoApiSerializarFiltros_(opciones.filtros || {}));
   if (opciones.orden) params.push('sort=' + encodeURIComponent(opciones.orden));
   if (opciones.include) params.push('include=' + encodeURIComponent(opciones.include));
+  // `campos` = fields[recurso]=attr1,attr2 (ver /expenses en el spec: a diferencia de /sales, sin
+  // esto algunos recursos devuelven "attributes" vacío en vez de los datos reales).
+  if (opciones.campos) params.push.apply(params, fudoApiSerializarFiltros_(opciones.campos, 'fields'));
 
   const url = fudoApiBaseUrl_().replace(/\/$/, '') + '/' + String(recurso).replace(/^\//, '') + '?' + params.join('&');
   const resp = UrlFetchApp.fetch(url, {
@@ -681,15 +684,24 @@ function fudoApiProbarConexion_() {
     }),
     ventas_cash_register: fudoApiProbarConexionRecursoSeguro_('sales', {
       pageSize: 5,
+      orden: '-id',
       include: 'cashRegister,table.room,payments.paymentMethod'
     }),
+    // ago 2026 (2): la primera ronda trajo gastos SIN "attributes" (solo relationships) — /expenses,
+    // a diferencia de /sales, necesita fields[expense]=... explícito para devolver los datos reales.
+    // Se agrega también orden '-date' porque page[number]=1 sin ordenar trae los gastos más viejos
+    // de la cuenta (2021), no la operación actual.
     gastos: fudoApiProbarConexionRecursoSeguro_('expenses', {
       pageSize: 5,
-      include: 'cashRegister,paymentMethod'
+      orden: '-date',
+      include: 'cashRegister,paymentMethod',
+      campos: { expense: 'amount,canceled,createdAt,date,description,dueDate,paymentDate,receiptNumber,status,useInCashCount' }
     }),
     metodos_pago: fudoApiProbarConexionRecursoSeguro_('payment-methods', { pageSize: 20 }),
+    // pageSize subido de 20 a 60: con 20 no alcanzaban a salir las mesas de "La Waffleria - Capri"
+    // (room id 4) en la primera ronda — solo se vieron mesas de San Antonio.
     mesas: fudoApiProbarConexionRecursoSeguro_('tables', {
-      pageSize: 20,
+      pageSize: 60,
       include: 'activeSales,activeSales.payments,activeSales.tips,room'
     })
   };
