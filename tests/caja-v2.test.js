@@ -2,9 +2,10 @@
  * CajaTurno.gs (consolidado — antes esta prueba cargaba CajaTurno.gs + CajaV2.gs por separado,
  * hasta que ambos archivos declaraban las mismas funciones globales y competían entre sí según el
  * orden de carga; CajaV2.gs se eliminó y todo quedó en un solo archivo): al abrir o cerrar con una
- * diferencia (efectivo o caja fuerte), solo un Administrador puede aprobarlo — Encargado/Cocina
- * deben poder hacerlo libremente cuando todo cuadra, pero una descuadre necesita que alguien con
- * ese rol lo revise antes de dar el turno por abierto/cerrado.
+ * diferencia (efectivo o caja fuerte), quien está en turno (Encargado o Administrador) puede
+ * hacerlo igual — nunca se bloquea el trabajo — pero debe dejar por escrito una observación
+ * explicando qué pasó. Diana (ago 2026): la diferencia queda registrada para que el Administrador
+ * la concilie después; ya no hace falta que él mismo abra/cierre ni que apruebe nada antes.
  *
  * Sin FUDO_API_KEY/SECRET configuradas (como en esta prueba), cajaSincronizarFudo_ no aplica —
  * cajaAbrir_/cajaCerrar_/cajaEstado_ se comportan exactamente igual que si esa validación no
@@ -119,31 +120,33 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(r.diferencia, 0);
 }
 
-// Diferencia en efectivo: Encargado NO puede cerrar.
+// Diferencia en efectivo: Encargado SÍ puede cerrar, dejando la observación por escrito.
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
   const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000', persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, encargada);
-  assert.equal(r.ok, false, 'Encargado NO debe poder cerrar con diferencia en efectivo, ni con observación');
-  assert.match(r.error, /Solo un Administrador puede cerrar/);
-  assert.equal(turnos[0].estado, 'Abierto', 'la caja debe seguir abierta: el intento bloqueado no debe cerrarla');
+  assert.equal(r.ok, true, 'Encargado debe poder cerrar con diferencia en efectivo si deja una observación — nunca se bloquea el trabajo');
+  assert.equal(r.diferencia, -10000);
+  assert.equal(turnos[0].estado, 'Cerrado');
 }
 
-// Diferencia en efectivo: Cocina tampoco puede cerrar.
+// Diferencia en efectivo SIN observación: nadie puede cerrar (ni Encargado, ni Cocina, ni nadie) —
+// la única exigencia es dejar por escrito qué pasó, no el rol de quien cierra.
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
   const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, cocina);
-  assert.equal(r.ok, false, 'Cocina tampoco debe poder cerrar con diferencia');
+  assert.equal(r.ok, false, 'sin observación, no debe poder cerrar con diferencia');
+  assert.match(r.error, /Debes escribir una observación/);
 }
 
-// Diferencia solo en caja fuerte (efectivo cuadra): tampoco puede un Encargado.
+// Diferencia solo en caja fuerte (efectivo cuadra) SIN observación: tampoco se puede cerrar.
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 500000 });
   const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 400000, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, encargada);
-  assert.equal(r.ok, false, 'una diferencia SOLO en caja fuerte también debe bloquear a Encargado');
-  assert.match(r.error, /Solo un Administrador puede cerrar/);
+  assert.equal(r.ok, false, 'una diferencia SOLO en caja fuerte también exige observación para poder cerrar');
+  assert.match(r.error, /Debes escribir una observación/);
 }
 
 // Administrador SÍ puede cerrar con diferencia.
@@ -156,7 +159,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(turnos[0].estado, 'Cerrado');
 }
 
-// --- cajaAbrir_: misma regla al ABRIR — con diferencia, solo un Administrador puede aprobar --------
+// --- cajaAbrir_: misma regla al ABRIR — una diferencia nunca bloquea, solo exige observación ------
 
 // Sin ninguna diferencia (nada previo cerrado => esperado 0 y 0): Encargado abre sin problema.
 {
@@ -166,21 +169,22 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(turnos.length, 1);
 }
 
-// Diferencia en base (efectivo): Encargado NO puede abrir.
+// Diferencia en base (efectivo): Encargado SÍ puede abrir, dejando la observación por escrito.
 {
   const { ctx, turnos } = construirEntorno_();
   const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 50000, caja_fuerte_inicial: 0, observacion_apertura: 'sobra efectivo' }, encargada);
-  assert.equal(r.ok, false, 'Encargado NO debe poder abrir con diferencia en la base, ni con observación');
-  assert.match(r.error, /Solo un Administrador puede aprobar la apertura/);
-  assert.equal(turnos.length, 0, 'no debe quedar ninguna fila creada cuando se bloquea la apertura');
+  assert.equal(r.ok, true, 'Encargado debe poder abrir con diferencia en la base si deja una observación — nunca se bloquea el trabajo');
+  assert.equal(turnos.length, 1);
+  assert.equal(turnos[0].diferencia_apertura, 50000);
 }
 
-// Diferencia solo en caja fuerte (base cuadra): tampoco puede un Encargado ni Cocina.
+// Diferencia solo en caja fuerte (base cuadra) SIN observación: no se puede abrir (falta la
+// observación, no importa el rol de quien abre).
 {
   const { ctx, turnos } = construirEntorno_();
   const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 100000 }, cocina);
-  assert.equal(r.ok, false, 'una diferencia SOLO en caja fuerte también debe bloquear a Cocina al abrir');
-  assert.match(r.error, /Solo un Administrador puede aprobar la apertura/);
+  assert.equal(r.ok, false, 'sin observación, no debe poder abrir con diferencia SOLO en caja fuerte');
+  assert.match(r.error, /Escribe una observación/);
   assert.equal(turnos.length, 0);
 }
 

@@ -394,28 +394,28 @@ function handleRequest_(e, method) {
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
         return jsonOut_({ ok: true, data: baseCajaListar_(params.filtros, sesion.usuario) });
       case 'caja_abrir':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaAbrir_(params.item, sesion.usuario));
       case 'caja_estado':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'caja_rappi_marcar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaRappiMarcar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'caja_movimiento_registrar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaMovimientoRegistrar_(params.item, sesion.usuario));
       case 'caja_movimientos_listar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Lectura']);
         return jsonOut_({ ok: true, data: cajaMovimientosListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'caja_cerrar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaCerrar_(params.item, sesion.usuario));
       case 'caja_resumen_admin':
         requiereRol_(sesion.usuario, ['Administrador']);
         return jsonOut_(cajaResumenAdministrador_(params.fecha, params.sedes, sesion.usuario));
       case 'caja_sincronizar_ahora':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaSincronizarAhora_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);

@@ -47,7 +47,7 @@
       </section>
 
       <section id="sin-abrir" class="oculto">
-        <!-- La apertura la hace quien está físicamente en la sede (Encargado/Cocina), no la
+        <!-- La apertura la hace quien está físicamente en la sede (Encargado), no la
              Administradora — a ella solo le interesa saber si ya está abierta o no. -->
         <div id="apertura-solo-lectura" class="card oculto">
           <h2>Caja sin abrir</h2>
@@ -95,14 +95,13 @@
         <div class="dos-columnas">
           <div class="card">
             <h2>Registrar movimiento</h2>
-            <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Envío a caja fuerte</option><option>Retiro de caja fuerte</option><option>Entrega administrador desde caja</option><option>Entrega administrador desde caja fuerte</option><option>Gasto</option><option>Otro ingreso</option></select></div>
+            <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Envío a caja fuerte</option><option>Retiro de caja fuerte</option><option>Entrega administrador desde caja</option><option>Entrega administrador desde caja fuerte</option><option>Otro ingreso</option></select></div>
             <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="mov-valor"></div>
             <div id="datos-entrega">
               <div class="campo"><label>Quién entrega</label><input id="mov-entrega"></div>
               <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
             </div>
             <div class="campo"><label>Motivo u observación</label><input id="mov-motivo"></div>
-            <div class="campo"><label>Foto o evidencia opcional</label><input type="file" id="mov-evidencia" accept="image/jpeg,image/png,application/pdf"></div>
             <button class="btn" id="guardar-movimiento">Guardar movimiento</button>
           </div>
 
@@ -132,7 +131,7 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
-requerirRol_(['Administrador','Encargado','Cocina']);
+requerirRol_(['Administrador','Encargado']);
 montarBarraUsuario();
 const usuario=Sesion.usuario();
 const fechaEl=document.getElementById('fecha');
@@ -205,16 +204,16 @@ function calculoCierre(){
   const difFuerte=fuerteContada-fuerteEsperada;
   const entrega=contado-base;
   const fudoNoConfiable=estadoActual.cuadre_confiable===false;
-  const hayDiferencia=dif!==0||difFuerte!==0||fudoNoConfiable;
-  const esAdmin=usuario.rol==='Administrador';
+  const hayDiferenciaDinero=dif!==0||difFuerte!==0;
   let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>`;
   if(difFuerte!==0)html+=`Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong><br>`;
   html+=`Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
-  if(fudoNoConfiable)html+=`<br><strong style="color:var(--red)">⚠ Cuadre no confiable: no fue posible actualizar FUDO.</strong>`;
-  if(hayDiferencia&&!esAdmin)html+=`<br><strong style="color:var(--red)">Hay una diferencia — solo un Administrador puede cerrar esta caja.</strong>`;
-  else if(fudoNoConfiable&&esAdmin)html+=`<br><strong style="color:var(--red)">Escribe abajo una observación para cerrar de todas formas.</strong>`;
+  // Diana (ago 2026): ni una diferencia de dinero ni que FUDO no haya sincronizado bloquean el
+  // cierre — la caja se cierra siempre. Una diferencia sí exige dejar por escrito qué pasó; que
+  // FUDO no sincronizara no (el sistema ya lo sabe y se lo avisa al Administrador aparte).
+  if(fudoNoConfiable)html+=`<br><span style="color:var(--amber)">⚠ FUDO no está sincronizado — este número usa la última información guardada. Puedes cerrar igual; el Administrador lo revisa después.</span>`;
+  if(hayDiferenciaDinero)html+=`<br><strong style="color:var(--red)">Hay una diferencia — escribe abajo una observación explicando qué pasó para poder cerrar.</strong>`;
   document.getElementById('calculo-cierre').innerHTML=html;
-  document.getElementById('cerrar').disabled=hayDiferencia&&!esAdmin;
 }
 function pintarMovimientos(lista){
   const el=document.getElementById('movimientos');
@@ -369,8 +368,7 @@ document.getElementById('abrir').addEventListener('click',conBotonProtegido(docu
 document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
 document.getElementById('guardar-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('guardar-movimiento'),async()=>{
   const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim()};
-  const f=document.getElementById('mov-evidencia');if(f.files[0]){const archivo=await leerArchivoBase64_(f);const sub=await llamar('evidencia_subir',{archivo});if(!sub.ok){alert(sub.error);return;}item.evidencia_url=sub.url;}
-  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');f.value='';avisarGuardado('Movimiento registrado.');cargar();
+  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');avisarGuardado('Movimiento registrado.');cargar();
 }));
 document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
@@ -379,8 +377,9 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),persona_verifica_cierre:document.getElementById('cierre-verifica').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
   if(!item.persona_recibe_cierre){alert('Escribe quién recibe el dinero.');return;}
   if(!item.persona_verifica_cierre){alert('Escribe quién verifica el cierre.');return;}
-  if(estadoActual.cuadre_confiable===false&&!item.observacion){alert('FUDO no está sincronizado. Escribe una observación antes de cerrar.');return;}
-  if(contado!==Number(estadoActual.efectivo_esperado||0)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
+  const fuerteContada_=Number(document.getElementById('cierre-fuerte').value||0);
+  const hayDiferenciaDinero_=contado!==Number(estadoActual.efectivo_esperado||0)||fuerteContada_!==Number(estadoActual.caja_fuerte_esperada||0);
+  if(hayDiferenciaDinero_&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
 }));
 cargar();

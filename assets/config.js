@@ -193,7 +193,7 @@ const MENU_PRINCIPAL = [
   { grupo: 'HOY' },
   { href: 'inicio.html', texto: 'Inicio de turno' },
   { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador','Encargado','Lectura'] },
-  { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Encargado','Cocina'] },
+  { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Encargado'] },
   { grupo: 'REGISTRAR OPERACIÓN' },
   { href: 'conteo.html', texto: 'Conteo de inventario', soloRol: ['Administrador','Encargado','Cocina'] },
   { href: 'producir.html', texto: 'Producción', soloRol: ['Administrador','Encargado','Cocina'] },
