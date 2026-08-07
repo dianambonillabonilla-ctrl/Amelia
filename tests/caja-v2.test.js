@@ -46,6 +46,7 @@ function fakeHojaObjetos_(headers, filas) {
 
 function construirEntorno_() {
   const turnos = [];
+  const propiedadesScript = new Map();
   // cajaMigrarHistorico_ inyecta, la primera vez que no encuentra su propio id ya guardado, tres
   // movimientos históricos fijos (San Antonio y Capri, agosto 2026). Son correcciones de hechos
   // reales (una migración de datos, no algo que estas pruebas deban ejercitar), así que se
@@ -79,11 +80,16 @@ function construirEntorno_() {
     // de diferencia (lo que de verdad les interesa) y no la de asignación de sector.
     turnoSectorDeHoy_: () => ({ sector: 'Caja' }),
     Utilities: { getUuid: () => 'caja-turno-' + (turnos.length + movimientos.length + 1) },
-    // Sin FUDO_API_KEY/SECRET: cajaFudoCredencialesConfiguradas_ da false y cajaSincronizarFudo_
-    // nunca llega a tocar la API real — pero cajaLeerEstadoFudo_ (para leer lo último en caché) sí
-    // toca CacheService siempre, así que necesita un mock mínimo aunque nunca se le escriba nada.
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
-    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) }
+    // Propiedades del Script en memoria: real (getProperty/setProperty sobre un Map), no un mock
+    // que siempre devuelve null — cajaMigrarHistorico_ ahora se marca "hecho" aquí después de
+    // correr una vez. FUDO_API_KEY/SECRET nunca se ponen, así que cajaFudoCredencialesConfiguradas_
+    // sigue dando false y cajaSincronizarFudo_ nunca toca la API real.
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (propiedadesScript.has(k) ? propiedadesScript.get(k) : null),
+      setProperty: (k, v) => propiedadesScript.set(k, String(v))
+    }) },
+    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) }
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync('apps-script/CajaTurno.gs', 'utf8'), ctx, { filename: 'CajaTurno.gs' });
@@ -108,7 +114,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0 }, encargada);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, encargada);
   assert.equal(r.ok, true, 'Encargado debe poder cerrar cuando lo contado coincide exactamente con lo esperado');
   assert.equal(r.diferencia, 0);
 }
@@ -117,7 +123,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000' }, encargada);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000', persona_recibe_cierre: 'Diana' }, encargada);
   assert.equal(r.ok, false, 'Encargado NO debe poder cerrar con diferencia en efectivo, ni con observación');
   assert.match(r.error, /Solo un Administrador puede cerrar/);
   assert.equal(turnos[0].estado, 'Abierto', 'la caja debe seguir abierta: el intento bloqueado no debe cerrarla');
@@ -127,7 +133,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0 }, cocina);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, cocina);
   assert.equal(r.ok, false, 'Cocina tampoco debe poder cerrar con diferencia');
 }
 
@@ -135,7 +141,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 500000 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 400000 }, encargada);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 400000, persona_recibe_cierre: 'Diana' }, encargada);
   assert.equal(r.ok, false, 'una diferencia SOLO en caja fuerte también debe bloquear a Encargado');
   assert.match(r.error, /Solo un Administrador puede cerrar/);
 }
@@ -144,7 +150,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000, reportado a gerencia' }, administrador);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000, reportado a gerencia', persona_recibe_cierre: 'Diana' }, administrador);
   assert.equal(r.ok, true, 'Administrador debe poder cerrar aunque haya diferencia');
   assert.equal(r.diferencia, -10000);
   assert.equal(turnos[0].estado, 'Cerrado');
@@ -188,11 +194,121 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(turnos[0].diferencia_caja_fuerte_apertura, 100000);
 }
 
+// --- Candado contra dos aperturas/cierres simultáneos para la misma fecha+sede --------------------
+
+// Si no se puede tomar el candado (otra apertura ya en curso), se avisa en vez de crear una
+// segunda fila.
+{
+  const { ctx, turnos } = construirEntorno_();
+  ctx.LockService = { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => {} }) };
+  const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 }, administrador);
+  assert.equal(r.ok, false, 'no debe abrir si no se pudo tomar el candado');
+  assert.match(r.error, /en curso/);
+  assert.equal(turnos.length, 0);
+}
+
+// Carrera real: entre el primer chequeo y tomar el candado, otra apertura ya se guardó — al
+// re-revisar DENTRO del candado debe detectarlo y no duplicar la fila.
+{
+  const { ctx, turnos } = construirEntorno_();
+  ctx.LockService = {
+    getScriptLock: () => ({
+      tryLock: () => {
+        // Simula que, justo al tomar el candado, ya existe una apertura de otro dispositivo.
+        turnos.push({ id: 'ganador-de-la-carrera', fecha: '2026-07-15', sede: 'San Antonio', estado: 'Abierto', base_inicial: 0, caja_fuerte_inicial: 0 });
+        return true;
+      },
+      releaseLock: () => {}
+    })
+  };
+  const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 }, administrador);
+  assert.equal(r.ok, true);
+  assert.equal(r.ya_abierta, true, 'debe reconocer la apertura que ganó la carrera, no crear una segunda');
+  assert.equal(turnos.length, 1, 'no debe quedar una fila duplicada');
+}
+
+// Lo mismo al cerrar: si no se puede tomar el candado, se avisa en vez de arriesgar un cierre a medias.
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  ctx.LockService = { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => {} }) };
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, administrador);
+  assert.equal(r.ok, false, 'no debe cerrar si no se pudo tomar el candado');
+  assert.match(r.error, /en curso/);
+  assert.equal(turnos[0].estado, 'Abierto');
+}
+
+// --- Validaciones de los campos de conteo (vacíos/negativos) — antes se leían como "$0" en silencio,
+// ahora se rechazan explícitamente. Ligado a que caja.html ya no precarga estos campos con lo
+// esperado: sin esta validación, enviar el formulario vacío abría/cerraba igual, siempre "sin
+// diferencia", sin que nadie hubiera contado nada de verdad. ------------------------------------------
+
+// Abrir sin escribir el efectivo contado (campo vacío) debe rechazarse, no leerse como $0.
+{
+  const { ctx, turnos } = construirEntorno_();
+  const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: '', caja_fuerte_inicial: 0 }, administrador);
+  assert.equal(r.ok, false, 'no debe poder abrir con el efectivo contado vacío');
+  assert.match(r.error, /Falta contar el dinero/);
+  assert.equal(turnos.length, 0);
+}
+
+// Abrir con un valor negativo debe rechazarse.
+{
+  const { ctx, turnos } = construirEntorno_();
+  const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: -1000, caja_fuerte_inicial: 0 }, administrador);
+  assert.equal(r.ok, false, 'no debe poder abrir con efectivo contado negativo');
+  assert.match(r.error, /no puede ser negativo/);
+  assert.equal(turnos.length, 0);
+}
+
+// Cerrar sin escribir el efectivo contado (campo vacío) debe rechazarse.
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: '', caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, administrador);
+  assert.equal(r.ok, false, 'no debe poder cerrar con el efectivo contado vacío');
+  assert.match(r.error, /Falta contar el dinero/);
+  assert.equal(turnos[0].estado, 'Abierto');
+}
+
+// Cerrar sin decir quién recibe el dinero debe rechazarse.
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0 }, administrador);
+  assert.equal(r.ok, false, 'no debe poder cerrar sin decir quién recibe el cierre');
+  assert.match(r.error, /persona que recibe/);
+  assert.equal(turnos[0].estado, 'Abierto');
+}
+
+// La base para el siguiente turno no puede ser mayor que lo contado.
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 150000, persona_recibe_cierre: 'Diana' }, administrador);
+  assert.equal(r.ok, false, 'la base siguiente no puede superar lo contado');
+  assert.match(r.error, /no puede ser mayor/);
+  assert.equal(turnos[0].estado, 'Abierto');
+}
+
 // --- Sin credenciales de FUDO configuradas, cuadre_confiable no debe bloquear nada -----------------
 {
   const { ctx, turnos } = construirEntorno_();
   const estado = ctx.cajaEstado_('2026-07-15', 'San Antonio', encargada);
   assert.equal(estado.cuadre_confiable, true, 'sin credenciales de FUDO, el cuadre debe considerarse confiable (la validación no aplica)');
+}
+
+// --- La migración histórica corre una sola vez (bandera en Propiedades del Script), no en cada
+// acción de Caja — se prueba con un entorno SIN los IDs pre-cargados, para distinguir "no la repite
+// porque ya reconoce los IDs" de "no la repite porque ya está marcada como hecha". -----------------
+{
+  const { ctx, movimientos } = construirEntorno_();
+  movimientos.length = 0; // quitar los 3 IDs pre-cargados por construirEntorno_ para esta prueba puntual
+  ctx.cajaEstado_('2026-07-15', 'San Antonio', administrador); // dispara cajaAsegurarEstructura_ -> cajaMigrarHistorico_
+  assert.equal(movimientos.length, 3, 'la primera vez debe insertar las 3 migraciones históricas');
+  movimientos.length = 0; // se "borran" a mano, como si alguien las quitara de la hoja
+  ctx.cajaEstado_('2026-07-15', 'San Antonio', administrador); // segunda llamada: ya debe estar marcada como hecha
+  assert.equal(movimientos.length, 0, 'una vez marcada como hecha, no debe volver a insertarlas aunque ya no estén');
 }
 
 console.log('caja-v2: OK');
