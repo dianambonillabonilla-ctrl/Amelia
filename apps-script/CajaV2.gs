@@ -106,10 +106,13 @@ function cajaAbrir_(item,usuario) {
 function cajaEstado_(fecha,sede,usuario) {
   cajaV2Asegurar_();
   if (!fecha || !sede) return {ok:false,error:'Falta la fecha o la sede'};
+  // Al abrir la pantalla de Caja o pulsar "Actualizar" (ambos llegan aquí) se intenta refrescar
+  // FUDO antes de calcular nada — ver cajaFudoAsegurarFrescura_ (CajaTurno.gs).
+  const fudoSync = typeof cajaFudoAsegurarFrescura_ === 'function' ? cajaFudoAsegurarFrescura_(fecha,usuario) : {aplica:false,confiable:true};
   const apertura = cajaTurnoFila_(fecha,sede);
-  if (!apertura) return {ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fecha,sede),caja_fuerte_esperada:cajaV2SaldoFuerteAntes_(fecha,sede),puede_cerrar:cajaPuedeCerrar_(usuario,fecha)};
+  if (!apertura) return {ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fecha,sede),caja_fuerte_esperada:cajaV2SaldoFuerteAntes_(fecha,sede),puede_cerrar:cajaPuedeCerrar_(usuario,fecha),fudo_sync:fudoSync};
   const calculo = cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,sede),fecha,sede);
-  return {ok:true,abierta:apertura.estado==='Abierto',apertura:apertura,movimientos_resumen:calculo.resumen,pagos_efectivo_esperado:calculo.pagos_efectivo_esperado,pagos_efectivo_dia:calculo.pagos_efectivo_dia,efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fecha)};
+  return {ok:true,abierta:apertura.estado==='Abierto',apertura:apertura,movimientos_resumen:calculo.resumen,pagos_efectivo_esperado:calculo.pagos_efectivo_esperado,pagos_efectivo_dia:calculo.pagos_efectivo_dia,efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fecha),fudo_sync:fudoSync};
 }
 
 function cajaMovimientoRegistrar_(item,usuario) {
@@ -133,6 +136,18 @@ function cajaCerrar_(item,usuario) {
   const fecha = formatearFecha_(item.fecha), apertura = cajaTurnoFila_(fecha,item.sede);
   if (!apertura) return {ok:false,error:'La caja no está abierta'};
   if (apertura.estado === 'Cerrado') return {ok:true,ya_cerrado:true};
+  // El cuadre "confiable" exige que FUDO esté al día — ver cajaFudoAsegurarFrescura_
+  // (CajaTurno.gs). Si no se pudo confirmar una sincronización reciente, un Encargado/Cocina no
+  // puede cerrar (el número "esperado" mismo podría estar mal); un Administrador sí puede, pero
+  // dejando una observación explícita de que cerró sin esa confirmación.
+  const fudoSync = typeof cajaFudoAsegurarFrescura_ === 'function' ? cajaFudoAsegurarFrescura_(fecha,usuario) : {aplica:false,confiable:true};
+  const fudoConfiable = !fudoSync.aplica || fudoSync.confiable;
+  if (!fudoConfiable && usuario.rol !== 'Administrador') {
+    return {ok:false,error:'No se pudo confirmar los pagos de FUDO al día. Espera a que sincronice o pide a un Administrador que autorice el cierre.',fudo_confiable:false};
+  }
+  if (!fudoConfiable && !item.observacion) {
+    return {ok:false,error:'FUDO no está sincronizado. Escribe una observación para cerrar de todas formas.',fudo_confiable:false};
+  }
   const calculo = cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
   const contado = Number(item.efectivo_contado)||0, fuerteContada = Number(item.caja_fuerte_contada)||0;
   const baseSiguiente = item.base_siguiente !== '' && item.base_siguiente != null ? Number(item.base_siguiente)||0 : contado;
@@ -144,5 +159,5 @@ function cajaCerrar_(item,usuario) {
     return {ok:false,error:'Hay una diferencia en la caja. Solo un Administrador puede cerrarla.',diferencia:dif,diferencia_caja_fuerte:difFuerte};
   }
   cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:0,persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
-  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente};
+  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_confiable:fudoConfiable};
 }

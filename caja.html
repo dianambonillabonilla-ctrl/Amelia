@@ -27,6 +27,7 @@
         <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
         <div class="estado" id="estado">Consultando…</div>
       </section>
+      <p id="fudo-sync-info" style="font-size:.82rem;margin:-8px 0 14px"></p>
 
       <section id="cargando" class="card"><p class="vacio">Consultando el estado de la caja…</p></section>
 
@@ -131,6 +132,20 @@ function diferenciaApertura(){
   el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
   el.style.color=dif===0?'var(--green)':'var(--red)';
 }
+function fudoSyncActual(){return (estadoActual&&estadoActual.fudo_sync)||{aplica:false,confiable:true};}
+function pintarFudoSync(){
+  const el=document.getElementById('fudo-sync-info');
+  const sync=fudoSyncActual();
+  if(!sync.aplica){el.textContent='';return;}
+  if(sync.confiable){
+    const hora=sync.sincronizado_en?new Date(sync.sincronizado_en).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    el.textContent=`FUDO sincronizado: ${hora}`;
+    el.style.color='var(--grey)';
+  }else{
+    el.textContent='⚠ Cuadre no confiable: no fue posible actualizar FUDO.';
+    el.style.color='var(--red)';
+  }
+}
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
@@ -141,12 +156,16 @@ function calculoCierre(){
   const dif=contado-esperado;
   const difFuerte=fuerteContada-fuerteEsperada;
   const entrega=contado-base;
-  const hayDiferencia=dif!==0||difFuerte!==0;
+  const fudoSync=fudoSyncActual();
+  const fudoNoConfiable=fudoSync.aplica&&!fudoSync.confiable;
+  const hayDiferencia=dif!==0||difFuerte!==0||fudoNoConfiable;
   const esAdmin=usuario.rol==='Administrador';
   let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>`;
   if(difFuerte!==0)html+=`Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong><br>`;
   html+=`Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
+  if(fudoNoConfiable)html+=`<br><strong style="color:var(--red)">⚠ Cuadre no confiable: no fue posible actualizar FUDO.</strong>`;
   if(hayDiferencia&&!esAdmin)html+=`<br><strong style="color:var(--red)">Hay una diferencia — solo un Administrador puede cerrar esta caja.</strong>`;
+  else if(fudoNoConfiable&&esAdmin)html+=`<br><strong style="color:var(--red)">Escribe abajo una observación para cerrar de todas formas.</strong>`;
   document.getElementById('calculo-cierre').innerHTML=html;
   document.getElementById('cerrar').disabled=hayDiferencia&&!esAdmin;
 }
@@ -161,6 +180,7 @@ async function cargar(){
   const data=await llamar('caja_estado',p);
   if(!data.ok){alert(data.error);return;}
   estadoActual=data;
+  pintarFudoSync();
   document.getElementById('estado').className='estado';
   if(!data.apertura){
     document.getElementById('estado').textContent='Caja sin abrir';document.getElementById('estado').classList.add('cerrada');
@@ -225,6 +245,8 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
   const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
   if(!item.persona_recibe_cierre){alert('Escribe quién verifica el cierre.');return;}
+  const fudoSync=fudoSyncActual();const fudoNoConfiable=fudoSync.aplica&&!fudoSync.confiable;
+  if(fudoNoConfiable&&!item.observacion){alert('FUDO no está sincronizado. Escribe una observación antes de cerrar.');return;}
   if(contado!==Number(estadoActual.efectivo_esperado||0)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
 }));

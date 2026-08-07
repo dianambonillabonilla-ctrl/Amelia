@@ -106,6 +106,54 @@ function cajaEfectivoFudoDia_(fecha, sede) {
   return Number(fudo.pagos_efectivo_esperado) || 0;
 }
 
+// El trigger automático (fudoSincronizacionAutomatica_, ver configurarTriggers en Code.gs) corre
+// cada 15 min — 20 da margen antes de considerar la última sincronización "vieja".
+const CAJA_FUDO_SYNC_MAX_MINUTOS_ = 20;
+
+function cajaFudoUltimaSincronizacionPagos_() {
+  return typeof fudoApiSyncLeer_ === 'function' ? fudoApiSyncLeer_('pagos') : null;
+}
+
+function cajaFudoSincronizacionFresca_(sync) {
+  if (!sync || !sync.timestamp || sync.ok === false) return false;
+  const edadMs = Date.now() - new Date(sync.timestamp).getTime();
+  return edadMs >= 0 && edadMs <= CAJA_FUDO_SYNC_MAX_MINUTOS_ * 60000;
+}
+
+/**
+ * El cuadre de caja (efectivo esperado) se calcula con lo que haya guardado en Pagos_FUDO/
+ * Fudo_Pagos — antes de esto, Caja nunca forzaba que ese dato estuviera al día: si la
+ * sincronización automática iba atrasada o había fallado, el cuadre comparaba el conteo físico
+ * contra una hoja vieja sin que nadie se enterara. Ahora, antes de mostrar el estado de caja o de
+ * permitir un cierre "cuadrado", si la última sincronización conocida tiene más de
+ * CAJA_FUDO_SYNC_MAX_MINUTOS_ (o falló), se intenta traer ventas/pagos frescos AHORA MISMO contra
+ * la API real.
+ *
+ * Sin credenciales de la API configuradas (instalación sin la integración activa, o pruebas) esto
+ * no aplica: se sigue exactamente como antes, sin bloquear nada — por eso devuelve `aplica:false`
+ * en vez de tratarlo como no confiable.
+ */
+function cajaFudoAsegurarFrescura_(fecha, usuario) {
+  if (typeof PropertiesService === 'undefined') return { aplica: false, confiable: true };
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('FUDO_API_KEY') || !props.getProperty('FUDO_API_SECRET')) {
+    return { aplica: false, confiable: true };
+  }
+  let sync = cajaFudoUltimaSincronizacionPagos_();
+  if (cajaFudoSincronizacionFresca_(sync)) {
+    return { aplica: true, confiable: true, sincronizado_en: sync.timestamp };
+  }
+  try {
+    if (typeof fudoApiSincronizarVentas_ === 'function') fudoApiSincronizarVentas_(fecha, fecha, usuario, {});
+    if (typeof fudoApiSincronizarPagos_ === 'function') fudoApiSincronizarPagos_(fecha, fecha, usuario, {});
+  } catch (err) {
+    if (typeof Logger !== 'undefined') Logger.log('cajaFudoAsegurarFrescura_: sincronización en vivo falló: ' + err.message);
+  }
+  sync = cajaFudoUltimaSincronizacionPagos_();
+  const confiable = cajaFudoSincronizacionFresca_(sync);
+  return { aplica: true, confiable: confiable, sincronizado_en: (sync && sync.timestamp) || '' };
+}
+
 function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
   const resumen = cajaMovimientosResumen_(movimientos);
   const efectivoFudoActual = cajaEfectivoFudoDia_(fecha, sede);
