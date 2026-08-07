@@ -24,7 +24,7 @@ const TURNO_HEADERS = [
   'rappi_encendido', 'rappi_confirmado_por', 'rappi_confirmado_en',
   'efectivo_contado', 'efectivo_esperado', 'diferencia',
   'caja_fuerte_contada', 'caja_fuerte_esperada', 'diferencia_caja_fuerte', 'caja_fuerte_siguiente',
-  'entrega_cierre', 'persona_recibe_cierre', 'base_siguiente', 'usuario_cierre', 'hora_cierre',
+  'entrega_cierre', 'persona_recibe_cierre', 'persona_verifica_cierre', 'base_siguiente', 'usuario_cierre', 'hora_cierre',
   'observacion_cierre', 'timestamp_cierre'
 ];
 
@@ -95,7 +95,7 @@ const administrador = { nombre: 'Diana', rol: 'Administrador', id: 'u1' };
   const primeraApertura = ctx.cajaAbrir_({ fecha: '2026-08-06', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0, observacion_apertura: 'Primera apertura de la sede en la prueba — sin cierre anterior con qué comparar' }, administrador);
   assert.equal(primeraApertura.ok, true);
   fijarReloj(new Date(2026, 7, 6, 22, 0, 0));
-  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 80000, persona_recibe_cierre: 'Diana' }, administrador);
+  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 80000, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
   assert.equal(cierre.ok, true);
 
   fijarReloj(new Date(2026, 7, 7, 8, 0, 0));
@@ -113,7 +113,7 @@ const administrador = { nombre: 'Diana', rol: 'Administrador', id: 'u1' };
   // El clic en "Cerrar caja" ocurre a las 00:15 del 7 de agosto (después de medianoche real), pero
   // el turno que se cierra sigue siendo el del 6 de agosto (fecha de negocio).
   fijarReloj(new Date(2026, 7, 7, 0, 15, 0));
-  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 80000, persona_recibe_cierre: 'Diana' }, administrador);
+  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 80000, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
   assert.equal(cierre.ok, true, 'debe poder cerrarse el turno de ayer aunque el reloj real ya haya cruzado la medianoche');
 
   fijarReloj(new Date(2026, 7, 7, 8, 0, 0));

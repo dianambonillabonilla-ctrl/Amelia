@@ -14,7 +14,7 @@ const CAJA_COLUMNAS_TURNO_ = [
   'rappi_encendido','rappi_confirmado_por','rappi_confirmado_en',
   'efectivo_contado','efectivo_esperado','diferencia',
   'caja_fuerte_contada','caja_fuerte_esperada','diferencia_caja_fuerte','caja_fuerte_siguiente',
-  'entrega_cierre','persona_recibe_cierre','base_siguiente','usuario_cierre','hora_cierre',
+  'entrega_cierre','persona_recibe_cierre','persona_verifica_cierre','base_siguiente','usuario_cierre','hora_cierre',
   'observacion_cierre','timestamp_cierre'
 ];
 const CAJA_COLUMNAS_MOVIMIENTOS_ = [
@@ -201,6 +201,17 @@ function cajaEfectivoFudoDia_(fecha, sede) {
   return Number(fudo.pagos_efectivo_esperado) || 0;
 }
 
+/**
+ * Efectivo FUDO del día que quedó con sede "Sin identificar" (no atribuible a ninguna sede) —
+ * puramente informativo. Diana (ago 2026): esto NUNCA debe bloquear la apertura ni el cierre de
+ * Caja, solo debe saberse que existe; el Administrador concilia esas ventas desde la bandeja
+ * "Ventas pendientes de sede" (Importar de FUDO) para que dejen de aparecer.
+ */
+function cajaEfectivoSinIdentificarDia_(fecha) {
+  const pagos = typeof pagosFudoTotalesSedeFecha_ === 'function' ? pagosFudoTotalesSedeFecha_(fecha, 'Sin identificar') : { pagos_efectivo_esperado: 0 };
+  return Number(pagos.pagos_efectivo_esperado) || 0;
+}
+
 function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
   const r = cajaMovimientosResumen_(movimientos);
   const efectivoFudoActual = cajaEfectivoFudoDia_(fecha, sede);
@@ -317,10 +328,12 @@ function cajaEstado_(fecha, sede, usuario) {
   const fechaFmt = formatearFecha_(fecha);
   let syncFudo = cajaLeerEstadoFudo_(fechaFmt,sede);
   if (syncFudo.pendiente) syncFudo = cajaSincronizarFudo_(fechaFmt,sede,usuario,true);
+  const efectivoSinIdentificar = cajaEfectivoSinIdentificarDia_(fechaFmt);
   const apertura = cajaTurnoFila_(fechaFmt,sede);
   if (!apertura) return {
     ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fechaFmt,sede),caja_fuerte_esperada:cajaSaldoFuerteAntes_(fechaFmt,sede),
-    puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok
+    puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,
+    efectivo_sin_identificar:efectivoSinIdentificar
   };
   const calculo = cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fechaFmt,sede),fechaFmt,sede);
   return {
@@ -328,7 +341,7 @@ function cajaEstado_(fecha, sede, usuario) {
     pagos_efectivo_esperado:calculo.pagos_efectivo_esperado,pagos_efectivo_dia:calculo.pagos_efectivo_dia,
     efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,
     total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),
-    fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok
+    fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,efectivo_sin_identificar:efectivoSinIdentificar
   };
 }
 
@@ -395,7 +408,8 @@ function cajaCerrar_(item,usuario) {
   if(!contadoValido.ok)return {ok:false,error:'Efectivo contado: '+contadoValido.error};
   const fuerteContadaValida=cajaValorContadoValido_(item.caja_fuerte_contada);
   if(!fuerteContadaValida.ok)return {ok:false,error:'Caja fuerte contada: '+fuerteContadaValida.error};
-  if(!String(item.persona_recibe_cierre||'').trim())return {ok:false,error:'Falta la persona que recibe el cierre.'};
+  if(!String(item.persona_recibe_cierre||'').trim())return {ok:false,error:'Falta la persona que recibe el dinero.'};
+  if(!String(item.persona_verifica_cierre||'').trim())return {ok:false,error:'Falta la persona que verifica el cierre.'};
 
   const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
   const contado=contadoValido.valor, fuerteContada=fuerteContadaValida.valor;
@@ -416,10 +430,10 @@ function cajaCerrar_(item,usuario) {
     const aperturaAhora = cajaTurnoFila_(fecha,item.sede);
     if (!aperturaAhora) return {ok:false,error:'La caja no está abierta'};
     if (aperturaAhora.estado === 'Cerrado') return {ok:true,ya_cerrado:true};
-    cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
+    cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',persona_verifica_cierre:item.persona_verifica_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
     auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
   } finally {
     lock.releaseLock();
   }
-  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable};
+  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable,efectivo_sin_identificar:cajaEfectivoSinIdentificarDia_(fecha)};
 }

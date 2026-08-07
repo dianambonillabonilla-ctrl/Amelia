@@ -97,7 +97,8 @@
             <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
             <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
             <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
-            <div class="campo"><label>Persona que verifica el cierre</label><input id="cierre-recibe"></div>
+            <div class="campo"><label>Persona que recibe el dinero</label><input id="cierre-recibe"></div>
+            <div class="campo"><label>Persona que verifica el cierre</label><input id="cierre-verifica"></div>
             <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
             <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
             <button class="btn dorado" id="cerrar">Cerrar caja</button>
@@ -140,13 +141,18 @@ function fechaHoraFudo_(valor){
 function pintarFudoSync(){
   const el=document.getElementById('fudo-sync-info');
   const sync=(estadoActual&&estadoActual.fudo_sync)||null;
-  if(!sync||sync.aplica===false){el.textContent='';return;}
+  // El efectivo "Sin identificar" es solo informativo — nunca bloquea abrir ni cerrar caja. El
+  // Administrador lo concilia desde "Ventas pendientes de sede" (Importar de FUDO); si no se
+  // concilia, sigue apareciendo día a día.
+  const sinIdentificar=Number(estadoActual&&estadoActual.efectivo_sin_identificar)||0;
+  const avisoSinIdentificar=sinIdentificar>0
+    ? `<br><span style="color:var(--amber)">⚠ ${dinero(sinIdentificar)} en efectivo Sin identificar hoy — revisa "Ventas pendientes de sede" en Importar.</span>`
+    : '';
+  if(!sync||sync.aplica===false){el.innerHTML=avisoSinIdentificar.replace(/^<br>/,'');return;}
   if(estadoActual.cuadre_confiable){
-    el.textContent=`FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}`;
-    el.style.color='var(--grey)';
+    el.innerHTML=`<span style="color:var(--grey)">FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}</span>${avisoSinIdentificar}`;
   }else{
-    el.textContent='⚠ Cuadre no confiable: '+(sync.error||'no fue posible actualizar FUDO')+'.';
-    el.style.color='var(--red)';
+    el.innerHTML=`<span style="color:var(--red)">⚠ Cuadre no confiable: ${sync.error||'no fue posible actualizar FUDO'}.</span>${avisoSinIdentificar}`;
   }
 }
 function diferenciaApertura(){
@@ -213,7 +219,7 @@ async function cargar(){
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent='Caja cerrada';document.getElementById('estado').classList.add('cerrada');
     const a=data.apertura;const dif=Number(a.diferencia||0);
-    document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado a ${escapeHtml(a.persona_recibe_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
+    document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado a ${escapeHtml(a.persona_recibe_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Verificado por ${escapeHtml(a.persona_verifica_cierre||'—')}<br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
     mostrar('cerrada');return;
   }
   document.getElementById('estado').textContent='Caja abierta';document.getElementById('estado').classList.add('abierta');
@@ -268,8 +274,9 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
   const contado=Number(document.getElementById('cierre-contado').value||0);const base=Number(document.getElementById('cierre-base').value||0);
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
-  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
-  if(!item.persona_recibe_cierre){alert('Escribe quién verifica el cierre.');return;}
+  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),persona_verifica_cierre:document.getElementById('cierre-verifica').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
+  if(!item.persona_recibe_cierre){alert('Escribe quién recibe el dinero.');return;}
+  if(!item.persona_verifica_cierre){alert('Escribe quién verifica el cierre.');return;}
   if(estadoActual.cuadre_confiable===false&&!item.observacion){alert('FUDO no está sincronizado. Escribe una observación antes de cerrar.');return;}
   if(contado!==Number(estadoActual.efectivo_esperado||0)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
