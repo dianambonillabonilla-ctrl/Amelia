@@ -57,6 +57,45 @@ function pagosFudoTotalesSedeFecha_(fecha, sede) {
   return plana;
 }
 
+/**
+ * Pagos en EFECTIVO de un día cuya sede no se pudo determinar.
+ *
+ * La API de FUDO no trae un campo de sede: se infiere venta -> mesa -> sala (más los mapeos
+ * auxiliares de Fudo_Mapeo_Sedes), y cuando esa cadena no resuelve, el pago queda "Sin identificar".
+ * Un pago en efectivo así no entra ni en Capri ni en San Antonio, así que el efectivo esperado de
+ * ambas cajas queda corto aunque la sincronización con la API haya terminado sin un solo error —
+ * "FUDO sincronizado" no significa "cuadre por sede completo". Caja lo usa para avisarlo en vez de
+ * declarar el cuadre confiable (ver cajaEstado_ en CajaTurno.gs).
+ */
+function pagosFudoEfectivoSinSedeFecha_(fecha) {
+  const sinSede = typeof FUDO_SEDE_SIN_IDENTIFICAR_ !== 'undefined' ? FUDO_SEDE_SIN_IDENTIFICAR_ : 'Sin identificar';
+  function delDia(p) { return formatearFecha_(p.fecha || p.creacion) === fecha; }
+  function acumular(filas, esEfectivo) {
+    let total = 0;
+    let cantidad = 0;
+    filas.forEach(function (p) {
+      const sede = String(p.sede === null || p.sede === undefined ? '' : p.sede).trim();
+      if (sede && sede !== sinSede) return;
+      if (p.cancelado === true || normalizar_(p.cancelado) === 'si') return;
+      if (!esEfectivo(p)) return;
+      total += Number(p.monto) || 0;
+      cantidad++;
+    });
+    return { total: Number(total.toFixed(2)), cantidad: cantidad };
+  }
+  // Mismo criterio que pagosFudoTotalesSedeFecha_: si la tabla normalizada ya tiene los pagos de
+  // ese día, es la fuente; si no, se usa la plana. Nunca las dos, para no contar dos veces.
+  const normalizados = leerTabla_(SHEET_NAMES.FUDO_PAGOS).filter(delDia);
+  if (normalizados.length) {
+    const r = acumular(normalizados, function (p) { return p.es_efectivo === true; });
+    r.fuente = 'Fudo_Pagos';
+    return r;
+  }
+  const plana = acumular(leerTabla_(SHEET_NAMES.PAGOS_FUDO).filter(delDia), pagosFudoEsEfectivo_);
+  plana.fuente = 'Pagos_FUDO';
+  return plana;
+}
+
 function clavePagoFudo_(p) {
   return String(p.id_pago || '');
 }

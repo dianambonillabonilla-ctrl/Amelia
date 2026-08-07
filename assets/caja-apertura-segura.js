@@ -101,7 +101,10 @@
   function validarAntesDeCerrar(evento) {
     const boton = document.getElementById('cerrar');
     if (!boton || evento.target !== boton) return;
-    if (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.cuadre_confiable === false && !esAdministrador()) {
+    // `fudo_sincronizado` (se pudo hablar con la API), no `cuadre_confiable` (que además exige que
+    // todo el efectivo del día tenga sede): un pago "Sin identificar" se avisa, pero no le quita a
+    // la sede la posibilidad de cerrar su turno.
+    if (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.fudo_sincronizado === false && !esAdministrador()) {
       evento.preventDefault();
       evento.stopImmediatePropagation();
       alert('No se puede cerrar la caja como cuadrada porque FUDO no está sincronizado. Presiona Actualizar y vuelve a intentarlo, o pide a un Administrador que autorice el cierre.');

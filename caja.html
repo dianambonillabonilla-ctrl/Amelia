@@ -142,21 +142,27 @@ function fechaHoraFudo_(valor){
   const d=new Date(valor);
   return isNaN(d.getTime())?String(valor):d.toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
+// Aviso de sede sin identificar: FUDO no expone un campo de sede, se infiere venta → mesa → sala. Un
+// pago en efectivo que no se pudo asignar no entra ni en Capri ni en San Antonio, así que el
+// esperado de las dos cajas queda corto aunque la sincronización no haya dado un solo error.
+function textoSinSede_(){
+  const sinSede=(estadoActual&&estadoActual.efectivo_fudo_sin_sede)||null;
+  if(!sinSede||!sinSede.cantidad)return '';
+  const pagos=sinSede.cantidad===1?'1 pago en efectivo':`${sinSede.cantidad} pagos en efectivo`;
+  return `⚠ FUDO tiene ${pagos} de hoy (${dinero(sinSede.total)}) sin sede identificada: ese dinero no está sumado en ninguna de las dos cajas. Revísalo antes de dar el cuadre por bueno.`;
+}
 function pintarFudoSync(){
   const el=document.getElementById('fudo-sync-info');
   const sync=(estadoActual&&estadoActual.fudo_sync)||null;
-  if(!sync||sync.aplica===false){el.textContent='';return;}
+  const sinSede=textoSinSede_();
+  if(!sync||sync.aplica===false){el.innerHTML=escapeHtml(sinSede);el.style.color=sinSede?'var(--red)':'';return;}
   if(sincronizandoFudo){el.textContent='Actualizando FUDO…';el.style.color='var(--grey)';return;}
-  if(estadoActual.fudo_sincronizado){
-    el.textContent=`FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}`;
-    el.style.color='var(--grey)';
-  }else if(sync.pendiente){
-    el.textContent='FUDO todavía no se ha actualizado para esta fecha y sede.';
-    el.style.color='var(--grey)';
-  }else{
-    el.textContent='⚠ Cuadre no confiable: '+(sync.error||'no fue posible actualizar FUDO')+'.';
-    el.style.color='var(--red)';
-  }
+  let texto,color;
+  if(estadoActual.fudo_sincronizado){texto=`FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}`;color='var(--grey)';}
+  else if(sync.pendiente){texto='FUDO todavía no se ha actualizado para esta fecha y sede.';color='var(--grey)';}
+  else{texto='⚠ No fue posible actualizar FUDO: '+(sync.error||'error desconocido')+'.';color='var(--red)';}
+  el.innerHTML=escapeHtml(texto)+(sinSede?'<br><span style="color:var(--red)">'+escapeHtml(sinSede)+'</span>':'');
+  el.style.color=color;
 }
 // El estado de la caja se pinta con datos locales y FUDO se actualiza aparte: antes 'caja_estado'
 // forzaba la sincronización completa con la API externa, y hasta que esa respondiera no se veía
@@ -202,15 +208,19 @@ function calculoCierre(){
   const dif=contado-esperado;
   const difFuerte=fuerteContada-fuerteEsperada;
   const entrega=contado-base;
-  const fudoNoConfiable=estadoActual.cuadre_confiable===false;
-  const hayDiferencia=dif!==0||difFuerte!==0||fudoNoConfiable;
+  // Solo la falta de sincronización con FUDO bloquea el cierre. El aviso de "sin sede identificada"
+  // informa (el cuadre no es confiable) pero no cambia quién puede cerrar.
+  const fudoNoSincronizado=estadoActual.fudo_sincronizado===false;
+  const hayDiferencia=dif!==0||difFuerte!==0||fudoNoSincronizado;
   const esAdmin=usuario.rol==='Administrador';
   let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>`;
   if(difFuerte!==0)html+=`Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong><br>`;
   html+=`Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
-  if(fudoNoConfiable)html+=`<br><strong style="color:var(--red)">⚠ Cuadre no confiable: no fue posible actualizar FUDO.</strong>`;
+  if(fudoNoSincronizado)html+=`<br><strong style="color:var(--red)">⚠ No fue posible actualizar FUDO, así que el esperado puede estar incompleto.</strong>`;
+  const avisoSinSede=textoSinSede_();
+  if(avisoSinSede)html+=`<br><strong style="color:var(--red)">${escapeHtml(avisoSinSede)}</strong>`;
   if(hayDiferencia&&!esAdmin)html+=`<br><strong style="color:var(--red)">Hay una diferencia — solo un Administrador puede cerrar esta caja.</strong>`;
-  else if(fudoNoConfiable&&esAdmin)html+=`<br><strong style="color:var(--red)">Escribe abajo una observación para cerrar de todas formas.</strong>`;
+  else if(fudoNoSincronizado&&esAdmin)html+=`<br><strong style="color:var(--red)">Escribe abajo una observación para cerrar de todas formas.</strong>`;
   document.getElementById('calculo-cierre').innerHTML=html;
   document.getElementById('cerrar').disabled=hayDiferencia&&!esAdmin;
 }
@@ -312,7 +322,7 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
   const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
   if(!item.persona_recibe_cierre){alert('Escribe quién verifica el cierre.');return;}
-  if(estadoActual.cuadre_confiable===false&&!item.observacion){alert('FUDO no está sincronizado. Escribe una observación antes de cerrar.');return;}
+  if(estadoActual.fudo_sincronizado===false&&!item.observacion){alert('FUDO no está sincronizado. Escribe una observación antes de cerrar.');return;}
   if(contado!==Number(estadoActual.efectivo_esperado||0)&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
 }));
