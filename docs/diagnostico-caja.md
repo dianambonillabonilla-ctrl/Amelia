@@ -152,6 +152,68 @@ sede no podría abrir la caja sin llamar a la Administradora, todas las mañanas
 arreglarse antes o junto con el endurecimiento de la apertura**, o un error silencioso se convierte
 en un bloqueo diario.
 
+## 4-bis. Huecos de validación (análisis contra el cuestionario de reglas)
+
+Tomando como especificación el cuestionario de 36 reglas de Caja, se probaron una por una contra el
+código. Los siguientes ocho huecos existen **idénticos en `main` y en la rama de correcciones** — no
+los introdujo ninguna corrección.
+
+### El mismo movimiento se puede registrar dos veces
+
+Contra las reglas 16 y 19. No hay lock ni clave de idempotencia en `cajaMovimientoRegistrar_`: un
+doble toque, o dos dispositivos, guardan dos filas con ids distintos. Una entrega de $500.000 al
+Administrador queda registrada como $1.000.000 salidos de la caja, y **como la regla 19 dice que un
+movimiento no se puede editar ni borrar, no hay forma de arreglarlo desde la aplicación.**
+
+Es el más grave de este grupo: silencioso, plausible en la operación real, e irreversible. El
+`LockService` que se añadió cubre apertura y cierre, no los movimientos.
+
+### La caja fuerte puede quedar en negativo
+
+Contra la regla 22. Retirar $300.000 de una caja fuerte que tiene $0 se acepta sin más: la caja fuerte
+esperada queda en **−$300.000** y, de paso, se le **suman $300.000 al efectivo operativo** que nunca
+existieron. El daño es doble: infla la caja operativa y deja la fuerte en un estado físicamente
+imposible.
+
+### Un movimiento no tiene tope ni comprobación de disponibilidad
+
+Contra la regla 16, que solo exige "valor mayor a cero y motivo". Un gasto de $900.000.000 con
+$50.000 en caja se acepta y deja el efectivo esperado en −$899.950.000. Sumado a la regla 19, un dedo
+resbalado es permanente.
+
+### Centro de Producción sí puede tener caja
+
+Contra las reglas 30 y 31. `caja.html` quita esa opción del selector, pero el backend la acepta:
+`sedeEscrituraPermitida_` permite Centro de Producción a cualquier usuario a propósito (por
+inventario), y `cajaAbrir_` no comprueba que la sede sea de venta. Se crea el turno, se pueden
+registrar movimientos, y por la regla 14 no hay forma de borrarlo.
+
+### Se puede abrir la caja de una fecha futura
+
+Contra las reglas 28 y 14. Abrir el turno del 2027-06-15 se acepta. Queda un turno fantasma que nadie
+puede eliminar.
+
+### Un día abierto y nunca cerrado es invisible
+
+Contra las reglas 35 y 36. Si una sede abre el día 5 y nunca lo cierra, nada lo delata: `caja_estado`
+del día siguiente no lo menciona, no hay pantalla de historial de Caja, "Caja" no aparece en
+`historiales.html`, y no existe ninguna acción de backend que liste turnos. Combinado con la regla 14
+(no se puede corregir un día), ese turno queda como zombi permanente.
+
+### Se puede cerrar la caja sin confirmar Rappi
+
+Contra la regla 34. El recordatorio no condiciona nada: el turno se cierra con `rappi_encendido` en
+`false` y sin ninguna alerta. Si el propósito del recordatorio es que no se olvide, hoy no lo
+garantiza.
+
+### El Bug 1 es más amplio de lo descrito
+
+No es solo "cerrar después de medianoche". Es **cualquier cierre hecho en o después del día que se
+está abriendo**, porque el filtro exige `timestamp_cierre < medianoche de la fecha consultada`.
+Reproducido: turno del 6 cerrado el 7 a las 14:00 con `base_siguiente = 30.000` → la base esperada del
+7 sale en $0. Eso cubre el caso "se olvidaron de cerrar y lo cierran al día siguiente", que es
+justamente lo que pasa cuando hay desorden.
+
 ## 5. Hallazgos de la auditoría previa
 
 Los diez hallazgos reportados se confirmaron todos. Cuatro ya tienen corrección propuesta en la rama
@@ -190,6 +252,26 @@ Hallazgos adicionales que no estaban en la lista original:
 - **Dos listas de columnas de `Caja_Turno` desincronizadas**: `configurarHojas()` en `Code.gs` declara
   18 columnas, `CAJA_COLUMNAS_TURNO_` tiene 32. Funciona porque `asegurarColumnas_` completa las que
   faltan, pero son dos fuentes de verdad para la misma tabla.
+
+## 5-bis. Reglas que el cuestionario da por ciertas y no lo son
+
+Nueve de las 36 afirmaciones del cuestionario describen comportamiento que no existe. Se listan para
+que no se confirmen como "correcto" por error.
+
+| # | Lo que afirma | Realidad |
+|---|---|---|
+| 12 | dos campos ("recibe el dinero" y "verifica el cierre"), ambos obligatorios | existe **uno solo**, `persona_recibe_cierre`, etiquetado "verifica" en el formulario y mostrado como "Entregado a X" en el resumen; y el backend cierra sin él |
+| 13 | la base siguiente nunca negativa | `main` acepta −500 y la guarda, dejando "entregado" en 1.500 con 1.000 contados |
+| 24(d) | existe un botón "Sincronizar FUDO" | el botón dice "Actualizar" |
+| 25 | existe un semáforo 🟢🟡🔴 | no existe; hay una línea de texto |
+| 26 | se avisa del efectivo "Sin identificar" | en `main` no se avisa; ese dinero desaparece del cálculo en silencio |
+| 27 | el rol Lectura puede ver movimientos | Lectura no puede entrar a `caja.html` ni consultar `caja_estado` |
+| 29 | "Abrir esta caja de todas formas" es un permiso especial | no lo es: el Encargado de la sede ya ve el formulario directamente; el enlace existe porque a la Administradora se le oculta |
+| 32 | existe un panel con las dos sedes lado a lado | no existe |
+| 33 | tocar una fila del panel cambia la sede en detalle | no aplica |
+
+Además, la regla **2** es cierta en cuanto al bloqueo por diferencia, pero la obligación de que el
+Administrador escriba una observación hoy solo la impone el navegador.
 
 ## 6. Qué permite la API de FUDO para Caja
 
@@ -298,6 +380,9 @@ Es **hipótesis a verificar**, no dato. Requiere una consulta real antes de impl
 ## 9. Cómo repetir este diagnóstico
 
 ```bash
-npm test                    # suite del repositorio (debe quedar en verde)
-npm run diagnostico:caja    # este diagnóstico (hoy: 43 pasan, 2 fallan = los bugs de la sección 4)
+npm test                     # suite del repositorio (debe quedar en verde)
+npm run diagnostico:caja     # flujo completo contra FUDO simulada
+                             #   hoy: 43 pasan, 2 fallan = los bugs de la sección 4
+npm run diagnostico:reglas   # las 36 reglas del cuestionario operativo contra el código
+                             #   imprime los huecos de la sección 4-bis con el número real de cada caso
 ```
