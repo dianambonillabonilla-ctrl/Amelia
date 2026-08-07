@@ -132,14 +132,19 @@ cargar = async function () {
   try {
     const fecha = fechaInput.value;
     const desde = restarDias(fecha, 28);
-    const [cp, sa, capri, catalogoRes, recetasRes, ventasRes, produccionCPRes] = await Promise.all([
-      llamar('disponible_hoy', { fecha, sede: 'Centro de Producción' }),
+    // No se pide disponible_hoy de Centro de Producción: esa sede se muestra solo con lo que
+    // produccion_listar registró (ver construirProduccionCP más arriba), así que pedirlo era una
+    // llamada al backend que nunca se llegaba a usar — el doble de lecturas de Sheet en una sede
+    // que Apps Script ya corta a los 6 minutos (ver README, "Rendimiento: por qué se cuentan las
+    // lecturas").
+    const [sa, capri, catalogoRes, recetasRes, ventasRes, produccionCPRes, conteoRes] = await Promise.all([
       llamar('disponible_hoy', { fecha, sede: 'San Antonio' }),
       llamar('disponible_hoy', { fecha, sede: 'Capri' }),
       llamar('catalogo_listar', { filtros: {} }),
       llamar('recetas_listar', { filtros: {} }),
       llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: fecha } }),
-      llamar('produccion_listar', { fecha })
+      llamar('produccion_listar', { fecha }),
+      llamar('conteo_listar', { fecha })
     ]);
 
     construirCatalogo(filas(catalogoRes));
@@ -157,9 +162,11 @@ cargar = async function () {
     ESTADO.produccionCP = construirProduccionCP(produccionCPRes);
     construirVentas(filas(ventasRes), desde, fecha);
     ESTADO.fecha = fecha;
+    construirConteoHoy(filas(catalogoRes), conteoRes, fecha);
     poblarCategorias();
     renderInventario();
     renderAlcance();
+    renderConteoHoy();
 
     const fallas = [];
     if (!sa?.ok) fallas.push('San Antonio');

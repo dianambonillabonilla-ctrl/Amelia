@@ -570,6 +570,9 @@ document.querySelectorAll('.tab-sede').forEach(button => {
 document.getElementById('categoria').addEventListener('change', renderInventario);
 document.getElementById('mostrar-sin-conteo').addEventListener('change', renderInventario);
 document.getElementById('seguridad').addEventListener('change', renderAlcance);
-document.getElementById('actualizar').addEventListener('click', cargar);
-
-cargar();
+// abastecimiento-cp.js (se carga después de este archivo) reemplaza cargar/stockDe/alcancePlato/
+// renderInventario con su propia versión (la que sabe que Centro de Producción NO debe mezclarse
+// con el inventario general) y clona el botón "Actualizar" para engancharle su propio cargar — así
+// que este archivo NO debe enganchar el suyo ni auto-ejecutarlo: hacerlo disparaba dos cargar()
+// en paralelo en cada carga de página (el doble de llamadas a disponible_hoy/catalogo_listar/
+// recetas_listar/fudo_items_listar) y una carrera entre ambos por quién pinta último la pantalla.
