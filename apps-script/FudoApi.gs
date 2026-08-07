@@ -12,18 +12,24 @@
  * (fudoApiSincronizarVentas_) ya están listas y probadas — conexión confirmada contra la cuenta real
  * (jul 2026). /sales y /items responden en formato JSON:API: { data: [...], included: [...] } — cada
  * venta trae en "attributes" sus datos propios (createdAt, total, saleState...) y en "relationships"
- * solo punteros {type,id} a sus ítems/pagos/mesa/mesero (NO trae "cashRegister" — confirmado con una
- * muestra real, jul 2026) — el detalle real de esos punteros (incluido el nombre del producto) llega
- * en el arreglo "included" de la MISMA respuesta cuando se pide con ?include=items.product,table.room.
+ * punteros {type,id} a sus ítems/pagos/mesa/mesero/caja registradora — el detalle real de esos
+ * punteros (incluido el nombre del producto) llega en el arreglo "included" de la MISMA respuesta
+ * cuando se pide con ?include=items.product,table.room.
  * fudoApiSincronizarVentas_ arma con eso las mismas columnas que produce el export CSV "detallado"
  * y reutiliza toda la validación/dedupe/diagnóstico de importarFudo_ (Fudo.gs) sin duplicarla.
  *
- * Sede: FUDO no tiene ningún campo de sede/sucursal en ningún recurso (confirmado contra la
- * especificación OpenAPI oficial completa, jul 2026) — se infiere por venta → mesa (table) → sala
- * (room), porque en esta cuenta las salas están nombradas por sede ("Salón SA", "Terraza SA",
- * "Terraza Capri", "La Waffleria - Capri" — confirmado con /rooms real, jul 2026). Ventas sin mesa
- * (delivery/take away/menú online) quedan "Sin identificar" — no hay otro dato de sede disponible
- * para esos casos.
+ * Sede: FUDO no tiene ningún campo de sede/sucursal dedicado (confirmado contra la especificación
+ * OpenAPI oficial completa, jul 2026) — se infiere por venta → mesa (table) → sala (room), porque en
+ * esta cuenta las salas están nombradas por sede ("Salón SA", "Terraza SA", "Terraza Capri",
+ * "La Waffleria - Capri" — confirmado con /rooms real, jul 2026). Ventas sin mesa (delivery/take
+ * away/menú online) quedan "Sin identificar" en ese primer intento.
+ *
+ * ago 2026: una muestra real contra ventas de HOY (no las de jul 2026, que solo tenían actividad
+ * vieja de San Antonio) confirmó que sale.relationships.cashRegister SÍ viene poblado, y que la
+ * cuenta le puso a cada caja registradora el nombre exacto de su sede ("San Antonio", "Capri") vía
+ * fields[cashRegister]=name. Por eso ahora también se pide cashRegister en la sincronización real —
+ * segunda oportunidad de resolver sede (después de sala, antes de "Sin identificar") para ventas sin
+ * mesa que sí se pagaron en una caja física.
  */
 
 const FUDO_API_PROP_KEY_ = 'FUDO_API_KEY';
@@ -35,8 +41,9 @@ const FUDO_API_AUTH_URL_ = 'https://auth.fu.do/api';
 // Confirmado contra la documentación real de dev.fu.do/api (sección "Get sales" > "API Server"):
 // no es el mismo host de autenticación (auth.fu.do), lleva el prefijo de versión /v1alpha1.
 const FUDO_API_BASE_URL_POR_DEFECTO_ = 'https://api.fu.do/v1alpha1';
-// Incluidos válidos para GET /sales según apps-script/fudo-openapi.yml (jul 2026).
-const FUDO_API_SALES_INCLUDE_ = 'items.product,items.subitems.product,table.room,waiter,saleIdentifier,payments.paymentMethod,discounts.discountTemplate,tips';
+// Incluidos válidos para GET /sales según apps-script/fudo-openapi.yml (jul 2026). "cashRegister"
+// agregado en ago 2026 — ver comentario de cabecera.
+const FUDO_API_SALES_INCLUDE_ = 'items.product,items.subitems.product,table.room,waiter,saleIdentifier,payments.paymentMethod,discounts.discountTemplate,tips,cashRegister';
 
 /** Correr UNA vez desde el editor de Apps Script (Extensiones > Apps Script) — nunca desde la app web. */
 function fudoApiConfigurarCredenciales_(apiKey, apiSecret, baseUrl) {
@@ -292,17 +299,19 @@ function fudoApiCreadaPorDesdeReferencias_(referencias) {
  * pasar si se pidió con include=items.product, pero por seguridad) se omiten en vez de guardarse
  * con el nombre vacío.
  *
- * Además de la sala (mesa→sala), se intenta resolver la sede también por mesero (waiter) e
- * identificador de venta (saleIdentifier) vía fudoResolverSedeVenta_ (FudoMapeoSedes.gs) — para eso
- * fudoApiSincronizarVentas_ debe pedir include=waiter,saleIdentifier además de table.room. NO se
- * intenta con "caja registradora": la especificación OpenAPI oficial completa confirma que /sales
- * no tiene ninguna relación cashRegister (solo la tienen los Usuarios — deliveryCashRegister/
- * tablesCashRegister/takeAwayCashRegister —, no las ventas; ver apps-script/fudo-openapi.yml, jul
- * 2026). Se manda una columna 'Sede' adicional con lo resuelto; importarFudoConLock_ (Fudo.gs) la
- * usa si vino algo Y sigue intentando su propia lógica (sedeDesdeCreadaPor_) si no — nunca se
- * pierde cobertura, solo se suma una oportunidad más de identificar la sede antes de "Sin
- * identificar". El atributo exacto de SaleIdentifier no está confirmado contra una cuenta real
- * (no tiene endpoint propio en el spec) — se intenta `attributes.name` a falta de algo mejor.
+ * Además de la sala (mesa→sala), se intenta resolver la sede también por caja registradora, mesero
+ * (waiter) e identificador de venta (saleIdentifier) vía fudoResolverSedeVenta_ (FudoMapeoSedes.gs)
+ * — para eso fudoApiSincronizarVentas_ pide include=cashRegister,waiter,saleIdentifier además de
+ * table.room. La caja registradora se agregó en ago 2026: una muestra real contra ventas de HOY
+ * confirmó que sale.relationships.cashRegister sí viene poblado en esta cuenta (el intento anterior,
+ * jul 2026, usó una muestra vieja con actividad de una sola sede y concluyó lo contrario) y que la
+ * cuenta le puso a cada caja el nombre exacto de su sede ("San Antonio", "Capri") — sembrado en
+ * Fudo_Mapeo_Sedes por fudoMapeoSedeMigrarCajaRegistradora_. Se manda una columna 'Sede' adicional
+ * con lo resuelto; importarFudoConLock_ (Fudo.gs) la usa si vino algo Y sigue intentando su propia
+ * lógica (sedeDesdeCreadaPor_) si no — nunca se pierde cobertura, solo se suma una oportunidad más de
+ * identificar la sede antes de "Sin identificar". El atributo exacto de SaleIdentifier no está
+ * confirmado contra una cuenta real (no tiene endpoint propio en el spec) — se intenta
+ * `attributes.name` a falta de algo mejor.
  */
 function fudoApiFilasVentaDesdeSale_(sale, incluidos, indiceMapeoOpcional) {
   const referencias = fudoApiReferenciasSedeDesdeSale_(sale, incluidos);
@@ -344,6 +353,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
   opciones = opciones || {};
   if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
 
+  if (typeof fudoMapeoSedeMigrarCajaRegistradora_ === 'function') fudoMapeoSedeMigrarCajaRegistradora_();
   const indiceMapeo = fudoMapeoSedeIndice_();
   const resultado = fudoApiObtenerTodoCompleto_('sales', {
     filtros: {
@@ -352,6 +362,7 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
       saleState: 'in.(CLOSED)'
     },
     include: FUDO_API_SALES_INCLUDE_,
+    campos: { cashRegister: 'name' },
     orden: 'createdAt'
   });
 
@@ -404,10 +415,13 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
  * real los nombres de campo exactos antes de conectar la sincronización automática a Ventas_FUDO.
  * Acción admin desde la app: 'fudo_api_probar_conexion' (ver Code.gs, botón en importar.html).
  *
- * jul 2026: una muestra real mostró que sale.relationships NO trae `cashRegister` (solo customer,
- * discounts, items, payments, tips, shippingCosts, table, waiter, saleIdentifier) — el supuesto
- * original (caja registradora → sede) no aplica a esta cuenta. Se pide incluido table/waiter/payments
- * además de items.product para buscar ahí un dato de sede real, sin gastar otro ciclo de despliegue.
+ * jul 2026: una muestra real (con ventas viejas de 2021, actividad de una sola sede) mostró que
+ * sale.relationships NO traía `cashRegister` (solo customer, discounts, items, payments, tips,
+ * shippingCosts, table, waiter, saleIdentifier). ago 2026: una muestra nueva contra ventas de HOY
+ * corrigió esa conclusión — `cashRegister` sí viene poblado, con `name` = nombre real de la sede
+ * ("San Antonio", "Capri"); ver `ventas_cash_register`/`gastos` más abajo y el comentario de cabecera
+ * del archivo. Se pide incluido table/waiter/payments/cashRegister además de items.product para
+ * buscar ahí un dato de sede real, sin gastar otro ciclo de despliegue.
  *
  * jul 2026 (2): la especificación OpenAPI oficial confirma que NINGÚN recurso de FUDO tiene un campo
  * de sede/sucursal — las dos pistas reales son 1) las cajas propias de cada User (tablesCashRegister/

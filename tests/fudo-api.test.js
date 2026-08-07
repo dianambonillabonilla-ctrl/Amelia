@@ -60,11 +60,13 @@ function cargarFudoApi_(extras = {}) {
     leerTabla_: (h) => h === 'mapeo' ? (extras.mapeos || []) : [],
     neutralizarObjetoFormulas_: (o) => o,
     appendRowsFromObjs_: () => {},
+    appendRowFromObj_: () => {},
     sheet_: () => ({ getDataRange: () => ({ getValues: () => [['id_pago']] }) }),
     LockService: { getScriptLock: () => lockMock },
     PropertiesService: fakePropertiesService,
     UrlFetchApp: fakeUrlFetchApp,
-    Logger: fakeLogger
+    Logger: fakeLogger,
+    Utilities: { getUuid: () => 'uuid-test' }
   };
   const ctx = Object.assign(base, extras);
   vm.createContext(ctx);

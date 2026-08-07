@@ -114,6 +114,51 @@ function normalizarSimple_(s) {
   console.log('fudoMapeoSedeGuardar_/Listar_/Eliminar_: OK');
 })();
 
+// --- fudoMapeoSedeMigrarCajaRegistradora_: siembra San Antonio/Capri una sola vez ----------------
+
+(function () {
+  let filas = [];
+  let contadorId = 0;
+  let props = {};
+  function mod() {
+    return cargar('apps-script/FudoMapeoSedes.gs', {
+      SHEET_NAMES: { FUDO_MAPEO_SEDES: 'mapeo' },
+      normalizar_: normalizarSimple_,
+      neutralizarObjetoFormulas_: (o) => o,
+      Utilities: { getUuid: () => 'id-' + (++contadorId) },
+      PropertiesService: { getScriptProperties: () => ({
+        getProperty: (k) => (props[k] !== undefined ? props[k] : null),
+        setProperty: (k, v) => { props[k] = v; }
+      }) },
+      leerTabla_: () => filas,
+      appendRowFromObj_: (hoja, fila) => { if (hoja === 'mapeo') filas.push(fila); },
+      sheet_: () => ({
+        getDataRange: () => ({
+          getValues: () => [['id', 'tipo_referencia', 'id_fudo', 'nombre', 'sede', 'creado_por', 'timestamp']]
+            .concat(filas.map((f) => [f.id, f.tipo_referencia, f.id_fudo, f.nombre, f.sede, f.creado_por, f.timestamp]))
+        }),
+        getRange: () => ({ setValue: () => {} })
+      })
+    });
+  }
+
+  mod().fudoMapeoSedeMigrarCajaRegistradora_();
+  assert.equal(filas.length, 2, 'debe sembrar las dos cajas registradoras reales');
+  const sanAntonio = filas.find((f) => f.nombre === 'San Antonio');
+  const capri = filas.find((f) => f.nombre === 'Capri');
+  assert.equal(sanAntonio.tipo_referencia, 'Caja');
+  assert.equal(sanAntonio.sede, 'San Antonio');
+  assert.equal(sanAntonio.id_fudo, '1');
+  assert.equal(capri.sede, 'Capri');
+  assert.equal(capri.id_fudo, '2');
+
+  // Correr de nuevo (misma sesión de props) no debe duplicar — la bandera ya quedó puesta.
+  mod().fudoMapeoSedeMigrarCajaRegistradora_();
+  assert.equal(filas.length, 2, 'una segunda ejecución no debe volver a insertar');
+
+  console.log('fudoMapeoSedeMigrarCajaRegistradora_ siembra una sola vez: OK');
+})();
+
 // --- ventasPendientesSedeListar_/Asignar_: la bandeja de ventas "Sin identificar" ----------------
 
 const VENTAS_HEADERS_ = ['id_venta', 'creacion', 'producto', 'categoria', 'cantidad', 'precio', 'cancelada', 'creada_por', 'sede', 'formato_origen', 'archivo_origen', 'importado_en'];

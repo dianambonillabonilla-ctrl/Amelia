@@ -30,6 +30,27 @@ function fudoMapeoSedeListar_() {
   return leerTabla_(SHEET_NAMES.FUDO_MAPEO_SEDES);
 }
 
+const FUDO_MAPEO_SEDES_MIGRACION_CAJA_PROP_ = 'FUDO_MAPEO_SEDES_CAJA_SEMBRADA';
+
+/**
+ * Siembra una sola vez el mapeo tipo "Caja" con las dos cajas registradoras reales de la cuenta —
+ * confirmado ago 2026 contra ventas de HOY (fudoApiProbarConexion_): CashRegister id "1" tiene
+ * `name: "San Antonio"`, id "2" tiene `name: "Capri"` — el nombre que FUDO le puso a cada caja ya
+ * coincide exactamente con la sede. Corre desde fudoApiSincronizarVentas_ (FudoApi.gs); una bandera
+ * en Propiedades del Script evita repetir la escritura en cada sincronización (mismo patrón que
+ * cajaMigrarHistorico_ en CajaTurno.gs). No reemplaza Sala como primera prioridad de resolución
+ * (ver FUDO_MAPEO_SEDES_PRIORIDAD_) — solo agrega una segunda oportunidad para ventas sin mesa
+ * (domicilio/takeaway) antes de caer en "Sin identificar".
+ */
+function fudoMapeoSedeMigrarCajaRegistradora_() {
+  const props = typeof PropertiesService !== 'undefined' ? PropertiesService.getScriptProperties() : null;
+  if (props && props.getProperty(FUDO_MAPEO_SEDES_MIGRACION_CAJA_PROP_)) return;
+  const usuarioSistema = { nombre: 'Migración automática' };
+  fudoMapeoSedeGuardar_({ tipo_referencia: 'Caja', id_fudo: '1', nombre: 'San Antonio', sede: 'San Antonio' }, usuarioSistema);
+  fudoMapeoSedeGuardar_({ tipo_referencia: 'Caja', id_fudo: '2', nombre: 'Capri', sede: 'Capri' }, usuarioSistema);
+  if (props) props.setProperty(FUDO_MAPEO_SEDES_MIGRACION_CAJA_PROP_, 'true');
+}
+
 function fudoMapeoSedeGuardar_(item, usuario) {
   if (!item || !item.tipo_referencia || !item.nombre || !item.sede) {
     return { ok: false, error: 'Faltan tipo_referencia, nombre o sede' };
