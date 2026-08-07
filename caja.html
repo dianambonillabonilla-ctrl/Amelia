@@ -32,6 +32,17 @@
         </table></div>
       </section>
 
+      <!-- Diana (ago 2026): nada de esto bloquea abrir/cerrar caja — es puro seguimiento para que
+           el Administrador se entere y concilie las diferencias/FUDO sin sincronizar aparte. -->
+      <section id="panel-novedades" class="card oculto" style="border-color:var(--red)">
+        <h2>Novedades de Administrador</h2>
+        <p style="color:var(--grey);font-size:.85rem;margin-top:0">Diferencias al abrir/cerrar y cierres sin FUDO sincronizado, pendientes de revisar. No bloquean nada — es solo para que las concilies.</p>
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Fecha</th><th>Sede</th><th>Motivo</th><th>Detalle</th><th></th></tr></thead>
+          <tbody id="novedades-filas"></tbody>
+        </table></div>
+      </section>
+
       <section class="cabecera-caja">
         <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
         <div class="estado" id="estado">Consultando…</div>
@@ -111,8 +122,6 @@
             <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
             <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
             <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
-            <div class="campo"><label>Persona que recibe el dinero</label><input id="cierre-recibe"></div>
-            <div class="campo"><label>Persona que verifica el cierre</label><input id="cierre-verifica"></div>
             <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
             <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
             <button class="btn dorado" id="cerrar">Cerrar caja</button>
@@ -245,6 +254,37 @@ async function cargarPanelAdmin(){
     fila.addEventListener('click',()=>{sedeEl.value=fila.dataset.sede;cargar();});
   });
 }
+// Diana (ago 2026): esto es puro seguimiento — nunca bloquea nada, ni descuenta a nadie. "Conciliar"
+// solo marca la novedad como revisada, con una nota opcional; no toca los números ya guardados.
+async function cargarNovedades(){
+  if(usuario.rol!=='Administrador')return;
+  const panel=document.getElementById('panel-novedades');
+  const r=await llamar('caja_novedades_listar',{});
+  if(!r.ok||!r.novedades.length){panel.classList.add('oculto');return;}
+  panel.classList.remove('oculto');
+  document.getElementById('novedades-filas').innerHTML=r.novedades.map(n=>{
+    const detalle=[];
+    if(n.diferencia_apertura)detalle.push(`Apertura: ${dinero(n.diferencia_apertura)}`);
+    if(n.diferencia_caja_fuerte_apertura)detalle.push(`Caja fuerte apertura: ${dinero(n.diferencia_caja_fuerte_apertura)}`);
+    if(n.diferencia)detalle.push(`Cierre: ${dinero(n.diferencia)}`);
+    if(n.diferencia_caja_fuerte)detalle.push(`Caja fuerte cierre: ${dinero(n.diferencia_caja_fuerte)}`);
+    return `<tr>
+      <td>${escapeHtml(n.fecha)}</td>
+      <td>${escapeHtml(n.sede)}</td>
+      <td>${escapeHtml(n.motivos.join(', '))}</td>
+      <td>${escapeHtml(detalle.join(' · ')||'—')}</td>
+      <td><button class="btn fantasma btn-conciliar" data-fecha="${escapeHtml(n.fecha)}" data-sede="${escapeHtml(n.sede)}">Marcar como resuelta</button></td>
+    </tr>`;
+  }).join('');
+  Array.from(document.querySelectorAll('.btn-conciliar')).forEach(boton=>{
+    boton.addEventListener('click',conBotonProtegido(boton,async()=>{
+      const nota=prompt('Nota sobre cómo se resolvió (opcional):')||'';
+      const resp=await llamar('caja_novedad_conciliar',{fecha:boton.dataset.fecha,sede:boton.dataset.sede,nota});
+      if(!resp.ok){alert(resp.error);return;}
+      cargarNovedades();
+    }));
+  });
+}
 // ago 2026: caja_estado ya no espera a FUDO — si el caché está vencido o nunca se llenó, devuelve
 // eso mismo (fudo_sync.pendiente=true) y la pantalla se dibuja YA con lo que hay. Esta función
 // dispara la sincronización real aparte, sin bloquear nada, y cuando termina vuelve a pedir
@@ -273,6 +313,7 @@ async function cargar(opciones){
     document.getElementById('fudo-sync-info').textContent='';
   }
   cargarPanelAdmin();
+  cargarNovedades();
   const p=parametros();
   const data=await llamar('caja_estado',p);
   if(!data.ok){
@@ -310,7 +351,7 @@ async function cargar(opciones){
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
     const a=data.apertura;const dif=Number(a.diferencia||0);
-    document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado a ${escapeHtml(a.persona_recibe_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Verificado por ${escapeHtml(a.persona_verifica_cierre||'—')}<br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
+    document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado por ${escapeHtml(a.usuario_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
     mostrar('cerrada');return;
   }
   document.getElementById('estado').textContent=`${confianza.icono} Caja abierta`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('abierta');
@@ -374,9 +415,7 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
   const contado=Number(document.getElementById('cierre-contado').value||0);const base=Number(document.getElementById('cierre-base').value||0);
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
-  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,persona_recibe_cierre:document.getElementById('cierre-recibe').value.trim(),persona_verifica_cierre:document.getElementById('cierre-verifica').value.trim(),observacion:document.getElementById('cierre-observacion').value.trim()};
-  if(!item.persona_recibe_cierre){alert('Escribe quién recibe el dinero.');return;}
-  if(!item.persona_verifica_cierre){alert('Escribe quién verifica el cierre.');return;}
+  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,observacion:document.getElementById('cierre-observacion').value.trim()};
   const fuerteContada_=Number(document.getElementById('cierre-fuerte').value||0);
   const hayDiferenciaDinero_=contado!==Number(estadoActual.efectivo_esperado||0)||fuerteContada_!==Number(estadoActual.caja_fuerte_esperada||0);
   if(hayDiferenciaDinero_&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
