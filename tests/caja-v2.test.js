@@ -22,7 +22,7 @@ const TURNO_HEADERS = [
   'rappi_encendido', 'rappi_confirmado_por', 'rappi_confirmado_en',
   'efectivo_contado', 'efectivo_esperado', 'diferencia',
   'caja_fuerte_contada', 'caja_fuerte_esperada', 'diferencia_caja_fuerte', 'caja_fuerte_siguiente',
-  'entrega_cierre', 'persona_recibe_cierre', 'base_siguiente',
+  'entrega_cierre', 'persona_recibe_cierre', 'persona_verifica_cierre', 'base_siguiente',
   'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre'
 ];
 const MOVIMIENTOS_HEADERS = [
@@ -114,7 +114,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, encargada);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, encargada);
   assert.equal(r.ok, true, 'Encargado debe poder cerrar cuando lo contado coincide exactamente con lo esperado');
   assert.equal(r.diferencia, 0);
 }
@@ -123,7 +123,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000', persona_recibe_cierre: 'Diana' }, encargada);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000', persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, encargada);
   assert.equal(r.ok, false, 'Encargado NO debe poder cerrar con diferencia en efectivo, ni con observación');
   assert.match(r.error, /Solo un Administrador puede cerrar/);
   assert.equal(turnos[0].estado, 'Abierto', 'la caja debe seguir abierta: el intento bloqueado no debe cerrarla');
@@ -133,7 +133,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, cocina);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, cocina);
   assert.equal(r.ok, false, 'Cocina tampoco debe poder cerrar con diferencia');
 }
 
@@ -141,7 +141,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 500000 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 400000, persona_recibe_cierre: 'Diana' }, encargada);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 400000, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, encargada);
   assert.equal(r.ok, false, 'una diferencia SOLO en caja fuerte también debe bloquear a Encargado');
   assert.match(r.error, /Solo un Administrador puede cerrar/);
 }
@@ -150,7 +150,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000, reportado a gerencia', persona_recibe_cierre: 'Diana' }, administrador);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000, reportado a gerencia', persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
   assert.equal(r.ok, true, 'Administrador debe poder cerrar aunque haya diferencia');
   assert.equal(r.diferencia, -10000);
   assert.equal(turnos[0].estado, 'Cerrado');
@@ -232,7 +232,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
   ctx.LockService = { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => {} }) };
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, administrador);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
   assert.equal(r.ok, false, 'no debe cerrar si no se pudo tomar el candado');
   assert.match(r.error, /en curso/);
   assert.equal(turnos[0].estado, 'Abierto');
@@ -265,7 +265,7 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: '', caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, administrador);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: '', caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
   assert.equal(r.ok, false, 'no debe poder cerrar con el efectivo contado vacío');
   assert.match(r.error, /Falta contar el dinero/);
   assert.equal(turnos[0].estado, 'Abierto');
@@ -281,11 +281,22 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(turnos[0].estado, 'Abierto');
 }
 
+// Cerrar sin decir quién verifica el cierre debe rechazarse (Diana, ago 2026: son dos personas
+// distintas — quien recibe el dinero no es necesariamente quien verifica el arqueo).
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, administrador);
+  assert.equal(r.ok, false, 'no debe poder cerrar sin decir quién verifica el cierre');
+  assert.match(r.error, /persona que verifica/);
+  assert.equal(turnos[0].estado, 'Abierto');
+}
+
 // La base para el siguiente turno no puede ser mayor que lo contado.
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 150000, persona_recibe_cierre: 'Diana' }, administrador);
+  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 150000, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
   assert.equal(r.ok, false, 'la base siguiente no puede superar lo contado');
   assert.match(r.error, /no puede ser mayor/);
   assert.equal(turnos[0].estado, 'Abierto');
@@ -296,6 +307,28 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   const { ctx, turnos } = construirEntorno_();
   const estado = ctx.cajaEstado_('2026-07-15', 'San Antonio', encargada);
   assert.equal(estado.cuadre_confiable, true, 'sin credenciales de FUDO, el cuadre debe considerarse confiable (la validación no aplica)');
+}
+
+// --- Efectivo "Sin identificar" es puramente informativo: Diana (ago 2026) pidió explícitamente
+// que nunca bloquee ni abrir ni cerrar caja, solo que se sepa que existe (el Administrador lo
+// concilia aparte, desde "Ventas pendientes de sede"). -----------------------------------------
+{
+  const { ctx, turnos } = construirEntorno_();
+  ctx.pagosFudoTotalesSedeFecha_ = (fecha, sede) => (
+    sede === 'Sin identificar' ? { pagos_efectivo_esperado: 75000 } : { pagos_efectivo_esperado: 0 }
+  );
+
+  const estadoSinAbrir = ctx.cajaEstado_('2026-07-15', 'San Antonio', encargada);
+  assert.equal(estadoSinAbrir.ok, true);
+  assert.equal(estadoSinAbrir.efectivo_sin_identificar, 75000, 'debe informar el monto aunque la caja ni siquiera esté abierta');
+
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const estadoAbierto = ctx.cajaEstado_('2026-07-15', 'San Antonio', encargada);
+  assert.equal(estadoAbierto.efectivo_sin_identificar, 75000);
+
+  const cierre = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, encargada);
+  assert.equal(cierre.ok, true, 'el efectivo Sin identificar nunca debe bloquear el cierre, ni siquiera para un Encargado');
+  assert.equal(cierre.efectivo_sin_identificar, 75000, 'debe informarse en la respuesta del cierre para que la pantalla lo muestre');
 }
 
 // --- La migración histórica corre una sola vez (bandera en Propiedades del Script), no en cada
