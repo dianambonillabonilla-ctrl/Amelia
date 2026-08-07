@@ -87,7 +87,16 @@ function cajaAbrir_(item,usuario) {
   const fuerteEsperada = cajaV2SaldoFuerteAntes_(fecha,item.sede);
   const baseInicial = Number(item.base_inicial)||0;
   const fuerteInicial = Number(item.caja_fuerte_inicial)||0;
-  const fila = {id:Utilities.getUuid(),fecha:fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,diferencia_apertura:Number((baseInicial-baseEsperada).toFixed(2)),observacion_apertura:item.observacion_apertura||'',caja_fuerte_esperada_apertura:fuerteEsperada,caja_fuerte_inicial:fuerteInicial,diferencia_caja_fuerte_apertura:Number((fuerteInicial-fuerteEsperada).toFixed(2)),hora_apertura:new Date(),usuario_apertura_id:usuario.id,usuario_apertura:usuario.nombre,efectivo_fudo_al_abrir:cajaEfectivoFudoDia_(fecha,item.sede),rappi_encendido:false};
+  const difApertura = Number((baseInicial-baseEsperada).toFixed(2));
+  const difFuerteApertura = Number((fuerteInicial-fuerteEsperada).toFixed(2));
+  // Misma regla que al cerrar (ver cajaCerrar_): con diferencia, solo un Administrador puede
+  // aprobar la apertura — el frontend (caja-apertura-segura.js) ya bloquea el botón, pero eso
+  // solo protege el navegador; sin esto aquí, cualquiera podía seguir abriendo con diferencia
+  // llamando la acción directo.
+  if ((difApertura !== 0 || difFuerteApertura !== 0) && usuario.rol !== 'Administrador') {
+    return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+  }
+  const fila = {id:Utilities.getUuid(),fecha:fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,diferencia_apertura:difApertura,observacion_apertura:item.observacion_apertura||'',caja_fuerte_esperada_apertura:fuerteEsperada,caja_fuerte_inicial:fuerteInicial,diferencia_caja_fuerte_apertura:difFuerteApertura,hora_apertura:new Date(),usuario_apertura_id:usuario.id,usuario_apertura:usuario.nombre,efectivo_fudo_al_abrir:cajaEfectivoFudoDia_(fecha,item.sede),rappi_encendido:false};
   appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,fila);
   auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fecha+'|'+item.sede,null,fila,item.sede,item.observacion_apertura||'');
   return {ok:true,item:fila};

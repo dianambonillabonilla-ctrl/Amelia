@@ -1,6 +1,16 @@
 (function () {
   if (!/caja\.html$/i.test(window.location.pathname)) return;
 
+  // Antes esto usaba alert()/confirm() nativos del navegador para avisar y "aceptar" una
+  // diferencia al abrir caja. Problema real reportado: un confirm() es fácil de cancelar sin
+  // querer (un toque de más, un clic fuera del diálogo) y, si eso pasa, el clic en "Abrir caja"
+  // se cancela EN SILENCIO — sin ningún aviso de que la apertura no se guardó. Quien lo vivió
+  // creía haber abierto la caja (pasó por todo el flujo) y después la veía "sin abrir", sin
+  // ningún rastro de qué pasó. Ahora el aviso queda fijo en la pantalla (no un popup que se
+  // pueda cerrar sin querer) y "aprobar" es simplemente que el botón "Abrir caja" esté
+  // habilitado — igual que ya funciona al cerrar caja con diferencia (ver calculoCierre en
+  // caja.html).
+
   function numero(id) {
     const el = document.getElementById(id);
     return Number(el && el.value !== '' ? el.value : 0) || 0;
@@ -27,63 +37,52 @@
     };
   }
 
+  function esAdministrador() {
+    const usuario = typeof Sesion !== 'undefined' ? Sesion.usuario() : null;
+    return !!usuario && usuario.rol === 'Administrador';
+  }
+
   function pintarDiferencias() {
     const salida = document.getElementById('diferencia-apertura');
-    if (!salida) return;
+    const boton = document.getElementById('abrir');
+    if (!salida || !boton) return;
     const d = diferencias();
-    if (d.base === 0 && d.fuerte === 0) {
-      salida.textContent = '✓ El efectivo operativo y la caja fuerte coinciden.';
+    const hayDiferencia = d.base !== 0 || d.fuerte !== 0;
+
+    if (!hayDiferencia) {
+      salida.innerHTML = '✓ El efectivo operativo y la caja fuerte coinciden.';
       salida.style.color = 'var(--green)';
+      boton.disabled = false;
       return;
     }
+
     const partes = [];
     if (d.base !== 0) partes.push('Caja operativa: ' + (d.base > 0 ? '+' : '') + moneda(d.base));
     if (d.fuerte !== 0) partes.push('Caja fuerte: ' + (d.fuerte > 0 ? '+' : '') + moneda(d.fuerte));
-    salida.textContent = '⚠ Diferencia al abrir — ' + partes.join(' · ');
+    let html = '⚠ Diferencia al abrir — ' + partes.join(' · ');
+
+    const observacionEl = document.getElementById('observacion-apertura');
+    const tieneObservacion = !!(observacionEl && observacionEl.value.trim());
+
+    if (!esAdministrador()) {
+      html += '<br><strong>Hay una diferencia — solo un Administrador puede aprobar la apertura.</strong>';
+      boton.disabled = true;
+    } else if (!tieneObservacion) {
+      html += '<br><strong>Escribe abajo qué pasó con la diferencia para poder aprobar la apertura.</strong>';
+      boton.disabled = true;
+    } else {
+      html += '<br><strong style="color:var(--green)">Puedes aprobar la apertura con esta diferencia — quedará registrada a tu nombre con la observación.</strong>';
+      boton.disabled = false;
+    }
+    salida.innerHTML = html;
     salida.style.color = 'var(--red)';
   }
 
-  function validarAntesDeAbrir(evento) {
-    const boton = document.getElementById('abrir');
-    if (!boton || evento.target !== boton) return;
-    const d = diferencias();
-    if (d.base === 0 && d.fuerte === 0) return;
-
-    const observacionEl = document.getElementById('observacion-apertura');
-    const observacion = observacionEl ? observacionEl.value.trim() : '';
-    if (!observacion) {
-      evento.preventDefault();
-      evento.stopImmediatePropagation();
-      alert('El dinero contado no coincide con lo esperado. Debes explicar la diferencia antes de abrir la caja.');
-      if (observacionEl) observacionEl.focus();
-      return;
-    }
-
-    const usuario = typeof Sesion !== 'undefined' ? Sesion.usuario() : null;
-    if (!usuario || usuario.rol !== 'Administrador') {
-      evento.preventDefault();
-      evento.stopImmediatePropagation();
-      alert('Hay una diferencia en el dinero recibido. Solo un Administrador puede autorizar la apertura después de revisarla.');
-      return;
-    }
-
-    const detalle = [
-      d.base !== 0 ? 'Caja operativa: ' + (d.base > 0 ? '+' : '') + moneda(d.base) : '',
-      d.fuerte !== 0 ? 'Caja fuerte: ' + (d.fuerte > 0 ? '+' : '') + moneda(d.fuerte) : ''
-    ].filter(Boolean).join('\n');
-
-    if (!confirm(detalle + '\n\nLa apertura quedará registrada con tu nombre y la observación. ¿Confirmas que deseas abrir?')) {
-      evento.preventDefault();
-      evento.stopImmediatePropagation();
-    }
-  }
-
   function iniciar() {
-    ['base-contada', 'fuerte-contada-apertura'].forEach(function (id) {
+    ['base-contada', 'fuerte-contada-apertura', 'observacion-apertura'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', pintarDiferencias);
     });
-    document.addEventListener('click', validarAntesDeAbrir, true);
     setTimeout(pintarDiferencias, 400);
   }
 
