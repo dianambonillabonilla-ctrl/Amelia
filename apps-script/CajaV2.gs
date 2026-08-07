@@ -20,7 +20,8 @@ function cajaV2MigrarHistorico_() {
   filas.forEach(function(r){ ids[String(r.id || '')] = true; });
   const migraciones = [
     {id:'migracion-caja-fuerte-sa-20260802',fecha:'2026-08-02',sede:'San Antonio',tipo:'Envío a caja fuerte',valor:1000000,persona_entrega:'Giselle',persona_recibe:'Caja fuerte',motivo:'Migrado desde observación histórica: guardé un millón en caja fuerte'},
-    {id:'migracion-entrega-admin-capri-20260803',fecha:'2026-08-03',sede:'Capri',tipo:'Entrega administrador desde caja',valor:550000,persona_entrega:'Giselle',persona_recibe:'Diana',motivo:'Migrado desde observación histórica: entregué 550 en efectivo a Diana'}
+    {id:'migracion-entrega-admin-capri-20260803',fecha:'2026-08-03',sede:'Capri',tipo:'Entrega administrador desde caja',valor:550000,persona_entrega:'Giselle',persona_recibe:'Diana',motivo:'Migrado desde observación histórica: entregué 550 en efectivo a Diana'},
+    {id:'migracion-retiro-fuerte-sa-20260807',fecha:'2026-08-07',sede:'San Antonio',tipo:'Entrega administrador desde caja fuerte',valor:1000000,persona_entrega:'Caja fuerte',persona_recibe:'Diana',motivo:'Migrado desde observación histórica: el millón que estaba en la caja fuerte de San Antonio ya lo tiene Diana, la caja fuerte física está en cero'}
   ];
   migraciones.forEach(function(m){
     if (ids[m.id]) return;

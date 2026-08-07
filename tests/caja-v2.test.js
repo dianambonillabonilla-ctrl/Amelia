@@ -46,14 +46,17 @@ function fakeHojaObjetos_(headers, filas) {
 function construirEntorno_() {
   const turnos = [];
   // cajaV2MigrarHistorico_ (CajaV2.gs) inyecta, la primera vez que no encuentra su propio id ya
-  // guardado, dos movimientos históricos fijos: $1.000.000 enviados a la caja fuerte de San Antonio
-  // el 2026-08-02 y una entrega de $550.000 desde Capri el 2026-08-03. Son correcciones de un hecho
-  // real (una migración de datos, no algo que estas pruebas deban ejercitar), así que se
-  // pre-cargan sus IDs para que la migración los vea como "ya existentes" y no los repita —
-  // igual que en el deployment real después de la primera vez que corrió.
+  // guardado, movimientos históricos fijos: $1.000.000 enviados a la caja fuerte de San Antonio
+  // el 2026-08-02, una entrega de $550.000 desde Capri el 2026-08-03, y la devolución de ese mismo
+  // millón (ya lo tiene la administradora, la caja fuerte física de San Antonio está en cero) el
+  // 2026-08-07. Son correcciones de hechos reales (una migración de datos, no algo que estas
+  // pruebas deban ejercitar), así que se pre-cargan sus IDs para que la migración los vea como "ya
+  // existentes" y no los repita — igual que en el deployment real después de la primera vez que
+  // corrió.
   const movimientos = [
     { id: 'migracion-caja-fuerte-sa-20260802', fecha: '2026-08-02', sede: 'San Antonio', tipo: 'Envío a caja fuerte', valor: 1000000 },
-    { id: 'migracion-entrega-admin-capri-20260803', fecha: '2026-08-03', sede: 'Capri', tipo: 'Entrega administrador desde caja', valor: 550000 }
+    { id: 'migracion-entrega-admin-capri-20260803', fecha: '2026-08-03', sede: 'Capri', tipo: 'Entrega administrador desde caja', valor: 550000 },
+    { id: 'migracion-retiro-fuerte-sa-20260807', fecha: '2026-08-07', sede: 'San Antonio', tipo: 'Entrega administrador desde caja fuerte', valor: 1000000 }
   ];
   const SHEET_NAMES = { CAJA_TURNO: 'caja_turno', CAJA_MOVIMIENTOS: 'caja_movimientos' };
   const hojas = {
