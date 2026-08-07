@@ -36,9 +36,15 @@
         <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
         <div class="estado" id="estado">Consultando…</div>
       </section>
-      <p id="fudo-sync-info" style="font-size:.82rem;margin:-8px 0 14px"></p>
+      <p style="font-size:.82rem;margin:-8px 0 14px">
+        <span id="fudo-sync-info"></span>
+        <button class="btn fantasma" id="btn-sincronizar-fudo" style="margin-left:8px;padding:2px 10px;font-size:.78rem">Sincronizar FUDO</button>
+      </p>
 
-      <section id="cargando" class="card"><p class="vacio">Consultando el estado de la caja…</p></section>
+      <section id="cargando" class="card">
+        <p class="vacio" id="cargando-texto">Consultando el estado de la caja…</p>
+        <p id="cargando-reintentar" class="oculto"><button class="btn fantasma" id="reintentar">Reintentar</button></p>
+      </section>
 
       <section id="sin-abrir" class="oculto">
         <!-- La apertura la hace quien está físicamente en la sede (Encargado/Cocina), no la
@@ -170,12 +176,13 @@ function pintarFudoSync(){
     : '';
   if(!sync||sync.aplica===false){el.innerHTML=avisoSinIdentificar.replace(/^<br>/,'');return;}
   if(estadoActual.cuadre_confiable){
-    el.innerHTML=`<span style="color:var(--grey)">FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}</span>${avisoSinIdentificar}`;
+    el.innerHTML=`<span style="color:var(--grey)">✓ FUDO actualizado: ${fechaHoraFudo_(sync.sincronizado_en)}</span>${avisoSinIdentificar}`;
   }else if(sync.pendiente){
-    // Todavía no hay ningún intento guardado para esta fecha/sede (caché vacío) — se está pidiendo
-    // en segundo plano ahora mismo (sincronizarFudoSiPendiente_). No es un error, así que no se
-    // pinta en rojo como si FUDO hubiera fallado.
-    el.innerHTML=`<span style="color:var(--grey)">Actualizando FUDO…</span>${avisoSinIdentificar}`;
+    // Todavía no hay ningún intento guardado para esta fecha/sede (caché vacío). Si la caja está
+    // abierta hoy, sincronizarFudoSiPendiente_ ya lo está pidiendo en segundo plano; si no, el
+    // botón "Sincronizar FUDO" de al lado permite pedirlo a mano. No es un error de FUDO, por eso
+    // no se pinta en rojo, pero sí se avisa que lo mostrado puede no ser lo último.
+    el.innerHTML=`<span style="color:var(--amber)">⚠ FUDO pendiente de actualizar. Los valores mostrados usan la última información guardada.</span>${avisoSinIdentificar}`;
   }else{
     el.innerHTML=`<span style="color:var(--red)">⚠ Cuadre no confiable: ${sync.error||'no fue posible actualizar FUDO'}.</span>${avisoSinIdentificar}`;
   }
@@ -258,6 +265,8 @@ async function cargar(opciones){
   opciones=opciones||{};
   if(!opciones.silencioso){
     mostrar('cargando');
+    document.getElementById('cargando-texto').textContent='Consultando el estado de la caja…';
+    document.getElementById('cargando-reintentar').classList.add('oculto');
     // Limpiar el texto de la consulta anterior — si no, mientras esta nueva consulta está en
     // camino, la cabecera y el aviso de FUDO se quedan mostrando el resultado de la fecha/sede de
     // ANTES, dando la impresión de que la pantalla dice dos cosas contradictorias a la vez.
@@ -267,7 +276,14 @@ async function cargar(opciones){
   cargarPanelAdmin();
   const p=parametros();
   const data=await llamar('caja_estado',p);
-  if(!data.ok){alert(data.error);return;}
+  if(!data.ok){
+    // No dejar la pantalla pegada en "Consultando…" si de verdad falló (red, timeout, error del
+    // servidor) — se explica el error y se ofrece reintentar en el mismo lugar, sin recargar todo.
+    mostrar('cargando');
+    document.getElementById('cargando-texto').textContent='⚠ No se pudo actualizar el estado: '+(data.error||'error desconocido')+'.';
+    document.getElementById('cargando-reintentar').classList.remove('oculto');
+    return;
+  }
   estadoActual=data;
   pintarFudoSync();
   sincronizarFudoSiPendiente_();
@@ -328,6 +344,16 @@ document.getElementById('cierre-base').addEventListener('input',calculoCierre);
 document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
 document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
 fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
+document.getElementById('reintentar').addEventListener('click',()=>cargar());
+// Botón manual: a diferencia del disparo automático en segundo plano (que solo corre si la caja
+// está abierta hoy), este siempre fuerza la sincronización real cuando la persona la pide de
+// verdad, sin importar el estado de la caja — es una decisión explícita suya, no automática.
+document.getElementById('btn-sincronizar-fudo').addEventListener('click',conBotonProtegido(document.getElementById('btn-sincronizar-fudo'),async(e)=>{
+  e.preventDefault();
+  const r=await llamar('caja_sincronizar_ahora',parametros());
+  if(!r.ok){alert(r.error);return;}
+  cargar({silencioso:true});
+}));
 // El Administrador es super usuario: normalmente solo revisa si la caja está abierta (por eso el
 // formulario queda oculto por defecto), pero puede abrirla él mismo si de verdad hace falta.
 document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
