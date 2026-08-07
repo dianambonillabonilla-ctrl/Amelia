@@ -243,13 +243,27 @@ async function cargarPanelAdmin(){
 // eso mismo (fudo_sync.pendiente=true) y la pantalla se dibuja YA con lo que hay. Esta función
 // dispara la sincronización real aparte, sin bloquear nada, y cuando termina vuelve a pedir
 // caja_estado en silencio (sin pasar otra vez por "Consultando…") para refrescar el semáforo.
+//
+// Solo vale la pena hacerlo cuando la caja está ABIERTA hoy: es el único caso donde la pantalla
+// muestra un efectivo esperado calculado en vivo con los pagos de FUDO. Si todavía no se ha abierto,
+// el estado ("sin abrir") no depende de FUDO para nada; si ya está cerrada, lo que se muestra es el
+// número que quedó guardado al cerrar (no se recalcula), así que sincronizar no cambiaría nada en
+// pantalla. Sincronizar en esos dos casos solo gasta cuota de la API sin ningún beneficio.
 function sincronizarFudoSiPendiente_(){
-  if(!estadoActual||!estadoActual.fudo_sync||!estadoActual.fudo_sync.pendiente)return;
+  if(!estadoActual||!estadoActual.abierta)return;
+  if(!estadoActual.fudo_sync||!estadoActual.fudo_sync.pendiente)return;
   llamar('caja_sincronizar_ahora',parametros()).then(()=>cargar({silencioso:true}));
 }
 async function cargar(opciones){
   opciones=opciones||{};
-  if(!opciones.silencioso)mostrar('cargando');
+  if(!opciones.silencioso){
+    mostrar('cargando');
+    // Limpiar el texto de la consulta anterior — si no, mientras esta nueva consulta está en
+    // camino, la cabecera y el aviso de FUDO se quedan mostrando el resultado de la fecha/sede de
+    // ANTES, dando la impresión de que la pantalla dice dos cosas contradictorias a la vez.
+    document.getElementById('estado').textContent='Consultando…';
+    document.getElementById('fudo-sync-info').textContent='';
+  }
   cargarPanelAdmin();
   const p=parametros();
   const data=await llamar('caja_estado',p);
