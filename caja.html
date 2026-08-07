@@ -199,10 +199,15 @@ async function cargar(){
     const esAdmin=usuario.rol==='Administrador';
     document.getElementById('apertura-solo-lectura').classList.toggle('oculto',!esAdmin);
     document.getElementById('apertura-form').classList.toggle('oculto',esAdmin);
+    // Los montos esperados se muestran siempre (aunque el formulario esté oculto para
+    // Administrador, por si usa "Abrir de todas formas"), pero los campos de conteo quedan
+    // deliberadamente VACÍOS — no precargados con lo esperado: si se prellenan con el mismo valor
+    // que se va a comparar, cualquiera puede abrir sin contar nada de verdad, y siempre daría "sin
+    // diferencia" sin que nadie haya tocado el dinero.
     document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
-    document.getElementById('base-contada').value=data.base_esperada||0;
     document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
-    document.getElementById('fuerte-contada-apertura').value=data.caja_fuerte_esperada||0;
+    document.getElementById('base-contada').value='';
+    document.getElementById('fuerte-contada-apertura').value='';
     mostrar('sin-abrir');diferenciaApertura();return;
   }
   if(data.apertura.estado==='Cerrado'){
@@ -221,17 +226,17 @@ async function cargar(){
   document.getElementById('d-esperado').textContent=dinero(data.efectivo_esperado);
   document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
   document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
-  document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
-  document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
   document.getElementById('abierta-por').textContent=data.apertura.usuario_apertura||'—';
   document.getElementById('abierta-hora').textContent=new Date(data.apertura.hora_apertura).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
   const rappi=String(data.apertura.rappi_encendido).toLowerCase()==='true';
   document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
   document.getElementById('mov-entrega').value=usuario.nombre||'';
-  document.getElementById('cierre-contado').value=Math.max(0,Number(data.efectivo_esperado||0));
+  // Igual que al abrir: los campos de conteo del cierre quedan vacíos, no precargados con lo
+  // esperado — "cierre-base" (lo que se decide dejar para el siguiente turno) no es un conteo
+  // contra algo, así que ese sí puede sugerir la base con la que se abrió hoy.
+  document.getElementById('cierre-contado').value='';
   document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
-  document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
-  document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
+  document.getElementById('cierre-fuerte').value='';
   const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
   mostrar('abierta');calculoCierre();
 }

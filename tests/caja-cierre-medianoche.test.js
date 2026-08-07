@@ -40,6 +40,7 @@ function fakeHoja_(headers, filas) {
 function construirEntorno_() {
   const turnos = [];
   const movimientos = [];
+  const propiedadesScript = new Map();
   const SHEET_NAMES = { CAJA_TURNO: 'caja_turno', CAJA_MOVIMIENTOS: 'caja_movimientos' };
 
   // Reloj controlable — igual patrón que tests/helpers/entorno-apps-script.js: `new Date()` dentro
@@ -73,8 +74,12 @@ function construirEntorno_() {
     auditoriaRegistrar_: () => {},
     turnoSectorDeHoy_: () => ({ sector: 'Caja' }),
     Utilities: { getUuid: () => 'caja-turno-' + Math.random() },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
-    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) }
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (propiedadesScript.has(k) ? propiedadesScript.get(k) : null),
+      setProperty: (k, v) => propiedadesScript.set(k, String(v))
+    }) },
+    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) }
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync('apps-script/CajaTurno.gs', 'utf8'), ctx, { filename: 'CajaTurno.gs' });
@@ -87,33 +92,35 @@ const administrador = { nombre: 'Diana', rol: 'Administrador', id: 'u1' };
 {
   const { ctx, fijarReloj } = construirEntorno_();
   fijarReloj(new Date(2026, 7, 6, 8, 0, 0));
-  ctx.cajaAbrir_({ fecha: '2026-08-06', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0 }, administrador);
+  const primeraApertura = ctx.cajaAbrir_({ fecha: '2026-08-06', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0, observacion_apertura: 'Primera apertura de la sede en la prueba — sin cierre anterior con qué comparar' }, administrador);
+  assert.equal(primeraApertura.ok, true);
   fijarReloj(new Date(2026, 7, 6, 22, 0, 0));
-  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 120000, persona_recibe_cierre: 'Diana' }, administrador);
+  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 80000, persona_recibe_cierre: 'Diana' }, administrador);
   assert.equal(cierre.ok, true);
 
   fijarReloj(new Date(2026, 7, 7, 8, 0, 0));
   const estado = ctx.cajaEstado_('2026-08-07', 'San Antonio', administrador);
-  assert.equal(estado.base_esperada, 120000, 'un cierre normal (mismo día) debe pasar la base al día siguiente');
+  assert.equal(estado.base_esperada, 80000, 'un cierre normal (mismo día) debe pasar la base al día siguiente');
 }
 
 // --- Cierre después de medianoche real, para el turno de "ayer": debe seguir contando -------------
 {
   const { ctx, fijarReloj } = construirEntorno_();
   fijarReloj(new Date(2026, 7, 6, 8, 0, 0));
-  ctx.cajaAbrir_({ fecha: '2026-08-06', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0 }, administrador);
+  const primeraApertura = ctx.cajaAbrir_({ fecha: '2026-08-06', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0, observacion_apertura: 'Primera apertura de la sede en la prueba — sin cierre anterior con qué comparar' }, administrador);
+  assert.equal(primeraApertura.ok, true);
 
   // El clic en "Cerrar caja" ocurre a las 00:15 del 7 de agosto (después de medianoche real), pero
   // el turno que se cierra sigue siendo el del 6 de agosto (fecha de negocio).
   fijarReloj(new Date(2026, 7, 7, 0, 15, 0));
-  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 120000, persona_recibe_cierre: 'Diana' }, administrador);
+  const cierre = ctx.cajaCerrar_({ fecha: '2026-08-06', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, base_siguiente: 80000, persona_recibe_cierre: 'Diana' }, administrador);
   assert.equal(cierre.ok, true, 'debe poder cerrarse el turno de ayer aunque el reloj real ya haya cruzado la medianoche');
 
   fijarReloj(new Date(2026, 7, 7, 8, 0, 0));
   const estado = ctx.cajaEstado_('2026-08-07', 'San Antonio', administrador);
-  assert.equal(estado.base_esperada, 120000, 'un cierre tarde en la noche (después de medianoche real) para el turno de ayer debe seguir contando al consultar hoy — no debe verse como si nunca hubiera pasado');
+  assert.equal(estado.base_esperada, 80000, 'un cierre tarde en la noche (después de medianoche real) para el turno de ayer debe seguir contando al consultar hoy — no debe verse como si nunca hubiera pasado');
 
-  const abrir = ctx.cajaAbrir_({ fecha: '2026-08-07', sede: 'San Antonio', base_inicial: 120000, caja_fuerte_inicial: 0 }, administrador);
+  const abrir = ctx.cajaAbrir_({ fecha: '2026-08-07', sede: 'San Antonio', base_inicial: 80000, caja_fuerte_inicial: 0 }, administrador);
   assert.equal(abrir.ok, true);
   assert.equal(abrir.item.diferencia_apertura, 0, 'contando exactamente lo que dejó el cierre de ayer, no debe verse ninguna diferencia');
 }

@@ -21,17 +21,30 @@ const Sesion = {
   }
 };
 
+// Sin esto, una petición que se queda colgada (ej. caja_estado esperando a que responda la API de
+// FUDO) dejaba la pantalla en "Consultando…" indefinidamente — el navegador no le pone límite de
+// tiempo a fetch() por sí solo.
+const LLAMAR_TIMEOUT_MS = 45000;
+
 async function llamar(action, params = {}) {
   const body = Object.assign({ action, token: Sesion.token() }, params);
+  const controlador = new AbortController();
+  const limite = setTimeout(() => controlador.abort(), LLAMAR_TIMEOUT_MS);
   let res;
   try {
     res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controlador.signal
     });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return { ok: false, error: 'El servidor tardó demasiado en responder. Inténtalo de nuevo en un momento.' };
+    }
     return { ok: false, error: 'No se pudo conectar con el servidor. Revisa la conexión e inténtalo nuevamente.' };
+  } finally {
+    clearTimeout(limite);
   }
   const texto = await res.text();
   let data;

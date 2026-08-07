@@ -28,6 +28,8 @@ function cajaAsegurarEstructura_() {
   cajaMigrarHistorico_();
 }
 
+const CAJA_MIGRACION_HISTORICA_PROP_ = 'CAJA_MIGRACION_HISTORICA_HECHA';
+
 /**
  * Correcciones puntuales de historia real (venían de CajaV2.gs, antes de consolidar todo aquí):
  * el millón que se guardó en la caja fuerte de San Antonio el 2026-08-02, la entrega de $550.000
@@ -35,8 +37,15 @@ function cajaAsegurarEstructura_() {
  * administradora, la caja fuerte física de San Antonio está en cero) — fechada el mismo día que la
  * de Capri porque cajaSaldoFuerteAntes_ solo cuenta movimientos ANTERIORES a la fecha consultada:
  * si se fecha el mismo día que "hoy", ese día todavía muestra la diferencia vieja.
+ *
+ * cajaAsegurarEstructura_ llama esto en CADA acción de Caja — sin la bandera de Propiedades del
+ * Script, cada llamada volvía a leer Caja_Movimientos completo solo para confirmar que las tres
+ * migraciones ya estaban puestas. Una vez confirmadas, se marca hecho y no se vuelve a escanear.
  */
 function cajaMigrarHistorico_() {
+  const props = typeof PropertiesService !== 'undefined' ? PropertiesService.getScriptProperties() : null;
+  if (props && props.getProperty(CAJA_MIGRACION_HISTORICA_PROP_)) return;
+
   const filas = leerTabla_(SHEET_NAMES.CAJA_MOVIMIENTOS);
   const ids = {};
   filas.forEach(function (r) { ids[String(r.id || '')] = true; });
@@ -52,6 +61,7 @@ function cajaMigrarHistorico_() {
     m.timestamp = new Date();
     appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS, m);
   });
+  if (props) props.setProperty(CAJA_MIGRACION_HISTORICA_PROP_, 'true');
 }
 
 function cajaPuedeCerrar_(usuario, fecha) {
@@ -218,6 +228,14 @@ function cajaTurnoActualizarFila_(fecha, sede, cambios) {
   return false;
 }
 
+function cajaValorContadoValido_(valor) {
+  if (valor === '' || valor === undefined || valor === null) return { ok: false, error: 'Falta contar el dinero — el campo no puede quedar vacío.' };
+  const n = Number(valor);
+  if (!isFinite(n)) return { ok: false, error: 'El dinero contado debe ser un número.' };
+  if (n < 0) return { ok: false, error: 'El dinero contado no puede ser negativo.' };
+  return { ok: true, valor: n };
+}
+
 function cajaAbrir_(item, usuario) {
   cajaAsegurarEstructura_();
   if (!item || !item.fecha || !item.sede) return {ok:false,error:'Falta la fecha o la sede'};
@@ -225,6 +243,13 @@ function cajaAbrir_(item, usuario) {
   const fecha = formatearFecha_(item.fecha);
   const existente = cajaTurnoFila_(fecha,item.sede);
   if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'La caja ya se cerró'} : {ok:true,ya_abierta:true,item:existente};
+
+  // Los campos de conteo llegan vacíos desde la pantalla a propósito (ver caja.html) — sin esto,
+  // un envío vacío se leía como "$0 contados" en silencio, sin avisar que faltaba contar.
+  const baseValida = cajaValorContadoValido_(item.base_inicial);
+  if (!baseValida.ok) return { ok:false, error: 'Efectivo contado al abrir: ' + baseValida.error };
+  const fuerteValida = cajaValorContadoValido_(item.caja_fuerte_inicial);
+  if (!fuerteValida.ok) return { ok:false, error: 'Caja fuerte contada al abrir: ' + fuerteValida.error };
 
   // Abrir NO depende de los pagos de HOY: la base esperada viene del cierre anterior, no de FUDO
   // (solo cerrar sí lo necesita, ver cajaCerrar_). Se intenta sincronizar para que el aviso en
@@ -235,14 +260,20 @@ function cajaAbrir_(item, usuario) {
 
   const baseEsperada = cajaBaseEsperada_(fecha,item.sede);
   const fuerteEsperada = cajaSaldoFuerteAntes_(fecha,item.sede);
-  const baseInicial = Number(item.base_inicial)||0;
-  const fuerteInicial = Number(item.caja_fuerte_inicial)||0;
+  const baseInicial = baseValida.valor;
+  const fuerteInicial = fuerteValida.valor;
   const difApertura = Number((baseInicial-baseEsperada).toFixed(2));
   const difFuerteApertura = Number((fuerteInicial-fuerteEsperada).toFixed(2));
   // Con diferencia (en efectivo o en caja fuerte), solo un Administrador puede aprobar la
-  // apertura — el frontend ya bloquea el botón, pero eso solo protege el navegador.
-  if ((difApertura !== 0 || difFuerteApertura !== 0) && usuario.rol !== 'Administrador') {
-    return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+  // apertura, y solo dejando por escrito qué pasó — el frontend ya bloquea el botón hasta que
+  // ambas condiciones se cumplan, pero eso solo protege el navegador.
+  if (difApertura !== 0 || difFuerteApertura !== 0) {
+    if (usuario.rol !== 'Administrador') {
+      return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+    }
+    if (!String(item.observacion_apertura || '').trim()) {
+      return {ok:false,error:'Hay una diferencia al abrir la caja. Escribe una observación explicando qué pasó.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+    }
   }
   const fila = {
     id:Utilities.getUuid(),fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,
@@ -252,8 +283,25 @@ function cajaAbrir_(item, usuario) {
     hora_apertura:new Date(),usuario_apertura_id:usuario.id,usuario_apertura:usuario.nombre,
     efectivo_fudo_al_abrir:cajaEfectivoFudoDia_(fecha,item.sede),rappi_encendido:false
   };
-  appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,fila);
-  auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fecha+'|'+item.sede,null,fila,item.sede,item.observacion_apertura||'');
+
+  // El candado solo cubre leer-de-nuevo-y-escribir: dos dispositivos abriendo la misma fecha+sede
+  // al mismo tiempo podían pasar juntos el chequeo de "existente" de arriba y crear dos filas. La
+  // sincronización con FUDO queda A PROPÓSITO fuera del candado — es una llamada de red que puede
+  // tardar, y ella misma podría intentar tomar este mismo candado (pagosFudoImportar_).
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { ok:false, error:'Otra apertura de caja está en curso ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const existenteAhora = cajaTurnoFila_(fecha,item.sede);
+    if (existenteAhora) {
+      return existenteAhora.estado === 'Cerrado' ? {ok:false,error:'La caja ya se cerró'} : {ok:true,ya_abierta:true,item:existenteAhora};
+    }
+    appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,fila);
+    auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fecha+'|'+item.sede,null,fila,item.sede,item.observacion_apertura||'');
+  } finally {
+    lock.releaseLock();
+  }
   return {ok:true,item:fila,fudo_sync:syncFudo};
 }
 
@@ -341,14 +389,37 @@ function cajaCerrar_(item,usuario) {
     return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'FUDO no está sincronizado. Escribe una observación para cerrar de todas formas.',fudo_sync:syncFudo};
   }
 
+  // Igual que al abrir: los campos de conteo llegan vacíos desde la pantalla a propósito, así que
+  // un envío vacío/negativo debe rechazarse, no leerse como "$0 contados".
+  const contadoValido=cajaValorContadoValido_(item.efectivo_contado);
+  if(!contadoValido.ok)return {ok:false,error:'Efectivo contado: '+contadoValido.error};
+  const fuerteContadaValida=cajaValorContadoValido_(item.caja_fuerte_contada);
+  if(!fuerteContadaValida.ok)return {ok:false,error:'Caja fuerte contada: '+fuerteContadaValida.error};
+  if(!String(item.persona_recibe_cierre||'').trim())return {ok:false,error:'Falta la persona que recibe el cierre.'};
+
   const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
-  const contado=Number(item.efectivo_contado)||0, fuerteContada=Number(item.caja_fuerte_contada)||0;
+  const contado=contadoValido.valor, fuerteContada=fuerteContadaValida.valor;
   const baseSiguiente=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente)||0:contado;
+  if(baseSiguiente>contado)return {ok:false,error:'La base para el siguiente turno no puede ser mayor que el efectivo contado.'};
+  if(baseSiguiente<0)return {ok:false,error:'La base para el siguiente turno no puede ser negativa.'};
   const dif=Number((contado-calculo.esperado).toFixed(2)), difFuerte=Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
   if((dif!==0||difFuerte!==0)&&usuario.rol!=='Administrador')return {ok:false,error:'Hay una diferencia. Solo un Administrador puede cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte};
   if((dif!==0||difFuerte!==0)&&!String(item.observacion||'').trim())return {ok:false,error:'Hay una diferencia. Debes escribir una observación.'};
 
-  cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
-  auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
+  // Mismo candado que al abrir: cubre solo leer-de-nuevo-y-escribir, nunca la sincronización con
+  // FUDO (ya terminada arriba) — evita que dos dispositivos cierren el mismo turno a la vez.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { ok:false, error:'Otro cierre de caja está en curso ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const aperturaAhora = cajaTurnoFila_(fecha,item.sede);
+    if (!aperturaAhora) return {ok:false,error:'La caja no está abierta'};
+    if (aperturaAhora.estado === 'Cerrado') return {ok:true,ya_cerrado:true};
+    cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
+    auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
+  } finally {
+    lock.releaseLock();
+  }
   return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable};
 }
