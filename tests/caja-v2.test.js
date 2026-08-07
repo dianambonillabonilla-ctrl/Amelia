@@ -24,7 +24,8 @@ const TURNO_HEADERS = [
   'efectivo_contado', 'efectivo_esperado', 'diferencia',
   'caja_fuerte_contada', 'caja_fuerte_esperada', 'diferencia_caja_fuerte', 'caja_fuerte_siguiente',
   'entrega_cierre', 'persona_recibe_cierre', 'persona_verifica_cierre', 'base_siguiente',
-  'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre'
+  'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre',
+  'fudo_confiable_cierre', 'estado_conciliacion', 'nota_conciliacion'
 ];
 const MOVIMIENTOS_HEADERS = [
   'id', 'fecha', 'sede', 'tipo', 'valor', 'persona_entrega', 'persona_recibe',
@@ -275,25 +276,16 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(turnos[0].estado, 'Abierto');
 }
 
-// Cerrar sin decir quién recibe el dinero debe rechazarse.
+
+// Cerrar sin persona_recibe_cierre/persona_verifica_cierre debe funcionar igual (Diana, ago 2026:
+// revirtió la regla de hace unas horas — nadie recibe el dinero ni verifica el cierre por separado,
+// quien cierra el turno hace todo).
 {
   const { ctx, turnos } = construirEntorno_();
   abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
   const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0 }, administrador);
-  assert.equal(r.ok, false, 'no debe poder cerrar sin decir quién recibe el cierre');
-  assert.match(r.error, /persona que recibe/);
-  assert.equal(turnos[0].estado, 'Abierto');
-}
-
-// Cerrar sin decir quién verifica el cierre debe rechazarse (Diana, ago 2026: son dos personas
-// distintas — quien recibe el dinero no es necesariamente quien verifica el arqueo).
-{
-  const { ctx, turnos } = construirEntorno_();
-  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
-  const r = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 100000, caja_fuerte_contada: 0, persona_recibe_cierre: 'Diana' }, administrador);
-  assert.equal(r.ok, false, 'no debe poder cerrar sin decir quién verifica el cierre');
-  assert.match(r.error, /persona que verifica/);
-  assert.equal(turnos[0].estado, 'Abierto');
+  assert.equal(r.ok, true, 'debe poder cerrar sin persona_recibe_cierre ni persona_verifica_cierre');
+  assert.equal(turnos[0].estado, 'Cerrado');
 }
 
 // La base para el siguiente turno no puede ser mayor que lo contado.
@@ -419,6 +411,47 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.deepEqual(resumenPorDefecto.sedes.map((s) => s.sede).sort(), ['Capri', 'San Antonio']);
 
   assert.equal(ctx.cajaResumenAdministrador_('', ['Capri'], administrador).ok, false, 'debe exigir la fecha');
+}
+
+// --- Novedades de Administrador: ninguna diferencia ni FUDO sin sincronizar bloquea nada, pero el
+// Administrador debe poder verlas y marcarlas como conciliadas (ago 2026) --------------------------
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 50000, caja_fuerte_inicial: 0, diferencia_apertura: 50000, observacion_apertura: 'sobra' });
+  const sinNovedad = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(sinNovedad.ok, true);
+  assert.equal(sinNovedad.novedades.length, 1, 'una diferencia al abrir debe verse como novedad pendiente');
+  assert.deepEqual(sinNovedad.novedades[0].motivos, ['Diferencia al abrir']);
+  assert.equal(sinNovedad.novedades[0].estado_conciliacion, '');
+
+  const conciliada = ctx.cajaNovedadConciliar_('2026-07-15', 'San Antonio', 'ya se revisó, fue un préstamo', administrador);
+  assert.equal(conciliada.ok, true);
+  assert.equal(turnos[0].estado_conciliacion, 'Resuelta');
+  assert.equal(turnos[0].nota_conciliacion, 'ya se revisó, fue un préstamo');
+
+  // Ya conciliada, no debe seguir apareciendo entre las pendientes...
+  const trasConciliar = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(trasConciliar.novedades.length, 0, 'una novedad ya resuelta no debe seguir apareciendo por defecto');
+  // ...pero sí si se piden explícitamente todas (no solo las pendientes).
+  const todas = ctx.cajaNovedadesAdministrador_({ solo_pendientes: false });
+  assert.equal(todas.novedades.length, 1);
+  assert.equal(todas.novedades[0].estado_conciliacion, 'Resuelta');
+
+  assert.equal(ctx.cajaNovedadConciliar_('', 'San Antonio', '', administrador).ok, false, 'debe exigir fecha y sede');
+}
+
+// Diferencia al cerrar y FUDO no sincronizado al cerrar también cuentan como novedad — pero ninguna
+// de las dos impidió el cierre (Diana, ago 2026).
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const cierre = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000' }, encargada);
+  assert.equal(cierre.ok, true);
+  assert.equal(turnos[0].fudo_confiable_cierre, true, 'sin credenciales de FUDO configuradas, se considera confiable (la validación no aplica)');
+
+  const novedades = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(novedades.novedades.length, 1);
+  assert.deepEqual(novedades.novedades[0].motivos, ['Diferencia al cerrar']);
 }
 
 console.log('caja-v2: OK');

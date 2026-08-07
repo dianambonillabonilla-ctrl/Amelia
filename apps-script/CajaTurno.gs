@@ -18,7 +18,7 @@ const CAJA_COLUMNAS_TURNO_ = [
   'efectivo_contado','efectivo_esperado','diferencia',
   'caja_fuerte_contada','caja_fuerte_esperada','diferencia_caja_fuerte','caja_fuerte_siguiente',
   'entrega_cierre','persona_recibe_cierre','persona_verifica_cierre','base_siguiente','usuario_cierre','hora_cierre',
-  'observacion_cierre','timestamp_cierre'
+  'observacion_cierre','timestamp_cierre','fudo_confiable_cierre','estado_conciliacion','nota_conciliacion'
 ];
 const CAJA_COLUMNAS_MOVIMIENTOS_ = [
   'id','fecha','sede','tipo','valor','persona_entrega','persona_recibe','hora','motivo',
@@ -451,8 +451,10 @@ function cajaCerrar_(item,usuario) {
   if(!contadoValido.ok)return {ok:false,error:'Efectivo contado: '+contadoValido.error};
   const fuerteContadaValida=cajaValorContadoValido_(item.caja_fuerte_contada);
   if(!fuerteContadaValida.ok)return {ok:false,error:'Caja fuerte contada: '+fuerteContadaValida.error};
-  if(!String(item.persona_recibe_cierre||'').trim())return {ok:false,error:'Falta la persona que recibe el dinero.'};
-  if(!String(item.persona_verifica_cierre||'').trim())return {ok:false,error:'Falta la persona que verifica el cierre.'};
+  // Diana (ago 2026): revierte lo que se había pedido hace apenas unas horas (PR #153) — nadie
+  // recibe el dinero ni verifica el cierre por separado; quien cierra el turno hace todo. Los
+  // campos siguen existiendo por compatibilidad con cierres históricos, pero ya no son
+  // obligatorios ni se piden en pantalla.
 
   const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
   const contado=contadoValido.valor, fuerteContada=fuerteContadaValida.valor;
@@ -475,7 +477,7 @@ function cajaCerrar_(item,usuario) {
     const aperturaAhora = cajaTurnoFila_(fecha,item.sede);
     if (!aperturaAhora) return {ok:false,error:'La caja no está abierta'};
     if (aperturaAhora.estado === 'Cerrado') return {ok:true,ya_cerrado:true};
-    cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',persona_verifica_cierre:item.persona_verifica_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
+    cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',persona_verifica_cierre:item.persona_verifica_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date(),fudo_confiable_cierre:fudoConfiable});
     auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
   } finally {
     lock.releaseLock();
@@ -485,4 +487,60 @@ function cajaCerrar_(item,usuario) {
     const diferenciaPendiente = dif!==0 || difFuerte!==0;
     return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable,efectivo_sin_identificar:efectivoSinIdentificarCierre,nivel_confianza:cajaNivelConfianza_(fudoConfiable,efectivoSinIdentificarCierre,diferenciaPendiente)};
   }
+}
+
+/**
+ * NOVEDADES DE ADMINISTRADOR — Diana (ago 2026): ninguna diferencia (al abrir o al cerrar) ni un
+ * cierre sin FUDO sincronizado deben impedir que la caja opere, pero el Administrador sí necesita
+ * enterarse y darles seguimiento aparte. Esto es puramente informativo/de seguimiento — "conciliar"
+ * aquí solo significa marcar que ya se revisó (con una nota opcional); nunca descuenta nada a nadie
+ * ni corrige por sí solo los números que ya quedaron guardados en el turno.
+ */
+function cajaTurnoMotivosNovedad_(turno) {
+  const motivos = [];
+  if ((Number(turno.diferencia_apertura) || 0) !== 0 || (Number(turno.diferencia_caja_fuerte_apertura) || 0) !== 0) {
+    motivos.push('Diferencia al abrir');
+  }
+  if (turno.estado === 'Cerrado') {
+    if ((Number(turno.diferencia) || 0) !== 0 || (Number(turno.diferencia_caja_fuerte) || 0) !== 0) {
+      motivos.push('Diferencia al cerrar');
+    }
+    if (turno.fudo_confiable_cierre === false) {
+      motivos.push('FUDO no sincronizado al cerrar');
+    }
+  }
+  return motivos;
+}
+
+function cajaNovedadesAdministrador_(filtros) {
+  filtros = filtros || {};
+  const soloPendientes = filtros.solo_pendientes !== false;
+  const novedades = leerTabla_(SHEET_NAMES.CAJA_TURNO)
+    .map(function (t) {
+      const motivos = cajaTurnoMotivosNovedad_(t);
+      if (!motivos.length) return null;
+      const resuelta = String(t.estado_conciliacion || '') === 'Resuelta';
+      if (soloPendientes && resuelta) return null;
+      return {
+        fecha: formatearFecha_(t.fecha), sede: t.sede, estado: t.estado, motivos: motivos,
+        diferencia_apertura: Number(t.diferencia_apertura) || 0,
+        diferencia_caja_fuerte_apertura: Number(t.diferencia_caja_fuerte_apertura) || 0,
+        diferencia: Number(t.diferencia) || 0, diferencia_caja_fuerte: Number(t.diferencia_caja_fuerte) || 0,
+        observacion_apertura: t.observacion_apertura || '', observacion_cierre: t.observacion_cierre || '',
+        estado_conciliacion: t.estado_conciliacion || '', nota_conciliacion: t.nota_conciliacion || ''
+      };
+    })
+    .filter(function (n) { return n; })
+    .sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+  return { ok: true, novedades: novedades };
+}
+
+function cajaNovedadConciliar_(fecha, sede, nota, usuario) {
+  if (!fecha || !sede) return { ok: false, error: 'Falta la fecha o la sede' };
+  const fechaFmt = formatearFecha_(fecha);
+  const turno = cajaTurnoFila_(fechaFmt, sede);
+  if (!turno) return { ok: false, error: 'No existe esa caja' };
+  cajaTurnoActualizarFila_(fechaFmt, sede, { estado_conciliacion: 'Resuelta', nota_conciliacion: nota || '' });
+  auditoriaRegistrar_(usuario, 'caja_novedad_conciliar', 'CajaTurno', fechaFmt + '|' + sede, null, { nota: nota || '' }, sede, nota || '');
+  return { ok: true };
 }
