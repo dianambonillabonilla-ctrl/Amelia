@@ -344,4 +344,50 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(movimientos.length, 0, 'una vez marcada como hecha, no debe volver a insertarlas aunque ya no estén');
 }
 
+// --- cajaNivelConfianza_: FUDO no confiable gana siempre; Sin identificar/diferencia son solo
+// "pendiente" (nunca bloquean, ago 2026); sin ninguna señal mala, es "confiable". --------------
+{
+  const { ctx } = construirEntorno_();
+  assert.equal(ctx.cajaNivelConfianza_(false, 0, false), 'no_confiable');
+  assert.equal(ctx.cajaNivelConfianza_(false, 50000, true), 'no_confiable', 'FUDO no confiable manda aunque también haya otras señales');
+  assert.equal(ctx.cajaNivelConfianza_(true, 50000, false), 'pendiente');
+  assert.equal(ctx.cajaNivelConfianza_(true, 0, true), 'pendiente');
+  assert.equal(ctx.cajaNivelConfianza_(true, 0, false), 'confiable');
+}
+
+// --- cajaEstado_/cajaCerrar_ exponen nivel_confianza usando esa misma función ---------------------
+{
+  const { ctx, turnos } = construirEntorno_();
+  const sinAbrir = ctx.cajaEstado_('2026-07-15', 'San Antonio', encargada);
+  assert.equal(sinAbrir.nivel_confianza, 'confiable', 'sin FUDO configurado y sin Sin identificar, debe verse confiable aunque la caja no esté abierta');
+
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0 });
+  const cierreConDiferencia = ctx.cajaCerrar_({ fecha: '2026-07-15', sede: 'San Antonio', efectivo_contado: 90000, caja_fuerte_contada: 0, observacion: 'faltan 10.000', persona_recibe_cierre: 'Diana', persona_verifica_cierre: 'Carolina' }, administrador);
+  assert.equal(cierreConDiferencia.ok, true);
+  assert.equal(cierreConDiferencia.nivel_confianza, 'pendiente', 'una diferencia ya cerrada (aunque autorizada con observación) debe verse como pendiente, no confiable a ciegas');
+
+  const estadoTrasCierre = ctx.cajaEstado_('2026-07-15', 'San Antonio', administrador);
+  assert.equal(estadoTrasCierre.nivel_confianza, 'pendiente', 'consultar el estado después también debe reflejar la diferencia del cierre ya hecho');
+}
+
+// --- cajaResumenAdministrador_: las dos sedes en una sola llamada, reutilizando cajaEstado_ --------
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { base_inicial: 100000, caja_fuerte_inicial: 0, sede: 'San Antonio' });
+  const resumen = ctx.cajaResumenAdministrador_('2026-07-15', ['San Antonio', 'Capri'], administrador);
+  assert.equal(resumen.ok, true);
+  assert.equal(resumen.sedes.length, 2);
+  const sanAntonio = resumen.sedes.find((s) => s.sede === 'San Antonio');
+  const capri = resumen.sedes.find((s) => s.sede === 'Capri');
+  assert.equal(sanAntonio.abierta, true, 'San Antonio sí tiene una apertura en esta prueba');
+  assert.equal(capri.abierta, false, 'Capri no tiene ninguna apertura, no debe inventarse una');
+  assert.ok('nivel_confianza' in sanAntonio && 'nivel_confianza' in capri, 'cada sede debe traer su propio semáforo');
+
+  // Sin especificar sedes, debe asumir las dos reales por defecto.
+  const resumenPorDefecto = ctx.cajaResumenAdministrador_('2026-07-15', null, administrador);
+  assert.deepEqual(resumenPorDefecto.sedes.map((s) => s.sede).sort(), ['Capri', 'San Antonio']);
+
+  assert.equal(ctx.cajaResumenAdministrador_('', ['Capri'], administrador).ok, false, 'debe exigir la fecha');
+}
+
 console.log('caja-v2: OK');

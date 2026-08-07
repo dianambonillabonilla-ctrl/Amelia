@@ -23,6 +23,15 @@
         </div>
       </div>
 
+      <section id="panel-admin" class="card oculto" style="border-color:var(--navy)">
+        <h2>Panel de Caja — todas las sedes</h2>
+        <p style="color:var(--grey);font-size:.85rem;margin-top:0">Vista rápida de las dos sedes para la fecha elegida arriba. Toca una fila para ir a esa sede.</p>
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Sede</th><th>Estado</th><th>Responsable</th><th>Efectivo esperado</th><th>Caja fuerte</th><th>Sin identificar</th><th>Confianza</th></tr></thead>
+          <tbody id="panel-admin-filas"></tbody>
+        </table></div>
+      </section>
+
       <section class="cabecera-caja">
         <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
         <div class="estado" id="estado">Consultando…</div>
@@ -138,6 +147,17 @@ function fechaHoraFudo_(valor){
   const d=new Date(valor);
   return isNaN(d.getTime())?String(valor):d.toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
+// Semáforo de confianza: sintetiza fudo_sync + efectivo Sin identificar + diferencia ya cerrada
+// (todo esto ya lo calcula cajaNivelConfianza_ en el backend) en un solo símbolo, en vez de que la
+// persona tenga que leer varias señales sueltas para saber si puede confiar en el número.
+const CONFIANZA_INFO_={
+  confiable:{icono:'🟢',texto:'Cuadre confiable'},
+  pendiente:{icono:'🟡',texto:'Cuadre pendiente de revisar'},
+  no_confiable:{icono:'🔴',texto:'Cuadre no confiable'}
+};
+function confianzaBadge_(nivel){
+  return CONFIANZA_INFO_[nivel]||CONFIANZA_INFO_.confiable;
+}
 function pintarFudoSync(){
   const el=document.getElementById('fudo-sync-info');
   const sync=(estadoActual&&estadoActual.fudo_sync)||null;
@@ -189,16 +209,43 @@ function pintarMovimientos(lista){
   if(!lista||!lista.length){el.innerHTML='<p class="vacio">Sin movimientos registrados.</p>';return;}
   el.innerHTML=lista.map(m=>{const resta=m.tipo!=='Otro ingreso' && m.tipo!=='Retiro de caja fuerte';return `<div class="movimiento"><strong>${escapeHtml(m.tipo)}</strong><span class="${resta?'negativo':'positivo'}">${resta?'−':'+'}${dinero(m.valor)}</span><span>${escapeHtml(m.motivo||'')}</span><span>${escapeHtml(m.persona_recibe||m.usuario||'')}</span></div>`;}).join('');
 }
+async function cargarPanelAdmin(){
+  if(usuario.rol!=='Administrador')return;
+  const panel=document.getElementById('panel-admin');
+  const r=await llamar('caja_resumen_admin',{fecha:fechaEl.value});
+  if(!r.ok){panel.classList.add('oculto');return;}
+  panel.classList.remove('oculto');
+  document.getElementById('panel-admin-filas').innerHTML=r.sedes.map(s=>{
+    const confianza=confianzaBadge_(s.nivel_confianza);
+    const estadoTexto=!s.apertura?'Sin abrir':(s.apertura.estado==='Cerrado'?'Cerrada':'Abierta');
+    const responsable=(s.apertura&&(s.apertura.usuario_apertura))||'—';
+    return `<tr data-sede="${escapeHtml(s.sede)}" style="cursor:pointer" title="Ver ${escapeHtml(s.sede)}">
+      <td><strong>${escapeHtml(s.sede)}</strong></td>
+      <td>${estadoTexto}</td>
+      <td>${escapeHtml(responsable)}</td>
+      <td>${dinero(s.efectivo_esperado||0)}</td>
+      <td>${dinero(s.caja_fuerte_esperada||0)}</td>
+      <td>${s.efectivo_sin_identificar>0?`<span style="color:var(--amber)">${dinero(s.efectivo_sin_identificar)}</span>`:dinero(0)}</td>
+      <td title="${confianza.texto}">${confianza.icono}</td>
+    </tr>`;
+  }).join('');
+  // Tocar una fila lleva a esa sede en la vista de detalle de abajo, sin recargar la página.
+  Array.from(document.querySelectorAll('#panel-admin-filas tr')).forEach(fila=>{
+    fila.addEventListener('click',()=>{sedeEl.value=fila.dataset.sede;cargar();});
+  });
+}
 async function cargar(){
   mostrar('cargando');
+  cargarPanelAdmin();
   const p=parametros();
   const data=await llamar('caja_estado',p);
   if(!data.ok){alert(data.error);return;}
   estadoActual=data;
   pintarFudoSync();
   document.getElementById('estado').className='estado';
+  const confianza=confianzaBadge_(data.nivel_confianza);
   if(!data.apertura){
-    document.getElementById('estado').textContent='Caja sin abrir';document.getElementById('estado').classList.add('cerrada');
+    document.getElementById('estado').textContent=`${confianza.icono} Caja sin abrir`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
     // La Administradora no abre caja — eso lo hace quien está en la sede. A ella solo le
     // interesa ver que sigue sin abrir, sin el formulario de conteo físico — pero el formulario
     // igual se llena con los valores reales (no solo "$0"), por si usa "Abrir de todas formas".
@@ -217,12 +264,12 @@ async function cargar(){
     mostrar('sin-abrir');diferenciaApertura();return;
   }
   if(data.apertura.estado==='Cerrado'){
-    document.getElementById('estado').textContent='Caja cerrada';document.getElementById('estado').classList.add('cerrada');
+    document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
     const a=data.apertura;const dif=Number(a.diferencia||0);
     document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado a ${escapeHtml(a.persona_recibe_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Verificado por ${escapeHtml(a.persona_verifica_cierre||'—')}<br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
     mostrar('cerrada');return;
   }
-  document.getElementById('estado').textContent='Caja abierta';document.getElementById('estado').classList.add('abierta');
+  document.getElementById('estado').textContent=`${confianza.icono} Caja abierta`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('abierta');
   document.getElementById('d-base').textContent=dinero(data.apertura.base_inicial);
   document.getElementById('d-fudo').textContent=dinero(data.pagos_efectivo_esperado);
   document.getElementById('d-ingresos').textContent=dinero(data.movimientos_resumen.otros_ingresos);
