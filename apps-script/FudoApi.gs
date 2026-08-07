@@ -643,6 +643,24 @@ function fudoSincronizacionStockDiaria_() {
   }
 }
 
+/**
+ * ago 2026: agregado para el diagnóstico del "súper módulo" de Caja — mismo patrón que las
+ * sondas de jul 2026 (cada recurso nuevo va en su propio try/catch vía
+ * fudoApiProbarConexionRecursoSeguro_, porque ninguno de estos 4 puntos está confirmado todavía
+ * contra la cuenta real de Amelia, solo permitido por la especificación):
+ * - `ventas_cash_register`: pide 'sales' con include=cashRegister explícito (la sincronización
+ *   real NO lo pide — ver comentario de jul 2026 arriba — así que hace falta una sonda aparte).
+ * - `gastos`: /expenses con cashRegister/paymentMethod incluidos, para ver si trae
+ *   `useInCashCount` y si esta cuenta realmente registra gastos ahí.
+ * - `metodos_pago`: /payment-methods completo, para confirmar los valores reales de `kind` que
+ *   usa esta cuenta (hoy pagosFudoEsEfectivo_ todavía no depende de esto).
+ * - `mesas`: /tables con include=activeSales,activeSales.payments,activeSales.tips,room — la
+ *   especificación permite pedirlo pero, igual que pasó con cashRegister en su momento, el schema
+ *   de respuesta documentado no lo confirma poblado; hay que verlo con datos reales.
+ * `muestra`/`incluidos` (la sonda de ventas original) ya traen tips y payments de esas 3 ventas
+ * vía FUDO_API_SALES_INCLUDE_ — sirven también para ver a mano si el monto de un pago con propina
+ * coincide con sale.total o lo excede (para decidir si la propina ya viene sumada en el pago).
+ */
 function fudoApiProbarConexion_() {
   const cruda = fudoApiPeticionPagina_('sales', { pageSize: 3, pagina: 1, include: FUDO_API_SALES_INCLUDE_ });
   const muestra = Array.isArray(cruda) ? cruda : (cruda.data || []);
@@ -660,6 +678,19 @@ function fudoApiProbarConexion_() {
     usuarios: fudoApiProbarConexionRecursoSeguro_('users', {
       pageSize: 10,
       include: 'role,tablesCashRegister,deliveryCashRegister,takeAwayCashRegister'
+    }),
+    ventas_cash_register: fudoApiProbarConexionRecursoSeguro_('sales', {
+      pageSize: 5,
+      include: 'cashRegister,table.room,payments.paymentMethod'
+    }),
+    gastos: fudoApiProbarConexionRecursoSeguro_('expenses', {
+      pageSize: 5,
+      include: 'cashRegister,paymentMethod'
+    }),
+    metodos_pago: fudoApiProbarConexionRecursoSeguro_('payment-methods', { pageSize: 20 }),
+    mesas: fudoApiProbarConexionRecursoSeguro_('tables', {
+      pageSize: 20,
+      include: 'activeSales,activeSales.payments,activeSales.tips,room'
     })
   };
 }
