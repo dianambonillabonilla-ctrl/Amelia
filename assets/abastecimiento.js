@@ -13,7 +13,13 @@ const ESTADO = {
   platosBackend: {},
   recetas: {},
   ventas: {},
-  fecha: ''
+  fecha: '',
+  // Antes los filtros (categoría, "mostrar sin conteo", días de seguridad) quedaban activos desde
+  // el primer instante, así que tocarlos mientras el primer cargar() todavía estaba en vuelo
+  // pintaba con ESTADO vacío: "0 productos", "No hay productos para este filtro" y "NaN días" en
+  // Próxima compra (diasHastaMartes con ESTADO.fecha todavía ''). cargar() lo pone en true justo
+  // antes de pintar por primera vez.
+  cargado: false
 };
 
 const fechaInput = document.getElementById('fecha');
@@ -567,9 +573,9 @@ document.querySelectorAll('.tab-sede').forEach(button => {
   });
 });
 
-document.getElementById('categoria').addEventListener('change', renderInventario);
-document.getElementById('mostrar-sin-conteo').addEventListener('change', renderInventario);
-document.getElementById('seguridad').addEventListener('change', renderAlcance);
+document.getElementById('categoria').addEventListener('change', () => { if (ESTADO.cargado) renderInventario(); });
+document.getElementById('mostrar-sin-conteo').addEventListener('change', () => { if (ESTADO.cargado) renderInventario(); });
+document.getElementById('seguridad').addEventListener('change', () => { if (ESTADO.cargado) renderAlcance(); });
 // abastecimiento-cp.js (se carga después de este archivo) reemplaza cargar/stockDe/alcancePlato/
 // renderInventario con su propia versión (la que sabe que Centro de Producción NO debe mezclarse
 // con el inventario general) y clona el botón "Actualizar" para engancharle su propio cargar — así

@@ -164,6 +164,7 @@ cargar = async function () {
     construirRecetas(filas(recetasRes));
     construirVentas(filas(ventasRes), desde, ESTADO.fecha);
     construirConteoHoy(filas(catalogoRes), conteoRes, ESTADO.fecha);
+    ESTADO.cargado = true;
     renderAlcance();
     renderConteoHoy();
     if (!recetasRes?.ok) fallas.push('Recetas: ' + (recetasRes?.error || 'sin respuesta'));

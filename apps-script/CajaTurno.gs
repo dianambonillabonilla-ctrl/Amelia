@@ -47,8 +47,12 @@ function cajaFechaMs_(valor) {
 
 function cajaTurnoFila_(fecha, sede) {
   cajaAsegurarEstructura_();
+  // formatearFecha_ también sobre `fecha` (no solo sobre r.fecha): si algún día alguien pasa aquí
+  // un valor sin normalizar (ej. un Date, o una fecha con hora), sin esto una caja SÍ abierta hoy
+  // podía compararse contra un string distinto al que quedó guardado y aparecer como "sin abrir".
+  const fechaBuscada = formatearFecha_(fecha);
   return leerTabla_(SHEET_NAMES.CAJA_TURNO).find(function (r) {
-    return formatearFecha_(r.fecha) === fecha && r.sede === sede;
+    return formatearFecha_(r.fecha) === fechaBuscada && r.sede === sede;
   });
 }
 
