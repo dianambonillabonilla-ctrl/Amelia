@@ -37,6 +37,7 @@
         <div id="apertura-solo-lectura" class="card oculto">
           <h2>Caja sin abrir</h2>
           <p>Todavía nadie ha abierto la caja de hoy en esta sede. La apertura la hace quien esté en la sede.</p>
+          <p style="margin-top:10px"><a href="#" id="abrir-de-todas-formas" style="font-size:.85rem">Abrir esta caja de todas formas</a></p>
         </div>
         <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
           <h2>Abrir mi caja</h2>
@@ -241,6 +242,13 @@ document.getElementById('cierre-base').addEventListener('input',calculoCierre);
 document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
 document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
 fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
+// El Administrador es super usuario: normalmente solo revisa si la caja está abierta (por eso el
+// formulario queda oculto por defecto), pero puede abrirla él mismo si de verdad hace falta.
+document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
+  e.preventDefault();
+  document.getElementById('apertura-solo-lectura').classList.add('oculto');
+  document.getElementById('apertura-form').classList.remove('oculto');
+});
 document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{
   const item={...parametros(),base_inicial:document.getElementById('base-contada').value,caja_fuerte_inicial:document.getElementById('fuerte-contada-apertura').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()};
   if(Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)&&!item.observacion_apertura){alert('La base no coincide. Escribe una observación.');return;}
