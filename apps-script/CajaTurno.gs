@@ -54,6 +54,22 @@ function cajaMigrarHistorico_() {
   });
 }
 
+/**
+ * Un conteo físico obligatorio no puede resolverse con `Number(x)||0`: eso convierte "no conté
+ * nada" (campo vacío, null, texto sin número) en un 0 perfectamente válido, y así se podía abrir o
+ * cerrar la caja sin haber contado el dinero. Aquí el valor tiene que venir explícito; el 0 solo
+ * vale si de verdad se escribió 0.
+ */
+function cajaMontoObligatorio_(valor, etiqueta) {
+  if (valor === undefined || valor === null || String(valor).trim() === '') {
+    return { ok: false, error: 'Falta ' + etiqueta + '. Cuenta el dinero y escribe el valor real.' };
+  }
+  const numero = Number(valor);
+  if (!isFinite(numero)) return { ok: false, error: etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1) + ' debe ser un número.' };
+  if (numero < 0) return { ok: false, error: etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1) + ' no puede ser negativo.' };
+  return { ok: true, valor: Number(numero.toFixed(2)) };
+}
+
 function cajaPuedeCerrar_(usuario, fecha) {
   if (usuario.rol === 'Administrador' || usuario.rol === 'Encargado') return true;
   return turnoSectorDeHoy_(usuario, fecha).sector === 'Caja';
@@ -205,31 +221,66 @@ function cajaTurnoActualizarFila_(fecha, sede, cambios) {
   return false;
 }
 
+/**
+ * Abrir y cerrar leen el estado del turno y después escriben en función de lo leído. Dos
+ * dispositivos de la misma sede haciéndolo a la vez (pasa: el celular de la sede y el computador)
+ * leían ambos "sin abrir" y creaban dos filas del mismo día, o cerraban dos veces con conteos
+ * distintos. El lock es de todo el script (Apps Script no tiene locks por fila), así que se toma
+ * solo alrededor de la escritura de Caja y se espera poco: si otro guardado está en curso, es mejor
+ * pedir que se reintente que quedarse colgado hasta el timeout de la ejecución.
+ */
+function cajaConBloqueo_(accion, fn) {
+  if (typeof LockService === 'undefined') return fn();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    return { ok:false, codigo:'CAJA_OCUPADA', error:'Otro dispositivo está guardando la caja en este momento — espera unos segundos y vuelve a intentar ' + accion + '.' };
+  }
+  try { return fn(); }
+  finally { lock.releaseLock(); }
+}
+
+/**
+ * La sincronización con FUDO se hace ANTES de tomar el lock: es la parte lenta (llamadas HTTP a una
+ * API externa) y el lock es de todo el script — sostenerlo mientras se espera a la red dejaría a la
+ * otra sede sin poder guardar nada durante todo ese rato.
+ */
 function cajaAbrir_(item, usuario) {
   cajaAsegurarEstructura_();
   if (!item || !item.fecha || !item.sede) return {ok:false,error:'Falta la fecha o la sede'};
   if (!sedeEscrituraPermitida_(usuario,item.sede)) return {ok:false,error:'No puedes abrir la caja de otra sede'};
   const fecha = formatearFecha_(item.fecha);
-  const existente = cajaTurnoFila_(fecha,item.sede);
-  if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'La caja ya se cerró'} : {ok:true,ya_abierta:true,item:existente};
-
   // Abrir NO depende de los pagos de HOY: la base esperada viene del cierre anterior, no de FUDO
   // (solo cerrar sí lo necesita, ver cajaCerrar_). Se intenta sincronizar para que el aviso en
   // pantalla esté al día, pero un fallo de la API nunca debe impedir abrir la caja — antes esto
   // bloqueaba a cualquiera, incluida la Administradora, aunque el conteo físico coincidiera
   // exactamente con lo esperado.
   const syncFudo = cajaSincronizarFudo_(fecha,item.sede,usuario,true);
+  return cajaConBloqueo_('abrir la caja', function () { return cajaAbrirBloqueada_(item, usuario, fecha, syncFudo); });
+}
+
+function cajaAbrirBloqueada_(item, usuario, fecha, syncFudo) {
+  const existente = cajaTurnoFila_(fecha,item.sede);
+  if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'La caja ya se cerró'} : {ok:true,ya_abierta:true,item:existente};
 
   const baseEsperada = cajaBaseEsperada_(fecha,item.sede);
   const fuerteEsperada = cajaSaldoFuerteAntes_(fecha,item.sede);
-  const baseInicial = Number(item.base_inicial)||0;
-  const fuerteInicial = Number(item.caja_fuerte_inicial)||0;
+  const conteoBase = cajaMontoObligatorio_(item.base_inicial,'el efectivo contado al abrir');
+  if (!conteoBase.ok) return conteoBase;
+  const conteoFuerte = cajaMontoObligatorio_(item.caja_fuerte_inicial,'el dinero contado en la caja fuerte al abrir');
+  if (!conteoFuerte.ok) return conteoFuerte;
+  const baseInicial = conteoBase.valor;
+  const fuerteInicial = conteoFuerte.valor;
   const difApertura = Number((baseInicial-baseEsperada).toFixed(2));
   const difFuerteApertura = Number((fuerteInicial-fuerteEsperada).toFixed(2));
   // Con diferencia (en efectivo o en caja fuerte), solo un Administrador puede aprobar la
   // apertura — el frontend ya bloquea el botón, pero eso solo protege el navegador.
   if ((difApertura !== 0 || difFuerteApertura !== 0) && usuario.rol !== 'Administrador') {
     return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
+  }
+  // Misma exigencia que al cerrar: aprobar una diferencia sin decir qué pasó deja el descuadre sin
+  // explicación en el histórico. El frontend ya lo pedía; el backend no lo verificaba.
+  if ((difApertura !== 0 || difFuerteApertura !== 0) && !String(item.observacion_apertura||'').trim()) {
+    return {ok:false,error:'Hay una diferencia al abrir la caja. Debes escribir una observación.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
   }
   const fila = {
     id:Utilities.getUuid(),fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,
@@ -313,21 +364,27 @@ function cajaMovimientosListar_(fecha,sede) {
   return cajaMovimientosDelDia_(formatearFecha_(fecha),sede).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
 }
 
+/** Igual que cajaAbrir_: la sincronización lenta con FUDO va fuera del lock. */
 function cajaCerrar_(item,usuario) {
   cajaAsegurarEstructura_();
   if(!item||!item.fecha||!item.sede)return {ok:false,error:'Falta fecha o sede'};
   if(!sedeEscrituraPermitida_(usuario,item.sede))return {ok:false,error:'No puedes cerrar la caja de otra sede'};
-  const fecha=formatearFecha_(item.fecha), apertura=cajaTurnoFila_(fecha,item.sede);
-  if(!apertura)return {ok:false,error:'La caja no está abierta'};
-  if(apertura.estado==='Cerrado')return {ok:true,ya_cerrado:true};
+  const fecha=formatearFecha_(item.fecha);
   if(!cajaPuedeCerrar_(usuario,fecha))return {ok:false,error:'No tienes permiso para cerrar la caja.'};
-
   // El efectivo esperado SÍ depende de los pagos de HOY, así que aquí (a diferencia de abrir) una
   // sincronización que no se pudo confirmar sí importa: un Encargado/Cocina no puede declarar el
   // cierre "cuadrado" con un número que podría estar mal; un Administrador sí puede, pero dejando
   // una observación explícita de que cerró sin esa confirmación (mismo patrón que una diferencia
   // de dinero, más abajo).
   const syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,true);
+  return cajaConBloqueo_('cerrar la caja', function () { return cajaCerrarBloqueada_(item,usuario,fecha,syncFudo); });
+}
+
+function cajaCerrarBloqueada_(item,usuario,fecha,syncFudo) {
+  const apertura=cajaTurnoFila_(fecha,item.sede);
+  if(!apertura)return {ok:false,error:'La caja no está abierta'};
+  if(apertura.estado==='Cerrado')return {ok:true,ya_cerrado:true};
+
   const fudoConfiable=syncFudo.ok;
   if(!fudoConfiable&&usuario.rol!=='Administrador'){
     return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'No se pudo confirmar los pagos de FUDO al día. Espera a que sincronice o pide a un Administrador que autorice el cierre.',fudo_sync:syncFudo};
@@ -336,9 +393,18 @@ function cajaCerrar_(item,usuario) {
     return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'FUDO no está sincronizado. Escribe una observación para cerrar de todas formas.',fudo_sync:syncFudo};
   }
 
+  const conteoCaja=cajaMontoObligatorio_(item.efectivo_contado,'el efectivo contado en la caja operativa');
+  if(!conteoCaja.ok)return conteoCaja;
+  const conteoFuerte=cajaMontoObligatorio_(item.caja_fuerte_contada,'el dinero contado en la caja fuerte');
+  if(!conteoFuerte.ok)return conteoFuerte;
+  const contado=conteoCaja.valor, fuerteContada=conteoFuerte.valor;
+  const baseSiguienteEntrada=cajaMontoObligatorio_(item.base_siguiente,'el efectivo que queda para el siguiente turno');
+  if(!baseSiguienteEntrada.ok)return baseSiguienteEntrada;
+  const baseSiguiente=baseSiguienteEntrada.valor;
+  // No se puede dejar como base del siguiente turno más dinero del que hay contado en la caja: eso
+  // arrastra un faltante inventado al día siguiente (cajaBaseEsperada_ lee este valor).
+  if(baseSiguiente>contado)return {ok:false,error:'El efectivo que queda para el siguiente turno no puede ser mayor que el efectivo contado.'};
   const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
-  const contado=Number(item.efectivo_contado)||0, fuerteContada=Number(item.caja_fuerte_contada)||0;
-  const baseSiguiente=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente)||0:contado;
   const dif=Number((contado-calculo.esperado).toFixed(2)), difFuerte=Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
   if((dif!==0||difFuerte!==0)&&usuario.rol!=='Administrador')return {ok:false,error:'Hay una diferencia. Solo un Administrador puede cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte};
   if((dif!==0||difFuerte!==0)&&!String(item.observacion||'').trim())return {ok:false,error:'Hay una diferencia. Debes escribir una observación.'};

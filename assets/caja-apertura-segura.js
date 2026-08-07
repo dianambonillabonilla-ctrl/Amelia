@@ -10,6 +10,11 @@
   // pueda cerrar sin querer) y "aprobar" es simplemente que el botón "Abrir caja" esté
   // habilitado.
 
+  function sinContar(id) {
+    const el = document.getElementById(id);
+    return !el || String(el.value || '').trim() === '';
+  }
+
   function numero(id) {
     const el = document.getElementById(id);
     return Number(el && el.value !== '' ? el.value : 0) || 0;
@@ -45,6 +50,17 @@
     const salida = document.getElementById('diferencia-apertura');
     const boton = document.getElementById('abrir');
     if (!salida || !boton) return;
+
+    // Un campo vacío NO es "contó cero": es "todavía no ha contado". Tratarlo como cero mostraría
+    // una diferencia falsa (o, si lo esperado también es cero, un "✓ coincide" sin ningún conteo
+    // detrás) y dejaría abrir la caja sin haber contado nada.
+    if (sinContar('base-contada') || sinContar('fuerte-contada-apertura')) {
+      salida.innerHTML = 'Cuenta el efectivo que recibes y el dinero de la caja fuerte, y escribe los dos valores para poder abrir.';
+      salida.style.color = 'var(--grey)';
+      boton.disabled = true;
+      return;
+    }
+
     const d = diferencias();
     const hayDiferencia = d.base !== 0 || d.fuerte !== 0;
 
@@ -98,7 +114,10 @@
       if (el) el.addEventListener('input', pintarDiferencias);
     });
     document.addEventListener('click', validarAntesDeCerrar, true);
-    setTimeout(pintarDiferencias, 400);
+    // caja.html avisa con este evento cada vez que recarga el estado (los campos vuelven a quedar
+    // vacíos), en vez de depender de un setTimeout que adivine cuándo terminó de cargar.
+    document.addEventListener('caja:estado-actualizado', pintarDiferencias);
+    pintarDiferencias();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);

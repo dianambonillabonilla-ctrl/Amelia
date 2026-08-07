@@ -42,11 +42,14 @@
         <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
           <h2>Abrir mi caja</h2>
           <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
+          <!-- Los dos campos de conteo empiezan SIEMPRE vacíos y sin valor por defecto: si llegan
+               precargados con lo esperado, basta con pulsar "Abrir caja" para dar por contado un
+               dinero que nadie contó, y la diferencia de apertura sale 0 por construcción. -->
           <div class="dinero-grid">
             <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
-            <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
+            <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" placeholder="Cuenta y escribe el valor" style="margin-top:8px"></div>
             <div class="dinero"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
-            <div class="dinero"><span>Caja fuerte contada al abrir</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" style="margin-top:8px"></div>
+            <div class="dinero"><span>Caja fuerte contada al abrir</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" placeholder="Cuenta y escribe el valor" style="margin-top:8px"></div>
           </div>
           <p class="diferencia" id="diferencia-apertura"></p>
           <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
@@ -94,9 +97,11 @@
           <div class="card">
             <h2>Cerrar caja</h2>
             <div class="advertencia">Cuenta por separado el efectivo operativo y el dinero guardado en caja fuerte.</div>
-            <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
+            <!-- Igual que en la apertura: los conteos físicos empiezan vacíos. Lo único que sí se
+                 propone es cuánto dejar para el turno siguiente, que es una decisión, no un conteo. -->
+            <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado" placeholder="Cuenta y escribe el valor"></div>
             <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
-            <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
+            <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte" placeholder="Cuenta y escribe el valor"></div>
             <div class="campo"><label>Persona que verifica el cierre</label><input id="cierre-recibe"></div>
             <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
             <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
@@ -149,15 +154,23 @@ function pintarFudoSync(){
     el.style.color='var(--red)';
   }
 }
+const sinContar_=id=>String((document.getElementById(id)||{}).value||'').trim()==='';
+// Aquí solo se comprueba lo mínimo e imprescindible: sin los dos conteos escritos no se abre nada.
+// El detalle de la diferencia y quién puede aprobarla lo pinta assets/caja-apertura-segura.js, que
+// se registra después y por tanto decide de último — pero si ese archivo no cargara, este guardia
+// sigue en pie (y el backend valida lo mismo de todos modos).
 function diferenciaApertura(){
-  if(!estadoActual||estadoActual.apertura)return;
-  const dif=Number(document.getElementById('base-contada').value||0)-Number(estadoActual.base_esperada||0);
-  const el=document.getElementById('diferencia-apertura');
-  el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
-  el.style.color=dif===0?'var(--green)':'var(--red)';
+  document.getElementById('abrir').disabled=sinContar_('base-contada')||sinContar_('fuerte-contada-apertura');
+  document.dispatchEvent(new CustomEvent('caja:estado-actualizado'));
 }
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
+  const faltaConteo=sinContar_('cierre-contado')||sinContar_('cierre-fuerte')||sinContar_('cierre-base');
+  if(faltaConteo){
+    document.getElementById('calculo-cierre').innerHTML='Cuenta el efectivo de la caja y el de la caja fuerte y escribe los dos valores para poder cerrar.';
+    document.getElementById('cerrar').disabled=true;
+    return;
+  }
   const contado=Number(document.getElementById('cierre-contado').value||0);
   const base=Number(document.getElementById('cierre-base').value||0);
   const fuerteContada=Number(document.getElementById('cierre-fuerte').value||0);
@@ -198,12 +211,9 @@ async function cargar(){
     const esAdmin=usuario.rol==='Administrador';
     document.getElementById('apertura-solo-lectura').classList.toggle('oculto',!esAdmin);
     document.getElementById('apertura-form').classList.toggle('oculto',esAdmin);
-    if(!esAdmin){
-      document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
-      document.getElementById('base-contada').value=data.base_esperada||0;
-      document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
-      document.getElementById('fuerte-contada-apertura').value=data.caja_fuerte_esperada||0;
-    }
+    document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
+    document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
+    ['base-contada','fuerte-contada-apertura'].forEach(id=>{document.getElementById(id).value='';});
     mostrar('sin-abrir');diferenciaApertura();return;
   }
   if(data.apertura.estado==='Cerrado'){
@@ -229,14 +239,13 @@ async function cargar(){
   const rappi=String(data.apertura.rappi_encendido).toLowerCase()==='true';
   document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
   document.getElementById('mov-entrega').value=usuario.nombre||'';
-  document.getElementById('cierre-contado').value=Math.max(0,Number(data.efectivo_esperado||0));
+  document.getElementById('cierre-contado').value='';
+  document.getElementById('cierre-fuerte').value='';
   document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
-  document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
-  document.getElementById('cierre-fuerte').value=data.caja_fuerte_esperada||0;
   const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
   mostrar('abierta');calculoCierre();
 }
-document.getElementById('base-contada').addEventListener('input',diferenciaApertura);
+['base-contada','fuerte-contada-apertura'].forEach(id=>document.getElementById(id).addEventListener('input',diferenciaApertura));
 document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
 document.getElementById('cierre-base').addEventListener('input',calculoCierre);
 document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
@@ -250,8 +259,10 @@ document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
   document.getElementById('apertura-form').classList.remove('oculto');
 });
 document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{
+  if(sinContar_('base-contada')||sinContar_('fuerte-contada-apertura')){alert('Cuenta el efectivo que recibes y el dinero de la caja fuerte, y escribe los dos valores.');return;}
   const item={...parametros(),base_inicial:document.getElementById('base-contada').value,caja_fuerte_inicial:document.getElementById('fuerte-contada-apertura').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()};
-  if(Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)&&!item.observacion_apertura){alert('La base no coincide. Escribe una observación.');return;}
+  const hayDiferenciaApertura=Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)||Number(item.caja_fuerte_inicial)!==Number(estadoActual.caja_fuerte_esperada||0);
+  if(hayDiferenciaApertura&&!item.observacion_apertura){alert('El conteo no coincide con lo esperado. Escribe una observación.');return;}
   const r=await llamar('caja_abrir',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja abierta. Ahora confirma Rappi.');cargar();
 }));
 document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
@@ -261,6 +272,8 @@ document.getElementById('guardar-movimiento').addEventListener('click',conBotonP
   const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');f.value='';avisarGuardado('Movimiento registrado.');cargar();
 }));
 document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
+  if(sinContar_('cierre-contado')||sinContar_('cierre-fuerte')){alert('Cuenta el efectivo de la caja y el de la caja fuerte, y escribe los dos valores.');return;}
+  if(sinContar_('cierre-base')){alert('Escribe cuánto efectivo queda para abrir el siguiente turno.');return;}
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
   const contado=Number(document.getElementById('cierre-contado').value||0);const base=Number(document.getElementById('cierre-base').value||0);
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
