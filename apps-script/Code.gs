@@ -414,6 +414,9 @@ function handleRequest_(e, method) {
       case 'caja_resumen_admin':
         requiereRol_(sesion.usuario, ['Administrador']);
         return jsonOut_(cajaResumenAdministrador_(params.fecha, params.sedes, sesion.usuario));
+      case 'caja_sincronizar_ahora':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaSincronizarAhora_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));

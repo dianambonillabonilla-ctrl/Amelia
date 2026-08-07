@@ -324,8 +324,8 @@ function cajaAbrir_(item, usuario) {
  * además hay Sin identificar); 'pendiente' es todo lo demás que merece revisión pero no bloquea nada
  * (coherente con que Sin identificar nunca bloquea, ago 2026).
  */
-function cajaNivelConfianza_(cuadreConfiable, efectivoSinIdentificar, diferenciaPendiente) {
-  if (!cuadreConfiable) return 'no_confiable';
+function cajaNivelConfianza_(cuadreConfiable, efectivoSinIdentificar, diferenciaPendiente, sincronizacionPendiente) {
+  if (!cuadreConfiable) return sincronizacionPendiente ? 'pendiente' : 'no_confiable';
   if ((Number(efectivoSinIdentificar) || 0) > 0 || diferenciaPendiente) return 'pendiente';
   return 'confiable';
 }
@@ -340,15 +340,29 @@ function cajaEstado_(fecha, sede, usuario) {
   cajaAsegurarEstructura_();
   if (!fecha || !sede) return {ok:false,error:'Falta la fecha o la sede'};
   const fechaFmt = formatearFecha_(fecha);
+  // ago 2026: antes, si el caché de FUDO estaba vencido o nunca se había llenado, esta consulta
+  // forzaba aquí mismo una sincronización real contra la API (red + varias páginas de /sales y
+  // /payments) antes de devolver NADA — la pantalla de Caja podía quedarse en "Consultando…" varios
+  // minutos solo por abrir la página o cambiar de fecha. cajaEstado_ ahora SIEMPRE lee del caché
+  // (rápido, nunca hace red) y, si está pendiente, lo dice tal cual (fudo_sync.pendiente=true) — el
+  // frontend dispara la sincronización real aparte, en segundo plano, vía cajaSincronizarAhora_
+  // (acción 'caja_sincronizar_ahora'), sin bloquear el primer dibujo de la pantalla. cajaAbrir_ y
+  // cajaCerrar_ siguen forzando la sincronización real de forma síncrona a propósito — ahí sí hace
+  // falta un dato fresco antes de calcular el efectivo esperado.
   let syncFudo = cajaLeerEstadoFudo_(fechaFmt,sede);
-  if (syncFudo.pendiente) syncFudo = cajaSincronizarFudo_(fechaFmt,sede,usuario,true);
+  // Sin credenciales configuradas, la validación FUDO nunca aplica (igual que dentro de
+  // cajaSincronizarFudo_) — se resuelve aquí mismo, sin red, para no marcar "no confiable" para
+  // siempre en una instalación que ni siquiera tiene la integración prendida.
+  if (syncFudo.pendiente && !cajaFudoCredencialesConfiguradas_()) {
+    syncFudo = { ok: true, aplica: false, fecha: fechaFmt, sede: sede, sincronizado_en: '', error: '' };
+  }
   const efectivoSinIdentificar = cajaEfectivoSinIdentificarDia_(fechaFmt);
   const apertura = cajaTurnoFila_(fechaFmt,sede);
   if (!apertura) return {
     ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fechaFmt,sede),caja_fuerte_esperada:cajaSaldoFuerteAntes_(fechaFmt,sede),
     puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,
     efectivo_sin_identificar:efectivoSinIdentificar,
-    nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,false)
+    nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,false,syncFudo.pendiente)
   };
   const calculo = cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fechaFmt,sede),fechaFmt,sede);
   // La diferencia solo existe una vez contada de verdad (al cerrar) — mientras la caja sigue
@@ -361,7 +375,7 @@ function cajaEstado_(fecha, sede, usuario) {
     efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,
     total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),
     fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,efectivo_sin_identificar:efectivoSinIdentificar,
-    nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,diferenciaPendiente)
+    nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,diferenciaPendiente,syncFudo.pendiente)
   };
 }
 

@@ -56,6 +56,7 @@ function parametrosPorAccion() {
     base_caja_dia: { fecha: HOY, sede: SEDE },
     caja_estado: { fecha: HOY, sede: SEDE },
     caja_resumen_admin: { fecha: HOY },
+    caja_sincronizar_ahora: { fecha: HOY, sede: SEDE },
     caja_movimientos_listar: { fecha: HOY, sede: SEDE },
     ajustes_inventario_listar: { fecha: HOY, sede: SEDE, filtro: {} },
     ajustes_inventario_historial: { filtros: {} },

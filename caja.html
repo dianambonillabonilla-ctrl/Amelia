@@ -171,6 +171,11 @@ function pintarFudoSync(){
   if(!sync||sync.aplica===false){el.innerHTML=avisoSinIdentificar.replace(/^<br>/,'');return;}
   if(estadoActual.cuadre_confiable){
     el.innerHTML=`<span style="color:var(--grey)">FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}</span>${avisoSinIdentificar}`;
+  }else if(sync.pendiente){
+    // Todavía no hay ningún intento guardado para esta fecha/sede (caché vacío) — se está pidiendo
+    // en segundo plano ahora mismo (sincronizarFudoSiPendiente_). No es un error, así que no se
+    // pinta en rojo como si FUDO hubiera fallado.
+    el.innerHTML=`<span style="color:var(--grey)">Actualizando FUDO…</span>${avisoSinIdentificar}`;
   }else{
     el.innerHTML=`<span style="color:var(--red)">⚠ Cuadre no confiable: ${sync.error||'no fue posible actualizar FUDO'}.</span>${avisoSinIdentificar}`;
   }
@@ -234,14 +239,24 @@ async function cargarPanelAdmin(){
     fila.addEventListener('click',()=>{sedeEl.value=fila.dataset.sede;cargar();});
   });
 }
-async function cargar(){
-  mostrar('cargando');
+// ago 2026: caja_estado ya no espera a FUDO — si el caché está vencido o nunca se llenó, devuelve
+// eso mismo (fudo_sync.pendiente=true) y la pantalla se dibuja YA con lo que hay. Esta función
+// dispara la sincronización real aparte, sin bloquear nada, y cuando termina vuelve a pedir
+// caja_estado en silencio (sin pasar otra vez por "Consultando…") para refrescar el semáforo.
+function sincronizarFudoSiPendiente_(){
+  if(!estadoActual||!estadoActual.fudo_sync||!estadoActual.fudo_sync.pendiente)return;
+  llamar('caja_sincronizar_ahora',parametros()).then(()=>cargar({silencioso:true}));
+}
+async function cargar(opciones){
+  opciones=opciones||{};
+  if(!opciones.silencioso)mostrar('cargando');
   cargarPanelAdmin();
   const p=parametros();
   const data=await llamar('caja_estado',p);
   if(!data.ok){alert(data.error);return;}
   estadoActual=data;
   pintarFudoSync();
+  sincronizarFudoSiPendiente_();
   document.getElementById('estado').className='estado';
   const confianza=confianzaBadge_(data.nivel_confianza);
   if(!data.apertura){

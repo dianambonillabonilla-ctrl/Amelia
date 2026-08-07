@@ -309,6 +309,29 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(estado.cuadre_confiable, true, 'sin credenciales de FUDO, el cuadre debe considerarse confiable (la validación no aplica)');
 }
 
+// --- cajaEstado_ ya NO fuerza una sincronización real inline (ago 2026) — esto era la causa real de
+// la pantalla pegada en "Consultando…" varios minutos, no solo el bloqueo de Sin identificar que ya
+// se había corregido antes. Se prueba con credenciales "configuradas" — fudoApiSincronizarVentas_/
+// fudoApiSincronizarPagos_ ni siquiera existen en este entorno mínimo, así que si cajaEstado_
+// todavía intentara forzar el sync como antes, esto reventaría con un ReferenceError. -------------
+{
+  const { ctx } = construirEntorno_();
+  ctx.PropertiesService.getScriptProperties().setProperty('FUDO_API_KEY', 'clave');
+  ctx.PropertiesService.getScriptProperties().setProperty('FUDO_API_SECRET', 'secreto');
+  const estado = ctx.cajaEstado_('2026-07-15', 'San Antonio', encargada);
+  assert.equal(estado.ok, true, 'cajaEstado_ debe responder ya, sin intentar sincronizar FUDO en el momento');
+  assert.equal(estado.fudo_sync.pendiente, true, 'debe reconocer que todavía no hay ningún intento guardado para esta fecha/sede');
+  assert.equal(estado.cuadre_confiable, false, 'sin un intento real todavía, no se puede declarar confiable');
+  assert.equal(estado.nivel_confianza, 'pendiente', 'una sincronización nunca intentada no es lo mismo que una que falló de verdad — no debe verse roja');
+
+  // cajaSincronizarAhora_ (la acción aparte que dispara el frontend en segundo plano) sigue
+  // intentando de verdad — y como aquí sí "hay credenciales" pero la integración de FUDO no está
+  // cargada en este entorno mínimo, debe fallar con un error claro, no colgarse ni tronar silencioso.
+  const sync = ctx.cajaSincronizarAhora_('2026-07-15', 'San Antonio', encargada);
+  assert.equal(sync.ok, false);
+  assert.match(sync.error, /integración API de FUDO no está disponible/);
+}
+
 // --- Efectivo "Sin identificar" es puramente informativo: Diana (ago 2026) pidió explícitamente
 // que nunca bloquee ni abrir ni cerrar caja, solo que se sepa que existe (el Administrador lo
 // concilia aparte, desde "Ventas pendientes de sede"). -----------------------------------------
@@ -353,6 +376,10 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(ctx.cajaNivelConfianza_(true, 50000, false), 'pendiente');
   assert.equal(ctx.cajaNivelConfianza_(true, 0, true), 'pendiente');
   assert.equal(ctx.cajaNivelConfianza_(true, 0, false), 'confiable');
+  // Cuarto parámetro (ago 2026): una sincronización que nunca se ha intentado (caché vacío) es
+  // "pendiente", no "no_confiable" — no es lo mismo que un intento real que falló.
+  assert.equal(ctx.cajaNivelConfianza_(false, 0, false, true), 'pendiente', 'nunca intentada != falló de verdad');
+  assert.equal(ctx.cajaNivelConfianza_(false, 0, false, false), 'no_confiable', 'sin el cuarto parámetro, sigue siendo no_confiable como antes');
 }
 
 // --- cajaEstado_/cajaCerrar_ exponen nivel_confianza usando esa misma función ---------------------
