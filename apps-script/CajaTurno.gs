@@ -317,6 +317,20 @@ function cajaAbrir_(item, usuario) {
 }
 
 /**
+ * Sintetiza en un solo valor lo que hoy son dos señales sueltas (cuadre_confiable y
+ * efectivo_sin_identificar) más la diferencia de un cierre ya hecho — para el semáforo del panel de
+ * Administrador. No es una regla de negocio nueva: solo combina señales que ya existían y ya se
+ * mostraban por separado. 'no_confiable' gana siempre (si FUDO no se pudo confirmar, no importa si
+ * además hay Sin identificar); 'pendiente' es todo lo demás que merece revisión pero no bloquea nada
+ * (coherente con que Sin identificar nunca bloquea, ago 2026).
+ */
+function cajaNivelConfianza_(cuadreConfiable, efectivoSinIdentificar, diferenciaPendiente) {
+  if (!cuadreConfiable) return 'no_confiable';
+  if ((Number(efectivoSinIdentificar) || 0) > 0 || diferenciaPendiente) return 'pendiente';
+  return 'confiable';
+}
+
+/**
  * Al abrir la pantalla de Caja o pulsar "Actualizar" (ambos llegan aquí): si la última
  * sincronización conocida ya expiró del caché (CAJA_FUDO_CACHE_SEGUNDOS_) o nunca se hizo, se
  * sincroniza ahora mismo contra la API real antes de calcular nada — así el cuadre nunca se
@@ -333,21 +347,42 @@ function cajaEstado_(fecha, sede, usuario) {
   if (!apertura) return {
     ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fechaFmt,sede),caja_fuerte_esperada:cajaSaldoFuerteAntes_(fechaFmt,sede),
     puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,
-    efectivo_sin_identificar:efectivoSinIdentificar
+    efectivo_sin_identificar:efectivoSinIdentificar,
+    nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,false)
   };
   const calculo = cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fechaFmt,sede),fechaFmt,sede);
+  // La diferencia solo existe una vez contada de verdad (al cerrar) — mientras la caja sigue
+  // abierta no hay nada que "esté pendiente" en ese sentido, el semáforo no se adelanta a un
+  // conteo que todavía no pasó.
+  const diferenciaPendiente = apertura.estado==='Cerrado' && (Number(apertura.diferencia)!==0 || Number(apertura.diferencia_caja_fuerte)!==0);
   return {
     ok:true,abierta:apertura.estado==='Abierto',apertura,movimientos_resumen:calculo.resumen,
     pagos_efectivo_esperado:calculo.pagos_efectivo_esperado,pagos_efectivo_dia:calculo.pagos_efectivo_dia,
     efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,
     total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),
-    fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,efectivo_sin_identificar:efectivoSinIdentificar
+    fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,efectivo_sin_identificar:efectivoSinIdentificar,
+    nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,diferenciaPendiente)
   };
 }
 
 function cajaSincronizarAhora_(fecha,sede,usuario) {
   if (!fecha || !sede) return {ok:false,error:'Falta la fecha o la sede'};
   return cajaSincronizarFudo_(fecha,sede,usuario,true);
+}
+
+/**
+ * Panel de Administrador: las dos sedes lado a lado para una misma fecha, en una sola llamada — la
+ * "torre de control" en vez de tener que entrar sede por sede. Reutiliza cajaEstado_ tal cual (misma
+ * lógica, mismos campos, incluyendo nivel_confianza) para cada sede; no duplica ningún cálculo.
+ */
+function cajaResumenAdministrador_(fecha, sedes, usuario) {
+  if (!fecha) return { ok: false, error: 'Falta la fecha' };
+  const fechaFmt = formatearFecha_(fecha);
+  const listaSedes = Array.isArray(sedes) && sedes.length ? sedes : ['San Antonio', 'Capri'];
+  const resumen = listaSedes.map(function (sede) {
+    return Object.assign({ sede: sede }, cajaEstado_(fechaFmt, sede, usuario));
+  });
+  return { ok: true, fecha: fechaFmt, sedes: resumen };
 }
 
 function cajaRappiMarcar_(fecha,sede,usuario) {
@@ -435,5 +470,9 @@ function cajaCerrar_(item,usuario) {
   } finally {
     lock.releaseLock();
   }
-  return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable,efectivo_sin_identificar:cajaEfectivoSinIdentificarDia_(fecha)};
+  {
+    const efectivoSinIdentificarCierre = cajaEfectivoSinIdentificarDia_(fecha);
+    const diferenciaPendiente = dif!==0 || difFuerte!==0;
+    return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable,efectivo_sin_identificar:efectivoSinIdentificarCierre,nivel_confianza:cajaNivelConfianza_(fudoConfiable,efectivoSinIdentificarCierre,diferenciaPendiente)};
+  }
 }
