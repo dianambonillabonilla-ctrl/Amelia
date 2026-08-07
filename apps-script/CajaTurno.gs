@@ -1,9 +1,12 @@
 /** CAJA UNIFICADA — caja operativa, caja fuerte, movimientos y validación FUDO. */
 
+// 'Gasto' se retiró de aquí (ago 2026, Diana): los gastos se manejan en FUDO, no en Caja. Se deja
+// fuera de la lista de tipos válidos para movimientos NUEVOS; cajaTipoReal_/cajaMovimientosResumen_
+// siguen reconociendo 'Gasto' para no romper el cálculo de cierres históricos que ya lo usaron.
 const CAJA_TIPOS_MOVIMIENTO_ = [
   'Envío a caja fuerte','Retiro de caja fuerte',
   'Entrega administrador desde caja','Entrega administrador desde caja fuerte',
-  'Entrega administrador','Gasto','Otro ingreso'
+  'Entrega administrador','Otro ingreso'
 ];
 const CAJA_FUDO_CACHE_SEGUNDOS_ = 300;
 
@@ -275,13 +278,10 @@ function cajaAbrir_(item, usuario) {
   const fuerteInicial = fuerteValida.valor;
   const difApertura = Number((baseInicial-baseEsperada).toFixed(2));
   const difFuerteApertura = Number((fuerteInicial-fuerteEsperada).toFixed(2));
-  // Con diferencia (en efectivo o en caja fuerte), solo un Administrador puede aprobar la
-  // apertura, y solo dejando por escrito qué pasó — el frontend ya bloquea el botón hasta que
-  // ambas condiciones se cumplan, pero eso solo protege el navegador.
+  // Diana (ago 2026): una diferencia al abrir NUNCA debe impedir que la persona en turno siga
+  // trabajando — no hace falta un Administrador para aprobarla. Solo se exige dejar por escrito
+  // qué pasó; el Administrador concilia esa diferencia después, aparte.
   if (difApertura !== 0 || difFuerteApertura !== 0) {
-    if (usuario.rol !== 'Administrador') {
-      return {ok:false,error:'Hay una diferencia al abrir la caja. Solo un Administrador puede aprobar la apertura.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
-    }
     if (!String(item.observacion_apertura || '').trim()) {
       return {ok:false,error:'Hay una diferencia al abrir la caja. Escribe una observación explicando qué pasó.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerteApertura};
     }
@@ -437,19 +437,13 @@ function cajaCerrar_(item,usuario) {
   if(apertura.estado==='Cerrado')return {ok:true,ya_cerrado:true};
   if(!cajaPuedeCerrar_(usuario,fecha))return {ok:false,error:'No tienes permiso para cerrar la caja.'};
 
-  // El efectivo esperado SÍ depende de los pagos de HOY, así que aquí (a diferencia de abrir) una
-  // sincronización que no se pudo confirmar sí importa: un Encargado/Cocina no puede declarar el
-  // cierre "cuadrado" con un número que podría estar mal; un Administrador sí puede, pero dejando
-  // una observación explícita de que cerró sin esa confirmación (mismo patrón que una diferencia
-  // de dinero, más abajo).
+  // Diana (ago 2026): la caja SIEMPRE se cierra, sin importar si FUDO logró sincronizar o no — no
+  // es una decisión que le corresponda tomar a quien está cerrando el turno, ni algo que necesite
+  // explicar con una observación (el propio sistema ya sabe que no pudo confirmarlo). Que FUDO no
+  // haya sincronizado queda registrado en el cierre (fudo_sync/cuadre_confiable) para que el
+  // Administrador lo vea y lo concilie después.
   const syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,true);
   const fudoConfiable=syncFudo.ok;
-  if(!fudoConfiable&&usuario.rol!=='Administrador'){
-    return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'No se pudo confirmar los pagos de FUDO al día. Espera a que sincronice o pide a un Administrador que autorice el cierre.',fudo_sync:syncFudo};
-  }
-  if(!fudoConfiable&&!String(item.observacion||'').trim()){
-    return {ok:false,codigo:'FUDO_NO_SINCRONIZADO',error:'FUDO no está sincronizado. Escribe una observación para cerrar de todas formas.',fudo_sync:syncFudo};
-  }
 
   // Igual que al abrir: los campos de conteo llegan vacíos desde la pantalla a propósito, así que
   // un envío vacío/negativo debe rechazarse, no leerse como "$0 contados".
@@ -465,8 +459,10 @@ function cajaCerrar_(item,usuario) {
   const baseSiguiente=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente)||0:contado;
   if(baseSiguiente>contado)return {ok:false,error:'La base para el siguiente turno no puede ser mayor que el efectivo contado.'};
   if(baseSiguiente<0)return {ok:false,error:'La base para el siguiente turno no puede ser negativa.'};
+  // Diana (ago 2026): una diferencia al cerrar NUNCA debe impedir el cierre — quien está en turno
+  // cierra igual, dejando por escrito qué pasó. El Administrador ve la diferencia (queda guardada)
+  // y la concilia después; no hace falta que él mismo cierre ni que la autorice antes.
   const dif=Number((contado-calculo.esperado).toFixed(2)), difFuerte=Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
-  if((dif!==0||difFuerte!==0)&&usuario.rol!=='Administrador')return {ok:false,error:'Hay una diferencia. Solo un Administrador puede cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte};
   if((dif!==0||difFuerte!==0)&&!String(item.observacion||'').trim())return {ok:false,error:'Hay una diferencia. Debes escribir una observación.'};
 
   // Mismo candado que al abrir: cubre solo leer-de-nuevo-y-escribir, nunca la sincronización con
