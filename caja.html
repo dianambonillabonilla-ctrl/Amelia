@@ -135,10 +135,20 @@ function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
   const base=Number(document.getElementById('cierre-base').value||0);
+  const fuerteContada=Number(document.getElementById('cierre-fuerte').value||0);
   const esperado=Number(estadoActual.efectivo_esperado||0);
+  const fuerteEsperada=Number(estadoActual.caja_fuerte_esperada||0);
   const dif=contado-esperado;
+  const difFuerte=fuerteContada-fuerteEsperada;
   const entrega=contado-base;
-  document.getElementById('calculo-cierre').innerHTML=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
+  const hayDiferencia=dif!==0||difFuerte!==0;
+  const esAdmin=usuario.rol==='Administrador';
+  let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>`;
+  if(difFuerte!==0)html+=`Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong><br>`;
+  html+=`Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
+  if(hayDiferencia&&!esAdmin)html+=`<br><strong style="color:var(--red)">Hay una diferencia — solo un Administrador puede cerrar esta caja.</strong>`;
+  document.getElementById('calculo-cierre').innerHTML=html;
+  document.getElementById('cerrar').disabled=hayDiferencia&&!esAdmin;
 }
 function pintarMovimientos(lista){
   const el=document.getElementById('movimientos');
@@ -195,6 +205,7 @@ async function cargar(){
 document.getElementById('base-contada').addEventListener('input',diferenciaApertura);
 document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
 document.getElementById('cierre-base').addEventListener('input',calculoCierre);
+document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
 document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
 fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
 document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{

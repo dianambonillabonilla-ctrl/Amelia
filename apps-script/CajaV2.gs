@@ -127,6 +127,12 @@ function cajaCerrar_(item,usuario) {
   const contado = Number(item.efectivo_contado)||0, fuerteContada = Number(item.caja_fuerte_contada)||0;
   const baseSiguiente = item.base_siguiente !== '' && item.base_siguiente != null ? Number(item.base_siguiente)||0 : contado;
   const dif = Number((contado-calculo.esperado).toFixed(2)), difFuerte = Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
+  // Con diferencia (en efectivo o en caja fuerte) solo un Administrador puede cerrar el turno —
+  // Encargado/Cocina pueden cerrar libremente cuando todo cuadra, pero una descuadre necesita que
+  // alguien con ese rol lo revise antes de dar el turno por cerrado.
+  if ((dif !== 0 || difFuerte !== 0) && usuario.rol !== 'Administrador') {
+    return {ok:false,error:'Hay una diferencia en la caja. Solo un Administrador puede cerrarla.',diferencia:dif,diferencia_caja_fuerte:difFuerte};
+  }
   cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:0,persona_recibe_cierre:item.persona_recibe_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date()});
   return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente};
 }
