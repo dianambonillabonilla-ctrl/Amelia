@@ -27,7 +27,6 @@
         <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
         <div class="estado" id="estado">Consultando…</div>
       </section>
-      <p id="fudo-sync-info" style="font-size:.82rem;margin:-8px 0 14px"></p>
 
       <section id="cargando" class="card"><p class="vacio">Consultando el estado de la caja…</p></section>
 
@@ -132,20 +131,10 @@ function diferenciaApertura(){
   el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
   el.style.color=dif===0?'var(--green)':'var(--red)';
 }
+// El aviso visible (FUDO sincronizado: hora / ⚠ Cuadre no confiable) lo pinta
+// assets/caja-apertura-segura.js (pintarEstadoFudo) — esta función solo expone el dato para las
+// validaciones de esta página (calculoCierre, el clic en "Cerrar caja").
 function fudoSyncActual(){return (estadoActual&&estadoActual.fudo_sync)||{aplica:false,confiable:true};}
-function pintarFudoSync(){
-  const el=document.getElementById('fudo-sync-info');
-  const sync=fudoSyncActual();
-  if(!sync.aplica){el.textContent='';return;}
-  if(sync.confiable){
-    const hora=sync.sincronizado_en?new Date(sync.sincronizado_en).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    el.textContent=`FUDO sincronizado: ${hora}`;
-    el.style.color='var(--grey)';
-  }else{
-    el.textContent='⚠ Cuadre no confiable: no fue posible actualizar FUDO.';
-    el.style.color='var(--red)';
-  }
-}
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
@@ -180,7 +169,6 @@ async function cargar(){
   const data=await llamar('caja_estado',p);
   if(!data.ok){alert(data.error);return;}
   estadoActual=data;
-  pintarFudoSync();
   document.getElementById('estado').className='estado';
   if(!data.apertura){
     document.getElementById('estado').textContent='Caja sin abrir';document.getElementById('estado').classList.add('cerrada');

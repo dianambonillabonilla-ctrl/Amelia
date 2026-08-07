@@ -83,6 +83,17 @@
     return el;
   }
 
+  // La forma real de la respuesta del backend (cajaEstado_/cajaCerrar_ en CajaV2.gs, que es la que
+  // de verdad corre — CajaTurno.gs define sus propias versiones pero Apps Script carga todos los
+  // .gs en un mismo scope y CajaV2.gs se carga después, así que sus funciones ganan) es
+  // `fudo_sync: {aplica, confiable, sincronizado_en}` — no `{ok, error}`. Esta función leía los
+  // campos equivocados y por eso mostraba "Cuadre no confiable" todo el tiempo, sin importar si la
+  // sincronización real había funcionado.
+  function fudoNoConfiable() {
+    const sync = (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.fudo_sync) || null;
+    return !!(sync && sync.aplica && !sync.confiable);
+  }
+
   function pintarEstadoFudo() {
     const el = asegurarEstadoFudo();
     if (!el) return;
@@ -95,15 +106,20 @@
     }
 
     const sync = estadoActual.fudo_sync || null;
-    if (sync && sync.ok) {
+    if (!sync || !sync.aplica) {
+      // Sin credenciales de la API configuradas — no aplica, no hay nada que avisar.
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = '';
+    if (sync.confiable) {
       el.innerHTML = '✓ FUDO sincronizado · ' + fechaHora(sync.sincronizado_en) +
         (estadoActual.apertura ? ' · Efectivo FUDO desde apertura: <strong>' + moneda(estadoActual.pagos_efectivo_esperado || 0) + '</strong>' : '');
       el.style.background = '#F2F8F4';
       el.style.color = 'var(--green)';
       el.style.borderColor = 'var(--green)';
     } else {
-      const error = sync && sync.error ? sync.error : 'No fue posible confirmar datos actualizados de FUDO.';
-      el.innerHTML = '⚠ Cuadre no confiable: ' + String(error);
+      el.innerHTML = '⚠ Cuadre no confiable: no fue posible actualizar FUDO.';
       el.style.background = '#FEF4F3';
       el.style.color = 'var(--red)';
       el.style.borderColor = 'var(--red)';
@@ -114,37 +130,18 @@
     const boton = document.getElementById('abrir');
     if (!boton || evento.target !== boton) return;
 
-    if (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.cuadre_confiable === false) {
+    if (fudoNoConfiable()) {
       evento.preventDefault();
       evento.stopImmediatePropagation();
       alert('No se puede abrir la caja porque FUDO no está sincronizado. Actualiza e inténtalo nuevamente.');
       return;
     }
-
-    const d = diferencias();
-    if (d.base === 0 && d.fuerte === 0) return;
-
-    const observacionEl = document.getElementById('observacion-apertura');
-    const tieneObservacion = !!(observacionEl && observacionEl.value.trim());
-
-    if (!esAdministrador()) {
-      html += '<br><strong>Hay una diferencia — solo un Administrador puede aprobar la apertura.</strong>';
-      boton.disabled = true;
-    } else if (!tieneObservacion) {
-      html += '<br><strong>Escribe abajo qué pasó con la diferencia para poder aprobar la apertura.</strong>';
-      boton.disabled = true;
-    } else {
-      html += '<br><strong style="color:var(--green)">Puedes aprobar la apertura con esta diferencia — quedará registrada a tu nombre con la observación.</strong>';
-      boton.disabled = false;
-    }
-    salida.innerHTML = html;
-    salida.style.color = 'var(--red)';
   }
 
   function validarAntesDeCerrar(evento) {
     const boton = document.getElementById('cerrar');
     if (!boton || evento.target !== boton) return;
-    if (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.cuadre_confiable === false) {
+    if (fudoNoConfiable() && !esAdministrador()) {
       evento.preventDefault();
       evento.stopImmediatePropagation();
       alert('No se puede cerrar la caja como cuadrada porque FUDO no está sincronizado. Presiona Actualizar y vuelve a intentarlo.');
