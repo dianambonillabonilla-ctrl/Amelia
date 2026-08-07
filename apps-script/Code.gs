@@ -399,6 +399,11 @@ function handleRequest_(e, method) {
       case 'caja_estado':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(cajaEstado_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
+      // La parte lenta de Caja (llamar a la API de FUDO) vive en su propia acción: 'caja_estado' se
+      // resuelve con datos locales y esta se pide aparte, sin dejar la pantalla esperando.
+      case 'caja_sincronizar_ahora':
+        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
+        return jsonOut_(cajaSincronizarAhora_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));
       case 'caja_rappi_marcar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(cajaRappiMarcar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede), sesion.usuario));

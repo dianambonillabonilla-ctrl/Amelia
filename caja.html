@@ -146,13 +146,36 @@ function pintarFudoSync(){
   const el=document.getElementById('fudo-sync-info');
   const sync=(estadoActual&&estadoActual.fudo_sync)||null;
   if(!sync||sync.aplica===false){el.textContent='';return;}
-  if(estadoActual.cuadre_confiable){
+  if(sincronizandoFudo){el.textContent='Actualizando FUDO…';el.style.color='var(--grey)';return;}
+  if(estadoActual.fudo_sincronizado){
     el.textContent=`FUDO sincronizado: ${fechaHoraFudo_(sync.sincronizado_en)}`;
+    el.style.color='var(--grey)';
+  }else if(sync.pendiente){
+    el.textContent='FUDO todavía no se ha actualizado para esta fecha y sede.';
     el.style.color='var(--grey)';
   }else{
     el.textContent='⚠ Cuadre no confiable: '+(sync.error||'no fue posible actualizar FUDO')+'.';
     el.style.color='var(--red)';
   }
+}
+// El estado de la caja se pinta con datos locales y FUDO se actualiza aparte: antes 'caja_estado'
+// forzaba la sincronización completa con la API externa, y hasta que esa respondiera no se veía
+// nada, ni siquiera si la caja estaba abierta.
+let sincronizandoFudo=false;
+async function actualizarFudo(forzado){
+  const sync=(estadoActual&&estadoActual.fudo_sync)||null;
+  if(!sync||sync.aplica===false)return;
+  if(!forzado&&!sync.pendiente)return;
+  if(sincronizandoFudo)return;
+  sincronizandoFudo=true;pintarFudoSync();
+  const r=await llamar('caja_sincronizar_ahora',parametros(),{timeoutMs:120000});
+  sincronizandoFudo=false;
+  if(!r.ok&&r.codigo==='TIEMPO_AGOTADO'){
+    const el=document.getElementById('fudo-sync-info');
+    el.textContent='⚠ '+r.error;el.style.color='var(--red)';
+    return;
+  }
+  await cargar({sincronizar:false});
 }
 const sinContar_=id=>String((document.getElementById(id)||{}).value||'').trim()==='';
 // Aquí solo se comprueba lo mínimo e imprescindible: sin los dos conteos escritos no se abre nada.
@@ -196,13 +219,20 @@ function pintarMovimientos(lista){
   if(!lista||!lista.length){el.innerHTML='<p class="vacio">Sin movimientos registrados.</p>';return;}
   el.innerHTML=lista.map(m=>{const resta=m.tipo!=='Otro ingreso' && m.tipo!=='Retiro de caja fuerte';return `<div class="movimiento"><strong>${escapeHtml(m.tipo)}</strong><span class="${resta?'negativo':'positivo'}">${resta?'−':'+'}${dinero(m.valor)}</span><span>${escapeHtml(m.motivo||'')}</span><span>${escapeHtml(m.persona_recibe||m.usuario||'')}</span></div>`;}).join('');
 }
-async function cargar(){
+async function cargar(opciones){
+  const sincronizar=!opciones||opciones.sincronizar!==false;
   mostrar('cargando');
   const p=parametros();
   const data=await llamar('caja_estado',p);
-  if(!data.ok){alert(data.error);return;}
+  if(!data.ok){
+    document.getElementById('cargando').innerHTML='<p class="vacio">'+escapeHtml(data.error||'No se pudo consultar el estado de la caja.')+'</p>';
+    alert(data.error);return;
+  }
   estadoActual=data;
   pintarFudoSync();
+  // Deliberadamente sin await: la pantalla termina de pintarse con lo que ya se sabe y FUDO se
+  // actualiza detrás, volviendo a pintar cuando llegue.
+  if(sincronizar)actualizarFudo(false);
   document.getElementById('estado').className='estado';
   if(!data.apertura){
     document.getElementById('estado').textContent='Caja sin abrir';document.getElementById('estado').classList.add('cerrada');
@@ -242,15 +272,18 @@ async function cargar(){
   document.getElementById('cierre-contado').value='';
   document.getElementById('cierre-fuerte').value='';
   document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
-  const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
   mostrar('abierta');calculoCierre();
+  const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
 }
 ['base-contada','fuerte-contada-apertura'].forEach(id=>document.getElementById(id).addEventListener('input',diferenciaApertura));
 document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
 document.getElementById('cierre-base').addEventListener('input',calculoCierre);
 document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
 document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
-fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
+fechaEl.addEventListener('change',()=>cargar());sedeEl.addEventListener('change',()=>cargar());
+// "Actualizar" sí pide una sincronización con FUDO aunque el caché siga vigente: es el botón que se
+// usa justo antes de cerrar, cuando hace falta el dato más fresco posible.
+document.getElementById('actualizar').addEventListener('click',conBotonProtegido(document.getElementById('actualizar'),async()=>{await cargar({sincronizar:false});await actualizarFudo(true);}));
 // El Administrador es super usuario: normalmente solo revisa si la caja está abierta (por eso el
 // formulario queda oculto por defecto), pero puede abrirla él mismo si de verdad hace falta.
 document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{

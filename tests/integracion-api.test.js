@@ -55,6 +55,7 @@ function parametrosPorAccion() {
     cierres_turno_listar: { filtros: {} },
     base_caja_dia: { fecha: HOY, sede: SEDE },
     caja_estado: { fecha: HOY, sede: SEDE },
+    caja_sincronizar_ahora: { fecha: HOY, sede: SEDE },
     caja_movimientos_listar: { fecha: HOY, sede: SEDE },
     ajustes_inventario_listar: { fecha: HOY, sede: SEDE, filtro: {} },
     ajustes_inventario_historial: { filtros: {} },
@@ -308,7 +309,11 @@ function sembrarDatos(env) {
     movimientos_inventario_listar: 40,
     conciliacion_historial_desfases: 40,
     inventario_teorico_resumen: 40,
-    fudo_panel_estado: 40
+    fudo_panel_estado: 40,
+    // caja_estado es la primera pantalla de la sede al empezar el turno: tiene que abrir con lo que
+    // hay en el Sheet y nada más. Antes forzaba además una sincronización completa con la API de
+    // FUDO, que ninguna cuenta de lecturas delata pero dejaba la pantalla minutos en "Consultando…".
+    caja_estado: 40
   };
   const params = parametrosPorAccion();
 

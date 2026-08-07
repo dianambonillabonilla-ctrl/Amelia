@@ -87,9 +87,25 @@ function cajaFudoCacheKey_(fecha, sede) {
 
 function cajaLeerEstadoFudo_(fecha, sede) {
   const guardado = CacheService.getScriptCache().get(cajaFudoCacheKey_(fecha, sede));
-  if (!guardado) return { ok:false, pendiente:true, error:'FUDO aún no se ha actualizado desde Caja.' };
+  if (!guardado) return { ok:false, aplica:true, pendiente:true, error:'FUDO aún no se ha actualizado desde Caja.' };
   try { return JSON.parse(guardado); }
-  catch (e) { return { ok:false, pendiente:true, error:'No se pudo leer el último estado de FUDO.' }; }
+  catch (e) { return { ok:false, aplica:true, pendiente:true, error:'No se pudo leer el último estado de FUDO.' }; }
+}
+
+/**
+ * Último estado conocido de FUDO SIN tocar la API — lo que se usa para pintar la pantalla. Antes
+ * cajaEstado_ forzaba una sincronización completa cuando el caché estaba vencido o no existía, así
+ * que la primera visita del día (y cualquiera después de CAJA_FUDO_CACHE_SEGUNDOS_) dejaba la
+ * pantalla en "Consultando…" el tiempo que tardara la API externa — minutos, en el peor caso, y sin
+ * poder ni ver si la caja estaba abierta. Ahora la pantalla carga con datos locales y la
+ * sincronización se pide aparte (acción 'caja_sincronizar_ahora').
+ */
+function cajaEstadoFudo_(fecha, sede) {
+  const fechaFmt = formatearFecha_(fecha);
+  if (!cajaFudoCredencialesConfiguradas_()) {
+    return { ok:true, aplica:false, fecha:fechaFmt, sede:sede, sincronizado_en:'', error:'' };
+  }
+  return cajaLeerEstadoFudo_(fechaFmt, sede);
 }
 
 /**
@@ -296,21 +312,20 @@ function cajaAbrirBloqueada_(item, usuario, fecha, syncFudo) {
 }
 
 /**
- * Al abrir la pantalla de Caja o pulsar "Actualizar" (ambos llegan aquí): si la última
- * sincronización conocida ya expiró del caché (CAJA_FUDO_CACHE_SEGUNDOS_) o nunca se hizo, se
- * sincroniza ahora mismo contra la API real antes de calcular nada — así el cuadre nunca se
- * calcula contra un dato de FUDO que ya lleva rato desactualizado sin que nadie se entere.
+ * Estado de la caja para pintar la pantalla. Solo lee datos locales (el Sheet y el último estado
+ * conocido de FUDO en caché): nunca llama a la API externa, para que la pantalla abra siempre
+ * rápido. `fudo_sync.pendiente` le dice al frontend que pida 'caja_sincronizar_ahora' por separado.
  */
 function cajaEstado_(fecha, sede, usuario) {
   cajaAsegurarEstructura_();
   if (!fecha || !sede) return {ok:false,error:'Falta la fecha o la sede'};
   const fechaFmt = formatearFecha_(fecha);
-  let syncFudo = cajaLeerEstadoFudo_(fechaFmt,sede);
-  if (syncFudo.pendiente) syncFudo = cajaSincronizarFudo_(fechaFmt,sede,usuario,true);
+  const syncFudo = cajaEstadoFudo_(fechaFmt,sede);
   const apertura = cajaTurnoFila_(fechaFmt,sede);
   if (!apertura) return {
     ok:true,abierta:false,base_esperada:cajaBaseEsperada_(fechaFmt,sede),caja_fuerte_esperada:cajaSaldoFuerteAntes_(fechaFmt,sede),
-    puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok
+    puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),fudo_sync:syncFudo,
+    fudo_sincronizado:syncFudo.ok,cuadre_confiable:syncFudo.ok
   };
   const calculo = cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fechaFmt,sede),fechaFmt,sede);
   return {
@@ -318,10 +333,11 @@ function cajaEstado_(fecha, sede, usuario) {
     pagos_efectivo_esperado:calculo.pagos_efectivo_esperado,pagos_efectivo_dia:calculo.pagos_efectivo_dia,
     efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,
     total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),
-    fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok
+    fudo_sync:syncFudo,fudo_sincronizado:syncFudo.ok,cuadre_confiable:syncFudo.ok
   };
 }
 
+/** Acción 'caja_sincronizar_ahora': la parte lenta, que el frontend pide aparte del estado. */
 function cajaSincronizarAhora_(fecha,sede,usuario) {
   if (!fecha || !sede) return {ok:false,error:'Falta la fecha o la sede'};
   return cajaSincronizarFudo_(fecha,sede,usuario,true);

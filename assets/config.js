@@ -21,17 +21,35 @@ const Sesion = {
   }
 };
 
-async function llamar(action, params = {}) {
+// Sin límite, una petición lenta deja la pantalla esperando indefinidamente: no hay error, no hay
+// reintento, solo un "Consultando…" que nunca termina y que quien está en la sede interpreta como
+// que la aplicación se dañó. Se corta y se explica. Las acciones que de verdad tardan (sincronizar
+// con FUDO) pasan su propio límite más holgado.
+const LLAMAR_TIMEOUT_MS = 45000;
+
+async function llamar(action, params = {}, opciones = {}) {
   const body = Object.assign({ action, token: Sesion.token() }, params);
+  const limite = Number(opciones.timeoutMs) > 0 ? Number(opciones.timeoutMs) : LLAMAR_TIMEOUT_MS;
+  const control = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const cortar = control ? setTimeout(() => control.abort(), limite) : null;
   let res;
   try {
     res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: control ? control.signal : undefined
     });
   } catch (err) {
+    if (err && err.name === 'AbortError') {
+      return {
+        ok: false, codigo: 'TIEMPO_AGOTADO',
+        error: 'El servidor tardó más de ' + Math.round(limite / 1000) + ' segundos en responder. Vuelve a intentarlo; si sigue igual, revisa la conexión.'
+      };
+    }
     return { ok: false, error: 'No se pudo conectar con el servidor. Revisa la conexión e inténtalo nuevamente.' };
+  } finally {
+    if (cortar) clearTimeout(cortar);
   }
   const texto = await res.text();
   let data;
