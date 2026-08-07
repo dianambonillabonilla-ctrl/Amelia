@@ -194,7 +194,8 @@ async function cargar(){
   if(!data.apertura){
     document.getElementById('estado').textContent='Caja sin abrir';document.getElementById('estado').classList.add('cerrada');
     // La Administradora no abre caja — eso lo hace quien está en la sede. A ella solo le
-    // interesa ver que sigue sin abrir, sin el formulario de conteo físico.
+    // interesa ver que sigue sin abrir, sin el formulario de conteo físico — pero el formulario
+    // igual se llena con los valores reales (no solo "$0"), por si usa "Abrir de todas formas".
     const esAdmin=usuario.rol==='Administrador';
     document.getElementById('apertura-solo-lectura').classList.toggle('oculto',!esAdmin);
     document.getElementById('apertura-form').classList.toggle('oculto',esAdmin);

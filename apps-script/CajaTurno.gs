@@ -131,11 +131,24 @@ function cajaTurnoFila_(fecha, sede) {
   return leerTabla_(SHEET_NAMES.CAJA_TURNO).find(r => formatearFecha_(r.fecha) === fecha && r.sede === sede);
 }
 
+/**
+ * "Antes" se decide por la fecha DE NEGOCIO del turno (r.fecha — la que se eligió al abrirlo),
+ * nunca por la hora real en que se dio clic en "Cerrar caja" (timestamp_cierre/hora_cierre). Un
+ * cierre tarde en la noche (después de medianoche real) para el turno de "ayer" quedaba con un
+ * timestamp_cierre que ya pertenece al día calendario de "hoy" — comparado contra la medianoche de
+ * "hoy" con timestamp_cierre < limite, ese cierre real dejaba de contar como "anterior a hoy" y
+ * cajaBaseEsperada_/cajaSaldoFuerteAntes_ mostraban $0, como si el cierre de ayer no hubiera
+ * pasado. timestamp_cierre/hora_cierre solo se usan para desempatar entre cierres de la MISMA fecha
+ * (no debería haber más de uno, pero por si acaso).
+ */
 function cajaUltimoCierreAntes_(fecha, sede) {
-  const limite = new Date(fecha + 'T00:00:00').getTime();
   return leerTabla_(SHEET_NAMES.CAJA_TURNO)
-    .filter(r => r.sede === sede && r.estado === 'Cerrado' && cajaFechaMs_(r.timestamp_cierre || r.hora_cierre || r.fecha) < limite)
-    .sort((a,b) => cajaFechaMs_(b.timestamp_cierre || b.hora_cierre || b.fecha) - cajaFechaMs_(a.timestamp_cierre || a.hora_cierre || a.fecha))[0] || null;
+    .filter(r => r.sede === sede && r.estado === 'Cerrado' && formatearFecha_(r.fecha) < fecha)
+    .sort((a,b) => {
+      const porFecha = formatearFecha_(b.fecha).localeCompare(formatearFecha_(a.fecha));
+      if (porFecha !== 0) return porFecha;
+      return cajaFechaMs_(b.timestamp_cierre || b.hora_cierre) - cajaFechaMs_(a.timestamp_cierre || a.hora_cierre);
+    })[0] || null;
 }
 
 function cajaBaseEsperada_(fecha, sede) {
