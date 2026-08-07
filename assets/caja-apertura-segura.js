@@ -59,7 +59,70 @@
     const partes = [];
     if (d.base !== 0) partes.push('Caja operativa: ' + (d.base > 0 ? '+' : '') + moneda(d.base));
     if (d.fuerte !== 0) partes.push('Caja fuerte: ' + (d.fuerte > 0 ? '+' : '') + moneda(d.fuerte));
-    let html = '⚠ Diferencia al abrir — ' + partes.join(' · ');
+    salida.textContent = '⚠ Diferencia al abrir — ' + partes.join(' · ');
+    salida.style.color = 'var(--red)';
+  }
+
+  function fechaHora(valor) {
+    if (!valor) return '—';
+    const d = new Date(valor);
+    return isNaN(d.getTime()) ? String(valor) : d.toLocaleString('es-CO', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function asegurarEstadoFudo() {
+    let el = document.getElementById('estado-fudo-caja');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'estado-fudo-caja';
+    el.style.cssText = 'margin:0 0 18px;padding:14px 16px;border-radius:10px;border:1px solid var(--line);font-size:.86rem;font-weight:600';
+    const cabecera = document.querySelector('.cabecera-caja');
+    if (cabecera && cabecera.parentNode) cabecera.parentNode.insertBefore(el, cabecera.nextSibling);
+    return el;
+  }
+
+  function pintarEstadoFudo() {
+    const el = asegurarEstadoFudo();
+    if (!el) return;
+    if (typeof estadoActual === 'undefined' || !estadoActual) {
+      el.textContent = 'Consultando estado de sincronización con FUDO…';
+      el.style.background = '#FFF8E8';
+      el.style.color = 'var(--amber)';
+      el.style.borderColor = 'var(--gold)';
+      return;
+    }
+
+    const sync = estadoActual.fudo_sync || null;
+    if (sync && sync.ok) {
+      el.innerHTML = '✓ FUDO sincronizado · ' + fechaHora(sync.sincronizado_en) +
+        (estadoActual.apertura ? ' · Efectivo FUDO desde apertura: <strong>' + moneda(estadoActual.pagos_efectivo_esperado || 0) + '</strong>' : '');
+      el.style.background = '#F2F8F4';
+      el.style.color = 'var(--green)';
+      el.style.borderColor = 'var(--green)';
+    } else {
+      const error = sync && sync.error ? sync.error : 'No fue posible confirmar datos actualizados de FUDO.';
+      el.innerHTML = '⚠ Cuadre no confiable: ' + String(error);
+      el.style.background = '#FEF4F3';
+      el.style.color = 'var(--red)';
+      el.style.borderColor = 'var(--red)';
+    }
+  }
+
+  function validarAntesDeAbrir(evento) {
+    const boton = document.getElementById('abrir');
+    if (!boton || evento.target !== boton) return;
+
+    if (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.cuadre_confiable === false) {
+      evento.preventDefault();
+      evento.stopImmediatePropagation();
+      alert('No se puede abrir la caja porque FUDO no está sincronizado. Actualiza e inténtalo nuevamente.');
+      return;
+    }
+
+    const d = diferencias();
+    if (d.base === 0 && d.fuerte === 0) return;
 
     const observacionEl = document.getElementById('observacion-apertura');
     const tieneObservacion = !!(observacionEl && observacionEl.value.trim());
@@ -78,12 +141,28 @@
     salida.style.color = 'var(--red)';
   }
 
+  function validarAntesDeCerrar(evento) {
+    const boton = document.getElementById('cerrar');
+    if (!boton || evento.target !== boton) return;
+    if (typeof estadoActual !== 'undefined' && estadoActual && estadoActual.cuadre_confiable === false) {
+      evento.preventDefault();
+      evento.stopImmediatePropagation();
+      alert('No se puede cerrar la caja como cuadrada porque FUDO no está sincronizado. Presiona Actualizar y vuelve a intentarlo.');
+    }
+  }
+
   function iniciar() {
     ['base-contada', 'fuerte-contada-apertura', 'observacion-apertura'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', pintarDiferencias);
     });
-    setTimeout(pintarDiferencias, 400);
+    document.addEventListener('click', validarAntesDeAbrir, true);
+    document.addEventListener('click', validarAntesDeCerrar, true);
+    setInterval(pintarEstadoFudo, 700);
+    setTimeout(function () {
+      pintarDiferencias();
+      pintarEstadoFudo();
+    }, 400);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
