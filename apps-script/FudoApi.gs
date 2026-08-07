@@ -682,20 +682,29 @@ function fudoApiProbarConexion_() {
       pageSize: 10,
       include: 'role,tablesCashRegister,deliveryCashRegister,takeAwayCashRegister'
     }),
+    // ago 2026 (3): la ronda 2 confirmó, con ventas de HOY (no las de 2021 de la ronda 1), que
+    // cashRegister id "1" = San Antonio y id "2" = Capri — sí distingue sede, al contrario de lo que
+    // parecía con datos viejos donde solo había actividad de una sede. Se agrega fields[cashRegister]
+    // =name para ver si esta cuenta le puso un nombre a cada caja (y no depender de memorizar el id).
     ventas_cash_register: fudoApiProbarConexionRecursoSeguro_('sales', {
       pageSize: 5,
       orden: '-id',
-      include: 'cashRegister,table.room,payments.paymentMethod'
+      include: 'cashRegister,table.room,payments.paymentMethod',
+      campos: { cashRegister: 'name' }
     }),
-    // ago 2026 (2): la primera ronda trajo gastos SIN "attributes" (solo relationships) — /expenses,
-    // a diferencia de /sales, necesita fields[expense]=... explícito para devolver los datos reales.
-    // Se agrega también orden '-date' porque page[number]=1 sin ordenar trae los gastos más viejos
-    // de la cuenta (2021), no la operación actual.
+    // ago 2026 (3): la ronda 2 pidió fields[expense]=amount,date,... y sí trajo los montos reales,
+    // pero en JSON:API "fields" es una lista cerrada — al no incluir ahí "cashRegister"/
+    // "paymentMethod" (solo se pidieron por separado en `include`), FUDO quitó esas relaciones de
+    // cada gasto (aunque igual metió los recursos sueltos en "included", ya sin poder saber a cuál
+    // gasto pertenecían). Se agregan ambos nombres también dentro de `campos.expense`.
     gastos: fudoApiProbarConexionRecursoSeguro_('expenses', {
       pageSize: 5,
       orden: '-date',
       include: 'cashRegister,paymentMethod',
-      campos: { expense: 'amount,canceled,createdAt,date,description,dueDate,paymentDate,receiptNumber,status,useInCashCount' }
+      campos: {
+        expense: 'amount,canceled,createdAt,date,description,dueDate,paymentDate,receiptNumber,status,useInCashCount,cashRegister,paymentMethod',
+        cashRegister: 'name'
+      }
     }),
     metodos_pago: fudoApiProbarConexionRecursoSeguro_('payment-methods', { pageSize: 20 }),
     // pageSize subido de 20 a 60: con 20 no alcanzaban a salir las mesas de "La Waffleria - Capri"
