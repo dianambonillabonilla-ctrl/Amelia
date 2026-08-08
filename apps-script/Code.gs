@@ -389,7 +389,7 @@ function handleRequest_(e, method) {
         return jsonOut_(baseCajaGuardar_(params.item, sesion.usuario));
       case 'base_caja_dia':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(baseCajaDia_(params.fecha, params.sede));
+        return jsonOut_(baseCajaDia_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
       case 'base_caja_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
         return jsonOut_({ ok: true, data: baseCajaListar_(params.filtros, sesion.usuario) });

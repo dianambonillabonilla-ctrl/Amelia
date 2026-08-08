@@ -268,10 +268,3 @@ function restringirSelectorSede_(select) {
   if (!permitidas.includes(select.value)) select.value = u.sede;
   select.disabled = permitidas.length <= 1;
 }
-
-// Carga reglas adicionales solo en el módulo de Caja.
-if (/caja\.html$/i.test(window.location.pathname)) {
-  const scriptCajaSegura = document.createElement('script');
-  scriptCajaSegura.src = 'assets/caja-apertura-segura.js';
-  document.head.appendChild(scriptCajaSegura);
-}
