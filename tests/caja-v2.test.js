@@ -563,4 +563,58 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(otroIngreso.ok, true, 'Otro ingreso no debe tener tope de disponibilidad');
 }
 
+// --- FUDO cambia después del cierre (Diana, ago 2026): "cerré con 300 mil y FUDO ahora dice que
+// debería haber 350 mil, debe aparecer que no coincide". FUDO sigue sincronizando "ayer" cada 15
+// minutos, así que un pago tardío puede cambiar el total de un día ya cerrado. Se usa una fecha de
+// AYER de verdad (no la fija de las demás pruebas) porque el chequeo solo revisa cierres de los
+// últimos 3 días — no tiene sentido recalcular cierres de hace meses. --------------------------------
+{
+  const ayer = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+  const { ctx, turnos } = construirEntorno_();
+  let totalFudo = 0;
+  ctx.turnoResumenCierre_ = () => ({ pagos_efectivo_esperado: totalFudo });
+
+  const abrir = ctx.cajaAbrir_({ fecha: ayer, sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 }, encargada);
+  assert.equal(abrir.ok, true);
+  totalFudo = 300000; // lo que FUDO acumuló en efectivo durante el turno, según lo que sabía al cerrar
+  const cierre = ctx.cajaCerrar_({ fecha: ayer, sede: 'San Antonio', efectivo_contado: 300000, caja_fuerte_contada: 0 }, encargada);
+  assert.equal(cierre.ok, true, 'con lo que FUDO tenía al momento de cerrar, cuadra exacto');
+  assert.equal(cierre.efectivo_esperado, 300000);
+
+  // FUDO recibe un pago tardío de esa misma fecha: ahora dice 350.000, no 300.000.
+  totalFudo = 350000;
+
+  const turno = turnos.find((t) => t.fecha === ayer);
+  const cambio = ctx.cajaFudoCambioTrasCierre_(turno);
+  assert.ok(cambio, 'debe detectar que FUDO ya no coincide con lo guardado en el cierre');
+  assert.equal(cambio.esperado_guardado, 300000);
+  assert.equal(cambio.esperado_actual, 350000);
+  assert.equal(cambio.diferencia, 50000);
+
+  // Debe aparecer tanto consultando el estado de ese día (lo ve quien esté mirando, Encargado o
+  // Administrador) como en el panel de novedades del Administrador — "para ambos", como pidió Diana.
+  const estado = ctx.cajaEstado_(ayer, 'San Antonio', encargada);
+  assert.ok(estado.fudo_cambio_tras_cierre, 'cajaEstado_ debe exponerlo para que se vea sin ser Administrador');
+  assert.equal(estado.fudo_cambio_tras_cierre.diferencia, 50000);
+
+  const novedades = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(novedades.novedades.length, 1);
+  assert.ok(novedades.novedades[0].motivos.includes('FUDO cambió después del cierre'));
+  assert.equal(novedades.novedades[0].fudo_cambio_tras_cierre.diferencia, 50000);
+
+  // Si FUDO ya no cambia (vuelve a coincidir), no debe seguir apareciendo como novedad.
+  totalFudo = 300000;
+  assert.equal(ctx.cajaFudoCambioTrasCierre_(turno), null);
+}
+
+// Un cierre viejo (de hace más de 3 días) no debe revisarse aunque FUDO haya cambiado — no vale la
+// pena recalcular historia vieja cada vez que se abre el panel de novedades.
+{
+  const { ctx, turnos } = construirEntorno_();
+  ctx.turnoResumenCierre_ = () => ({ pagos_efectivo_esperado: 999999 });
+  abrirTurno_(ctx, turnos, { fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0, estado: 'Cerrado', efectivo_esperado: 100000 });
+  const turno = turnos[0];
+  assert.equal(ctx.cajaFudoCambioTrasCierre_(turno), null, 'un cierre de hace más de 3 días no debe revisarse');
+}
+
 console.log('caja-v2: OK');
