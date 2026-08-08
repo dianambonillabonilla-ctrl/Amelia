@@ -46,6 +46,18 @@
       <button class="btn dorado" id="guardar">Guardar línea</button>
     </div>
 
+    <div class="card" id="card-pendientes" style="border-left:4px solid var(--gold)">
+      <h2>Pendientes por confirmar</h2>
+      <p style="color:var(--grey);font-size:.85rem;margin-top:0">
+        Líneas con un dato real todavía sin confirmar (peso de lote, rendimiento, receta completa) o
+        marcadas para no automatizar. "Pendiente" y "Sin automatizar" no afectan Disponible Hoy ni
+        Conciliación; "Revisar" sí se usa, pero con advertencia. En cuanto midas/confirmes el dato
+        real, edita la línea correspondiente abajo en la Matriz de recetas y cámbiale el estado.
+      </p>
+      <p id="pendientes-resumen" style="font-weight:600"></p>
+      <div id="pendientes-lista"></div>
+    </div>
+
     <div class="card" data-solo-rol="Administrador">
       <h2>Platos de FUDO sin receta</h2>
       <p style="color:var(--grey); font-size:.85rem; margin-top:0">
@@ -76,7 +88,41 @@ let recetas = [];
 async function cargar() {
   const r = await llamar('recetas_listar');
   if (!r.ok) { alert(r.error); return; }
-  recetas = r.data; pintar();
+  recetas = r.data; pintar(); pintarPendientes_();
+}
+
+// PENDIENTES POR CONFIRMAR — pedido real de Diana: tener visible en la app, sin tener que andar
+// filtrando la matriz completa, qué líneas de receta siguen sin un dato real (peso de lote,
+// rendimiento) para poder ir a recopilarlo. Agrupa por producto porque el "qué falta" casi siempre
+// es el mismo para todas las líneas de ese plato/preparación (ej. todo "Arma tu Waffle" está
+// pendiente por el mismo '752test' inválido en la plantilla de origen).
+const ETIQUETA_PENDIENTE_ = { pendiente: 'Pendiente (dato inválido/faltante)', revisar: 'Revisar (se usa, con advertencia)', borrador: 'Borrador', referencia: 'Sin automatizar (a propósito)' };
+function pintarPendientes_() {
+  const grupos = {};
+  recetas.forEach(r => {
+    const estado = normalizarTexto(r.estado || 'activo');
+    if (!ETIQUETA_PENDIENTE_[estado]) return;
+    if (!grupos[r.producto]) grupos[r.producto] = { estados: new Set(), lineas: [] };
+    grupos[r.producto].estados.add(estado);
+    grupos[r.producto].lineas.push(r);
+  });
+  const productos = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'es'));
+  const nPendRevisar = recetas.filter(r => ['pendiente', 'revisar'].includes(normalizarTexto(r.estado))).length;
+  const nReferencia = recetas.filter(r => normalizarTexto(r.estado) === 'referencia').length;
+  document.getElementById('pendientes-resumen').textContent = productos.length
+    ? `${productos.length} producto(s) con algo pendiente — ${nPendRevisar} línea(s) con dato por confirmar, ${nReferencia} sin automatizar a propósito.`
+    : '';
+  document.getElementById('pendientes-lista').innerHTML = productos.length ? productos.map(producto => {
+    const g = grupos[producto];
+    const badges = [...g.estados].map(e => `<span class="badge ${claseBadgeEstado_(e)}">${escapeHtml(ETIQUETA_PENDIENTE_[e])}</span>`).join(' ');
+    const notas = [...new Set(g.lineas.map(l => (l.notas || '').trim()).filter(Boolean))];
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+      <strong>${escapeHtml(producto)}</strong> ${badges}
+      <div style="font-size:.82rem;color:var(--grey);margin-top:4px">${
+        notas.length ? notas.map(n => escapeHtml(n)).join('<br>') : 'Ingredientes: ' + g.lineas.map(l => escapeHtml(l.ingrediente)).join(', ')
+      }</div>
+    </div>`;
+  }).join('') : '<p class="vacio">Nada pendiente — todas las líneas de receta están activas.</p>';
 }
 function pintar() {
   const q = normalizarTexto(document.getElementById('buscar').value);
