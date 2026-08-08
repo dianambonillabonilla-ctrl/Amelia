@@ -415,11 +415,16 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  * disponible de Capri sin esperar al próximo conteo físico, y no afecta el número de San Antonio.
  * El conteo físico sigue siendo la referencia real; esto solo cubre el tiempo entre conteos.
  *
- * Los traslados solo suman al llegar (sede_destino) — a propósito NO se restan de la sede de
- * origen al enviarlos. Y aunque producir SÍ suma el producto terminado (ej. Costilla Preparada),
- * NO resta la materia prima que se usó para prepararlo (ej. Costilla San Luis Entera) — eso sigue
- * sin modelarse como salida, igual que las ventas: solo el próximo conteo físico de esa materia
- * prima lo reflejará. Mismo límite ya aceptado para compras/mermas, no es nuevo de este cambio.
+ * Los traslados restan de la sede de origen (sede_origen) desde el momento en que se crean —
+ * apenas se envía el producto ya salió físicamente de esa sede, sin importar si luego queda
+ * Enviado, Con observación, Confirmado o Resuelto (ver trasladosEnviadosDesdeConteo_). El destino
+ * solo suma cuando el traslado queda Confirmado o Resuelto (trasladosRecibidosDesdeConteo_), y
+ * suma lo realmente recibido (cantidad_recibida), no lo enviado.
+ *
+ * Aunque producir SÍ suma el producto terminado (ej. Costilla Preparada), todavía NO resta la
+ * materia prima que se usó para prepararlo (ej. Costilla San Luis Entera) — eso sigue sin
+ * modelarse como salida, igual que las ventas: solo el próximo conteo físico de esa materia prima
+ * lo reflejará. Mismo límite ya aceptado para compras/mermas, no es nuevo de este cambio.
  *
  * IMPORTANTE: un producto que TODAVÍA no se ha contado nunca en una sede, pero ya se compró, se
  * produjo o se recibió por traslado allí, igual debe aparecer (con "conteo" = 0 de base) — si no,
@@ -474,6 +479,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
   }
   ajustes.forEach(function (a) { asegurarSinConteo_(a.producto, a.sede || 'Sin sede'); });
   traslados.forEach(function (t) {
+    asegurarSinConteo_(t.producto, t.sede_origen);
     if (['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1) asegurarSinConteo_(t.producto, t.sede_destino);
   });
   producciones.forEach(function (p) { asegurarSinConteo_(p.item, p.sede || 'Sin sede'); });
@@ -485,6 +491,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
   // pasarles solo su grupo no cambia el resultado.
   const idxAjustes = agruparMovimientosPorClaveYSede_(ajustes, 'producto', function (a) { return a.sede || 'Sin sede'; }, indice);
   const idxTraslados = agruparMovimientosPorClaveYSede_(traslados, 'producto', function (t) { return t.sede_destino; }, indice);
+  const idxTrasladosEnviados = agruparMovimientosPorClaveYSede_(traslados, 'producto', function (t) { return t.sede_origen; }, indice);
   const idxProducciones = agruparMovimientosPorClaveYSede_(producciones, 'item', function (p) { return p.sede || 'Sin sede'; }, indice);
 
   const resultado = {};
@@ -505,12 +512,13 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
       const grupo = clave + '|' + sedeItem;
       const resAjustes = netoAjustesDesdeConteo_(idxAjustes[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad);
       const resTraslados = trasladosRecibidosDesdeConteo_(idxTraslados[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
-      const resProduccion = netoProduccionDesdeConteo_(idxProducciones[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
-      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad, cacheVentas);
-      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resProduccion.unidad || resVentas.unidad;
+      const resTrasladosEnviados = trasladosEnviadosDesdeConteo_(idxTrasladosEnviados[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
+      const resProduccion = netoProduccionDesdeConteo_(idxProducciones[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad);
+      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad, cacheVentas);
+      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resVentas.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
-      total += base.cantidad + resAjustes.neto + resTraslados.total + resProduccion.neto + resVentas.neto;
+      total += base.cantidad + resAjustes.neto + resTraslados.total - resTrasladosEnviados.total + resProduccion.neto + resVentas.neto;
       if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
     });
     if (!unidadFinal) return; // sin conteo, compra, traslado ni producción con unidad reconocible en ninguna sede
@@ -522,8 +530,8 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
 /**
  * Agrupa filas de movimiento por "clave de producto|sede", calculando la clave UNA vez por fila.
  * `campoProducto` es el nombre de la columna con el producto (en Producciones se llama `item`), y
- * `sedeDe` extrae la sede que corresponde a ese tipo de movimiento (en Traslados es la de destino,
- * porque un traslado suma al llegar).
+ * `sedeDe` extrae la sede que corresponde a ese tipo de movimiento. Los traslados se indexan DOS
+ * veces con esta función: una por sede_destino (lo que llega) y otra por sede_origen (lo que sale).
  */
 function agruparMovimientosPorClaveYSede_(filas, campoProducto, sedeDe, indice) {
   const idx = {};
@@ -610,6 +618,33 @@ function trasladosRecibidosDesdeConteo_(traslados, clave, sede, fechaConteoExclu
     const recibida = t.cantidad_recibida !== '' && t.cantidad_recibida !== null && t.cantidad_recibida !== undefined
       ? t.cantidad_recibida : t.cantidad_enviada;
     const base = aUnidadBase_(recibida, t.unidad);
+    if (!unidad) unidad = base.unidad;
+    if (base.unidad !== unidad) return;
+    total += base.cantidad;
+  });
+  return { total: total, unidad: unidad };
+}
+
+/** Resta lo enviado por `sede` para `clave` vía traslados (ver Traslados.gs), usando la fecha/hora
+ * real de envío (timestamp_envio, o `fecha` si por algún motivo no quedó registrada) — después del
+ * conteo marcado por `fechaConteoExclusive`/`timestampConteoExclusive` y hasta
+ * `fechaCorteInclusive`. A diferencia de trasladosRecibidosDesdeConteo_, esto cuenta CUALQUIER
+ * estado (Enviado, Con observación, Confirmado, Resuelto): el producto salió físicamente de la
+ * sede en el momento del envío, sin importar qué pase después con la confirmación/observación en
+ * el destino. Diana (ago 2026): "apenas se realiza el traslado resta de la sede que envía". Usa
+ * siempre cantidad_enviada (lo que de verdad salió de la sede), nunca cantidad_recibida (eso es un
+ * asunto del destino, ver trasladosRecibidosDesdeConteo_). */
+function trasladosEnviadosDesdeConteo_(traslados, clave, sede, fechaConteoExclusive, timestampConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+  let total = 0;
+  let unidad = unidadEsperada || '';
+  traslados.forEach(function (t) {
+    if (t.sede_origen !== sede) return;
+    if (claveProducto_(t.producto, indice) !== clave) return;
+    const fuenteFecha = t.timestamp_envio || t.fecha;
+    const f = formatearFecha_(fuenteFecha);
+    if (eventoCubiertoPorConteo_(f, timestampOrdenable_(fuenteFecha), fechaConteoExclusive, timestampConteoExclusive)) return;
+    if (fechaCorteInclusive && f > fechaCorteInclusive) return;
+    const base = aUnidadBase_(t.cantidad_enviada, t.unidad);
     if (!unidad) unidad = base.unidad;
     if (base.unidad !== unidad) return;
     total += base.cantidad;
