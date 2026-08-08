@@ -48,10 +48,37 @@ function validarItemsProduccion_(items, usuario) {
   return null;
 }
 
+/** Revisa tanto el producto terminado (item/cantidad/unidad) como, si viene, el insumo consumido
+ * (insumo_producto/insumo_cantidad/insumo_unidad) — un error de tecleo en cualquiera de los dos
+ * puede dañar el inventario igual de mal. Ver CantidadesRaras.gs. */
+function itemsProduccionConCantidadRara_(items) {
+  const filas = leerTabla_(SHEET_NAMES.PRODUCCIONES);
+  const raras = [];
+  items.forEach(function (it) {
+    const baseItem = aUnidadBase_(it.cantidad, it.unidad);
+    const historialItem = historialCantidadesBase_(filas, 'item', 'cantidad', 'unidad', it.item, baseItem.unidad);
+    const raraItem = cantidadEsRara_(historialItem, baseItem.cantidad);
+    if (raraItem) raras.push(avisoCantidadRara_(it.item, it.cantidad, it.unidad, baseItem.unidad, raraItem));
+
+    if (it.insumo_producto && it.insumo_cantidad !== undefined && it.insumo_cantidad !== '') {
+      const baseInsumo = aUnidadBase_(it.insumo_cantidad, it.insumo_unidad);
+      const historialInsumo = historialCantidadesBase_(filas, 'insumo_producto', 'insumo_cantidad', 'insumo_unidad', it.insumo_producto, baseInsumo.unidad);
+      const raraInsumo = cantidadEsRara_(historialInsumo, baseInsumo.cantidad);
+      if (raraInsumo) raras.push(avisoCantidadRara_(it.insumo_producto, it.insumo_cantidad, it.insumo_unidad, baseInsumo.unidad, raraInsumo));
+    }
+  });
+  return raras;
+}
+
 function produccionRegistrar_(items, usuario, opciones) {
   opciones = opciones || {};
   const errorValidacion = validarItemsProduccion_(items, usuario);
   if (errorValidacion) return { ok: false, error: errorValidacion };
+
+  if (!opciones.confirmar_cantidades_raras) {
+    const raras = itemsProduccionConCantidadRara_(items);
+    if (raras.length) return { ok: false, requiere_confirmacion: true, cantidades_raras: raras };
+  }
 
   // Idempotencia: producir.html manda un request_id nuevo por cada clic en "Guardar" (ver
   // assets/idempotencia.js). Sin esto, cada llamada creaba filas nuevas sin importar si los datos

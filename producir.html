@@ -281,11 +281,22 @@ btnGuardarProduccion.addEventListener('click', conBotonProtegido(btnGuardarProdu
   // independientes en paralelo — si una pasaba y la otra fallaba, quedaba un estado a medias sin
   // forma clara de saber cuál sí se guardó). produccion_con_obligatorios_registrar valida las dos
   // cosas ANTES de escribir cualquiera — auditoría de seguridad, jul 2026.
-  const data = await llamar('produccion_con_obligatorios_registrar', {
+  let data = await llamar('produccion_con_obligatorios_registrar', {
     items_produccion: itemsValidos,
     items_obligatorios: itemsObligatorios,
     opciones: { produccion: { request_id: requestId } }
   });
+  if (!data.ok && data.requiere_confirmacion) {
+    if (!confirmarCantidadesRaras_(data.cantidades_raras)) return;
+    data = await llamar('produccion_con_obligatorios_registrar', {
+      items_produccion: itemsValidos,
+      items_obligatorios: itemsObligatorios,
+      opciones: {
+        produccion: { request_id: requestId, confirmar_cantidades_raras: true },
+        conteo: { confirmar_cantidades_raras: true }
+      }
+    });
+  }
   if (!data.ok) { alert(data.error); return; }
 
   avisarGuardado(`Guardado: ${itemsValidos.length} ítem(s) de producción, ${itemsObligatorios.length} insumo(s) obligatorio(s).`);

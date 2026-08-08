@@ -353,7 +353,7 @@ function handleRequest_(e, method) {
         return jsonOut_({ ok: true, data: cierresTurnoListar_(Object.assign({}, params.filtros, { sede: sedeConsultaPermitida_(sesion.usuario, params.filtros && params.filtros.sede) })) });
       case 'ajuste_inventario_registrar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario));
+        return jsonOut_(ajusteInventarioRegistrar_(params.item, sesion.usuario, params.opciones));
       case 'ajustes_inventario_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_({ ok: true, data: ajustesInventarioListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
@@ -612,7 +612,7 @@ function handleRequest_(e, method) {
         return jsonOut_(usuarioResetearPassword_(params.id, params.password_nueva, sesion.usuario));
       case 'traslado_crear':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(trasladoCrear_(params.item, sesion.usuario));
+        return jsonOut_(trasladoCrear_(params.item, sesion.usuario, params.opciones));
       case 'traslados_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         // BUG DE SEGURIDAD REAL: faltaba pasar sesion.usuario aquí. trasladosListar_ necesita ese

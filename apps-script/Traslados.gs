@@ -18,7 +18,18 @@
  * sigue viniendo del próximo conteo físico en cada punto, como en el resto del sistema.
  */
 
-function trasladoCrear_(item, usuario) {
+/** Historial de ESE MISMO producto trasladado (cualquier origen/destino: un typo lo es en
+ * cualquier ruta) — ver CantidadesRaras.gs. */
+function trasladoConCantidadRara_(item) {
+  const filas = leerTabla_(SHEET_NAMES.TRASLADOS);
+  const base = aUnidadBase_(item.cantidad, item.unidad);
+  const historial = historialCantidadesBase_(filas, 'producto', 'cantidad_enviada', 'unidad', item.producto, base.unidad);
+  const rara = cantidadEsRara_(historial, base.cantidad);
+  return rara ? avisoCantidadRara_(item.producto, item.cantidad, item.unidad, base.unidad, rara) : null;
+}
+
+function trasladoCrear_(item, usuario, opciones) {
+  opciones = opciones || {};
   if (!item || !item.producto || !item.unidad || !item.cantidad || !item.sede_origen || !item.sede_destino) {
     return { ok: false, error: 'Faltan datos del traslado (producto, unidad, cantidad, sede origen y sede destino son obligatorios)' };
   }
@@ -29,6 +40,11 @@ function trasladoCrear_(item, usuario) {
     return { ok: false, error: 'El origen y el destino no pueden ser el mismo lugar' };
   }
   requiereSedeTraslado_(usuario, item.sede_origen, 'enviar');
+
+  if (!opciones.confirmar_cantidades_raras) {
+    const rara = trasladoConCantidadRara_(item);
+    if (rara) return { ok: false, requiere_confirmacion: true, cantidades_raras: [rara] };
+  }
 
   const fila = {
     id: Utilities.getUuid(),

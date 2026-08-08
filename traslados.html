@@ -157,7 +157,11 @@ document.getElementById('btn-enviar').addEventListener('click', conBotonProtegid
     alert('Completa el producto y una cantidad mayor que cero.');
     return;
   }
-  const data = await llamar('traslado_crear', { item });
+  let data = await llamar('traslado_crear', { item });
+  if (!data.ok && data.requiere_confirmacion) {
+    if (!confirmarCantidadesRaras_(data.cantidades_raras)) return;
+    data = await llamar('traslado_crear', { item, opciones: { confirmar_cantidades_raras: true } });
+  }
   if (data.ok) {
     avisarGuardado('Traslado enviado.');
     document.getElementById('env-producto').value = '';
