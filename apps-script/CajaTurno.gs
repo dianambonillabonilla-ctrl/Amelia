@@ -379,12 +379,17 @@ function cajaEstado_(fecha, sede, usuario) {
   // abierta no hay nada que "esté pendiente" en ese sentido, el semáforo no se adelanta a un
   // conteo que todavía no pasó.
   const diferenciaPendiente = apertura.estado==='Cerrado' && (Number(apertura.diferencia)!==0 || Number(apertura.diferencia_caja_fuerte)!==0);
+  // Diana (ago 2026): FUDO sigue sincronizando "ayer" cada 15 minutos — si algo cambió después de
+  // cerrar, que aparezca aquí mismo, para quien esté viendo ese día (Encargado o Administrador), no
+  // solo en el panel de novedades del Administrador.
+  const cambioFudoTrasCierre = cajaFudoCambioTrasCierre_(apertura);
   return {
     ok:true,abierta:apertura.estado==='Abierto',apertura,movimientos_resumen:calculo.resumen,
     pagos_efectivo_esperado:calculo.pagos_efectivo_esperado,pagos_efectivo_dia:calculo.pagos_efectivo_dia,
     efectivo_esperado:calculo.esperado,caja_fuerte_esperada:calculo.caja_fuerte_esperada,
     total_bajo_custodia:calculo.esperado+calculo.caja_fuerte_esperada,puede_cerrar:cajaPuedeCerrar_(usuario,fechaFmt),
     fudo_sync:syncFudo,cuadre_confiable:syncFudo.ok,efectivo_sin_identificar:efectivoSinIdentificar,
+    fudo_cambio_tras_cierre:cambioFudoTrasCierre,
     nivel_confianza:cajaNivelConfianza_(syncFudo.ok,efectivoSinIdentificar,diferenciaPendiente,syncFudo.pendiente)
   };
 }
@@ -539,13 +544,39 @@ function cajaCerrar_(item,usuario) {
 }
 
 /**
+ * FUDO sigue sincronizando "ayer" automáticamente cada 15 minutos (ver fudoSincronizacionAutomatica_
+ * en FudoApi.gs) — un pago que llegó tarde o se corrigió en FUDO después de cerrar la caja puede
+ * cambiar el efectivo esperado de un día que ya se cerró. Diana (ago 2026): quiere que esto se avise
+ * solo, en segundo plano, sin tener que preguntarlo — "cerré con 300 mil y FUDO ahora dice que
+ * debería haber 350 mil, debe aparecer que no coincide". Esto NO llama a la API de FUDO — solo
+ * recalcula con lo que ya está guardado (lo mismo que hace la sincronización automática cada 15
+ * minutos), así que no cuesta más que el resto de cajaEstado_. Solo tiene sentido revisar cierres
+ * recientes: FUDO no va a corregir datos de hace meses, y así no se recalculan cientos de días
+ * cerrados cada vez que se abre el panel de novedades o el histórico.
+ */
+const CAJA_FUDO_POST_CIERRE_DIAS_ = 3;
+
+function cajaFudoCambioTrasCierre_(turno) {
+  if (turno.estado !== 'Cerrado') return null;
+  const fecha = formatearFecha_(turno.fecha);
+  const limite = new Date();
+  limite.setDate(limite.getDate() - CAJA_FUDO_POST_CIERRE_DIAS_);
+  if (fecha < formatearFecha_(limite)) return null;
+  const recalculo = cajaEfectivoEsperado_(turno, cajaMovimientosDelDia_(fecha, turno.sede), fecha, turno.sede);
+  const esperadoGuardado = Number(turno.efectivo_esperado) || 0;
+  const diferencia = Number((recalculo.esperado - esperadoGuardado).toFixed(2));
+  if (diferencia === 0) return null;
+  return { esperado_guardado: esperadoGuardado, esperado_actual: recalculo.esperado, diferencia: diferencia };
+}
+
+/**
  * NOVEDADES DE ADMINISTRADOR — Diana (ago 2026): ninguna diferencia (al abrir o al cerrar) ni un
  * cierre sin FUDO sincronizado deben impedir que la caja opere, pero el Administrador sí necesita
  * enterarse y darles seguimiento aparte. Esto es puramente informativo/de seguimiento — "conciliar"
  * aquí solo significa marcar que ya se revisó (con una nota opcional); nunca descuenta nada a nadie
  * ni corrige por sí solo los números que ya quedaron guardados en el turno.
  */
-function cajaTurnoMotivosNovedad_(turno) {
+function cajaTurnoMotivosNovedad_(turno, cambioFudoPrecalculado) {
   const motivos = [];
   if ((Number(turno.diferencia_apertura) || 0) !== 0 || (Number(turno.diferencia_caja_fuerte_apertura) || 0) !== 0) {
     motivos.push('Diferencia al abrir');
@@ -557,6 +588,10 @@ function cajaTurnoMotivosNovedad_(turno) {
     if (turno.fudo_confiable_cierre === false) {
       motivos.push('FUDO no sincronizado al cerrar');
     }
+    // Permite pasar el resultado ya calculado (cajaNovedadesAdministrador_/cajaHistorialListar_ lo
+    // necesitan de todas formas para mostrar el detalle) en vez de recalcularlo dos veces.
+    const cambioFudo = cambioFudoPrecalculado !== undefined ? cambioFudoPrecalculado : cajaFudoCambioTrasCierre_(turno);
+    if (cambioFudo) motivos.push('FUDO cambió después del cierre');
   }
   return motivos;
 }
@@ -566,7 +601,8 @@ function cajaNovedadesAdministrador_(filtros) {
   const soloPendientes = filtros.solo_pendientes !== false;
   const novedades = leerTabla_(SHEET_NAMES.CAJA_TURNO)
     .map(function (t) {
-      const motivos = cajaTurnoMotivosNovedad_(t);
+      const cambioFudo = cajaFudoCambioTrasCierre_(t);
+      const motivos = cajaTurnoMotivosNovedad_(t, cambioFudo);
       if (!motivos.length) return null;
       const resuelta = String(t.estado_conciliacion || '') === 'Resuelta';
       if (soloPendientes && resuelta) return null;
@@ -575,6 +611,7 @@ function cajaNovedadesAdministrador_(filtros) {
         diferencia_apertura: Number(t.diferencia_apertura) || 0,
         diferencia_caja_fuerte_apertura: Number(t.diferencia_caja_fuerte_apertura) || 0,
         diferencia: Number(t.diferencia) || 0, diferencia_caja_fuerte: Number(t.diferencia_caja_fuerte) || 0,
+        fudo_cambio_tras_cierre: cambioFudo,
         observacion_apertura: t.observacion_apertura || '', observacion_cierre: t.observacion_cierre || '',
         estado_conciliacion: t.estado_conciliacion || '', nota_conciliacion: t.nota_conciliacion || ''
       };
@@ -608,6 +645,7 @@ function cajaHistorialListar_(fechaDesde, fechaHasta, sede) {
   });
   if (sede && sede !== 'Ambas') filas = filas.filter(function (t) { return t.sede === sede; });
   const historial = filas.map(function (t) {
+    const cambioFudo = cajaFudoCambioTrasCierre_(t);
     return {
       fecha: formatearFecha_(t.fecha), sede: t.sede, estado: t.estado,
       usuario_apertura: t.usuario_apertura || '', usuario_cierre: t.usuario_cierre || '',
@@ -617,7 +655,8 @@ function cajaHistorialListar_(fechaDesde, fechaHasta, sede) {
       efectivo_esperado: Number(t.efectivo_esperado) || 0, efectivo_contado: Number(t.efectivo_contado) || 0,
       caja_fuerte_esperada: Number(t.caja_fuerte_esperada) || 0, caja_fuerte_contada: Number(t.caja_fuerte_contada) || 0,
       observacion_apertura: t.observacion_apertura || '', observacion_cierre: t.observacion_cierre || '',
-      motivos_novedad: cajaTurnoMotivosNovedad_(t), estado_conciliacion: t.estado_conciliacion || ''
+      fudo_cambio_tras_cierre: cambioFudo,
+      motivos_novedad: cajaTurnoMotivosNovedad_(t, cambioFudo), estado_conciliacion: t.estado_conciliacion || ''
     };
   }).sort(function (a, b) { return b.fecha.localeCompare(a.fecha) || a.sede.localeCompare(b.sede); });
   return { ok: true, fecha_desde: desde, fecha_hasta: hasta, historial: historial };

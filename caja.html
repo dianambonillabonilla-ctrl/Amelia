@@ -272,6 +272,7 @@ async function cargarNovedades(){
     if(n.diferencia_caja_fuerte_apertura)detalle.push(`Caja fuerte apertura: ${dinero(n.diferencia_caja_fuerte_apertura)}`);
     if(n.diferencia)detalle.push(`Cierre: ${dinero(n.diferencia)}`);
     if(n.diferencia_caja_fuerte)detalle.push(`Caja fuerte cierre: ${dinero(n.diferencia_caja_fuerte)}`);
+    if(n.fudo_cambio_tras_cierre)detalle.push(`FUDO ahora dice ${dinero(n.fudo_cambio_tras_cierre.esperado_actual)} (guardado: ${dinero(n.fudo_cambio_tras_cierre.esperado_guardado)})`);
     return `<tr>
       <td>${escapeHtml(n.fecha)}</td>
       <td>${escapeHtml(n.sede)}</td>
@@ -355,7 +356,15 @@ async function cargar(opciones){
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
     const a=data.apertura;const dif=Number(a.diferencia||0);
-    document.getElementById('resumen-cierre').innerHTML=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado por ${escapeHtml(a.usuario_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
+    let resumenHtml=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado por ${escapeHtml(a.usuario_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
+    // Diana (ago 2026): FUDO sigue sincronizando "ayer" cada 15 minutos — si algo cambió después de
+    // cerrar, que se vea aquí mismo (Encargado o Administrador, quien sea que mire este día), no
+    // solo en el panel de novedades del Administrador.
+    if(data.fudo_cambio_tras_cierre){
+      const c=data.fudo_cambio_tras_cierre;
+      resumenHtml+=`<br><br><span style="color:var(--amber)">⚠ FUDO actualizó esta información después del cierre: ahora dice ${dinero(c.esperado_actual)} en vez de ${dinero(c.esperado_guardado)} guardado (${c.diferencia>0?'+':''}${dinero(c.diferencia)}). Coméntalo con el Administrador.</span>`;
+    }
+    document.getElementById('resumen-cierre').innerHTML=resumenHtml;
     mostrar('cerrada');return;
   }
   document.getElementById('estado').textContent=`${confianza.icono} Caja abierta`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('abierta');
