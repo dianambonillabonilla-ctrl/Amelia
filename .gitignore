@@ -1,3 +1,4 @@
 node_modules/
 apps-script/.clasp.json
 .clasprc.json
+.claude/
