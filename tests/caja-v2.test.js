@@ -29,7 +29,7 @@ const TURNO_HEADERS = [
 ];
 const MOVIMIENTOS_HEADERS = [
   'id', 'fecha', 'sede', 'tipo', 'valor', 'persona_entrega', 'persona_recibe',
-  'hora', 'motivo', 'evidencia_url', 'usuario_id', 'usuario', 'timestamp'
+  'hora', 'motivo', 'evidencia_url', 'usuario_id', 'usuario', 'timestamp', 'idempotency_key'
 ];
 
 // Hoja falsa que vive sobre un array de OBJETOS (no arrays crudos): leerTabla_ lee ese mismo
@@ -73,7 +73,14 @@ function construirEntorno_() {
     leerTabla_: (nombre) => tablas[nombre] || [],
     appendRowFromObj_: (nombre, fila) => { if (tablas[nombre]) tablas[nombre].push(fila); },
     asegurarColumnas_: () => {},
-    formatearFecha_: (v) => String(v).slice(0, 10),
+    // Igual que la real (Conteos.gs): las cadenas ya en formato yyyy-MM-dd pasan tal cual; un Date
+    // (como el `new Date()` que usa cajaAbrir_ para comparar contra "hoy") se formatea de verdad —
+    // String(new Date()).slice(0,10) daba basura tipo "Fri Aug 07" y rompía esa comparación.
+    formatearFecha_: (v) => {
+      if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return v.trim();
+      const d = v instanceof Date ? v : new Date(v);
+      return d.toISOString().slice(0, 10);
+    },
     neutralizarObjetoFormulas_: (obj) => obj,
     sedeEscrituraPermitida_: () => true,
     auditoriaRegistrar_: () => {},
@@ -475,6 +482,69 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   // Sin sede (frontend nunca lo hace, pero por si acaso) debe comportarse igual que 'Ambas'.
   const sinSede = ctx.cajaHistorialListar_('2026-07-01', '2026-07-31', '');
   assert.equal(sinSede.historial.length, 2);
+}
+
+// --- cajaAbrir_: sede y fecha inválidas (auditoría externa, ago 2026) -------------------------------
+{
+  const { ctx } = construirEntorno_();
+  const sedeInvalida = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'Centro de Producción', base_inicial: 0, caja_fuerte_inicial: 0 }, administrador);
+  assert.equal(sedeInvalida.ok, false, 'Centro de Producción no debe poder tener caja');
+  assert.match(sedeInvalida.error, /San Antonio y Capri/);
+
+  const fechaFutura = ctx.cajaAbrir_({ fecha: '2027-06-15', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 }, administrador);
+  assert.equal(fechaFutura.ok, false, 'no se debe poder abrir una fecha futura');
+  assert.match(fechaFutura.error, /fecha futura/);
+}
+
+// --- cajaMovimientoRegistrar_: idempotencia (auditoría externa, ago 2026) ---------------------------
+// Antes: un doble clic o un reintento de red guardaba el MISMO movimiento dos veces, sin forma de
+// arreglarlo después (no se puede editar ni borrar un movimiento).
+{
+  const { ctx, turnos } = construirEntorno_();
+  ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 }, encargada);
+  const item = { fecha: '2026-07-15', sede: 'San Antonio', tipo: 'Otro ingreso', valor: 50000, motivo: 'Vuelto de la panadería', idempotency_key: 'clave-1' };
+  const primero = ctx.cajaMovimientoRegistrar_(item, encargada);
+  assert.equal(primero.ok, true);
+  const segundo = ctx.cajaMovimientoRegistrar_(item, encargada);
+  assert.equal(segundo.ok, true, 'reintentar con la misma clave no debe fallar');
+  assert.equal(segundo.item.id, primero.item.id, 'debe devolver el mismo movimiento, no crear uno nuevo');
+
+  const movimientosGuardados = ctx.cajaMovimientosListar_('2026-07-15', 'San Antonio');
+  assert.equal(movimientosGuardados.length, 1, 'solo debe quedar UN movimiento guardado, no dos');
+
+  // Una clave distinta sí es un movimiento genuinamente nuevo.
+  const otro = ctx.cajaMovimientoRegistrar_(Object.assign({}, item, { idempotency_key: 'clave-2' }), encargada);
+  assert.equal(otro.ok, true);
+  assert.notEqual(otro.item.id, primero.item.id);
+  assert.equal(ctx.cajaMovimientosListar_('2026-07-15', 'San Antonio').length, 2);
+}
+
+// --- cajaMovimientoRegistrar_: tope de disponible (auditoría externa, ago 2026) ---------------------
+// Antes: un retiro de caja fuerte vacía la dejaba en negativo e inflaba la caja operativa con
+// dinero que nunca existió; un envío/entrega más grande que lo disponible dejaba un faltante
+// permanente que nadie podía explicar.
+{
+  const { ctx } = construirEntorno_();
+  ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0, observacion_apertura: 'base inicial de prueba' }, encargada);
+
+  const envioDeMas = ctx.cajaMovimientoRegistrar_({ fecha: '2026-07-15', sede: 'San Antonio', tipo: 'Envío a caja fuerte', valor: 150000, motivo: 'prueba', idempotency_key: 'k1' }, encargada);
+  assert.equal(envioDeMas.ok, false, 'no debe poder enviar a caja fuerte más de lo que hay en la caja operativa');
+  assert.match(envioDeMas.error, /excede el efectivo disponible/);
+
+  const retiroDeCajaFuerteVacia = ctx.cajaMovimientoRegistrar_({ fecha: '2026-07-15', sede: 'San Antonio', tipo: 'Retiro de caja fuerte', valor: 50000, motivo: 'prueba', idempotency_key: 'k2' }, encargada);
+  assert.equal(retiroDeCajaFuerteVacia.ok, false, 'no debe poder retirar de una caja fuerte vacía');
+  assert.match(retiroDeCajaFuerteVacia.error, /excede lo disponible en la caja fuerte/);
+
+  // Un envío válido (dentro de lo disponible) sí debe funcionar, y ahora la caja fuerte tiene fondos
+  // para que un retiro de ese mismo monto sí sea válido.
+  const envioValido = ctx.cajaMovimientoRegistrar_({ fecha: '2026-07-15', sede: 'San Antonio', tipo: 'Envío a caja fuerte', valor: 50000, motivo: 'prueba', idempotency_key: 'k3' }, encargada);
+  assert.equal(envioValido.ok, true);
+  const retiroValido = ctx.cajaMovimientoRegistrar_({ fecha: '2026-07-15', sede: 'San Antonio', tipo: 'Retiro de caja fuerte', valor: 50000, motivo: 'prueba', idempotency_key: 'k4' }, encargada);
+  assert.equal(retiroValido.ok, true, 'ahora sí hay 50.000 disponibles en caja fuerte');
+
+  // 'Otro ingreso' nunca tiene tope — siempre es dinero que ENTRA, no que sale.
+  const otroIngreso = ctx.cajaMovimientoRegistrar_({ fecha: '2026-07-15', sede: 'San Antonio', tipo: 'Otro ingreso', valor: 999999999, motivo: 'prueba', idempotency_key: 'k5' }, encargada);
+  assert.equal(otroIngreso.ok, true, 'Otro ingreso no debe tener tope de disponibilidad');
 }
 
 console.log('caja-v2: OK');

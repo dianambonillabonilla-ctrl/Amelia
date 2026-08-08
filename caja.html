@@ -411,9 +411,16 @@ document.getElementById('abrir').addEventListener('click',conBotonProtegido(docu
   const r=await llamar('caja_abrir',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja abierta. Ahora confirma Rappi.');cargar();
 }));
 document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
+// Diana (ago 2026): un doble clic, o reintentar tras un timeout de red pensando que no se guardó,
+// registraba el MISMO movimiento dos veces (no se puede editar ni borrar después). La clave se
+// genera una vez por intento y se reutiliza en cada reintento; solo se renueva cuando el guardado
+// SÍ tuvo éxito, para que el siguiente movimiento (uno de verdad distinto) tenga su propia clave.
+let movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
 document.getElementById('guardar-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('guardar-movimiento'),async()=>{
-  const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim()};
-  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');avisarGuardado('Movimiento registrado.');cargar();
+  const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim(),idempotency_key:movimientoIdempotencyKey_};
+  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}
+  movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
+  ['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');avisarGuardado('Movimiento registrado.');cargar();
 }));
 document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
