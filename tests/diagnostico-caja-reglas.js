@@ -151,15 +151,21 @@ console.log('\n##### 35 — "no existe lista de días anteriores" #####');
 console.log('\n##### Extra: ¿se puede saber si una sede dejó un día SIN CERRAR? #####');
 (function () {
   const { env, P } = nuevo();
-  // Se abre el 5, nunca se cierra. Se abre el 6 y se cierra. Se consulta el 7.
+  // Se abre el 5 y NUNCA se cierra. Se abre el 6, se le registra el efectivo del día y se cierra
+  // bien (con su ingreso, para que no haya diferencia y el cierre no se bloquee). Se consulta el 7.
   env.post(P({ action: 'caja_abrir', item: { fecha: '2026-08-05', sede: SA, base_inicial: 0, caja_fuerte_inicial: 0 } }));
   env.post(P({ action: 'caja_abrir', item: { fecha: '2026-08-06', sede: SA, base_inicial: 0, caja_fuerte_inicial: 0 } }));
-  env.post(P({ action: 'caja_cerrar', item: { fecha: '2026-08-06', sede: SA, efectivo_contado: 80000, caja_fuerte_contada: 0, base_siguiente: 30000, persona_recibe_cierre: 'G' } }));
+  env.post(P({ action: 'caja_movimiento_registrar', item: { fecha: '2026-08-06', sede: SA, tipo: 'Otro ingreso', valor: 80000, motivo: 'efectivo del día' } }));
+  const cierre = env.post(P({ action: 'caja_cerrar', item: { fecha: '2026-08-06', sede: SA, efectivo_contado: 80000, caja_fuerte_contada: 0, base_siguiente: 30000, persona_recibe_cierre: 'Giselle' } }));
   const est = env.post(P({ action: 'caja_estado', fecha: HOY, sede: SA }));
   const turnos = env.ctx.leerTabla_('Caja_Turno').map(x => x.fecha + '=' + x.estado);
+  console.log('  cierre del 6: ok=' + cierre.ok + (cierre.ok ? ' (dejó base_siguiente = $30000)' : ' -> ' + cierre.error));
   console.log('  turnos en la hoja: ' + JSON.stringify(turnos));
-  console.log('  base esperada de hoy: $' + est.base_esperada + ' (viene del 6, el único cerrado)');
+  console.log('  base esperada de hoy: $' + est.base_esperada + ' — debería ser $30000');
   console.log('  ¿el estado de hoy avisa que el 5 quedó abierto para siempre? ' +
-    (JSON.stringify(est).indexOf('sin_cerrar') !== -1 || JSON.stringify(est).indexOf('abiertos') !== -1 ? 'sí' : 'NO'));
-  console.log('  >> HALLAZGO: un día abierto y nunca cerrado queda invisible. Nadie se enteraría.');
+    (/sin_cerrar|dias_abiertos|pendientes/.test(JSON.stringify(est)) ? 'sí' : 'NO'));
+  console.log('  >> HALLAZGO 1: un día abierto y nunca cerrado queda invisible. Nadie se enteraría.');
+  console.log('  >> HALLAZGO 2: la base de hoy sale en $0 aunque el 6 cerró dejando $30000. Es el');
+  console.log('     Bug 1: el cierre se hizo HOY, así que su timestamp no es anterior a la');
+  console.log('     medianoche de hoy y el filtro no lo encuentra.');
 })();
