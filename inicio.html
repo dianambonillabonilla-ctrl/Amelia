@@ -18,6 +18,10 @@
       <h2 id="saludo">Bienvenida</h2>
       <p>Selecciona una tarea según tu rol. El menú lateral muestra únicamente los módulos que tienes autorizados.</p>
     </section>
+    <section class="card oculto" id="card-alertas-stock" style="border-left:4px solid var(--red)">
+      <h2>⚠ Stock por debajo del mínimo</h2>
+      <div id="alertas-stock-lista"></div>
+    </section>
     <section class="card">
       <h2>Hoy</h2>
       <div class="tiles">
@@ -63,6 +67,23 @@ Sesion.requerir();
 montarBarraUsuario();
 const u=Sesion.usuario();
 if(u) document.getElementById('saludo').textContent='Bienvenida, '+(u.nombre||'');
+
+// Diana (ago 2026): "la alerta debería llegar por la app... para que cada uno sepa" — sin pasar
+// sede, el backend (sedeConsultaPermitida_) ya resuelve solo lo que le toca ver a este usuario:
+// su propia sede si tiene una asignada, o las 3 sedes juntas (cada fila con la suya) si es
+// Administrador. No depende de si el correo de hoy ya se mandó — es el mismo chequeo, en vivo.
+async function cargarAlertasStock_() {
+  const r = await llamar('alertas_stock_bajo_listar', {});
+  if (!r.ok || !Array.isArray(r.data?.bajos) || !r.data.bajos.length) return;
+  document.getElementById('card-alertas-stock').classList.remove('oculto');
+  document.getElementById('alertas-stock-lista').innerHTML = r.data.bajos.map(b => `
+    <p style="margin:6px 0">
+      <strong>${escapeHtml(b.producto)}</strong> (${escapeHtml(b.sede)}):
+      ${Number(b.actual).toLocaleString('es-CO')} ${escapeHtml(b.unidad)}
+      — mínimo ${Number(b.minimo).toLocaleString('es-CO')} ${escapeHtml(b.unidad)}
+    </p>`).join('');
+}
+cargarAlertasStock_();
 </script>
 </body>
 </html>

@@ -99,7 +99,7 @@ function configurarHojas() {
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
       'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
       'rendimiento_porcentaje', 'receta_referencia', 'hora_inicio', 'hora_fin', 'observacion', 'evidencia_url'],
-    AlertasEnviadas: ['fecha', 'plato', 'tipo'],
+    AlertasEnviadas: ['fecha', 'plato', 'tipo', 'sede'],
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],
@@ -518,6 +518,8 @@ function handleRequest_(e, method) {
         return jsonOut_(ventasPendientesSedeAsignar_(params.creada_por, params.sede, sesion.usuario));
       case 'disponible_hoy':
         return jsonOut_({ ok: true, data: calcularDisponibleHoy_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
+      case 'alertas_stock_bajo_listar':
+        return jsonOut_(alertasStockBajoListar_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
       case 'tendencia_ingrediente':
         return jsonOut_({ ok: true, data: calcularTendenciaIngrediente_(params.ingrediente, params.dias, sedeConsultaPermitida_(sesion.usuario, params.sede)) });
       case 'conciliacion':
