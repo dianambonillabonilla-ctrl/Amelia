@@ -529,7 +529,7 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
       const resTrasladosEnviados = trasladosEnviadosDesdeConteo_(idxTrasladosEnviados[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
       const resProduccion = netoProduccionDesdeConteo_(idxProducciones[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad);
       const resInsumoProduccion = netoInsumoProduccionDesdeConteo_(idxInsumoProduccion[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad);
-      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resInsumoProduccion.unidad, cacheVentas);
+      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resInsumoProduccion.unidad, cacheVentas);
       const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resInsumoProduccion.unidad || resVentas.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
@@ -718,10 +718,15 @@ function netoInsumoProduccionDesdeConteo_(producciones, clave, sede, fechaConteo
 
 /**
  * Resta el consumo por ventas (ítems + subítems, recetas vigentes) desde el último conteo físico
- * hasta la fecha de corte — Fase 6 del roadmap. Solo días posteriores al día del conteo (misma
- * limitación por fecha que calcularInventarioTeorico_).
+ * hasta la fecha de corte — Fase 6 del roadmap. Los días estrictamente posteriores al conteo se
+ * restan completos (sin ambigüedad de hora). El día EXACTO del conteo se trata aparte, por venta
+ * individual con su propio timestamp (ver consumoVentasDelDiaConTimestamp_ más abajo) — igual que
+ * eventoCubiertoPorConteo_ ya hace para compras/mermas/traslados/producción. Diana (ago 2026): "las
+ * ventas por hora exacta sirven por que en algunos turnos se parten y deben medio cerrar caja para
+ * entregarle a otro cajero" — un conteo a media tarde no debe perder ni duplicar las ventas de ese
+ * mismo día: las de antes del conteo ya están reflejadas en él, las de después deben restar.
  */
-function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInclusive, indice, unidadEsperada, cacheVentas) {
+function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, timestampConteoExclusive, fechaCorteInclusive, indice, unidadEsperada, cacheVentas) {
   if (!sede || sede === 'Ambas') return { neto: 0, unidad: unidadEsperada || '' };
   if (typeof movimientosDesdeVentas_ !== 'function') return { neto: 0, unidad: unidadEsperada || '' };
   let neto = 0;
@@ -735,13 +740,72 @@ function netoVentasDesdeConteo_(clave, sede, fechaConteoExclusive, fechaCorteInc
   // tiempo de "Disponible Hoy".
   const lineas = consumoVentasPorProducto_(sede, fechaCorteInclusive, indice, cacheVentas)[clave] || [];
   lineas.forEach(function (l) {
-    if (fechaConteoExclusive && l.fecha <= fechaConteoExclusive) return;
+    if (fechaConteoExclusive && l.fecha <= fechaConteoExclusive) return; // el día del conteo se trata aparte, ver abajo
     const base = aUnidadBase_(Math.abs(l.cantidad), l.unidad);
     if (!unidad) unidad = base.unidad;
     if (base.unidad !== unidad) return;
     neto += l.cantidad;
   });
+
+  // Día exacto del conteo: si el conteo trae hora real, solo las ventas hechas DESPUÉS de esa hora
+  // restan — las de antes ya están reflejadas en el conteo físico. Sin hora registrada (conteos
+  // viejos), se mantiene el criterio conservador anterior: todo el día queda cubierto por el
+  // conteo (no se resta nada), igual que hace eventoCubiertoPorConteo_ en ese mismo caso.
+  if (fechaConteoExclusive && fechaConteoExclusive <= fechaCorteInclusive) {
+    const lineasDelDia = consumoVentasDelDiaConTimestamp_(fechaConteoExclusive, sede, indice, cacheVentas)[clave] || [];
+    lineasDelDia.forEach(function (l) {
+      if (eventoCubiertoPorConteo_(fechaConteoExclusive, l.timestamp, fechaConteoExclusive, timestampConteoExclusive)) return;
+      const base = aUnidadBase_(Math.abs(l.cantidad), l.unidad);
+      if (!unidad) unidad = base.unidad;
+      if (base.unidad !== unidad) return;
+      neto -= base.cantidad;
+    });
+  }
   return { neto: neto, unidad: unidad };
+}
+
+/**
+ * Consumo por ventas de UN día, por producto, pero SIN agregar entre ventas — cada línea conserva
+ * el timestamp real de la venta que la generó (ver eventoCubiertoPorConteo_). A diferencia de
+ * movimientosDesdeVentas_ (que sí agrega todo el día en un solo número por producto, porque hasta
+ * ahora nada necesitaba distinguir la hora dentro del día), esto explota la receta vigente
+ * venta-por-venta — necesario solo para el día exacto del conteo, donde un conteo a media tarde
+ * parte las ventas de ese día en "antes" (cubiertas) y "después" (pendientes de restar).
+ */
+function consumoVentasDelDiaConTimestamp_(fecha, sede, indice, cacheVentas) {
+  const cacheClave = cacheVentas ? '__consumo_ventas_con_ts__|' + sede + '|' + fecha : '';
+  if (cacheVentas && cacheVentas[cacheClave]) return cacheVentas[cacheClave];
+
+  const porClave = {};
+  const ventasDelDia = (typeof ventasFudoLineasParaConsumo_ === 'function'
+    ? ventasFudoLineasParaConsumo_(fecha, { sin_canceladas: true, sede: sede })
+    : typeof ventasFudoLineasParaFecha_ === 'function'
+      ? ventasFudoLineasParaFecha_(fecha, { sin_canceladas: true, sede: sede })
+      : { lineas: leerTabla_(SHEET_NAMES.VENTAS_FUDO).filter(function (v) {
+        return formatearFecha_(v.creacion) === fecha && v.sede === sede && !ventaCancelada_(v);
+      }) }).lineas;
+
+  if (ventasDelDia.length) {
+    const recetaMap = typeof recetaMapVigenteMemoizado_ === 'function'
+      ? recetaMapVigenteMemoizado_(fecha, sede, indice, cacheVentas)
+      : construirRecetaMap_(recetasVigentes_(fecha, sede), indice);
+    ventasDelDia.forEach(function (v) {
+      const claveProd = claveRecetaVenta_(v.producto, recetaMap, indice);
+      const ts = timestampOrdenable_(v.creacion);
+      const consumo = {};
+      if (recetaMap[claveProd]) {
+        explotarReceta_(claveProd, Number(v.cantidad) || 0, recetaMap, consumo, indice);
+      } else {
+        consumo[claveProd] = { cantidad: Number(v.cantidad) || 0, unidad: 'u' };
+      }
+      Object.keys(consumo).forEach(function (clave) {
+        if (!porClave[clave]) porClave[clave] = [];
+        porClave[clave].push({ timestamp: ts, cantidad: consumo[clave].cantidad, unidad: consumo[clave].unidad });
+      });
+    });
+  }
+  if (cacheVentas) cacheVentas[cacheClave] = porClave;
+  return porClave;
 }
 
 /**

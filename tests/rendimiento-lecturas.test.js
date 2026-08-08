@@ -193,6 +193,37 @@ function tablasBase() {
   console.log('el consumo por ventas se resta igual que antes (1000 - 200 = 800): OK');
 })();
 
+// --- 5. Ventas del MISMO día del conteo: solo restan las que pasaron DESPUÉS de la hora del conteo -
+// (Diana, ago 2026: "las ventas por hora exacta sirven por que en algunos turnos se parten y deben
+// medio cerrar caja para entregarle a otro cajero" — un conteo a media tarde no debe perder ni
+// duplicar las ventas de ese mismo día).
+
+(function () {
+  const tablas = tablasBase();
+  tablas.Recetas = [
+    { producto: 'Arepa', ingrediente: 'Papa', cantidad: 100, unidad: 'g', tipo: 'plato', estado: 'activo' }
+  ];
+  // Conteo físico de la TARDE (14:00) el mismo día de corte.
+  tablas.Conteos_Manuales = [
+    { fecha: HOY, sede: 'San Antonio', punto_conteo: 'Cocina', producto: 'Papa', unidad: 'g', cantidad: 5000, timestamp: HOY + 'T14:00:00Z' }
+  ];
+  tablas.Fudo_Items = [
+    // Venta de la mañana (10:00), ANTES del conteo: ya está reflejada en el conteo, no debe restar.
+    { id_venta: 'V1', creacion: HOY + 'T10:00:00Z', producto: 'Arepa', cantidad: 2, precio: 1000, cancelada: false, sede: 'San Antonio' },
+    // Venta de la noche (18:00), DESPUÉS del conteo: sí debe restar.
+    { id_venta: 'V2', creacion: HOY + 'T18:00:00Z', producto: 'Arepa', cantidad: 3, precio: 1000, cancelada: false, sede: 'San Antonio' }
+  ];
+  const mod = cargarConContador(tablas);
+
+  const stock = mod.obtenerUltimoStockPorIngrediente_(HOY, {}, 'San Antonio');
+  assert.equal(
+    stock.papa.cantidad, 4700,
+    '5000 g contados a las 14:00 - 300 g vendidos DESPUÉS (3 arepas x 100 g a las 18:00) = 4700 g; ' +
+    'las 2 arepas de las 10:00 (antes del conteo) no deben restar aparte, quedó en ' + stock.papa.cantidad
+  );
+  console.log(`ventas del mismo día del conteo respetan la hora exacta (papa en ${stock.papa.cantidad} g): OK`);
+})();
+
 // --- 5. El libro de inventario tampoco recorre el calendario día por día -------------------------
 
 (function () {
