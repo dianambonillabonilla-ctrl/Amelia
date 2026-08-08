@@ -274,11 +274,13 @@ function cajaAbrir_(item, usuario) {
   if (!fuerteValida.ok) return { ok:false, error: 'Caja fuerte contada al abrir: ' + fuerteValida.error };
 
   // Abrir NO depende de los pagos de HOY: la base esperada viene del cierre anterior, no de FUDO
-  // (solo cerrar sí lo necesita, ver cajaCerrar_). Se intenta sincronizar para que el aviso en
-  // pantalla esté al día, pero un fallo de la API nunca debe impedir abrir la caja — antes esto
-  // bloqueaba a cualquiera, incluida la Administradora, aunque el conteo físico coincidiera
-  // exactamente con lo esperado.
-  const syncFudo = cajaSincronizarFudo_(fecha,item.sede,usuario,true);
+  // (solo cerrar sí lo necesita, ver cajaCerrar_). Hasta ago 2026 esto igual forzaba aquí mismo una
+  // sincronización real (red + varias páginas de /sales y /payments) — si FUDO tardaba, el botón
+  // "Abrir caja" se quedaba pensando hasta el timeout de 45 segundos del navegador, por un dato que
+  // ni siquiera hace falta para abrir. Ahora solo lee lo que ya haya en caché (igual que cajaEstado_
+  // desde el PR #155) y deja que la propia pantalla dispare la sincronización real en segundo plano
+  // justo después de abrir (sincronizarFudoSiPendiente_ en caja.html).
+  const syncFudo = cajaSincronizarFudo_(fecha,item.sede,usuario,false);
 
   const baseEsperada = cajaBaseEsperada_(fecha,item.sede);
   const fuerteEsperada = cajaSaldoFuerteAntes_(fecha,item.sede);

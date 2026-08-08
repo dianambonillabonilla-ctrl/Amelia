@@ -335,6 +335,22 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.match(sync.error, /integración API de FUDO no está disponible/);
 }
 
+// --- cajaAbrir_ tampoco debe forzar una sincronización real (ago 2026): el mismo problema que ya se
+// había corregido en cajaEstado_ (PR #155) seguía presente aquí — abrir no necesita ese dato para
+// calcular nada, así que forzarlo solo podía colgar el botón "Abrir caja" hasta el timeout del
+// navegador si FUDO tardaba. Mismo truco de prueba: con credenciales "configuradas" pero sin la
+// integración real cargada, si cajaAbrir_ todavía forzara el sync esto reventaría con un
+// ReferenceError en vez de abrir normalmente. ------------------------------------------------------
+{
+  const { ctx, turnos } = construirEntorno_();
+  ctx.PropertiesService.getScriptProperties().setProperty('FUDO_API_KEY', 'clave');
+  ctx.PropertiesService.getScriptProperties().setProperty('FUDO_API_SECRET', 'secreto');
+  const r = ctx.cajaAbrir_({ fecha: '2026-07-15', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 }, encargada);
+  assert.equal(r.ok, true, 'abrir no debe intentar sincronizar FUDO en el momento, ni colgarse ni tronar');
+  assert.equal(r.fudo_sync.pendiente, true, 'sin ningún intento guardado todavía, debe reconocerlo como pendiente');
+  assert.equal(turnos.length, 1);
+}
+
 // --- Efectivo "Sin identificar" es puramente informativo: Diana (ago 2026) pidió explícitamente
 // que nunca bloquee ni abrir ni cerrar caja, solo que se sepa que existe (el Administrador lo
 // concilia aparte, desde "Ventas pendientes de sede"). -----------------------------------------
