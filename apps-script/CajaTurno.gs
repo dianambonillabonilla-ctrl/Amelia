@@ -9,6 +9,7 @@ const CAJA_TIPOS_MOVIMIENTO_ = [
   'Entrega administrador','Otro ingreso'
 ];
 const CAJA_FUDO_CACHE_SEGUNDOS_ = 300;
+const CAJA_SEDES_VALIDAS_ = ['San Antonio', 'Capri'];
 
 const CAJA_COLUMNAS_TURNO_ = [
   'id','fecha','sede','estado','base_esperada','base_inicial','diferencia_apertura','observacion_apertura',
@@ -22,7 +23,7 @@ const CAJA_COLUMNAS_TURNO_ = [
 ];
 const CAJA_COLUMNAS_MOVIMIENTOS_ = [
   'id','fecha','sede','tipo','valor','persona_entrega','persona_recibe','hora','motivo',
-  'evidencia_url','usuario_id','usuario','timestamp'
+  'evidencia_url','usuario_id','usuario','timestamp','idempotency_key'
 ];
 
 function cajaAsegurarEstructura_() {
@@ -253,8 +254,15 @@ function cajaValorContadoValido_(valor) {
 function cajaAbrir_(item, usuario) {
   cajaAsegurarEstructura_();
   if (!item || !item.fecha || !item.sede) return {ok:false,error:'Falta la fecha o la sede'};
+  // Diana (ago 2026): Caja solo existe en sedes de venta — el selector ya lo escondía en pantalla,
+  // pero el backend no lo impedía, así que una llamada directa podía crear un turno fantasma en
+  // Centro de Producción sin ninguna forma de borrarlo después.
+  if (CAJA_SEDES_VALIDAS_.indexOf(item.sede) === -1) return {ok:false,error:'Caja solo existe en San Antonio y Capri.'};
   if (!sedeEscrituraPermitida_(usuario,item.sede)) return {ok:false,error:'No puedes abrir la caja de otra sede'};
   const fecha = formatearFecha_(item.fecha);
+  // Una fecha futura no tiene ningún cierre anterior real que darle sentido a "lo esperado", y
+  // quedaría como un turno fantasma para siempre (nadie puede cerrar hoy lo que es "de mañana").
+  if (fecha > formatearFecha_(new Date())) return {ok:false,error:'No puedes abrir la caja de una fecha futura.'};
   const existente = cajaTurnoFila_(fecha,item.sede);
   if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'La caja ya se cerró'} : {ok:true,ya_abierta:true,item:existente};
 
@@ -407,20 +415,58 @@ function cajaRappiMarcar_(fecha,sede,usuario) {
   return {ok:true};
 }
 
+// Tipos que RESTAN de la caja operativa (Envío a caja fuerte sale del cajón físico) o de la caja
+// fuerte (Retiro/Entrega desde caja fuerte) — a esos se les exige que no pase de lo disponible.
+// 'Otro ingreso' y 'Entrega administrador desde caja' no restan de la caja fuerte y no tienen tope
+// por ese lado (Entrega desde caja SÍ resta de la operativa, ver abajo).
+const CAJA_TIPOS_RESTAN_OPERATIVA_ = ['Envío a caja fuerte', 'Entrega administrador desde caja'];
+const CAJA_TIPOS_RESTAN_FUERTE_ = ['Retiro de caja fuerte', 'Entrega administrador desde caja fuerte'];
+
 function cajaMovimientoRegistrar_(item,usuario) {
   cajaAsegurarEstructura_();
   if(!item||!item.fecha||!item.sede)return {ok:false,error:'Falta fecha o sede'};
   if(!sedeEscrituraPermitida_(usuario,item.sede))return {ok:false,error:'No puedes registrar movimientos de otra sede'};
-  const fecha=formatearFecha_(item.fecha), apertura=cajaTurnoFila_(fecha,item.sede);
-  if(!apertura||apertura.estado==='Cerrado')return {ok:false,error:'La caja no está abierta'};
+  const fecha=formatearFecha_(item.fecha);
   if(CAJA_TIPOS_MOVIMIENTO_.indexOf(item.tipo)===-1)return {ok:false,error:'Tipo de movimiento inválido'};
   const valor=Number(item.valor);if(!valor||valor<=0)return {ok:false,error:'El valor debe ser mayor a cero'};
   if(!item.motivo)return {ok:false,error:'Falta el motivo'};
   if(String(item.tipo).indexOf('Entrega administrador')===0&&(!item.persona_entrega||!item.persona_recibe))return {ok:false,error:'La entrega necesita quién entrega y quién recibe'};
-  const fila={id:Utilities.getUuid(),fecha,sede:item.sede,tipo:item.tipo,valor,persona_entrega:item.persona_entrega||usuario.nombre,persona_recibe:item.persona_recibe||'',hora:new Date(),motivo:item.motivo,evidencia_url:item.evidencia_url||'',usuario_id:usuario.id,usuario:usuario.nombre,timestamp:new Date()};
-  appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS,fila);
-  auditoriaRegistrar_(usuario,'caja_movimiento_registrar','CajaMovimientos',fila.id,null,{tipo:fila.tipo,valor:fila.valor},item.sede,item.motivo);
-  return {ok:true,item:fila};
+
+  // Candado + idempotencia (Diana, ago 2026): sin esto, un doble clic o un reintento tras un
+  // timeout de red guardaban el MISMO movimiento dos veces — silencioso, plausible e irreversible,
+  // porque un movimiento no se puede editar ni borrar desde la app. caja.html genera una clave
+  // nueva por cada intento de guardar; si ya existe un movimiento con esa misma clave, se devuelve
+  // el que ya existe en vez de crear uno nuevo.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { ok:false, error:'Otro movimiento se está guardando ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const apertura=cajaTurnoFila_(fecha,item.sede);
+    if(!apertura||apertura.estado==='Cerrado')return {ok:false,error:'La caja no está abierta'};
+    const movimientosActuales=cajaMovimientosDelDia_(fecha,item.sede);
+    if (item.idempotency_key) {
+      const repetido = movimientosActuales.find(function(m){ return m.idempotency_key && m.idempotency_key === item.idempotency_key; });
+      if (repetido) return {ok:true,item:repetido};
+    }
+    // Tope: no se puede sacar más de lo que hay disponible en ese momento (Diana, ago 2026) — antes
+    // un retiro de caja fuerte vacía la dejaba en negativo e inflaba la caja operativa con dinero
+    // que nunca existió; un envío/entrega más grande que lo disponible dejaba un faltante permanente.
+    if (CAJA_TIPOS_RESTAN_OPERATIVA_.indexOf(item.tipo) !== -1) {
+      const disponible = cajaEfectivoEsperado_(apertura, movimientosActuales, fecha, item.sede).esperado;
+      if (valor > disponible) return {ok:false,error:'No puedes registrar este movimiento: excede el efectivo disponible en la caja operativa en este momento.'};
+    }
+    if (CAJA_TIPOS_RESTAN_FUERTE_.indexOf(item.tipo) !== -1) {
+      const disponibleFuerte = cajaEfectivoEsperado_(apertura, movimientosActuales, fecha, item.sede).caja_fuerte_esperada;
+      if (valor > disponibleFuerte) return {ok:false,error:'No puedes registrar este movimiento: excede lo disponible en la caja fuerte en este momento.'};
+    }
+    const fila={id:Utilities.getUuid(),fecha,sede:item.sede,tipo:item.tipo,valor,persona_entrega:item.persona_entrega||usuario.nombre,persona_recibe:item.persona_recibe||'',hora:new Date(),motivo:item.motivo,evidencia_url:item.evidencia_url||'',idempotency_key:item.idempotency_key||'',usuario_id:usuario.id,usuario:usuario.nombre,timestamp:new Date()};
+    appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS,fila);
+    auditoriaRegistrar_(usuario,'caja_movimiento_registrar','CajaMovimientos',fila.id,null,{tipo:fila.tipo,valor:fila.valor},item.sede,item.motivo);
+    return {ok:true,item:fila};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function cajaMovimientosListar_(fecha,sede) {
