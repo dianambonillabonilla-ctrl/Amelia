@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Compras</title>
+<title>Dilana OS — Compras y Novedades</title>
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -15,7 +15,7 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Compras</h1>
+      <h1>Compras y Novedades</h1>
       <div id="barra-usuario"></div>
     </div>
 
@@ -59,6 +59,46 @@
     </div>
 
     <div class="card">
+      <h2>Novedades de faltantes</h2>
+      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+        Úsalo cuando algo falta y ya se está resolviendo (ej. "ya voy a comprar banano") — así
+        queda visible para todos y nadie lo vuelve a reportar creyendo que nadie lo sabe. Registrar
+        la factura correspondiente arriba resuelve sola la gestión abierta de ese producto y sede.
+      </p>
+      <div class="grid grid-3">
+        <div class="campo">
+          <label>Producto</label>
+          <input type="text" id="nuevo-producto" list="lista-productos-gestion" placeholder="ej. Banano">
+          <datalist id="lista-productos-gestion"></datalist>
+        </div>
+        <div class="campo">
+          <label>Sede</label>
+          <select id="nuevo-sede">
+            <option>San Antonio</option>
+            <option>Capri</option>
+            <option>Centro de Producción</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Nota (opcional)</label>
+          <input type="text" id="nuevo-nota" placeholder="ej. pedido a Mercamío, llega el viernes">
+        </div>
+      </div>
+      <button class="btn dorado" id="btn-crear-gestion">Abrir gestión</button>
+
+      <table style="margin-top:16px">
+        <thead><tr><th>Producto</th><th>Sede</th><th>Estado</th><th>Nota</th><th>Abierta por</th><th>Fecha</th><th></th></tr></thead>
+        <tbody id="tabla-gestiones-abiertas"><tr><td colspan="7" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+
+      <h3 style="margin-top:20px">Historial de gestiones</h3>
+      <table>
+        <thead><tr><th>Producto</th><th>Sede</th><th>Estado</th><th>Nota</th><th>Última actualización</th><th>Fecha</th></tr></thead>
+        <tbody id="tabla-gestiones-historial"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
       <h2>Facturas registradas</h2>
       <div class="grid grid-3" style="margin-bottom:10px">
         <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
@@ -91,6 +131,7 @@ requerirRol_(['Administrador', 'Encargado', 'Cocina']);
 montarBarraUsuario();
 restringirSelectorSede_(document.getElementById('sede'));
 restringirSelectorSede_(document.getElementById('filtro-sede'));
+restringirSelectorSede_(document.getElementById('nuevo-sede'));
 document.getElementById('fecha').value = fechaLocalHoy_();
 
 const hoy = new Date();
@@ -126,6 +167,7 @@ async function cargarSugerenciasProductos_() {
   if (!data.ok) return;
   productosCatalogo_ = data.data.map(p => p.nombre_estandar).filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
   document.querySelectorAll('.in-producto-select').forEach(poblarSelectProducto_);
+  document.getElementById('lista-productos-gestion').innerHTML = productosCatalogo_.map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 cargarSugerenciasProductos_();
 
@@ -239,6 +281,8 @@ btnGuardar.addEventListener('click', conBotonProtegido(btnGuardar, async () => {
     for (let i = 0; i < 3; i++) nuevaFila();
     recalcularTotal_();
     try { await cargarFacturas_(); } catch (err) { console.error(err); }
+    // La factura recién guardada puede haber resuelto sola una gestión abierta de ese producto/sede.
+    try { await gestionesCargarTodo_(); } catch (err) { console.error(err); }
   } else {
     alert(data.error || 'No se pudo guardar la factura. Vuelve a intentarlo; si sigue igual, avisa al administrador.');
   }
@@ -333,6 +377,96 @@ async function cargarFacturas_() {
 
 document.getElementById('btn-filtrar').addEventListener('click', cargarFacturas_);
 cargarFacturas_();
+
+// NOVEDADES DE FALTANTES (antes gestiones.html, fusionada aquí: registrar la factura
+// correspondiente arriba ya resuelve sola la gestión abierta de ese producto y sede — ver
+// Compras.gs — así que tiene sentido verlas en la misma pantalla).
+function gestionBadgeEstado_(estado) {
+  if (estado === 'Resuelto') return `<span class="badge ok">${escapeHtml(estado)}</span>`;
+  if (estado === 'Cancelada') return `<span class="badge">${escapeHtml(estado)}</span>`;
+  if (estado === 'Pedido realizado') return `<span class="badge aviso">${escapeHtml(estado)}</span>`;
+  return `<span class="badge alerta">${escapeHtml(estado)}</span>`;
+}
+
+document.getElementById('btn-crear-gestion').addEventListener('click', conBotonProtegido(document.getElementById('btn-crear-gestion'), async () => {
+  const item = {
+    producto: document.getElementById('nuevo-producto').value.trim(),
+    sede: document.getElementById('nuevo-sede').value,
+    nota: document.getElementById('nuevo-nota').value.trim()
+  };
+  if (!item.producto) { alert('Escribe qué producto falta.'); return; }
+  const data = await llamar('gestion_crear', { item });
+  if (data.ok) {
+    avisarGuardado('Gestión abierta.');
+    document.getElementById('nuevo-producto').value = '';
+    document.getElementById('nuevo-nota').value = '';
+    gestionesCargarTodo_();
+  } else {
+    alert(data.error);
+  }
+}));
+
+async function gestionesCargarTodo_() {
+  const data = await llamar('gestiones_listar', { filtro: {} });
+  if (!data.ok) return;
+  gestionesPintarAbiertas_(data.data.filter(g => g.estado === 'Pendiente' || g.estado === 'Pedido realizado'));
+  gestionesPintarHistorial_(data.data.filter(g => g.estado === 'Resuelto' || g.estado === 'Cancelada').slice(0, 30));
+}
+
+function gestionesPintarAbiertas_(filas) {
+  const body = document.getElementById('tabla-gestiones-abiertas');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="7" class="vacio">No hay gestiones abiertas.</td></tr>'; return; }
+  body.innerHTML = filas.map(g => `
+    <tr>
+      <td>${escapeHtml(g.producto)}</td>
+      <td>${escapeHtml(g.sede)}</td>
+      <td>${gestionBadgeEstado_(g.estado)}</td>
+      <td>${escapeHtml(g.nota || '—')}</td>
+      <td>${escapeHtml(g.creado_por)}</td>
+      <td>${escapeHtml(g.fecha)}</td>
+      <td>
+        ${g.estado === 'Pendiente' ? `<button class="btn fantasma btn-pedido" data-id="${escapeHtml(g.id)}">Ya se pidió</button>` : ''}
+        <button class="btn dorado btn-resolver" data-id="${escapeHtml(g.id)}">Marcar resuelto</button>
+        <button class="btn fantasma btn-cancelar" data-id="${escapeHtml(g.id)}">Cancelar</button>
+      </td>
+    </tr>`).join('');
+
+  body.querySelectorAll('.btn-pedido').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const data = await llamar('gestion_actualizar_estado', { id: btn.dataset.id, estado: 'Pedido realizado' });
+      if (data.ok) { avisarGuardado('Marcada como pedido realizado.'); gestionesCargarTodo_(); } else { alert(data.error); }
+    }));
+  });
+  body.querySelectorAll('.btn-resolver').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      const data = await llamar('gestion_actualizar_estado', { id: btn.dataset.id, estado: 'Resuelto' });
+      if (data.ok) { avisarGuardado('Gestión marcada como resuelta.'); gestionesCargarTodo_(); } else { alert(data.error); }
+    }));
+  });
+  body.querySelectorAll('.btn-cancelar').forEach(btn => {
+    btn.addEventListener('click', conBotonProtegido(btn, async () => {
+      if (!confirm('¿Cancelar esta gestión?')) return;
+      const data = await llamar('gestion_actualizar_estado', { id: btn.dataset.id, estado: 'Cancelada' });
+      if (data.ok) { avisarGuardado('Gestión cancelada.'); gestionesCargarTodo_(); } else { alert(data.error); }
+    }));
+  });
+}
+
+function gestionesPintarHistorial_(filas) {
+  const body = document.getElementById('tabla-gestiones-historial');
+  if (!filas.length) { body.innerHTML = '<tr><td colspan="6" class="vacio">Sin gestiones cerradas todavía.</td></tr>'; return; }
+  body.innerHTML = filas.map(g => `
+    <tr>
+      <td>${escapeHtml(g.producto)}</td>
+      <td>${escapeHtml(g.sede)}</td>
+      <td>${gestionBadgeEstado_(g.estado)}</td>
+      <td>${escapeHtml(g.nota || '—')}</td>
+      <td>${escapeHtml(g.actualizado_por || '—')}</td>
+      <td>${escapeHtml(g.fecha)}</td>
+    </tr>`).join('');
+}
+
+gestionesCargarTodo_();
 </script>
 </body>
 </html>
