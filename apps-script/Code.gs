@@ -99,7 +99,7 @@ function configurarHojas() {
     Producciones: ['id', 'fecha', 'sede', 'item', 'cantidad', 'unidad', 'usuario', 'timestamp', 'request_id',
       'insumo_producto', 'insumo_cantidad', 'insumo_unidad', 'merma_cantidad', 'merma_unidad',
       'rendimiento_porcentaje', 'receta_referencia', 'hora_inicio', 'hora_fin', 'observacion', 'evidencia_url'],
-    AlertasEnviadas: ['fecha', 'plato'],
+    AlertasEnviadas: ['fecha', 'plato', 'tipo'],
     Traslados: ['id', 'fecha', 'producto', 'unidad', 'cantidad_enviada', 'sede_origen', 'punto_origen',
       'sede_destino', 'punto_destino', 'usuario_envia', 'timestamp_envio', 'estado', 'usuario_recibe',
       'timestamp_recibe', 'cantidad_recibida', 'observacion', 'resuelto_por', 'timestamp_resuelto', 'nota_resolucion'],

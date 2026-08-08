@@ -1,21 +1,38 @@
 /**
  * ALERTAS DE STOCK BAJO
- * Cuando un plato queda por debajo de su umbral de preparaciones posibles (columna
- * `umbral_alerta` en Recetas, o UMBRAL_ALERTA_DEFAULT si está vacía), se manda un correo a los
- * usuarios activos con rol Administrador o Encargado y con `email` configurado.
+ * Dos chequeos independientes, cada uno con su propio correo:
+ *  1) Platos por debajo de su umbral de preparaciones posibles (columna `umbral_alerta` en
+ *     Recetas, o UMBRAL_ALERTA_DEFAULT si está vacía) — revisarAlertasPlatos_.
+ *  2) Materia prima por debajo del mínimo que Diana configura por producto (columna
+ *     `stock_minimo` en Catalogo_Maestro, editable en catalogo.html) — revisarAlertasStockMinimo_.
+ *     Diana (ago 2026): quiere enterarse cuando un insumo se está agotando, no solo cuando ya
+ *     tumbó las preparaciones posibles de un plato — para poder comprar antes de quedarse sin nada.
  *
- * Se dispara desde dos lugares: el trigger diario (tareaDiaria_, ver Code.gs) y justo después
- * de conteoRegistrar_ (Conteos.gs) — un import de FUDO no cambia preparaciones_posibles, así
- * que no hace falta revisar tras importar. AlertasEnviadas evita mandar el mismo aviso más de
- * una vez por plato por día, sin importar cuántas veces se dispare el chequeo.
+ * Ambos se disparan desde revisarAlertas_ (el trigger diario tareaDiaria_ en Code.gs, y justo
+ * después de conteoRegistrar_ en Conteos.gs) — un import de FUDO no cambia ninguno de los dos
+ * cálculos, así que no hace falta revisar tras importar. AlertasEnviadas evita mandar el mismo
+ * aviso más de una vez por producto por día y por tipo, sin importar cuántas veces se dispare el
+ * chequeo.
  */
 
 const UMBRAL_ALERTA_DEFAULT = 5;
+const ALERTAS_ENVIADAS_COLUMNAS_ = ['fecha', 'plato', 'tipo'];
+
+function alertasAsegurarEstructura_() {
+  asegurarColumnas_(sheet_(SHEET_NAMES.ALERTAS_ENVIADAS), ALERTAS_ENVIADAS_COLUMNAS_);
+}
 
 function revisarAlertas_(fecha) {
   fecha = fecha || formatearFecha_(new Date());
+  alertasAsegurarEstructura_();
   const disponible = calcularDisponibleHoy_(fecha);
   const indice = indiceCatalogo_();
+  const resultadoPlatos = revisarAlertasPlatos_(fecha, disponible, indice);
+  const resultadoIngredientes = revisarAlertasStockMinimo_(fecha, disponible, indice);
+  return { ok: true, enviados: resultadoPlatos.enviados + resultadoIngredientes.enviados };
+}
+
+function revisarAlertasPlatos_(fecha, disponible, indice) {
   const umbrales = {};
   leerTabla_(SHEET_NAMES.RECETAS).forEach(function (r) {
     if (r.umbral_alerta !== '' && r.umbral_alerta !== null && r.umbral_alerta !== undefined) {
@@ -31,20 +48,63 @@ function revisarAlertas_(fecha) {
   });
   if (!bajos.length) return { ok: true, enviados: 0 };
 
-  const yaEnviados = platosYaAlertadosHoy_(fecha);
+  const yaEnviados = alertasEnviadasHoy_(fecha, 'plato');
   const nuevos = bajos.filter(function (p) { return yaEnviados.indexOf(p.producto) === -1; });
   if (!nuevos.length) return { ok: true, enviados: 0 };
 
   enviarCorreoAlerta_(fecha, nuevos);
   nuevos.forEach(function (p) {
-    appendRowFromObj_(SHEET_NAMES.ALERTAS_ENVIADAS, { fecha: fecha, plato: p.producto });
+    appendRowFromObj_(SHEET_NAMES.ALERTAS_ENVIADAS, { fecha: fecha, plato: p.producto, tipo: 'plato' });
   });
   return { ok: true, enviados: nuevos.length };
 }
 
-function platosYaAlertadosHoy_(fecha) {
+/**
+ * Compara el stock agregado (todas las sedes, mismo cálculo que ya usa Disponible Hoy: último
+ * conteo + movimientos posteriores) de cada ingrediente contra el mínimo que Diana definió para
+ * ese producto. Solo se revisan productos con `stock_minimo` configurado y mayor que cero — sin
+ * eso no hay con qué comparar, y cero no sirve como umbral real (nunca se dispararía). Se ignoran
+ * valores no numéricos (ej. una nota de texto metida por error en esa celda) en vez de reventar
+ * el chequeo diario completo por un solo dato mal cargado.
+ *
+ * `stock_minimo` se interpreta en la unidad_base del catálogo (puede ser 'kg' o 'l', no siempre ya
+ * viene en la unidad base real de g/ml/u) — se convierte con aUnidadBase_, la misma función que usa
+ * Disponible Hoy para normalizar cualquier cantidad, antes de comparar contra el stock ya calculado
+ * (que siempre queda en g/ml/u). Si aun así las unidades no calzan (dato inconsistente), esa línea
+ * se salta en vez de comparar cantidades en unidades distintas.
+ */
+function revisarAlertasStockMinimo_(fecha, disponible, indice) {
+  const bajos = [];
+  leerTabla_(SHEET_NAMES.CATALOGO).forEach(function (c) {
+    const minimo = Number(c.stock_minimo);
+    if (!isFinite(minimo) || minimo <= 0) return;
+    if (!c.nombre_estandar) return;
+    const minimoBase = aUnidadBase_(minimo, c.unidad_base);
+    const clave = claveProducto_(c.nombre_estandar, indice);
+    const actual = disponible.stock_ingredientes[clave];
+    if (!actual) return; // nunca contado ni movido todavía — no hay con qué comparar
+    if (actual.unidad !== minimoBase.unidad) return;
+    if (actual.cantidad < minimoBase.cantidad) {
+      bajos.push({ producto: c.nombre_estandar, actual: actual.cantidad, minimo: minimoBase.cantidad, unidad: actual.unidad });
+    }
+  });
+  if (!bajos.length) return { ok: true, enviados: 0 };
+
+  const yaEnviados = alertasEnviadasHoy_(fecha, 'ingrediente');
+  const nuevos = bajos.filter(function (b) { return yaEnviados.indexOf(b.producto) === -1; });
+  if (!nuevos.length) return { ok: true, enviados: 0 };
+
+  enviarCorreoAlertaStockMinimo_(fecha, nuevos);
+  nuevos.forEach(function (b) {
+    appendRowFromObj_(SHEET_NAMES.ALERTAS_ENVIADAS, { fecha: fecha, plato: b.producto, tipo: 'ingrediente' });
+  });
+  return { ok: true, enviados: nuevos.length };
+}
+
+/** Filas históricas de antes de que existiera la columna `tipo` son todas de alertas de plato. */
+function alertasEnviadasHoy_(fecha, tipo) {
   return leerTabla_(SHEET_NAMES.ALERTAS_ENVIADAS)
-    .filter(function (r) { return formatearFecha_(r.fecha) === fecha; })
+    .filter(function (r) { return formatearFecha_(r.fecha) === fecha && (r.tipo || 'plato') === tipo; })
     .map(function (r) { return r.plato; });
 }
 
@@ -59,6 +119,21 @@ function enviarCorreoAlerta_(fecha, platos) {
   MailApp.sendEmail({
     to: destinatarios.join(','),
     subject: 'Dilana OS — Stock bajo en ' + platos.length + ' plato(s)',
+    body: cuerpo
+  });
+}
+
+function enviarCorreoAlertaStockMinimo_(fecha, ingredientes) {
+  const destinatarios = destinatariosAlerta_();
+  if (!destinatarios.length) return;
+  const cuerpo = 'Esta materia prima está por debajo del mínimo configurado (' + fecha + '):\n\n' +
+    ingredientes.map(function (i) {
+      return '- ' + i.producto + ': ' + i.actual + ' ' + i.unidad + ' (mínimo ' + i.minimo + ' ' + i.unidad + ')';
+    }).join('\n');
+
+  MailApp.sendEmail({
+    to: destinatarios.join(','),
+    subject: 'Dilana OS — Stock mínimo en ' + ingredientes.length + ' insumo(s)',
     body: cuerpo
   });
 }
