@@ -813,6 +813,39 @@ assert.equal(
   '100 contados + 30 recibidos por traslado confirmado = 130 (no cuenta el "Enviado" sin confirmar ni lo de San Antonio)'
 );
 
+// --- Disponible Hoy: un traslado resta de la sede de ORIGEN desde que se crea, sin importar el --
+// estado (Diana, ago 2026: "apenas se realiza el traslado resta de la sede que envía"). Usa
+// siempre cantidad_enviada (lo enviado), no cantidad_recibida (eso es asunto del destino).
+const conteosTrasladoOrigen = [
+  { fecha: '2026-07-01', sede: 'San Antonio', producto: 'Costilla', unidad: 'g', cantidad: 100 }
+];
+const trasladosOrigen = [
+  // Enviado (sin confirmar): ya debe restar de San Antonio, aunque el destino no lo haya aceptado.
+  { fecha: '2026-07-03', timestamp_envio: '2026-07-03', estado: 'Enviado', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 20, cantidad_recibida: '', sede_origen: 'San Antonio', sede_destino: 'Capri' },
+  // Con observación: sigue restando de San Antonio (salió físicamente, la disputa es sobre lo recibido).
+  { fecha: '2026-07-04', timestamp_envio: '2026-07-04', estado: 'Con observación', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 15, cantidad_recibida: 10, sede_origen: 'San Antonio', sede_destino: 'Capri' },
+  // Confirmado: resta lo enviado (30), no lo recibido (25) — la merma en tránsito la refleja el destino, no el origen.
+  { fecha: '2026-07-05', timestamp_envio: '2026-07-05', estado: 'Confirmado', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 30, cantidad_recibida: 25, sede_origen: 'San Antonio', sede_destino: 'Capri' },
+  // Enviado desde OTRA sede: no debe afectar el stock de San Antonio.
+  { fecha: '2026-07-05', timestamp_envio: '2026-07-05', estado: 'Enviado', producto: 'Costilla', unidad: 'g',
+    cantidad_enviada: 999, cantidad_recibida: '', sede_origen: 'Capri', sede_destino: 'Centro de Producción' }
+];
+const disponibleHoyTrasladoOrigen = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes', TRASLADOS: 'traslados' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosTrasladoOrigen : (hoja === 'traslados' ? trasladosOrigen : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+assert.equal(
+  disponibleHoyTrasladoOrigen.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'San Antonio').costilla.cantidad, 35,
+  '100 contados - 20 (Enviado) - 15 (Con observación) - 30 (Confirmado, se resta lo enviado no lo recibido) = 35; el traslado de Capri no debe afectar a San Antonio'
+);
+
 // --- Conciliación: una venta cancelada no debe contar como venta, sin importar tilde/mayúscula --
 // (bug real: el export de FUDO trae "Cancelada" = "Si" sin tilde, pero el filtro solo reconocía
 // "Sí" con tilde exacta — una venta cancelada se contaba como válida en "ventas esperadas").
