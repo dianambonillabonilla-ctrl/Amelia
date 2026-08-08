@@ -13,11 +13,31 @@ const ESTADO = {
   platosBackend: {},
   recetas: {},
   ventas: {},
-  fecha: ''
+  fecha: '',
+  // Antes los filtros (categoría, "mostrar sin conteo", días de seguridad) quedaban activos desde
+  // el primer instante, así que tocarlos mientras el primer cargar() todavía estaba en vuelo
+  // pintaba con ESTADO vacío: "0 productos", "No hay productos para este filtro" y "NaN días" en
+  // Próxima compra (diasHastaMartes con ESTADO.fecha todavía ''). cargar() lo pone en true justo
+  // antes de pintar por primera vez.
+  cargado: false,
+  cargando: false
 };
 
 const fechaInput = document.getElementById('fecha');
 fechaInput.value = fechaLocalHoy_();
+
+function conTiempoLimite_(promesa, nombre, milisegundos) {
+  const limite = Number(milisegundos) || 45000;
+  return Promise.race([
+    promesa,
+    new Promise(resolve => setTimeout(() => resolve({ ok: false, error: nombre + ' tardó demasiado en responder' }), limite))
+  ]);
+}
+
+/** 'Calculando…' mientras ESTADO.fecha todavía no tiene un valor válido, en vez de "NaN días". */
+function diasCompraSeguro_() {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(ESTADO.fecha || '')) ? diasHastaMartes(ESTADO.fecha) + ' días' : 'Calculando…';
+}
 
 function numero(valor, decimales = 1) {
   const n = Number(valor);
@@ -337,7 +357,7 @@ function renderInventario() {
     <div class="kpi"><span>Vista</span><strong>${escapeHtml(sede)}</strong></div>
     <div class="kpi"><span>Productos mostrados</span><strong>${claves.length}</strong></div>
     <div class="kpi"><span>Con información</span><strong>${conDatos}</strong></div>
-    <div class="kpi"><span>Próxima compra</span><strong>${diasHastaMartes(ESTADO.fecha)} días</strong></div>`;
+    <div class="kpi"><span>Próxima compra</span><strong>${diasCompraSeguro_()}</strong></div>`;
 }
 
 function badgeCobertura(dias) {
@@ -490,24 +510,29 @@ function pintarFilasConteoHoy() {
 document.getElementById('conteohoy-buscar').addEventListener('input', pintarFilasConteoHoy);
 
 async function cargar() {
+  if (ESTADO.cargando) return;
   const estado = document.getElementById('estado');
   const boton = document.getElementById('actualizar');
+  ESTADO.cargando = true;
   boton.disabled = true;
   estado.className = 'estado aviso';
-  estado.textContent = 'Consultando inventario, recetas y ventas FUDO…';
+  estado.textContent = 'Consultando catálogo e inventario…';
+
+  const fecha = fechaInput.value;
+  ESTADO.fecha = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : fechaLocalHoy_();
+  const desde = restarDias(ESTADO.fecha, 28);
+  const fallas = [];
+
   try {
-    const fecha = fechaInput.value;
-    const desde = restarDias(fecha, 28);
-    const [cp, sa, capri, catalogoRes, recetasRes, ventasRes, conteoRes] = await Promise.all([
-      llamar('disponible_hoy', { fecha, sede: 'Centro de Producción' }),
-      llamar('disponible_hoy', { fecha, sede: 'San Antonio' }),
-      llamar('disponible_hoy', { fecha, sede: 'Capri' }),
-      llamar('catalogo_listar', { filtros: {} }),
-      llamar('recetas_listar', { filtros: {} }),
-      llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: fecha } }),
-      llamar('conteo_listar', { fecha })
+    const catalogoRes = await conTiempoLimite_(llamar('catalogo_listar', { filtros: {} }), 'Catálogo', 30000);
+    if (catalogoRes?.ok) construirCatalogo(filas(catalogoRes)); else fallas.push('Catálogo: ' + (catalogoRes?.error || 'sin respuesta'));
+
+    estado.textContent = 'Consultando inventario de las sedes…';
+    const [cp, sa, capri] = await Promise.all([
+      conTiempoLimite_(llamar('disponible_hoy', { fecha: ESTADO.fecha, sede: 'Centro de Producción' }), 'Centro de Producción', 45000),
+      conTiempoLimite_(llamar('disponible_hoy', { fecha: ESTADO.fecha, sede: 'San Antonio' }), 'San Antonio', 45000),
+      conTiempoLimite_(llamar('disponible_hoy', { fecha: ESTADO.fecha, sede: 'Capri' }), 'Capri', 45000)
     ]);
-    construirCatalogo(filas(catalogoRes));
     ESTADO.stock = {
       'Centro de Producción': construirStock(cp),
       'San Antonio': construirStock(sa),
@@ -518,34 +543,42 @@ async function cargar() {
       'San Antonio': construirPlatosBackend(sa),
       'Capri': construirPlatosBackend(capri)
     };
-    construirRecetas(filas(recetasRes));
-    construirVentas(filas(ventasRes), desde, fecha);
-    ESTADO.fecha = fecha;
-    construirConteoHoy(filas(catalogoRes), conteoRes, fecha);
+    if (!cp?.ok) fallas.push('Centro de Producción: ' + (cp?.error || 'sin respuesta'));
+    if (!sa?.ok) fallas.push('San Antonio: ' + (sa?.error || 'sin respuesta'));
+    if (!capri?.ok) fallas.push('Capri: ' + (capri?.error || 'sin respuesta'));
+
     poblarCategorias();
     renderInventario();
+
+    estado.textContent = 'Consultando recetas, conteos y ventas FUDO…';
+    const [recetasRes, ventasRes, conteoRes] = await Promise.all([
+      conTiempoLimite_(llamar('recetas_listar', { filtros: {} }), 'Recetas', 45000),
+      conTiempoLimite_(llamar('fudo_items_listar', { filtros: { fecha_desde: desde, fecha_hasta: ESTADO.fecha } }), 'Ventas FUDO', 45000),
+      conTiempoLimite_(llamar('conteo_listar', { fecha: ESTADO.fecha }), 'Conteos', 45000)
+    ]);
+
+    construirRecetas(filas(recetasRes));
+    construirVentas(filas(ventasRes), desde, ESTADO.fecha);
+    construirConteoHoy(filas(catalogoRes), conteoRes, ESTADO.fecha);
+    ESTADO.cargado = true;
     renderAlcance();
     renderConteoHoy();
-    const fallas = [];
-    if (!cp?.ok) fallas.push('Centro de Producción');
-    if (!sa?.ok) fallas.push('San Antonio');
-    if (!capri?.ok) fallas.push('Capri');
-    if (!catalogoRes?.ok) fallas.push('Catálogo');
-    if (!recetasRes?.ok) fallas.push('Recetas');
-    if (!ventasRes?.ok) fallas.push('Ventas FUDO');
+    if (!recetasRes?.ok) fallas.push('Recetas: ' + (recetasRes?.error || 'sin respuesta'));
+    if (!ventasRes?.ok) fallas.push('Ventas FUDO: ' + (ventasRes?.error || 'sin respuesta'));
+    if (!conteoRes?.ok) fallas.push('Conteos: ' + (conteoRes?.error || 'sin respuesta'));
+  } catch (error) {
+    fallas.push(error.message || String(error));
+  } finally {
+    ESTADO.cargando = false;
+    boton.disabled = false;
+    renderInventario();
     if (fallas.length) {
       estado.className = 'estado error';
-      estado.textContent = `Análisis parcial. No respondió: ${fallas.join(', ')}.`;
+      estado.textContent = 'Análisis parcial. ' + fallas.join(' · ');
     } else {
       estado.className = 'estado ok';
       estado.textContent = 'Análisis actualizado correctamente.';
     }
-  } catch (error) {
-    console.error(error);
-    estado.className = 'estado error';
-    estado.textContent = `Error al cargar: ${error.message || error}`;
-  } finally {
-    boton.disabled = false;
   }
 }
 
@@ -567,12 +600,8 @@ document.querySelectorAll('.tab-sede').forEach(button => {
   });
 });
 
-document.getElementById('categoria').addEventListener('change', renderInventario);
-document.getElementById('mostrar-sin-conteo').addEventListener('change', renderInventario);
-document.getElementById('seguridad').addEventListener('change', renderAlcance);
-// abastecimiento-cp.js (se carga después de este archivo) reemplaza cargar/stockDe/alcancePlato/
-// renderInventario con su propia versión (la que sabe que Centro de Producción NO debe mezclarse
-// con el inventario general) y clona el botón "Actualizar" para engancharle su propio cargar — así
-// que este archivo NO debe enganchar el suyo ni auto-ejecutarlo: hacerlo disparaba dos cargar()
-// en paralelo en cada carga de página (el doble de llamadas a disponible_hoy/catalogo_listar/
-// recetas_listar/fudo_items_listar) y una carrera entre ambos por quién pinta último la pantalla.
+document.getElementById('categoria').addEventListener('change', () => { if (ESTADO.cargado) renderInventario(); });
+document.getElementById('mostrar-sin-conteo').addEventListener('change', () => { if (ESTADO.cargado) renderInventario(); });
+document.getElementById('seguridad').addEventListener('change', () => { if (ESTADO.cargado) renderAlcance(); });
+document.getElementById('actualizar').addEventListener('click', cargar);
+cargar();
