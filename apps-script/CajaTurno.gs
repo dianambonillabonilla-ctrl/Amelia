@@ -544,3 +544,32 @@ function cajaNovedadConciliar_(fecha, sede, nota, usuario) {
   auditoriaRegistrar_(usuario, 'caja_novedad_conciliar', 'CajaTurno', fechaFmt + '|' + sede, null, { nota: nota || '' }, sede, nota || '');
   return { ok: true };
 }
+
+/**
+ * HISTORIAL DE CAJA (pantalla aparte, Diana ago 2026) — lista de días anteriores, sin recalcular
+ * nada en vivo: usa solo lo que ya quedó guardado en cada turno (igual que el resto de "Históricos"
+ * de la app). 'Ambas' en sede significa sin filtrar, igual que en cierresTurnoListar_ (Turnos.gs).
+ */
+function cajaHistorialListar_(fechaDesde, fechaHasta, sede) {
+  if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Falta el rango de fechas' };
+  const desde = formatearFecha_(fechaDesde), hasta = formatearFecha_(fechaHasta);
+  let filas = leerTabla_(SHEET_NAMES.CAJA_TURNO).filter(function (t) {
+    const f = formatearFecha_(t.fecha);
+    return f >= desde && f <= hasta;
+  });
+  if (sede && sede !== 'Ambas') filas = filas.filter(function (t) { return t.sede === sede; });
+  const historial = filas.map(function (t) {
+    return {
+      fecha: formatearFecha_(t.fecha), sede: t.sede, estado: t.estado,
+      usuario_apertura: t.usuario_apertura || '', usuario_cierre: t.usuario_cierre || '',
+      diferencia_apertura: Number(t.diferencia_apertura) || 0,
+      diferencia_caja_fuerte_apertura: Number(t.diferencia_caja_fuerte_apertura) || 0,
+      diferencia: Number(t.diferencia) || 0, diferencia_caja_fuerte: Number(t.diferencia_caja_fuerte) || 0,
+      efectivo_esperado: Number(t.efectivo_esperado) || 0, efectivo_contado: Number(t.efectivo_contado) || 0,
+      caja_fuerte_esperada: Number(t.caja_fuerte_esperada) || 0, caja_fuerte_contada: Number(t.caja_fuerte_contada) || 0,
+      observacion_apertura: t.observacion_apertura || '', observacion_cierre: t.observacion_cierre || '',
+      motivos_novedad: cajaTurnoMotivosNovedad_(t), estado_conciliacion: t.estado_conciliacion || ''
+    };
+  }).sort(function (a, b) { return b.fecha.localeCompare(a.fecha) || a.sede.localeCompare(b.sede); });
+  return { ok: true, fecha_desde: desde, fecha_hasta: hasta, historial: historial };
+}

@@ -145,10 +145,14 @@ montarBarraUsuario();
 const usuario=Sesion.usuario();
 const fechaEl=document.getElementById('fecha');
 const sedeEl=document.getElementById('sede');
-fechaEl.value=fechaLocalHoy_();
+// El historial de Caja (historial-caja.html) enlaza aquí con ?fecha=YYYY-MM-DD&sede=... para ir
+// directo al detalle de un día — si no vienen en la URL, se usa hoy como siempre.
+const parametrosUrl_=new URLSearchParams(location.search);
+fechaEl.value=parametrosUrl_.get('fecha')||fechaLocalHoy_();
 restringirSelectorSede_(sedeEl);
 // Caja solo existe en sedes de venta; Centro de Producción no debe aparecer aquí.
 Array.from(sedeEl.options).forEach(o=>{if(o.value==='Centro de Producción')o.remove();});
+if(parametrosUrl_.get('sede')&&Array.from(sedeEl.options).some(o=>o.value===parametrosUrl_.get('sede')))sedeEl.value=parametrosUrl_.get('sede');
 if(!sedeEl.value && sedeEl.options.length)sedeEl.value=sedeEl.options[0].value;
 document.getElementById('responsable').textContent=usuario.nombre||usuario.usuario;
 document.getElementById('perfil').textContent=`${usuario.rol} · ${usuario.sede}`;

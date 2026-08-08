@@ -59,6 +59,7 @@ function parametrosPorAccion() {
     caja_sincronizar_ahora: { fecha: HOY, sede: SEDE },
     caja_movimientos_listar: { fecha: HOY, sede: SEDE },
     caja_novedades_listar: {},
+    caja_historial_listar: { fecha_desde: '2026-07-01', fecha_hasta: HOY },
     ajustes_inventario_listar: { fecha: HOY, sede: SEDE, filtro: {} },
     ajustes_inventario_historial: { filtros: {} },
     compras_listar: { filtro: {} },

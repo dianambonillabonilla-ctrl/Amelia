@@ -454,4 +454,27 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.deepEqual(novedades.novedades[0].motivos, ['Diferencia al cerrar']);
 }
 
+// --- cajaHistorialListar_: pantalla aparte para ver días anteriores (Diana, ago 2026) ---------------
+{
+  const { ctx, turnos } = construirEntorno_();
+  abrirTurno_(ctx, turnos, { fecha: '2026-07-10', sede: 'San Antonio', base_inicial: 100000, caja_fuerte_inicial: 0 });
+  abrirTurno_(ctx, turnos, { id: 't2', fecha: '2026-07-12', sede: 'Capri', base_inicial: 50000, caja_fuerte_inicial: 0 });
+  abrirTurno_(ctx, turnos, { id: 't3', fecha: '2026-06-01', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 });
+
+  assert.equal(ctx.cajaHistorialListar_('', '2026-07-31', 'Ambas').ok, false, 'debe exigir el rango de fechas');
+
+  const rango = ctx.cajaHistorialListar_('2026-07-01', '2026-07-31', 'Ambas');
+  assert.equal(rango.ok, true);
+  assert.equal(rango.historial.length, 2, 'solo los dos turnos de julio, el de junio queda fuera del rango');
+  assert.equal(rango.historial[0].fecha, '2026-07-12', 'más reciente primero');
+
+  const soloSanAntonio = ctx.cajaHistorialListar_('2026-07-01', '2026-07-31', 'San Antonio');
+  assert.equal(soloSanAntonio.historial.length, 1);
+  assert.equal(soloSanAntonio.historial[0].sede, 'San Antonio');
+
+  // Sin sede (frontend nunca lo hace, pero por si acaso) debe comportarse igual que 'Ambas'.
+  const sinSede = ctx.cajaHistorialListar_('2026-07-01', '2026-07-31', '');
+  assert.equal(sinSede.historial.length, 2);
+}
+
 console.log('caja-v2: OK');
