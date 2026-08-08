@@ -846,6 +846,41 @@ assert.equal(
   '100 contados - 20 (Enviado) - 15 (Con observación) - 30 (Confirmado, se resta lo enviado no lo recibido) = 35; el traslado de Capri no debe afectar a San Antonio'
 );
 
+// --- Disponible Hoy: producir resta el insumo (materia prima) consumido, de la sede donde se ----
+// produjo (Diana, ago 2026: "cuando hago producción debe de restar la materia prima automática
+// del centro de producción"). El insumo es opcional (Produccion.gs): una fila sin insumo_producto
+// no debe tocar la materia prima, y el insumo de OTRA sede tampoco debe afectar.
+const conteosInsumo = [
+  { fecha: '2026-07-01', sede: 'Centro de Producción', producto: 'Costilla San Luis Entera', unidad: 'g', cantidad: 5000 }
+];
+const produccionesInsumo = [
+  // Con insumo: debe restar 1200g de la materia prima en Centro de Producción.
+  { fecha: '2026-07-03', sede: 'Centro de Producción', item: 'Costilla Preparada', cantidad: 1000, unidad: 'g',
+    timestamp: '2026-07-03', insumo_producto: 'Costilla San Luis Entera', insumo_cantidad: 1200, insumo_unidad: 'g' },
+  // Sin insumo (fila antigua o sin ese dato): no debe tocar la materia prima.
+  { fecha: '2026-07-04', sede: 'Centro de Producción', item: 'Costilla Preparada', cantidad: 500, unidad: 'g',
+    timestamp: '2026-07-04', insumo_producto: '', insumo_cantidad: '', insumo_unidad: '' },
+  // Insumo consumido en OTRA sede: no debe afectar a Centro de Producción.
+  { fecha: '2026-07-04', sede: 'Capri', item: 'Costilla Preparada', cantidad: 300, unidad: 'g',
+    timestamp: '2026-07-04', insumo_producto: 'Costilla San Luis Entera', insumo_cantidad: 400, insumo_unidad: 'g' }
+];
+const disponibleHoyInsumo = cargar('apps-script/DisponibleHoy.gs', {
+  SHEET_NAMES: { CONTEOS: 'conteos', AJUSTES_INVENTARIO: 'ajustes', TRASLADOS: 'traslados', PRODUCCIONES: 'producciones' },
+  leerTabla_: (hoja) => hoja === 'conteos' ? conteosInsumo : (hoja === 'producciones' ? produccionesInsumo : []),
+  formatearFecha_: (v) => String(v).slice(0, 10),
+  claveProducto_: (texto) => String(texto || '').trim().toLowerCase(),
+  nombreCanonico_: (texto) => texto,
+  aUnidadBase_: (cantidad, unidad) => ({ cantidad: Number(cantidad), unidad })
+});
+assert.equal(
+  disponibleHoyInsumo.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'Centro de Producción')['costilla san luis entera'].cantidad, 3800,
+  '5000 contados - 1200 de insumo consumido en la producción con insumo registrado = 3800; la fila sin insumo y la de Capri no deben afectar'
+);
+assert.equal(
+  disponibleHoyInsumo.obtenerUltimoStockPorIngrediente_('2026-07-08', {}, 'Centro de Producción')['costilla preparada'].cantidad, 1500,
+  'el producto terminado sigue sumando normal (1000 + 500), el insumo no le resta a sí mismo'
+);
+
 // --- Conciliación: una venta cancelada no debe contar como venta, sin importar tilde/mayúscula --
 // (bug real: el export de FUDO trae "Cancelada" = "Si" sin tilde, pero el filtro solo reconocía
 // "Sí" con tilde exacta — una venta cancelada se contaba como válida en "ventas esperadas").

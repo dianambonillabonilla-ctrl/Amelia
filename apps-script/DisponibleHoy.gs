@@ -421,10 +421,13 @@ function explotarReceta_(claveProducto, cantidadBase, recetaMap, acumulado, indi
  * solo suma cuando el traslado queda Confirmado o Resuelto (trasladosRecibidosDesdeConteo_), y
  * suma lo realmente recibido (cantidad_recibida), no lo enviado.
  *
- * Aunque producir SÍ suma el producto terminado (ej. Costilla Preparada), todavía NO resta la
- * materia prima que se usó para prepararlo (ej. Costilla San Luis Entera) — eso sigue sin
- * modelarse como salida, igual que las ventas: solo el próximo conteo físico de esa materia prima
- * lo reflejará. Mismo límite ya aceptado para compras/mermas, no es nuevo de este cambio.
+ * Producir suma el producto terminado (ej. Costilla Preparada) y, si la fila trae el insumo
+ * consumido (insumo_producto/insumo_cantidad/insumo_unidad — opcional, ver Produccion.gs), también
+ * resta esa materia prima (ej. Costilla San Luis Entera) de la sede donde se produjo (ver
+ * netoInsumoProduccionDesdeConteo_). Diana (ago 2026): "cuando hago producción debe de restar la
+ * materia prima automática del centro de producción". Si la fila NO trae insumo (como las
+ * anteriores a jul 2026, donde ese dato no existía), la materia prima no se resta — sigue esperando
+ * al próximo conteo físico, igual que compras/mermas sin ese detalle.
  *
  * IMPORTANTE: un producto que TODAVÍA no se ha contado nunca en una sede, pero ya se compró, se
  * produjo o se recibió por traslado allí, igual debe aparecer (con "conteo" = 0 de base) — si no,
@@ -482,7 +485,12 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
     asegurarSinConteo_(t.producto, t.sede_origen);
     if (['Confirmado', 'Resuelto'].indexOf(t.estado) !== -1) asegurarSinConteo_(t.producto, t.sede_destino);
   });
-  producciones.forEach(function (p) { asegurarSinConteo_(p.item, p.sede || 'Sin sede'); });
+  producciones.forEach(function (p) {
+    asegurarSinConteo_(p.item, p.sede || 'Sin sede');
+    // El insumo consumido (materia prima) es opcional (ver Produccion.gs) — solo lo damos de alta
+    // si de verdad viene registrado, para no crear una entrada fantasma con clave vacía.
+    if (p.insumo_producto) asegurarSinConteo_(p.insumo_producto, p.sede || 'Sin sede');
+  });
 
   // Ajustes, traslados y producciones se agrupan UNA vez por (producto, sede). Antes cada una de las
   // tres funciones de abajo recibía la tabla completa y la recorría entera para cada producto y cada
@@ -493,6 +501,12 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
   const idxTraslados = agruparMovimientosPorClaveYSede_(traslados, 'producto', function (t) { return t.sede_destino; }, indice);
   const idxTrasladosEnviados = agruparMovimientosPorClaveYSede_(traslados, 'producto', function (t) { return t.sede_origen; }, indice);
   const idxProducciones = agruparMovimientosPorClaveYSede_(producciones, 'item', function (p) { return p.sede || 'Sin sede'; }, indice);
+  const idxInsumoProduccion = agruparMovimientosPorClaveYSede_(
+    producciones.filter(function (p) { return !!p.insumo_producto; }),
+    'insumo_producto',
+    function (p) { return p.sede || 'Sin sede'; },
+    indice
+  );
 
   const resultado = {};
   Object.keys(porProducto).forEach(function (clave) {
@@ -514,11 +528,12 @@ function obtenerUltimoStockPorIngrediente_(fecha, indice, sede, soloClave) {
       const resTraslados = trasladosRecibidosDesdeConteo_(idxTraslados[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad);
       const resTrasladosEnviados = trasladosEnviadosDesdeConteo_(idxTrasladosEnviados[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad);
       const resProduccion = netoProduccionDesdeConteo_(idxProducciones[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad);
-      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad, cacheVentas);
-      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resVentas.unidad;
+      const resInsumoProduccion = netoInsumoProduccionDesdeConteo_(idxInsumoProduccion[grupo] || [], clave, sedeItem, ultimaFecha, base.timestamp, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad);
+      const resVentas = netoVentasDesdeConteo_(clave, sedeItem, ultimaFecha, fecha, indice, base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resInsumoProduccion.unidad, cacheVentas);
+      const unidadSede = base.unidad || resAjustes.unidad || resTraslados.unidad || resTrasladosEnviados.unidad || resProduccion.unidad || resInsumoProduccion.unidad || resVentas.unidad;
       if (!unidadSede) return; // nada con unidad reconocible todavía para esta sede
       unidadFinal = unidadFinal || unidadSede;
-      total += base.cantidad + resAjustes.neto + resTraslados.total - resTrasladosEnviados.total + resProduccion.neto + resVentas.neto;
+      total += base.cantidad + resAjustes.neto + resTraslados.total - resTrasladosEnviados.total + resProduccion.neto - resInsumoProduccion.total + resVentas.neto;
       if (ultimaFecha > fechaMasReciente) fechaMasReciente = ultimaFecha;
     });
     if (!unidadFinal) return; // sin conteo, compra, traslado ni producción con unidad reconocible en ninguna sede
@@ -673,6 +688,32 @@ function netoProduccionDesdeConteo_(producciones, clave, sede, fechaConteoExclus
     neto += base.cantidad;
   });
   return { neto: neto, unidad: unidad };
+}
+
+/** Resta la materia prima (insumo_producto/insumo_cantidad/insumo_unidad, ver Produccion.gs) que se
+ * consumió al producir, de la sede donde se registró la producción — mismo criterio de "cubierto
+ * por conteo" que netoProduccionDesdeConteo_ (usa el mismo p.timestamp/p.fecha de la fila, no hay
+ * un timestamp aparte para el insumo). Diana (ago 2026): "cuando hago producción debe de restar la
+ * materia prima automática del centro de producción" — antes producir SÍ sumaba el terminado
+ * (netoProduccionDesdeConteo_) pero nunca restaba el insumo, así que el mismo kilo de materia prima
+ * quedaba contado dos veces: una vez como insumo crudo y otra ya convertido en producto terminado.
+ * Como el insumo es opcional (una fila vieja o sin ese dato no lo trae), esta función no hace nada
+ * en esas filas — igual que produccionRegistrar_ no exige el dato. */
+function netoInsumoProduccionDesdeConteo_(producciones, clave, sede, fechaConteoExclusive, timestampConteoExclusive, fechaCorteInclusive, indice, unidadEsperada) {
+  let total = 0;
+  let unidad = unidadEsperada || '';
+  producciones.forEach(function (p) {
+    if ((p.sede || 'Sin sede') !== sede) return;
+    if (claveProducto_(p.insumo_producto, indice) !== clave) return;
+    const f = formatearFecha_(p.fecha);
+    if (eventoCubiertoPorConteo_(f, timestampOrdenable_(p.timestamp), fechaConteoExclusive, timestampConteoExclusive)) return;
+    if (fechaCorteInclusive && f > fechaCorteInclusive) return;
+    const base = aUnidadBase_(p.insumo_cantidad, p.insumo_unidad);
+    if (!unidad) unidad = base.unidad;
+    if (base.unidad !== unidad) return;
+    total += base.cantidad;
+  });
+  return { total: total, unidad: unidad };
 }
 
 /**

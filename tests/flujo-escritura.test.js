@@ -168,13 +168,14 @@ function exigir(env, cuerpo, queHace) {
   const papa = disponible.stock_ingredientes.papa;
   assert.ok(papa, 'la papa debe aparecer en Disponible Hoy');
 
-  // 22 kg contados + 5 kg comprados + 3,8 kg recibidos - 0,5 kg de merma = 30,3 kg = 30300 g.
-  // La papa consumida al producir NO se resta todavía: hoy solo el próximo conteo físico lo refleja
-  // (limitación documentada en DisponibleHoy.gs, no un fallo de esta prueba).
+  // 22 kg contados + 5 kg comprados + 3,8 kg recibidos - 0,5 kg de merma - 3,6 kg de insumo
+  // consumido al producir = 26,7 kg = 26700 g. Desde ago 2026 (Diana: "cuando hago producción debe
+  // de restar la materia prima automática"), el insumo consumido SÍ se resta de inmediato — ya no
+  // hay que esperar al próximo conteo físico (ver netoInsumoProduccionDesdeConteo_ en DisponibleHoy.gs).
   assert.equal(papa.unidad, 'g', 'todo debe quedar normalizado a la unidad base');
   assert.equal(
-    Math.round(papa.cantidad), 30300,
-    `la papa debía quedar en 30300 g (22000 contados + 5000 comprados + 3800 recibidos - 500 de merma), quedó en ${papa.cantidad}`
+    Math.round(papa.cantidad), 26700,
+    `la papa debía quedar en 26700 g (22000 contados + 5000 comprados + 3800 recibidos - 500 de merma - 3600 de insumo consumido), quedó en ${papa.cantidad}`
   );
 
   const salchipapa = disponible.platos.find((x) => x.producto === 'Salchipapa');
