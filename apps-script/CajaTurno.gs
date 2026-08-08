@@ -502,19 +502,16 @@ function cajaCerrar_(item,usuario) {
   // campos siguen existiendo por compatibilidad con cierres históricos, pero ya no son
   // obligatorios ni se piden en pantalla.
 
-  const calculo=cajaEfectivoEsperado_(apertura,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
   const contado=contadoValido.valor, fuerteContada=fuerteContadaValida.valor;
   const baseSiguiente=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente)||0:contado;
   if(baseSiguiente>contado)return {ok:false,error:'La base para el siguiente turno no puede ser mayor que el efectivo contado.'};
   if(baseSiguiente<0)return {ok:false,error:'La base para el siguiente turno no puede ser negativa.'};
-  // Diana (ago 2026): una diferencia al cerrar NUNCA debe impedir el cierre — quien está en turno
-  // cierra igual, dejando por escrito qué pasó. El Administrador ve la diferencia (queda guardada)
-  // y la concilia después; no hace falta que él mismo cierre ni que la autorice antes.
-  const dif=Number((contado-calculo.esperado).toFixed(2)), difFuerte=Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
-  if((dif!==0||difFuerte!==0)&&!String(item.observacion||'').trim())return {ok:false,error:'Hay una diferencia. Debes escribir una observación.'};
 
-  // Mismo candado que al abrir: cubre solo leer-de-nuevo-y-escribir, nunca la sincronización con
-  // FUDO (ya terminada arriba) — evita que dos dispositivos cierren el mismo turno a la vez.
+  // Candado ANTES de calcular el efectivo esperado (auditoría externa, ago 2026): calcularlo fuera
+  // del candado dejaba una ventana real entre "leer los movimientos" y "guardar el cierre" — un
+  // movimiento registrado justo en ese hueco quedaba guardado (cajaMovimientoRegistrar_ toma el
+  // mismo candado desde el PR #161), pero el cierre no lo incluía en el cálculo. Ahora el cálculo
+  // se hace DENTRO del candado, con los movimientos más recientes posibles, justo antes de escribir.
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     return { ok:false, error:'Otro cierre de caja está en curso ahora mismo — espera un momento y vuelve a intentarlo.' };
@@ -523,15 +520,19 @@ function cajaCerrar_(item,usuario) {
     const aperturaAhora = cajaTurnoFila_(fecha,item.sede);
     if (!aperturaAhora) return {ok:false,error:'La caja no está abierta'};
     if (aperturaAhora.estado === 'Cerrado') return {ok:true,ya_cerrado:true};
+    const calculo=cajaEfectivoEsperado_(aperturaAhora,cajaMovimientosDelDia_(fecha,item.sede),fecha,item.sede);
+    // Diana (ago 2026): una diferencia al cerrar NUNCA debe impedir el cierre — quien está en turno
+    // cierra igual, dejando por escrito qué pasó. El Administrador ve la diferencia (queda guardada)
+    // y la concilia después; no hace falta que él mismo cierre ni que la autorice antes.
+    const dif=Number((contado-calculo.esperado).toFixed(2)), difFuerte=Number((fuerteContada-calculo.caja_fuerte_esperada).toFixed(2));
+    if((dif!==0||difFuerte!==0)&&!String(item.observacion||'').trim())return {ok:false,error:'Hay una diferencia. Debes escribir una observación.'};
     cajaTurnoActualizarFila_(fecha,item.sede,{estado:'Cerrado',efectivo_contado:contado,efectivo_esperado:calculo.esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:calculo.caja_fuerte_esperada,diferencia_caja_fuerte:difFuerte,entrega_cierre:Math.max(0,contado-baseSiguiente),persona_recibe_cierre:item.persona_recibe_cierre||'',persona_verifica_cierre:item.persona_verifica_cierre||'',base_siguiente:baseSiguiente,caja_fuerte_siguiente:fuerteContada,usuario_cierre:usuario.nombre,hora_cierre:new Date(),observacion_cierre:item.observacion||'',timestamp_cierre:new Date(),fudo_confiable_cierre:fudoConfiable});
     auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',fecha+'|'+item.sede,null,{efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,fudo_sync:syncFudo.sincronizado_en},item.sede,item.observacion||'');
-  } finally {
-    lock.releaseLock();
-  }
-  {
     const efectivoSinIdentificarCierre = cajaEfectivoSinIdentificarDia_(fecha);
     const diferenciaPendiente = dif!==0 || difFuerte!==0;
     return {ok:true,efectivo_esperado:calculo.esperado,efectivo_contado:contado,diferencia:dif,caja_fuerte_esperada:calculo.caja_fuerte_esperada,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difFuerte,base_siguiente:baseSiguiente,fudo_sync:syncFudo,cuadre_confiable:fudoConfiable,efectivo_sin_identificar:efectivoSinIdentificarCierre,nivel_confianza:cajaNivelConfianza_(fudoConfiable,efectivoSinIdentificarCierre,diferenciaPendiente)};
+  } finally {
+    lock.releaseLock();
   }
 }
 

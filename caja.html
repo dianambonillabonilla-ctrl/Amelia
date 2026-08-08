@@ -424,10 +424,15 @@ document.getElementById('guardar-movimiento').addEventListener('click',conBotonP
 }));
 document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
-  const contado=Number(document.getElementById('cierre-contado').value||0);const base=Number(document.getElementById('cierre-base').value||0);
+  // Igual que al abrir (auditoría externa, ago 2026): se envía el valor TAL CUAL del campo, no
+  // Number(valor||0) — así, si quedó vacío, el backend lo distingue de "$0 contados de verdad" y
+  // rechaza el cierre en vez de aceptar un conteo que nunca se hizo.
+  const contadoRaw=document.getElementById('cierre-contado').value;
+  const fuerteRaw=document.getElementById('cierre-fuerte').value;
+  const contado=Number(contadoRaw||0);const base=Number(document.getElementById('cierre-base').value||0);
   if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
-  const item={...parametros(),efectivo_contado:contado,caja_fuerte_contada:Number(document.getElementById('cierre-fuerte').value||0),base_siguiente:base,observacion:document.getElementById('cierre-observacion').value.trim()};
-  const fuerteContada_=Number(document.getElementById('cierre-fuerte').value||0);
+  const item={...parametros(),efectivo_contado:contadoRaw,caja_fuerte_contada:fuerteRaw,base_siguiente:base,observacion:document.getElementById('cierre-observacion').value.trim()};
+  const fuerteContada_=Number(fuerteRaw||0);
   const hayDiferenciaDinero_=contado!==Number(estadoActual.efectivo_esperado||0)||fuerteContada_!==Number(estadoActual.caja_fuerte_esperada||0);
   if(hayDiferenciaDinero_&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
