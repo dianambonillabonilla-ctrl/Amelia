@@ -55,11 +55,19 @@ borra la fila duplicada). Si algún día vuelve a aparecer un caso así, es la m
 los múltiples nombres duplicados"):** se cruzó CADA alias de Catalogo_Alias contra Catalogo_Maestro
 buscando el mismo patrón exacto (texto del alias == nombre de otra fila viva) y salieron **4 casos
 más**, además de los 3 ya conocidos de Costilla/Panceta — los 7 comparten el mismo defecto de
-`indiceCatalogo_` y se arreglan igual, con "Fusionar":
+`indiceCatalogo_`:
 - "Cebollita de Amelia" → fusionar en "Cebolla Pluma"
 - "cebolla cruda" → fusionar en "Cebolla Roja"
 - "Cebolla en Pluma (sin limon)" → fusionar en "Cebolla Pluma"
 - "Cebolla Elaborada" → fusionar en "Cebolla Pluma"
+
+Diana pidió que estos 7 los fusionara directamente en vez de hacerlo ella a mano una por una en
+`diagnostico.html` (ya tenían evidencia dura de que ya estaban decididos, ninguno requería su
+criterio). Están resueltos en `apps-script/MigracionFusionesCatalogoAgosto2026.gs`
+(`fusionarDuplicadosCatalogoAgosto2026_`, correr una vez desde el editor de Apps Script — igual que
+la migración de alias de CP, es solo código a ejecutar, idempotente) — usa `catalogoFusionar_` para
+cada par, así que sí reescribe historial y borra la fila duplicada, no crea un alias nuevo que podría
+volver a quedar eclipsado.
 
 De paso se encontró que 6 de estas filas duplicadas (las 3 de Costilla/Panceta más "Cebollita de
 Amelia", "cebolla cruda" y "Cebolla en Pluma (sin limon)") ya tienen `tipo = "Alias inactivo"` y una
