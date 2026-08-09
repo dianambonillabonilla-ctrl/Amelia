@@ -2,8 +2,27 @@ const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
 
+// Espejo de CantidadesRaras.gs, que ahora usan Conteos.gs/AjustesInventario.gs/Produccion.gs/
+// Traslados.gs (cada .gs se carga aislado en estas pruebas — mismo motivo que
+// sedeEscrituraPermitidaMock_ más abajo). Por defecto nunca marca nada como "raro": estas pruebas
+// no son sobre esa función (eso vive en tests/cantidades-raras.test.js e
+// tests/integracion-api.test.js), así que no deben depender de un historial que no viene al caso.
+function aUnidadBaseMock_(cantidad, unidad) {
+  const u = String(unidad || '').trim().toLowerCase();
+  const n = Number(cantidad) || 0;
+  if (u === 'kg') return { cantidad: n * 1000, unidad: 'g' };
+  if (u === 'l') return { cantidad: n * 1000, unidad: 'ml' };
+  return { cantidad: n, unidad: u };
+}
+const MOCKS_CANTIDAD_RARA_ = {
+  aUnidadBase_: aUnidadBaseMock_,
+  historialCantidadesBase_: () => [],
+  cantidadEsRara_: () => null,
+  avisoCantidadRara_: () => null
+};
+
 function cargar(path, extras = {}) {
-  const ctx = Object.assign({ console }, extras);
+  const ctx = Object.assign({ console }, MOCKS_CANTIDAD_RARA_, extras);
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path, 'utf8'), ctx, { filename: path });
   return ctx;

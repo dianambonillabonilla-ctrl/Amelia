@@ -42,10 +42,32 @@ function validarItemsConteo_(items, usuario, opciones) {
   return null;
 }
 
+/**
+ * Cantidades que se ven como un posible error de tecleo (CantidadesRaras.gs) — comparadas contra
+ * el historial de ESE MISMO producto en Conteos_Manuales, sin importar sede (un typo lo es en
+ * cualquier sede). Se salta si ya se confirmó explícitamente (opciones.confirmar_cantidades_raras).
+ */
+function itemsConteoConCantidadRara_(items) {
+  const filas = leerTabla_(SHEET_NAMES.CONTEOS);
+  const raras = [];
+  items.forEach(function (it) {
+    const base = aUnidadBase_(it.cantidad, it.unidad);
+    const historial = historialCantidadesBase_(filas, 'producto', 'cantidad', 'unidad', it.producto, base.unidad);
+    const rara = cantidadEsRara_(historial, base.cantidad);
+    if (rara) raras.push(avisoCantidadRara_(it.producto, it.cantidad, it.unidad, base.unidad, rara));
+  });
+  return raras;
+}
+
 function conteoRegistrar_(items, usuario, opciones) {
   opciones = opciones || {};
   const errorValidacion = validarItemsConteo_(items, usuario, opciones);
   if (errorValidacion) return { ok: false, error: errorValidacion };
+
+  if (!opciones.confirmar_cantidades_raras) {
+    const raras = itemsConteoConCantidadRara_(items);
+    if (raras.length) return { ok: false, requiere_confirmacion: true, cantidades_raras: raras };
+  }
 
   // A qué 'turno' pertenece este envío si no lo trae explícito — se calcula una sola vez.
   const turnoPorDefecto = opciones.omitir_obligatorios_del_dia

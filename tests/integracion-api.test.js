@@ -312,7 +312,10 @@ function sembrarDatos(env) {
     movimientos_inventario_listar: 40,
     conciliacion_historial_desfases: 40,
     inventario_teorico_resumen: 40,
-    fudo_panel_estado: 40
+    fudo_panel_estado: 40,
+    // Se llama en CADA carga de inicio.html (para todo el mundo, no solo Inventario) — el tope es
+    // más ajustado a propósito porque una regresión aquí se sentiría en la pantalla más visitada.
+    alertas_stock_bajo_listar: 15
   };
   const params = parametrosPorAccion();
 

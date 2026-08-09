@@ -362,7 +362,11 @@ btnGuardarConteo.addEventListener('click', conBotonProtegido(btnGuardarConteo, a
 
   if (!items.length) { alert('Agrega al menos un producto con cantidad.'); return; }
 
-  const data = await llamar('conteo_registrar', { items });
+  let data = await llamar('conteo_registrar', { items });
+  if (!data.ok && data.requiere_confirmacion) {
+    if (!confirmarCantidadesRaras_(data.cantidades_raras)) return;
+    data = await llamar('conteo_registrar', { items, opciones: { confirmar_cantidades_raras: true } });
+  }
   if (data.ok) {
     avisarGuardado(`Guardado: ${data.registrados} productos.`);
     cargarAjustes_();
@@ -421,7 +425,11 @@ btnGuardarAjuste.addEventListener('click', conBotonProtegido(btnGuardarAjuste, a
     if (!subida.ok) { alert(subida.error || 'No se pudo subir la foto'); return; }
     item.evidencia_url = subida.url;
   }
-  const data = await llamar('ajuste_inventario_registrar', { item });
+  let data = await llamar('ajuste_inventario_registrar', { item });
+  if (!data.ok && data.requiere_confirmacion) {
+    if (!confirmarCantidadesRaras_(data.cantidades_raras)) return;
+    data = await llamar('ajuste_inventario_registrar', { item, opciones: { confirmar_cantidades_raras: true } });
+  }
   if (data.ok) {
     avisarGuardado('Movimiento de inventario guardado.');
     document.getElementById('aj-producto').value = '';

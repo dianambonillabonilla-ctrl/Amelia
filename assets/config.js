@@ -64,6 +64,21 @@ function escapeHtml(valor) {
   }[c]));
 }
 
+/**
+ * conteo_registrar, ajuste_inventario_registrar, compra_registrar_factura, produccion_registrar/
+ * produccion_con_obligatorios_registrar y traslado_crear pueden responder
+ * `{ ok:false, requiere_confirmacion:true, cantidades_raras:[...] }` en vez de un error normal —
+ * una cantidad que se ve como un posible error de tecleo (CantidadesRaras.gs en el backend), no
+ * algo inválido. Nunca bloquea: solo pide un `confirm()` antes de reenviar la misma solicitud con
+ * `opciones.confirmar_cantidades_raras:true` para guardarla igual.
+ */
+function confirmarCantidadesRaras_(cantidadesRaras) {
+  const detalle = cantidadesRaras.map(r =>
+    `- ${r.producto}: ${r.cantidad} ${r.unidad} (lo máximo registrado hasta ahora equivale a ${r.referencia} ${r.unidad_base}, esto es ${r.veces}x más)`
+  ).join('\n');
+  return confirm(`Esto se ve como un posible error de tecleo:\n\n${detalle}\n\n¿Confirmas que la cantidad es correcta?`);
+}
+
 function fechaLocalHoy_() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -198,8 +213,7 @@ const MENU_PRINCIPAL = [
   { href: 'conteo.html', texto: 'Conteo de inventario', soloRol: ['Administrador','Encargado','Cocina'] },
   { href: 'producir.html', texto: 'Producción', soloRol: ['Administrador','Encargado','Cocina'] },
   { href: 'traslados.html', texto: 'Traslados', soloRol: ['Administrador','Encargado','Cocina'] },
-  { href: 'compras.html', texto: 'Compras', soloRol: ['Administrador','Encargado','Cocina'] },
-  { href: 'gestiones.html', texto: 'Novedades', soloRol: ['Administrador','Encargado','Cocina'] },
+  { href: 'compras.html', texto: 'Compras y Novedades', soloRol: ['Administrador','Encargado','Cocina'] },
   { grupo: 'CONTROL Y REVISIÓN' },
   { href: 'conciliacion.html', texto: 'Conciliación', soloRol: ['Administrador','Encargado','Lectura'] },
   { href: 'inventario-ubicacion.html', texto: 'Inventario por ubicación', soloRol: ['Administrador','Encargado','Lectura'] },

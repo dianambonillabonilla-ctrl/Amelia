@@ -63,9 +63,26 @@ function ajusteInventarioFila_(item, usuario) {
   };
 }
 
-function ajusteInventarioRegistrar_(item, usuario) {
+/** Historial de ESE MISMO producto y tipo de ajuste (una Compra cruda de Sal y una Merma de Sal
+ * no tienen por qué moverse en el mismo orden de magnitud) — ver CantidadesRaras.gs. */
+function ajusteConCantidadRara_(item) {
+  const filas = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO).filter(function (f) { return f.tipo === item.tipo; });
+  const base = aUnidadBase_(item.cantidad, item.unidad);
+  const historial = historialCantidadesBase_(filas, 'producto', 'cantidad', 'unidad', item.producto, base.unidad);
+  const rara = cantidadEsRara_(historial, base.cantidad);
+  return rara ? avisoCantidadRara_(item.producto, item.cantidad, item.unidad, base.unidad, rara) : null;
+}
+
+function ajusteInventarioRegistrar_(item, usuario, opciones) {
+  opciones = opciones || {};
   const validacion = ajusteInventarioValidar_(item, usuario);
   if (!validacion.ok) return validacion;
+
+  if (!opciones.confirmar_cantidades_raras) {
+    const rara = ajusteConCantidadRara_(item);
+    if (rara) return { ok: false, requiere_confirmacion: true, cantidades_raras: [rara] };
+  }
+
   const fila = ajusteInventarioFila_(item, usuario);
   appendRowFromObj_(SHEET_NAMES.AJUSTES_INVENTARIO, fila);
   if (typeof inventarioLibroIntentarDesdeAjuste_ === 'function') {

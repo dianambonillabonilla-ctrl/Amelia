@@ -76,6 +76,22 @@ function compraRegistrarFactura_(factura, usuario, opciones) {
       }
     }
 
+    // Mismo criterio de aviso-no-bloqueo que la factura duplicada de arriba (CantidadesRaras.gs):
+    // una línea con un cero de más (ej. 90.000 g en vez de 9.000 g) se avisa ANTES de escribir, y
+    // se guarda igual si de verdad es correcta. Una sola lectura de Ajustes_Inventario para todas
+    // las líneas de la factura, no una por línea.
+    if (!opciones.confirmar_cantidades_raras) {
+      const filasCompras = leerTabla_(SHEET_NAMES.AJUSTES_INVENTARIO).filter(function (f) { return f.tipo === 'Compra cruda'; });
+      const raras = [];
+      lineas.forEach(function (l) {
+        const base = aUnidadBase_(l.cantidad, l.unidad);
+        const historial = historialCantidadesBase_(filasCompras, 'producto', 'cantidad', 'unidad', l.producto, base.unidad);
+        const rara = cantidadEsRara_(historial, base.cantidad);
+        if (rara) raras.push(avisoCantidadRara_(l.producto, l.cantidad, l.unidad, base.unidad, rara));
+      });
+      if (raras.length) return { ok: false, requiere_confirmacion: true, cantidades_raras: raras };
+    }
+
     const facturaId = Utilities.getUuid();
     const filasNuevas = [];
     let total = 0;
