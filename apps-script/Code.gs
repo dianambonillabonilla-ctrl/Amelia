@@ -426,6 +426,9 @@ function handleRequest_(e, method) {
       case 'caja_historial_listar':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaHistorialListar_(params.fecha_desde, params.fecha_hasta, sedeConsultaPermitida_(sesion.usuario, params.sede)));
+      case 'caja_corregir':
+        requiereRol_(sesion.usuario, ['Administrador']);
+        return jsonOut_(cajaCorregir_(params.item, sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));
