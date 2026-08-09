@@ -1,8 +1,9 @@
 /**
  * fusionarDuplicadosCatalogoAgosto2026_ (MigracionFusionesCatalogoAgosto2026.gs): fusiona de verdad
- * los 7 pares de catálogo que la auditoría de ago 2026 encontró con evidencia dura (alias eclipsado
- * o fila marcada "Alias inactivo") — ver el comentario del archivo y CLAUDE.md para el detalle
- * completo de cómo se armó esta lista a partir de los datos reales.
+ * los 10 pares de catálogo de la auditoría de ago 2026 — 7 con evidencia dura (alias eclipsado o
+ * fila marcada "Alias inactivo") y 3 confirmados directamente por Diana (Falafel Preparado->Falafel,
+ * Vino->Vino tinto, Salsa pie de limon->Salsa de pie de limón). Ver el comentario del archivo y
+ * CLAUDE.md para el detalle completo de cómo se armó esta lista a partir de los datos reales.
  */
 const assert = require('assert');
 const { crearEntorno } = require('./helpers/entorno-apps-script.js');
@@ -25,7 +26,13 @@ function catalogoBase_() {
     { id: 'cebolla-en-pluma-dup', nombre_estandar: 'Cebolla en Pluma (sin limon)', unidad_base: 'g' },
     { id: 'cebolla-elaborada-dup', nombre_estandar: 'Cebolla Elaborada', unidad_base: 'g' },
     { id: 'cebolla-roja', nombre_estandar: 'Cebolla Roja', unidad_base: 'g' },
-    { id: 'cebolla-cruda-dup', nombre_estandar: 'cebolla cruda', unidad_base: 'g' }
+    { id: 'cebolla-cruda-dup', nombre_estandar: 'cebolla cruda', unidad_base: 'g' },
+    { id: 'falafel', nombre_estandar: 'Falafel', categoria: 'Elaborados/Preparaciones de Cocina', unidad_base: 'g' },
+    { id: 'falafel-preparado-dup', nombre_estandar: 'Falafel Preparado', unidad_base: 'g' },
+    { id: 'vino-tinto', nombre_estandar: 'Vino tinto', unidad_base: 'ml' },
+    { id: 'vino-dup', nombre_estandar: 'Vino', unidad_base: 'g' },
+    { id: 'salsa-limon', nombre_estandar: 'Salsa de pie de limón', categoria: 'Elaborados/Postres y Panadería', unidad_base: 'g' },
+    { id: 'salsa-limon-dup', nombre_estandar: 'Salsa pie de limon', unidad_base: 'g' }
   ];
 }
 
@@ -45,19 +52,22 @@ function aliasBase_() {
   ];
 }
 
-(function fusionaLos7ParesConEvidenciaDura() {
+(function fusionaLos10ParesConfirmados() {
   const env = env_();
   env.agregar('Catalogo_Maestro', catalogoBase_());
   env.agregar('Catalogo_Alias', aliasBase_());
 
   const r = env.ctx.fusionarDuplicadosCatalogoAgosto2026_();
-  assert.strictEqual(r.fusionados, 7, 'debe fusionar los 7 pares: ' + JSON.stringify(r));
+  assert.strictEqual(r.fusionados, 10, 'debe fusionar los 10 pares: ' + JSON.stringify(r));
   assert.strictEqual(r.errores.length, 0, 'no debe reportar errores: ' + JSON.stringify(r.errores));
 
   const catalogo = env.ctx.leerTabla_(env.evaluar('SHEET_NAMES.CATALOGO'));
-  assert.strictEqual(catalogo.length, 4, 'solo deben quedar los 4 productos reales, sin las filas duplicadas');
+  assert.strictEqual(catalogo.length, 7, 'solo deben quedar los 7 productos reales, sin las filas duplicadas');
   const nombres = catalogo.map((c) => c.nombre_estandar).sort();
-  assert.deepStrictEqual(nombres, ['Cebolla Pluma', 'Cebolla Roja', 'Costilla San Luis Entera', 'Panceta Entera']);
+  assert.deepStrictEqual(nombres, [
+    'Cebolla Pluma', 'Cebolla Roja', 'Costilla San Luis Entera', 'Falafel',
+    'Panceta Entera', 'Salsa de pie de limón', 'Vino tinto'
+  ]);
 
   const indice = env.ctx.indiceCatalogo_();
   assert.strictEqual(env.ctx.claveProducto_('Costilla San Luis', indice), env.ctx.normalizar_('Costilla San Luis Entera'));
@@ -67,18 +77,24 @@ function aliasBase_() {
   assert.strictEqual(env.ctx.claveProducto_('cebolla cruda', indice), env.ctx.normalizar_('Cebolla Roja'));
   assert.strictEqual(env.ctx.claveProducto_('Cebolla en Pluma (sin limon)', indice), env.ctx.normalizar_('Cebolla Pluma'));
   assert.strictEqual(env.ctx.claveProducto_('Cebolla Elaborada', indice), env.ctx.normalizar_('Cebolla Pluma'));
-  console.log('fusiona los 7 pares con evidencia dura: OK');
+  // Estos 3 no tenían alias previo (eran duplicados por texto parecido, no por alias eclipsado) —
+  // deben quedar resolubles igual gracias al alias que la migración crea al fusionar.
+  assert.strictEqual(env.ctx.claveProducto_('Falafel Preparado', indice), env.ctx.normalizar_('Falafel'));
+  assert.strictEqual(env.ctx.claveProducto_('Vino', indice), env.ctx.normalizar_('Vino tinto'));
+  assert.strictEqual(env.ctx.claveProducto_('Salsa pie de limon', indice), env.ctx.normalizar_('Salsa de pie de limón'));
+  console.log('fusiona los 10 pares confirmados: OK');
 })();
 
 (function esIdempotente() {
   const env = env_();
   env.agregar('Catalogo_Maestro', catalogoBase_());
+  env.agregar('Catalogo_Alias', aliasBase_());
   env.ctx.fusionarDuplicadosCatalogoAgosto2026_();
   const segunda = env.ctx.fusionarDuplicadosCatalogoAgosto2026_();
   assert.strictEqual(segunda.fusionados, 0, 'la segunda corrida no debe fusionar nada de nuevo');
-  assert.strictEqual(segunda.ya_resueltos, 7);
+  assert.strictEqual(segunda.ya_resueltos, 10);
   const catalogo = env.ctx.leerTabla_(env.evaluar('SHEET_NAMES.CATALOGO'));
-  assert.strictEqual(catalogo.length, 4, 'no debe borrar ni duplicar nada en la segunda corrida');
+  assert.strictEqual(catalogo.length, 7, 'no debe borrar ni duplicar nada en la segunda corrida');
   console.log('es idempotente: OK');
 })();
 

@@ -79,26 +79,43 @@ hace algo es `catalogoFusionar_` vía el botón "Fusionar". Si se quiere que `ti
 algo a futuro, sería un cambio de código a proponer y explicar antes de tocarlo, no algo que deba
 asumirse.
 
-Duplicados por similitud de texto (no por alias) que valen la pena confirmar con Diana antes de
-fusionar — no hay evidencia tan dura como en los de arriba, solo nombres parecidos + patrón de uso:
-- "Salsa pie de limon" (3 usos, sin categoría) casi seguro es "Salsa de pie de limón" (35 usos, con
-  categoría) mal escrito — candidato fuerte a fusionar.
-- "Vino" (1 uso, unidad "g" — raro para vino) casi seguro es un error de tecleo por "Vino tinto" (34
-  usos) — candidato fuerte a fusionar.
-- "Sal" (30 usos, en Producción/Ajustes/Conteos/Recetas) vs. "Sal Marina Gruesa" (3 usos) y "Sal
-  Marina Media" (0 usos): ¿son el mismo insumo registrado con dos nombres, o dos granulometrías
-  reales? No hay forma de saberlo sin preguntar.
-- "Vasos" (9 usos) vs. "Vasos Gold 140nz" (1 uso): ¿mismo vaso o dos productos distintos?
-- "Falafel" (47 usos, incluida Recetas) vs. "Falafel Preparado" (31 usos, también en Recetas): ambos
-  se usan mucho y ambos aparecen como ingrediente de receta — o son la misma preparación partida en
-  dos nombres (perdiendo historial real), o son etapas distintas a propósito. Antes de tocar esto hay
-  que preguntar, porque afecta recetas activas.
-- "Falafel Preparado (LEGACY - NO CONTAR)" tiene 0 usos reales en todo el histórico — ya está
-  marcada como histórica por Diana, se puede borrar sin riesgo cuando se quiera hacer limpieza.
+Duplicados por similitud de texto (no por alias, sin la misma evidencia dura) — Diana ya confirmó
+qué hacer con cada uno (ago 2026):
+- "Vino" → fusionar en "Vino tinto" (confirmado, error de tecleo). Incluido en
+  `fusionarDuplicadosCatalogoAgosto2026_`.
+- "Salsa pie de limon" → fusionar en "Salsa de pie de limón" (confirmado, error de tecleo). Incluido
+  en la misma migración.
+- "Falafel Preparado" → fusionar en "Falafel" ("es la misma preparación, fusionar" — confirmado por
+  Diana). Se conserva "Falafel" y no "Falafel Preparado" porque es la fila con datos completos
+  (categoría/sede/stock_minimo); "Falafel Preparado" era una fila vacía. Incluido en la misma
+  migración. "Falafel Crudo" NO se toca — es la etapa cruda, un producto real aparte, no se preguntó
+  por ese. "Falafel Preparado (LEGACY - NO CONTAR)" tampoco — 0 usos reales, ya marcada histórica por
+  Diana, se puede borrar sin riesgo cuando se quiera hacer limpieza aparte.
+- "Sal" vs. "Sal Marina Gruesa"/"Sal Marina Media" → **NO fusionar**, Diana confirmó que son tipos
+  reales de sal distintos. Quedan como están.
+- "Vasos" vs. "Vasos Gold 140nz" → **NO fusionar**, Diana confirmó que son vasos distintos. Quedan
+  como están.
+
+Con esto, `fusionarDuplicadosCatalogoAgosto2026_` fusiona 10 pares en total (los 7 con evidencia dura
+más estos 3 confirmados). Para los 3 sin alias previo (Falafel Preparado, Vino, Salsa pie de limon)
+la migración también crea un alias nuevo hacia el nombre que se conserva — si no, el texto eliminado
+quedaría sin ningún registro y volvería a generar una fila fantasma la próxima vez que alguien lo
+escriba (ver el hallazgo de `catalogoAsegurar_` más abajo).
+
+**Por qué siguen apareciendo filas nuevas sin categoría:** de las 24 filas de Catalogo_Maestro sin
+`categoria`, la enorme mayoría no son errores de captura manual — son el efecto de
+`catalogoAsegurar_` (Catalogo.gs): cuando alguien escribe un texto que no matchea nada existente en
+un conteo/compra/producción, el sistema le crea una fila nueva en blanco (sin categoría, sin stock
+mínimo, sin nombre FUDO) para que quede "algo" contra qué comparar la próxima vez, en vez de fallar
+la operación. Es una fila fantasma que casi siempre debería haber sido un alias del producto real, no
+un producto nuevo — así nacieron "Falafel Preparado", "Cebolla Elaborada" y probablemente varios de
+los otros 24. Vale la pena tenerlo en cuenta la próxima vez que aparezca un nombre "sin categoría": es
+la señal de que alguien escribió algo que no se resolvió, no necesariamente un producto real nuevo.
 
 Nombres parecidos que se revisaron y **no** son duplicados (para no repetir la pregunta): Costilla
 Preparada / Costilla Preparada Picada, Perejil / Perejil Picado, Falafel / Falafel Crudo, Cebolla
-Roja / Cebolla Pluma, Especias Falafel / Falafel, Bolsas de Basura Negras Grandes / Pequeñas,
+Roja / Cebolla Pluma, Especias Falafel / Falafel, Sal / Sal Marina Gruesa / Sal Marina Media, Vasos /
+Vasos Gold 140nz, Bolsas de Basura Negras Grandes / Pequeñas,
 Pastillas Rojas / Azules Horno, y todos los pares de sabores de Helado/Pulpa de soda/Porciones — en
 todos estos casos el nombre se parece por compartir una palabra, pero el uso real (frecuencia, en qué
 hoja aparecen) confirma que son productos o etapas de preparación distintas a propósito.
