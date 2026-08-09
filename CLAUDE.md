@@ -51,6 +51,50 @@ como productos aparte. Un alias nuevo no arregla esto — hay que **fusionar de 
 "Fusionar" en `diagnostico.html` → "Catálogo: posibles duplicados", que sí reescribe el historial y
 borra la fila duplicada). Si algún día vuelve a aparecer un caso así, es la misma causa.
 
+**Auditoría completa del catálogo (ago 2026, pedido explícito de Diana: "lo que más me preocupa con
+los múltiples nombres duplicados"):** se cruzó CADA alias de Catalogo_Alias contra Catalogo_Maestro
+buscando el mismo patrón exacto (texto del alias == nombre de otra fila viva) y salieron **4 casos
+más**, además de los 3 ya conocidos de Costilla/Panceta — los 7 comparten el mismo defecto de
+`indiceCatalogo_` y se arreglan igual, con "Fusionar":
+- "Cebollita de Amelia" → fusionar en "Cebolla Pluma"
+- "cebolla cruda" → fusionar en "Cebolla Roja"
+- "Cebolla en Pluma (sin limon)" → fusionar en "Cebolla Pluma"
+- "Cebolla Elaborada" → fusionar en "Cebolla Pluma"
+
+De paso se encontró que 6 de estas filas duplicadas (las 3 de Costilla/Panceta más "Cebollita de
+Amelia", "cebolla cruda" y "Cebolla en Pluma (sin limon)") ya tienen `tipo = "Alias inactivo"` y una
+nota escrita a mano explicando en qué producto deberían consolidarse — alguien (Diana o un asistente
+anterior) ya había diagnosticado el duplicado dos veces, por dos vías distintas (alias en
+Catalogo_Alias Y esta columna `tipo`/`notas`), y ninguna de las dos vías tiene efecto real: **ninguna
+función del código lee `tipo` ni `notas`** — son solo texto descriptivo. El único mecanismo que sí
+hace algo es `catalogoFusionar_` vía el botón "Fusionar". Si se quiere que `tipo`/`notas` sirvan para
+algo a futuro, sería un cambio de código a proponer y explicar antes de tocarlo, no algo que deba
+asumirse.
+
+Duplicados por similitud de texto (no por alias) que valen la pena confirmar con Diana antes de
+fusionar — no hay evidencia tan dura como en los de arriba, solo nombres parecidos + patrón de uso:
+- "Salsa pie de limon" (3 usos, sin categoría) casi seguro es "Salsa de pie de limón" (35 usos, con
+  categoría) mal escrito — candidato fuerte a fusionar.
+- "Vino" (1 uso, unidad "g" — raro para vino) casi seguro es un error de tecleo por "Vino tinto" (34
+  usos) — candidato fuerte a fusionar.
+- "Sal" (30 usos, en Producción/Ajustes/Conteos/Recetas) vs. "Sal Marina Gruesa" (3 usos) y "Sal
+  Marina Media" (0 usos): ¿son el mismo insumo registrado con dos nombres, o dos granulometrías
+  reales? No hay forma de saberlo sin preguntar.
+- "Vasos" (9 usos) vs. "Vasos Gold 140nz" (1 uso): ¿mismo vaso o dos productos distintos?
+- "Falafel" (47 usos, incluida Recetas) vs. "Falafel Preparado" (31 usos, también en Recetas): ambos
+  se usan mucho y ambos aparecen como ingrediente de receta — o son la misma preparación partida en
+  dos nombres (perdiendo historial real), o son etapas distintas a propósito. Antes de tocar esto hay
+  que preguntar, porque afecta recetas activas.
+- "Falafel Preparado (LEGACY - NO CONTAR)" tiene 0 usos reales en todo el histórico — ya está
+  marcada como histórica por Diana, se puede borrar sin riesgo cuando se quiera hacer limpieza.
+
+Nombres parecidos que se revisaron y **no** son duplicados (para no repetir la pregunta): Costilla
+Preparada / Costilla Preparada Picada, Perejil / Perejil Picado, Falafel / Falafel Crudo, Cebolla
+Roja / Cebolla Pluma, Especias Falafel / Falafel, Bolsas de Basura Negras Grandes / Pequeñas,
+Pastillas Rojas / Azules Horno, y todos los pares de sabores de Helado/Pulpa de soda/Porciones — en
+todos estos casos el nombre se parece por compartir una palabra, pero el uso real (frecuencia, en qué
+hoja aparecen) confirma que son productos o etapas de preparación distintas a propósito.
+
 `apps-script/MigracionCatalogoAgosto2026.gs` (`migrarCatalogoCPAgosto2026_`, correr una vez desde el
 editor de Apps Script) agrega los alias que sí faltaban de verdad (nombres sueltos usados en
 Producciones de Centro de Producción que nunca tuvieron fila ni alias): "salsa de soya"→Salsa Soya,
