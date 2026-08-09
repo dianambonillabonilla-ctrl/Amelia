@@ -112,6 +112,7 @@ function pintar(filas) {
         Caja fuerte: ${dinero_(f.caja_fuerte_esperada)}
       </p>
       <p style="margin:6px 0 0; font-size:.88rem">${novedad}</p>
+      ${f.corregido_por ? `<p style="margin:6px 0 0; font-size:.82rem; color:var(--navy)">✎ Corregido por ${escapeHtml(f.corregido_por)}: ${escapeHtml(f.motivo_correccion)}</p>` : ''}
     </div>`;
   }).join('');
   Array.from(document.querySelectorAll('.historial-caja-fila')).forEach(fila => {

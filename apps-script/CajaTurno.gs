@@ -19,7 +19,8 @@ const CAJA_COLUMNAS_TURNO_ = [
   'efectivo_contado','efectivo_esperado','diferencia',
   'caja_fuerte_contada','caja_fuerte_esperada','diferencia_caja_fuerte','caja_fuerte_siguiente',
   'entrega_cierre','persona_recibe_cierre','persona_verifica_cierre','base_siguiente','usuario_cierre','hora_cierre',
-  'observacion_cierre','timestamp_cierre','fudo_confiable_cierre','estado_conciliacion','nota_conciliacion'
+  'observacion_cierre','timestamp_cierre','fudo_confiable_cierre','estado_conciliacion','nota_conciliacion',
+  'corregido_por','corregido_en','motivo_correccion'
 ];
 const CAJA_COLUMNAS_MOVIMIENTOS_ = [
   'id','fecha','sede','tipo','valor','persona_entrega','persona_recibe','hora','motivo',
@@ -547,6 +548,93 @@ function cajaCerrar_(item,usuario) {
   }
 }
 
+/** ¿Ya existe un cierre de `sede` en una fecha POSTERIOR a `fecha`? Ese día posterior ya pudo haber
+ * usado el `base_siguiente`/`caja_fuerte_siguiente` de este turno como su propio esperado — corregir
+ * este turno sin tocar ese otro dejaría los dos números descuadrados entre sí. */
+function cajaExisteCierrePosteriorA_(fecha, sede) {
+  return leerTabla_(SHEET_NAMES.CAJA_TURNO).some(function (r) {
+    return r.sede === sede && r.estado === 'Cerrado' && formatearFecha_(r.fecha) > fecha;
+  });
+}
+
+/**
+ * CORRECCIÓN DE UN CIERRE YA HECHO — Diana (ago 2026): "reapertura o corrección de caja ya hecha,
+ * solo por administrador". Se implementó como CORRECCIÓN con auditoría, no como reapertura real
+ * (el turno nunca vuelve a estado 'Abierto', no se pueden registrar más movimientos): el
+ * `base_siguiente`/`caja_fuerte_siguiente` de este día pudo haber quedado guardado como el
+ * `base_esperada`/`caja_fuerte_esperada` de un día posterior ya cerrado — reabrir de verdad
+ * arriesgaría dejar ese día posterior calculando contra un número que después cambia. Por eso
+ * cajaExisteCierrePosteriorA_ bloquea corregir un día si ya hay uno más reciente cerrado en esa
+ * sede: hay que corregir en orden, del más reciente hacia atrás.
+ *
+ * No toca Caja_Movimientos (siguen sin editarse/borrarse) ni efectivo_esperado/caja_fuerte_esperada
+ * originales (quedan como referencia de qué se esperaba en el momento del cierre) — solo lo
+ * contado, la observación, la base para el turno siguiente y las diferencias resultantes.
+ */
+function cajaCorregir_(item, usuario) {
+  cajaAsegurarEstructura_();
+  if (usuario.rol !== 'Administrador') return { ok: false, error: 'Solo un Administrador puede corregir un cierre ya hecho.' };
+  if (!item || !item.fecha || !item.sede) return { ok: false, error: 'Falta fecha o sede' };
+  const fecha = formatearFecha_(item.fecha);
+  const turno = cajaTurnoFila_(fecha, item.sede);
+  if (!turno) return { ok: false, error: 'No existe esa caja' };
+  if (turno.estado !== 'Cerrado') return { ok: false, error: 'Esta caja no está cerrada — no hay nada que corregir' };
+  if (cajaExisteCierrePosteriorA_(fecha, item.sede)) {
+    return { ok: false, error: 'Ya existe un cierre más reciente de ' + item.sede + '. Corrige primero ese día (o los días entre medio) antes de corregir este.' };
+  }
+  if (!String(item.motivo_correccion || '').trim()) {
+    return { ok: false, error: 'Escribe el motivo de la corrección.' };
+  }
+
+  const contadoValido = cajaValorContadoValido_(item.efectivo_contado);
+  if (!contadoValido.ok) return { ok: false, error: 'Efectivo contado: ' + contadoValido.error };
+  const fuerteContadaValida = cajaValorContadoValido_(item.caja_fuerte_contada);
+  if (!fuerteContadaValida.ok) return { ok: false, error: 'Caja fuerte contada: ' + fuerteContadaValida.error };
+  const contado = contadoValido.valor, fuerteContada = fuerteContadaValida.valor;
+
+  const baseSiguiente = item.base_siguiente !== '' && item.base_siguiente != null ? Number(item.base_siguiente) || 0 : contado;
+  if (baseSiguiente > contado) return { ok: false, error: 'La base para el siguiente turno no puede ser mayor que el efectivo contado.' };
+  if (baseSiguiente < 0) return { ok: false, error: 'La base para el siguiente turno no puede ser negativa.' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { ok: false, error: 'Otra corrección está en curso ahora mismo — espera un momento y vuelve a intentarlo.' };
+  }
+  try {
+    const turnoAhora = cajaTurnoFila_(fecha, item.sede);
+    if (!turnoAhora || turnoAhora.estado !== 'Cerrado') return { ok: false, error: 'Esta caja no está cerrada — no hay nada que corregir' };
+    if (cajaExisteCierrePosteriorA_(fecha, item.sede)) {
+      return { ok: false, error: 'Ya existe un cierre más reciente de ' + item.sede + '. Corrige primero ese día.' };
+    }
+    // efectivo_esperado/caja_fuerte_esperada NO se recalculan: son la referencia de lo que se
+    // esperaba en el momento del cierre original. Lo que cambia es lo contado y, con eso, la
+    // diferencia resultante.
+    const esperado = Number(turnoAhora.efectivo_esperado) || 0;
+    const fuerteEsperada = Number(turnoAhora.caja_fuerte_esperada) || 0;
+    const dif = Number((contado - esperado).toFixed(2));
+    const difFuerte = Number((fuerteContada - fuerteEsperada).toFixed(2));
+
+    const anterior = {
+      efectivo_contado: turnoAhora.efectivo_contado, diferencia: turnoAhora.diferencia,
+      caja_fuerte_contada: turnoAhora.caja_fuerte_contada, diferencia_caja_fuerte: turnoAhora.diferencia_caja_fuerte,
+      base_siguiente: turnoAhora.base_siguiente, caja_fuerte_siguiente: turnoAhora.caja_fuerte_siguiente,
+      observacion_cierre: turnoAhora.observacion_cierre
+    };
+    const nuevo = {
+      efectivo_contado: contado, efectivo_esperado: esperado, diferencia: dif,
+      caja_fuerte_contada: fuerteContada, caja_fuerte_esperada: fuerteEsperada, diferencia_caja_fuerte: difFuerte,
+      entrega_cierre: Math.max(0, contado - baseSiguiente), base_siguiente: baseSiguiente, caja_fuerte_siguiente: fuerteContada,
+      observacion_cierre: item.observacion_cierre !== undefined ? item.observacion_cierre : turnoAhora.observacion_cierre,
+      corregido_por: usuario.nombre, corregido_en: new Date(), motivo_correccion: item.motivo_correccion
+    };
+    cajaTurnoActualizarFila_(fecha, item.sede, nuevo);
+    auditoriaRegistrar_(usuario, 'caja_corregir', 'CajaTurno', fecha + '|' + item.sede, anterior, nuevo, item.sede, item.motivo_correccion);
+    return { ok: true, efectivo_contado: contado, diferencia: dif, caja_fuerte_contada: fuerteContada, diferencia_caja_fuerte: difFuerte, base_siguiente: baseSiguiente };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /**
  * FUDO sigue sincronizando "ayer" automáticamente cada 15 minutos (ver fudoSincronizacionAutomatica_
  * en FudoApi.gs) — un pago que llegó tarde o se corrigió en FUDO después de cerrar la caja puede
@@ -660,7 +748,8 @@ function cajaHistorialListar_(fechaDesde, fechaHasta, sede) {
       caja_fuerte_esperada: Number(t.caja_fuerte_esperada) || 0, caja_fuerte_contada: Number(t.caja_fuerte_contada) || 0,
       observacion_apertura: t.observacion_apertura || '', observacion_cierre: t.observacion_cierre || '',
       fudo_cambio_tras_cierre: cambioFudo,
-      motivos_novedad: cajaTurnoMotivosNovedad_(t, cambioFudo), estado_conciliacion: t.estado_conciliacion || ''
+      motivos_novedad: cajaTurnoMotivosNovedad_(t, cambioFudo), estado_conciliacion: t.estado_conciliacion || '',
+      corregido_por: t.corregido_por || '', corregido_en: t.corregido_en || '', motivo_correccion: t.motivo_correccion || ''
     };
   }).sort(function (a, b) { return b.fecha.localeCompare(a.fecha) || a.sede.localeCompare(b.sede); });
   return { ok: true, fecha_desde: desde, fecha_hasta: hasta, historial: historial };

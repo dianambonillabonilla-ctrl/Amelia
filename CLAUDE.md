@@ -39,6 +39,37 @@ mueve y se vende contra lo que físicamente debería quedar en cada sede.
   aparte basado solo en "producción del día", que se retiró por mostrar la pantalla vacía cualquier
   día sin producción registrada aunque sí hubiera inventario real).
 
+## Catálogo: alias que no funcionan si el nombre viejo sigue siendo su propia fila
+
+`indiceCatalogo_` (Catalogo.gs) arma primero el mapa nombre→nombre desde **cada fila** de
+Catalogo_Maestro, y solo después agrega los alias de Catalogo_Alias **sin sobrescribir** lo que ya
+había. Consecuencia real (encontrada ago 2026): "Costilla San Luis", "Costilla Cruda" y "Panceta
+Cruda" tenían un alias creado el 27 jul 2026 apuntando a "Costilla San Luis Entera"/"Panceta
+Entera" — pero como los tres **también seguían existiendo como su propia fila** en Catalogo_Maestro
+con ese mismo nombre, el alias nunca tuvo efecto: Disponible Hoy/Conciliación los seguía tratando
+como productos aparte. Un alias nuevo no arregla esto — hay que **fusionar de verdad** (botón
+"Fusionar" en `diagnostico.html` → "Catálogo: posibles duplicados", que sí reescribe el historial y
+borra la fila duplicada). Si algún día vuelve a aparecer un caso así, es la misma causa.
+
+`apps-script/MigracionCatalogoAgosto2026.gs` (`migrarCatalogoCPAgosto2026_`, correr una vez desde el
+editor de Apps Script) agrega los alias que sí faltaban de verdad (nombres sueltos usados en
+Producciones de Centro de Producción que nunca tuvieron fila ni alias): "salsa de soya"→Salsa Soya,
+"pasta de ajo"→Ajo Preparado, "panceta" (sin más)→Panceta Entera, y las variantes de "polvo..."
+repartidas entre Especias Falafel / Especias de Marinar Costilla / Especias Salsa Costilla según a
+cuál preparación pertenece cada una.
+
+**Sigue pendiente, sin suficiente certeza para decidir por Diana:**
+- "Aceite" (registrado dos veces en Producciones de CP, 5.000 l cada vez, 22 jul 2026): no está
+  claro si es Aceite Girasol, Aceite Freidora o Bidones de Aceite Nuevos, y la cantidad es enorme
+  para cualquiera de los tres — probablemente también hay un error de tecleo en la cantidad, no
+  solo en el nombre.
+- "bolsa de basura negra" (Ajustes, Compra cruda, 30 u): el catálogo tiene "Bolsas de Basura Negras
+  Grandes" y "...Pequeñas" por separado — falta saber cuál.
+- "Gordo costilla" / "gordo panceta" (grasa retirada al preparar, registradas como producción en
+  CP): no existen en el catálogo de ninguna forma. No es un nombre distinto de algo que ya existe —
+  parece un concepto nuevo (merma/subproducto) que vale la pena preguntar si Diana quiere llevarlo
+  como producto propio o simplemente como "Merma / desperdicio" en Ajustes.
+
 ## Recetas: jerarquía y dónde ver lo pendiente
 
 La hoja `Recetas` es la fuente real (vía `recetas_listar`), no ningún Excel o documento externo.
@@ -86,18 +117,33 @@ carga; no recrearlo). Frontend: `caja.html`. Solo existe en San Antonio y Capri.
 - Movimientos de caja no se editan ni se borran desde la pantalla; tienen candado + clave de
   idempotencia para que un doble clic no duplique. No se puede sacar más de lo disponible en caja
   operativa/fuerte en ese momento.
-- Un día cerrado es inmutable — no hay reapertura. Lo que sí existe es "Novedades de Administrador":
-  un tablero de seguimiento (diferencias, FUDO no confiable, cambios de FUDO después del cierre) que
-  se puede marcar "conciliada" con una nota, sin recalcular ni corregir nada por sí solo.
+- **Cocina no debe tener ningún acceso a Caja** (confirmado por Diana, ago 2026: "cocina no tiene que
+  ver nada con caja") — así ya estaba en el código (`caja.html` y el router en `Code.gs` exigen
+  Administrador/Encargado); la rama de `cajaPuedeCerrar_` que contemplaba Cocina según sector de
+  turno queda como código muerto a propósito, documentado, no una decisión pendiente.
 - Historial de Caja (`historial-caja.html`) ya es un rango de fechas, no una fecha suelta.
+- Un día cerrado ya se puede corregir, pero **solo un Administrador** (Diana, ago 2026: "reapertura o
+  corrección de caja ya hecha, solo por administrador") — ver `cajaCorregir_` más abajo.
+
+### Corrección de un cierre ya hecho (solo Administrador)
+
+- Es **corrección con auditoría**, no reapertura del estado de la caja (nunca vuelve a "Abierto"): se
+  edita `efectivo_contado`/`caja_fuerte_contada`/`observacion_cierre`/`base_siguiente`/
+  `caja_fuerte_siguiente` de un turno ya `Cerrado`, se recalculan las diferencias, y queda
+  `corregido_por`/`corregido_en`/`motivo_correccion` en la fila para que se note en
+  `historial-caja.html` que ese día no es el original. Auditoria.gs guarda el antes/después completo.
+- Se eligió corrección en vez de reapertura real porque el `base_siguiente`/`caja_fuerte_siguiente`
+  de este día ya pudo haber sido usado como `base_esperada`/`caja_fuerte_esperada` de un día
+  posterior — reabrir de verdad (volver a "Abierto", dejar registrar más movimientos) podría dejar
+  ese día posterior calculando contra un número que ya cambió. Por eso `cajaCorregir_` **rechaza
+  corregir un día si ya existe un cierre posterior de esa misma sede** — hay que corregir en orden,
+  del más reciente hacia atrás, nunca un día en medio de la cadena.
+- No toca movimientos de Caja_Movimientos (siguen sin editarse/borrarse) ni el `efectivo_esperado`/
+  `caja_fuerte_esperada` originales (quedan como referencia de qué se esperaba en el momento) — solo
+  lo contado, la observación y las diferencias resultantes.
 
 ### Sigue genuinamente pendiente / vale la pena preguntarle a Diana
 
-- **Rol Cocina no tiene ningún acceso a Caja hoy** (`caja.html` exige rol Administrador/Encargado; el
-  router en `Code.gs` también). Un documento de contexto anterior asumía que Cocina sí operaba Caja
-  (según turno/sector) — `cajaPuedeCerrar_` todavía tiene esa rama de código pero es inalcanzable en
-  la práctica. Confirmar con Diana si eso es intencional o si Cocina debería poder cerrar cuando su
-  sector de turno es "Caja".
 - Apertura excepcional de otra sede: hoy es exclusiva de Administrador (o un usuario con
   `sede: 'Ambas'`); un Encargado no puede abrir la caja de una sede que no es la suya.
 - No existe evidencia obligatoria por tipo de movimiento (ej. "Gasto") — el campo existe en el

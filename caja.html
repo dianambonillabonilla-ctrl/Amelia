@@ -133,6 +133,24 @@
 
       <section id="cerrada" class="card oculto" style="border-left:4px solid var(--green)">
         <h2>✓ Caja cerrada</h2><div id="resumen-cierre"></div>
+        <div id="bloque-correccion" class="oculto" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+          <p style="margin:0"><a href="#" id="link-mostrar-correccion" style="font-size:.85rem">Corregir este cierre</a></p>
+          <div id="form-correccion" class="oculto" style="margin-top:12px">
+            <p style="color:var(--grey);font-size:.82rem;margin-top:0">
+              Solo para cuando el número original quedó mal (ej. un error al contar). Queda
+              registrado quién corrigió y por qué; lo esperado original no cambia, solo lo contado
+              y la diferencia resultante.
+            </p>
+            <div class="dinero-grid">
+              <div class="dinero"><span>Efectivo contado (corregido)</span><input type="number" min="0" step="1" id="correccion-efectivo" style="margin-top:8px"></div>
+              <div class="dinero"><span>Caja fuerte contada (corregida)</span><input type="number" min="0" step="1" id="correccion-fuerte" style="margin-top:8px"></div>
+              <div class="dinero"><span>Base para el siguiente turno</span><input type="number" min="0" step="1" id="correccion-base-siguiente" style="margin-top:8px"></div>
+            </div>
+            <div class="campo"><label>Observación del cierre (opcional, reemplaza la actual)</label><input id="correccion-observacion"></div>
+            <div class="campo"><label>Motivo de la corrección</label><input id="correccion-motivo" placeholder="ej. se contó mal el efectivo original, el real era..."></div>
+            <button class="btn dorado" id="btn-corregir-cierre">Guardar corrección</button>
+          </div>
+        </div>
       </section>
     </div>
   </main>
@@ -365,6 +383,13 @@ async function cargar(opciones){
       resumenHtml+=`<br><br><span style="color:var(--amber)">⚠ FUDO actualizó esta información después del cierre: ahora dice ${dinero(c.esperado_actual)} en vez de ${dinero(c.esperado_guardado)} guardado (${c.diferencia>0?'+':''}${dinero(c.diferencia)}). Coméntalo con el Administrador.</span>`;
     }
     document.getElementById('resumen-cierre').innerHTML=resumenHtml;
+    document.getElementById('bloque-correccion').classList.toggle('oculto',usuario.rol!=='Administrador');
+    document.getElementById('form-correccion').classList.add('oculto');
+    document.getElementById('correccion-efectivo').value=a.efectivo_contado;
+    document.getElementById('correccion-fuerte').value=a.caja_fuerte_contada;
+    document.getElementById('correccion-base-siguiente').value=a.base_siguiente;
+    document.getElementById('correccion-observacion').value=a.observacion_cierre||'';
+    document.getElementById('correccion-motivo').value='';
     mostrar('cerrada');return;
   }
   document.getElementById('estado').textContent=`${confianza.icono} Caja abierta`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('abierta');
@@ -445,6 +470,29 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   const hayDiferenciaDinero_=contado!==Number(estadoActual.efectivo_esperado||0)||fuerteContada_!==Number(estadoActual.caja_fuerte_esperada||0);
   if(hayDiferenciaDinero_&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
   const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
+}));
+
+document.getElementById('link-mostrar-correccion').addEventListener('click',(e)=>{
+  e.preventDefault();
+  document.getElementById('form-correccion').classList.toggle('oculto');
+});
+document.getElementById('btn-corregir-cierre').addEventListener('click',conBotonProtegido(document.getElementById('btn-corregir-cierre'),async()=>{
+  const motivo=document.getElementById('correccion-motivo').value.trim();
+  if(!motivo){alert('Escribe el motivo de la corrección.');return;}
+  const efectivoRaw=document.getElementById('correccion-efectivo').value;
+  const fuerteRaw=document.getElementById('correccion-fuerte').value;
+  const baseSiguiente=Number(document.getElementById('correccion-base-siguiente').value||0);
+  if(!confirm('¿Confirmas la corrección de este cierre? Quedará registrado quién y por qué.'))return;
+  const item={
+    ...parametros(),
+    efectivo_contado:efectivoRaw,caja_fuerte_contada:fuerteRaw,base_siguiente:baseSiguiente,
+    observacion_cierre:document.getElementById('correccion-observacion').value.trim(),
+    motivo_correccion:motivo
+  };
+  const r=await llamar('caja_corregir',{item});
+  if(!r.ok){alert(r.error);return;}
+  avisarGuardado('Cierre corregido.');
+  cargar();
 }));
 cargar();
 </script>
