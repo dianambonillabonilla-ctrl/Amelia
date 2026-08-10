@@ -51,6 +51,75 @@ como productos aparte. Un alias nuevo no arregla esto — hay que **fusionar de 
 "Fusionar" en `diagnostico.html` → "Catálogo: posibles duplicados", que sí reescribe el historial y
 borra la fila duplicada). Si algún día vuelve a aparecer un caso así, es la misma causa.
 
+**Auditoría completa del catálogo (ago 2026, pedido explícito de Diana: "lo que más me preocupa con
+los múltiples nombres duplicados"):** se cruzó CADA alias de Catalogo_Alias contra Catalogo_Maestro
+buscando el mismo patrón exacto (texto del alias == nombre de otra fila viva) y salieron **4 casos
+más**, además de los 3 ya conocidos de Costilla/Panceta — los 7 comparten el mismo defecto de
+`indiceCatalogo_`:
+- "Cebollita de Amelia" → fusionar en "Cebolla Pluma"
+- "cebolla cruda" → fusionar en "Cebolla Roja"
+- "Cebolla en Pluma (sin limon)" → fusionar en "Cebolla Pluma"
+- "Cebolla Elaborada" → fusionar en "Cebolla Pluma"
+
+Diana pidió que estos 7 los fusionara directamente en vez de hacerlo ella a mano una por una en
+`diagnostico.html` (ya tenían evidencia dura de que ya estaban decididos, ninguno requería su
+criterio). Están resueltos en `apps-script/MigracionFusionesCatalogoAgosto2026.gs`
+(`fusionarDuplicadosCatalogoAgosto2026_`, correr una vez desde el editor de Apps Script — igual que
+la migración de alias de CP, es solo código a ejecutar, idempotente) — usa `catalogoFusionar_` para
+cada par, así que sí reescribe historial y borra la fila duplicada, no crea un alias nuevo que podría
+volver a quedar eclipsado.
+
+De paso se encontró que 6 de estas filas duplicadas (las 3 de Costilla/Panceta más "Cebollita de
+Amelia", "cebolla cruda" y "Cebolla en Pluma (sin limon)") ya tienen `tipo = "Alias inactivo"` y una
+nota escrita a mano explicando en qué producto deberían consolidarse — alguien (Diana o un asistente
+anterior) ya había diagnosticado el duplicado dos veces, por dos vías distintas (alias en
+Catalogo_Alias Y esta columna `tipo`/`notas`), y ninguna de las dos vías tiene efecto real: **ninguna
+función del código lee `tipo` ni `notas`** — son solo texto descriptivo. El único mecanismo que sí
+hace algo es `catalogoFusionar_` vía el botón "Fusionar". Si se quiere que `tipo`/`notas` sirvan para
+algo a futuro, sería un cambio de código a proponer y explicar antes de tocarlo, no algo que deba
+asumirse.
+
+Duplicados por similitud de texto (no por alias, sin la misma evidencia dura) — Diana ya confirmó
+qué hacer con cada uno (ago 2026):
+- "Vino" → fusionar en "Vino tinto" (confirmado, error de tecleo). Incluido en
+  `fusionarDuplicadosCatalogoAgosto2026_`.
+- "Salsa pie de limon" → fusionar en "Salsa de pie de limón" (confirmado, error de tecleo). Incluido
+  en la misma migración.
+- "Falafel Preparado" → fusionar en "Falafel" ("es la misma preparación, fusionar" — confirmado por
+  Diana). Se conserva "Falafel" y no "Falafel Preparado" porque es la fila con datos completos
+  (categoría/sede/stock_minimo); "Falafel Preparado" era una fila vacía. Incluido en la misma
+  migración. "Falafel Crudo" NO se toca — es la etapa cruda, un producto real aparte, no se preguntó
+  por ese. "Falafel Preparado (LEGACY - NO CONTAR)" tampoco — 0 usos reales, ya marcada histórica por
+  Diana, se puede borrar sin riesgo cuando se quiera hacer limpieza aparte.
+- "Sal" vs. "Sal Marina Gruesa"/"Sal Marina Media" → **NO fusionar**, Diana confirmó que son tipos
+  reales de sal distintos. Quedan como están.
+- "Vasos" vs. "Vasos Gold 140nz" → **NO fusionar**, Diana confirmó que son vasos distintos. Quedan
+  como están.
+
+Con esto, `fusionarDuplicadosCatalogoAgosto2026_` fusiona 10 pares en total (los 7 con evidencia dura
+más estos 3 confirmados). Para los 3 sin alias previo (Falafel Preparado, Vino, Salsa pie de limon)
+la migración también crea un alias nuevo hacia el nombre que se conserva — si no, el texto eliminado
+quedaría sin ningún registro y volvería a generar una fila fantasma la próxima vez que alguien lo
+escriba (ver el hallazgo de `catalogoAsegurar_` más abajo).
+
+**Por qué siguen apareciendo filas nuevas sin categoría:** de las 24 filas de Catalogo_Maestro sin
+`categoria`, la enorme mayoría no son errores de captura manual — son el efecto de
+`catalogoAsegurar_` (Catalogo.gs): cuando alguien escribe un texto que no matchea nada existente en
+un conteo/compra/producción, el sistema le crea una fila nueva en blanco (sin categoría, sin stock
+mínimo, sin nombre FUDO) para que quede "algo" contra qué comparar la próxima vez, en vez de fallar
+la operación. Es una fila fantasma que casi siempre debería haber sido un alias del producto real, no
+un producto nuevo — así nacieron "Falafel Preparado", "Cebolla Elaborada" y probablemente varios de
+los otros 24. Vale la pena tenerlo en cuenta la próxima vez que aparezca un nombre "sin categoría": es
+la señal de que alguien escribió algo que no se resolvió, no necesariamente un producto real nuevo.
+
+Nombres parecidos que se revisaron y **no** son duplicados (para no repetir la pregunta): Costilla
+Preparada / Costilla Preparada Picada, Perejil / Perejil Picado, Falafel / Falafel Crudo, Cebolla
+Roja / Cebolla Pluma, Especias Falafel / Falafel, Sal / Sal Marina Gruesa / Sal Marina Media, Vasos /
+Vasos Gold 140nz, Bolsas de Basura Negras Grandes / Pequeñas,
+Pastillas Rojas / Azules Horno, y todos los pares de sabores de Helado/Pulpa de soda/Porciones — en
+todos estos casos el nombre se parece por compartir una palabra, pero el uso real (frecuencia, en qué
+hoja aparecen) confirma que son productos o etapas de preparación distintas a propósito.
+
 `apps-script/MigracionCatalogoAgosto2026.gs` (`migrarCatalogoCPAgosto2026_`, correr una vez desde el
 editor de Apps Script) agrega los alias que sí faltaban de verdad (nombres sueltos usados en
 Producciones de Centro de Producción que nunca tuvieron fila ni alias): "salsa de soya"→Salsa Soya,
