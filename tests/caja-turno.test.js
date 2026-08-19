@@ -145,6 +145,55 @@ function exigirFalla(env, cuerpo, queHace) {
     action: 'caja_movimiento_registrar',
     item: { fecha: HOY, sede: SEDE, tipo: 'Otro ingreso', valor: 1000, motivo: 'tarde' }
   }), 'registrar un movimiento después de cerrado');
+
+  // Una entrega a una persona sí debe poder registrarse después del cierre — es un movimiento
+  // físico independiente del estado del turno (Diana, ago 2026).
+  const entregaTrasCierre = exigir(env, p({
+    action: 'caja_movimiento_registrar',
+    item: {
+      fecha: HOY, sede: SEDE, tipo: 'Entrega administrador desde caja', valor: 5000,
+      persona_entrega: 'Juan (Caja)', persona_recibe: 'Diana (Administradora)', motivo: 'Entrega tardía tras el cierre'
+    }
+  }), 'registrar una entrega después de cerrado');
+  assert.equal(entregaTrasCierre.item.tipo, 'Entrega administrador desde caja');
+})();
+
+// --- 3b. Entregas: movimientos físicos independientes del estado del turno -------------------------
+
+(function () {
+  const { env, token } = nuevoEntornoConAdmin();
+  const p = (cuerpo) => Object.assign({ token }, cuerpo);
+
+  // Sin caja abierta ese día, los demás tipos de movimiento siguen bloqueados...
+  exigirFalla(env, p({
+    action: 'caja_movimiento_registrar',
+    item: { fecha: HOY, sede: SEDE, tipo: 'Envío a caja fuerte', valor: 10000, motivo: 'Retiro preventivo' }
+  }), 'guardar en caja fuerte sin caja abierta');
+
+  // ...pero una entrega a una persona sí se puede registrar, con o sin caja abierta ese día.
+  const entregaSinAbrir = exigir(env, p({
+    action: 'caja_movimiento_registrar',
+    item: {
+      fecha: HOY, sede: SEDE, tipo: 'Entrega administrador desde caja fuerte', valor: 15000,
+      persona_entrega: 'Juan (Caja)', persona_recibe: 'Diana (Administradora)', motivo: 'Entrega antes de abrir'
+    }
+  }), 'registrar una entrega sin caja abierta');
+  assert.equal(entregaSinAbrir.item.tipo, 'Entrega administrador desde caja fuerte');
+
+  // Sin un turno abierto no hay un cajón DILANA conocido contra el cual medir "lo disponible" —
+  // el tope de no exceder lo disponible solo aplica con caja abierta, así que una entrega grande
+  // igual se registra (queda para que el Administrador la revise en el cuadre del día).
+  const entregaGrandeSinAbrir = exigir(env, p({
+    action: 'caja_movimiento_registrar',
+    item: {
+      fecha: HOY, sede: SEDE, tipo: 'Entrega administrador desde caja', valor: 999999999,
+      persona_entrega: 'Juan (Caja)', persona_recibe: 'Diana (Administradora)', motivo: 'Entrega sin tope sin caja abierta'
+    }
+  }), 'registrar una entrega grande sin caja abierta (sin tope porque no hay turno)');
+  assert.equal(entregaGrandeSinAbrir.item.valor, 999999999);
+
+  const movimientos = exigir(env, p({ action: 'caja_movimientos_listar', fecha: HOY, sede: SEDE }), 'listar movimientos sin caja abierta').data;
+  assert.equal(movimientos.length, 2, 'las dos entregas quedaron guardadas aunque la caja nunca se abrió ese día');
 })();
 
 (function () {

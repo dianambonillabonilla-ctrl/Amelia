@@ -49,6 +49,16 @@
       <p id="fudo-estado" class="estado-sync">Consultando sincronización…</p>
     </div>
 
+    <div class="card accion-caja">
+      <h3>Entregar a una persona</h3>
+      <p class="nota-simple">Una entrega de efectivo es un movimiento físico independiente del estado del turno: se puede registrar aunque la caja todavía no se haya abierto hoy, o ya se haya cerrado. El nombre de quien recibe es obligatorio y queda guardado en el historial.</p>
+      <div class="campo"><label>Sale de</label><select id="entrega-origen"><option value="caja">Caja operativa</option><option value="fuerte">Caja fuerte</option></select></div>
+      <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="entrega-valor"></div>
+      <div class="campo"><label>Nombre de quien recibe</label><input id="entrega-recibe" autocomplete="off" placeholder="Nombre completo"></div>
+      <div class="campo"><label>Motivo</label><input id="entrega-motivo" placeholder="Ej. entrega de efectivo, pago, retiro autorizado"></div>
+      <button class="btn" id="guardar-entrega">Registrar entrega</button>
+    </div>
+
     <section id="cargando" class="card"><p class="vacio">Consultando la caja…</p></section>
 
     <section id="sin-abrir" class="card oculto" style="border:2px solid var(--gold)">
@@ -106,16 +116,6 @@
           <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="fuerte-valor"></div>
           <div class="campo"><label>Observación opcional</label><input id="fuerte-motivo" placeholder="Ej. retiro preventivo de efectivo"></div>
           <button class="btn" id="guardar-fuerte">Guardar en caja fuerte</button>
-        </div>
-
-        <div class="accion-caja">
-          <h3>Entregar a una persona</h3>
-          <p class="nota-simple">El nombre de quien recibe es obligatorio y queda guardado en el historial.</p>
-          <div class="campo"><label>Sale de</label><select id="entrega-origen"><option value="caja">Caja operativa</option><option value="fuerte">Caja fuerte</option></select></div>
-          <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="entrega-valor"></div>
-          <div class="campo"><label>Nombre de quien recibe</label><input id="entrega-recibe" autocomplete="off" placeholder="Nombre completo"></div>
-          <div class="campo"><label>Motivo</label><input id="entrega-motivo" placeholder="Ej. entrega de efectivo, pago, retiro autorizado"></div>
-          <button class="btn" id="guardar-entrega">Registrar entrega</button>
         </div>
       </div>
 
