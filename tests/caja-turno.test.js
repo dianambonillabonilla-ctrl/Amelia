@@ -195,13 +195,17 @@ function exigirFalla(env, cuerpo, queHace) {
   const otraSede = cajaAbrir_({ fecha: HOY, sede: OTRA_SEDE, base_inicial: 0, caja_fuerte_inicial: 0 }, usuarioCocinaSA);
   assert.strictEqual(otraSede.ok, false, 'Cocina de San Antonio NO debe poder abrir la caja de Capri');
 
-  // Sin sector "Caja" asignado hoy, Cocina no puede cerrar aunque haya abierto la caja.
+  // Diana (ago 2026, confirmado en CLAUDE.md): "cocina no tiene que ver nada con caja" — Cocina no
+  // puede cerrar la caja bajo ninguna circunstancia, ni siquiera si el sector "Caja" queda asignado
+  // para hoy. cajaPuedeCerrar_ (sobrescrita a propósito en ZZ_ReactivacionFudo.gs, se carga después
+  // que CajaTurno.gs) ya solo mira el rol — la variante que contemplaba el sector de turno para
+  // roles distintos de Administrador/Caja/Encargado queda como código muerto documentado.
   const cierreSinSector = cajaCerrar_({ fecha: HOY, sede: SEDE, efectivo_contado: 0, caja_fuerte_contada: 0 }, usuarioCocinaSA);
   assert.strictEqual(cierreSinSector.ok, false, 'sin el sector "Caja" asignado hoy, Cocina no debe poder cerrar la caja');
 
   env.ctx.turnoSectorElegir_(HOY, 'Caja', usuarioCocinaSA);
   const cierreConSector = cajaCerrar_({ fecha: HOY, sede: SEDE, efectivo_contado: 0, caja_fuerte_contada: 0 }, usuarioCocinaSA);
-  assert.ok(cierreConSector.ok, 'con el sector "Caja" asignado hoy, sí debe poder cerrar la caja');
+  assert.strictEqual(cierreConSector.ok, false, 'Cocina no debe poder cerrar la caja aunque tenga el sector "Caja" asignado hoy');
 })();
 
 console.log('caja-turno: OK');
