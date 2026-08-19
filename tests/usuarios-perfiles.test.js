@@ -13,8 +13,9 @@ assert(usuarios.includes("No puedes desactivar tu propia cuenta"), 'Debe protege
 assert(usuarios.includes("No puedes quitarte a ti mismo el perfil de Administrador"), 'Debe protegerse el perfil del administrador actual');
 
 for (const perfil of ['Administrador', 'Caja', 'Cocina', 'Gerencia']) {
-  assert(html.includes(`<option>${perfil}</option>`) || html.includes(`<option value=\"\">Selecciona un perfil</option>`), `Falta perfil ${perfil} en la pantalla`);
+  assert(html.includes(`<option>${perfil}</option>`), `Falta perfil ${perfil} en la pantalla`);
 }
+assert(html.includes('<option value="">Selecciona un perfil</option>'), 'La creación debe obligar a seleccionar un perfil');
 assert(html.includes('Editar perfil y sede'), 'Debe poder editarse perfil y sede desde Usuarios');
 assert(html.includes('Caja y Cocina podrán consultar inventario de otras sedes'), 'La pantalla debe explicar el alcance de consulta entre sedes');
 assert(html.includes("const PERFILES_USUARIO = ['Administrador', 'Caja', 'Cocina', 'Gerencia'];"), 'La UI debe usar la misma lista de perfiles');
