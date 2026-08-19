@@ -2,6 +2,10 @@
  * FUDO SUBITEMS (Fase 2 — paso incremental)
  * Extrae modificadores/extras (subitems) de cada venta sincronizada vía API hacia Fudo_Subitems.
  * No hay tabla plana previa — solo captura para análisis y conciliación futura.
+ *
+ * Regla DILANA (ago 2026): al igual que en las líneas principales de venta, la cantidad de un
+ * subitem FUDO solo se conserva si DILANA identifica ese producto como bebida. Para comida o
+ * productos no clasificados se guarda cantidad vacía; precio/valor económico se conserva.
  */
 
 function fudoSubitemsFilasDesdeSale_(sale, incluidos, indiceMapeo, opciones) {
@@ -22,6 +26,7 @@ function fudoSubitemsFilasDesdeSale_(sale, incluidos, indiceMapeo, opciones) {
       const nombreProducto = fudoApiNombreIncluido_(producto);
       if (!nombreProducto) return;
       const creacion = sub.attributes.createdAt || item.attributes.createdAt || (sale.attributes && sale.attributes.createdAt);
+      const cantidadConfiable = typeof cantidadFudoConfiableParaProducto_ === 'function' && cantidadFudoConfiableParaProducto_(nombreProducto);
       filas.push(neutralizarObjetoFormulas_({
         id_subitem: String(subPtr.id),
         clave_subitem: [String(sale.id), String(itemPtr.id), String(subPtr.id)].join('|'),
@@ -29,7 +34,7 @@ function fudoSubitemsFilasDesdeSale_(sale, incluidos, indiceMapeo, opciones) {
         id_venta: String(sale.id),
         creacion: creacion ? new Date(creacion) : '',
         producto: nombreProducto,
-        cantidad: Number(sub.attributes.quantity) || 0,
+        cantidad: cantidadConfiable ? (Number(sub.attributes.quantity) || 0) : '',
         precio: Number(sub.attributes.price) || 0,
         cancelado: !!sub.attributes.canceled,
         sede: sedeResuelta.sede || '',
