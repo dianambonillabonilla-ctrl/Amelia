@@ -14,9 +14,6 @@ function contadorClaves_() {
       if (!estado[clave]) estado[clave] = { previos: 0, usados: 0 };
       estado[clave].previos++;
     },
-    // true = esta ocurrencia coincide con una que ya existía de un import anterior (omitir).
-    // false = ocurrencia nueva (no vista antes, o ya se agotaron las coincidencias previas) —
-    // importar, aunque la llave se repita dentro de este mismo archivo.
     esDuplicadaPrevia: function (clave) {
       if (!estado[clave]) estado[clave] = { previos: 0, usados: 0 };
       const duplicada = estado[clave].usados < estado[clave].previos;
@@ -27,14 +24,29 @@ function contadorClaves_() {
 }
 
 /**
+ * Regla de negocio (ago 2026): FUDO NO es la fuente de verdad de cantidades de alimentos.
+ * Solo una cantidad de venta identificada inequívocamente como bebida puede conservarse para
+ * controles cuantitativos. Todo producto desconocido o de comida queda con cantidad vacía; su
+ * valor económico sí se conserva íntegro.
+ *
+ * La clasificación se toma del Catálogo Maestro porque es DILANA —no FUDO— quien decide qué
+ * productos pueden afectar inventario. Ante cualquier duda, devuelve false (principio seguro).
+ */
+function cantidadFudoConfiableParaProducto_(nombreProducto) {
+  const nombre = normalizar_(nombreProducto);
+  if (!nombre) return false;
+  const fila = leerTabla_(SHEET_NAMES.CATALOGO).find(function (c) {
+    return normalizar_(c.nombre_fudo) === nombre || normalizar_(c.nombre_estandar) === nombre;
+  });
+  if (!fila) return false;
+  const sector = normalizar_(fila.sector);
+  const categoria = normalizar_(fila.categoria);
+  return sector === 'bebidas' || categoria === 'bebidas' || categoria.indexOf('bebida') !== -1;
+}
+
+/**
  * Importa los dos formatos reales entregados por FUDO: movimientos y reporte resumido/detallado de
- * ventas. Toma un lock de todo el script mientras dura la importación: el algoritmo de
- * deduplicación (contadorClaves_) primero LEE todo lo ya guardado y después ESCRIBE lo nuevo — sin
- * este lock, dos importaciones al mismo tiempo (dos administradores, o el mismo archivo subido dos
- * veces por accidente en pestañas distintas) podrían leer el mismo estado "antes" y las dos
- * concluir que las mismas filas son nuevas, duplicándolas. Con archivos grandes divididos en lotes
- * (ver importar.html) cada lote pide y suelta el lock por separado, así que un lote no bloquea al
- * siguiente de la misma importación, solo a una importación distinta que intente cruzarse.
+ * ventas. Toma un lock de todo el script mientras dura la importación para evitar duplicados.
  */
 function importarFudo_(tipo, filas, usuario, opciones) {
   if (!tipo || !filas || !filas.length) return { ok: false, error: 'Falta tipo o filas' };
@@ -82,15 +94,8 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
         importado_por: usuario.nombre,
         importado_en: ahora
       };
-      // Antes se descartaba la fila en silencio si faltaba fecha o nombre — el resultado decía
-      // "Importadas 0 filas" sin ninguna pista de por qué. Ahora se cuenta cada motivo de descarte
-      // por separado para poder explicarlo (ver diagnóstico más abajo).
       if (!obj.fecha) { sinFecha++; return; }
       if (!obj.nombre) { sinNombre++; return; }
-      // Un "Diferencia" que no parsea a número (export de FUDO corrupto/con texto) no se descartaba
-      // antes: se guardaba tal cual y luego Number(m.diferencia||0) daba NaN en conciliarBebidas_
-      // (Conciliacion.gs), contaminando en silencio TODO el consumo calculado de esa bebida ese día
-      // — auditoría real, 24 jul 2026.
       if (obj.diferencia !== '' && isNaN(Number(obj.diferencia))) { diferenciaInvalida++; return; }
       const clave = claveMovimiento_(obj);
       if (contador.esDuplicadaPrevia(clave)) { omitidos++; return; }
@@ -124,15 +129,10 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
     let sinFecha = 0;
     let sinProducto = 0;
     let cantidadInvalida = 0;
+    let cantidadesOmitidasPorRegla = 0;
 
     filas.forEach(function (f, i) {
       const creadaPor = valorFudo_(f, ['Creada por', 'Usuario', 'Caja']);
-      // 'Sede' (columna nueva, jul 2026): fudoApiFilasVentaDesdeSale_ (FudoApi.gs) la manda ya
-      // resuelta por fudoResolverSedeVenta_ (sala/identificador/mesero) cuando la venta viene de la
-      // API — el export CSV nunca trae esta columna, así que ahí sigue funcionando exactamente
-      // igual que antes. Si esa resolución no encontró nada ("Sin identificar"), igual se le da una
-      // oportunidad a sedeDesdeCreadaPor_ (que además del mapeo por sala tiene la lista fija
-      // histórica) antes de rendirse — nunca se pierde cobertura, solo se suma una posibilidad más.
       const sedeResuelta = valorFudo_(f, ['Sede']);
       const sede = opciones.sede && opciones.sede !== 'Automática'
         ? opciones.sede
@@ -164,12 +164,21 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
         archivo_origen: archivo,
         importado_en: ahora
       };
-      // Igual que en 'movimientos': antes esto descartaba la fila sin decir por qué. Se cuenta
-      // cada motivo por separado (fecha/creación, producto o cantidad inválida) para poder armar
-      // un diagnóstico legible cuando el resultado sea 0 filas importadas.
+
       if (!obj.creacion) { sinFecha++; return; }
       if (!obj.producto) { sinProducto++; return; }
-      if (!(Number(obj.cantidad) > 0)) { cantidadInvalida++; return; }
+
+      // La cantidad solo se valida y conserva si DILANA clasificó el producto como bebida.
+      // En comida/otros, se borra deliberadamente antes de persistirla. El precio no se toca.
+      const cantidadConfiable = cantidadFudoConfiableParaProducto_(obj.producto);
+      if (cantidadConfiable) {
+        if (!(Number(obj.cantidad) > 0)) { cantidadInvalida++; return; }
+        obj.cantidad = Number(obj.cantidad);
+      } else {
+        if (obj.cantidad !== '' && obj.cantidad !== null && obj.cantidad !== undefined) cantidadesOmitidasPorRegla++;
+        obj.cantidad = '';
+      }
+
       if (sede === 'Sin identificar') {
         const k = String(creadaPor || 'reporte sin sede');
         sinIdentificar[k] = (sinIdentificar[k] || 0) + 1;
@@ -189,6 +198,7 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
       ok: true,
       importados: importados,
       omitidos_duplicados: omitidos,
+      cantidades_omitidas_no_bebidas: cantidadesOmitidasPorRegla,
       tipo: tipo,
       formato: esResumen ? 'resumido' : 'detallado',
       advertencia: esResumen && (!opciones.sede || opciones.sede === 'Automática')
@@ -208,12 +218,7 @@ function importarFudoConLock_(tipo, filas, usuario, opciones) {
   return { ok: false, error: 'Tipo de importación no reconocido: ' + tipo };
 }
 
-/**
- * Nombres crudos que FUDO realmente ha usado, tomados de lo ya importado (Movimientos_FUDO y
- * Ventas_FUDO), para que Registrar producto ofrezca una lista de dónde elegir en vez de que el
- * Administrador tenga que adivinar/tipear "Nombre en FUDO" a mano. Evita el problema de fondo:
- * un nombre mal tipeado ahí nunca vuelve a cruzar con nada en Conciliación, sin ningún aviso.
- */
+/** Nombres crudos que FUDO realmente ha usado. */
 function fudoNombresVistos_() {
   const nombres = new Set();
   leerTabla_(SHEET_NAMES.MOVIMIENTOS_FUDO).forEach(function (m) {
@@ -246,12 +251,6 @@ function claveVenta_(v) {
   if (v.formato_origen === 'reporte_productos_resumido') {
     return ['resumen', formatearFecha_(v.creacion), normalizar_(v.producto), normalizar_(v.sede)].join('|');
   }
-  // La fecha/hora de creación va en la llave además de id_venta (no en su lugar): antes, si el
-  // archivo de FUDO no traía la columna "Id. Venta" con ese nombre exacto (o venía vacía), TODAS
-  // las ventas de un mismo producto en la misma sede colapsaban en la misma llave sin importar el
-  // día — la venta de hoy se descartaba como "duplicada" de la de ayer, aunque fuera un día y hora
-  // distintos. Con id_venta presente y confiable esto no cambia nada (sigue siendo único); es una
-  // protección para cuando no lo es.
   return ['detalle', formatearFechaHoraFudo_(v.creacion), String(v.id_venta || ''), normalizar_(v.producto), normalizar_(v.sede)].join('|');
 }
 
@@ -261,21 +260,11 @@ function formatearFechaHoraFudo_(valor) {
 }
 
 /**
- * FUDO no trae sede explícita en ningún recurso (confirmado contra la especificación OpenAPI
- * oficial completa, jul 2026) — para el export CSV se infiere de la caja/terminal (columna "Creada
- * por"), y para la API se infiere de la sala (Room) de la mesa de la venta (ver
- * fudoApiFilasVentaDesdeSale_ en FudoApi.gs, que pasa el NOMBRE DE LA SALA en el mismo campo
- * "Creada por" para reutilizar esta misma función). Las salas reales de la cuenta (confirmado
- * contra /rooms, jul 2026) son "Salón SA"/"Terraza SA" (San Antonio) y "Terraza Capri"/
- * "La Waffleria - Capri" (Capri).
+ * FUDO no trae sede explícita en ningún recurso; para export/API se infiere usando mapeos de DILANA.
  */
 function sedeDesdeCreadaPor_(creadaPor) {
   const valor = normalizar_(creadaPor);
   if (!valor) return 'Sin identificar';
-  // Fudo_Mapeo_Sedes (ver FudoMapeoSedes.gs) deja configurar/editar esta relación desde la app.
-  // Se revisan todos los tipos de referencia (Sala, Caja, Identificador, Usuario) en el mismo orden
-  // de prioridad que fudoResolverSedeVenta_ — así un CSV que trae el nombre de caja en "Creada por"
-  // también puede resolverse sin pasar por la API.
   const mapeos = leerTabla_(SHEET_NAMES.FUDO_MAPEO_SEDES);
   const prioridad = ['Sala', 'Caja', 'Identificador', 'Usuario'];
   for (let i = 0; i < prioridad.length; i++) {
