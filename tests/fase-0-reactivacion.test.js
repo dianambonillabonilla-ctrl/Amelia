@@ -23,9 +23,14 @@ assert(extension.includes("Caja: 'Encargado'"));
 assert(code.includes("codigo: 'MODULO_INACTIVO'"));
 assert(code.indexOf('if (!accionPermitidaEnReactivacion_(action))') < code.indexOf("if (action === 'login')"), 'El bloqueo debe correr antes del router');
 
-// Las automatizaciones generales siguen apagadas: Caja usa sincronización FUDO explícita.
-assert(code.includes("Fase 0 activa: tareaDiaria_ omitida."));
-assert(fudo.includes("Fase 0 activa: fudoSincronizacionAutomatica_ omitida."));
+// Durante Caja se reactiva ÚNICAMENTE la sincronización financiera FUDO cada 15 minutos.
+// Stock, inventario y tarea diaria general continúan apagados.
+assert(extension.includes('function fudoSincronizacionCajaAutomatica_()'));
+assert(extension.includes("newTrigger('fudoSincronizacionCajaAutomatica_').timeBased().everyMinutes(15).create()"));
+assert(extension.includes("fudoApiSincronizarVentas_(fechaDesde, fechaHasta"));
+assert(extension.includes("fudoApiSincronizarPagos_(fechaDesde, fechaHasta"));
+assert(extension.includes("fn === 'tareaDiaria_'"));
+assert(extension.includes("fn === 'fudoSincronizacionAutomatica_'"));
 assert(fudo.includes("Fase 0 activa: fudoSincronizacionStockDiaria_ omitida."));
 
 assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];"));
@@ -56,8 +61,17 @@ for (const action of ['conteo_listar', 'produccion_registrar', 'traslado_crear',
   assert.strictEqual(r.codigo, 'MODULO_INACTIVO', `${action} debe responder MODULO_INACTIVO`);
 }
 
-assert.strictEqual(env.ctx.fudoSincronizacionAutomatica_(), undefined);
+// Sin credenciales, el sincronizador financiero periódico se omite de forma segura; configurar
+// triggers en reactivación crea exactamente un trigger, el financiero de FUDO.
+const syncAuto = env.ctx.fudoSincronizacionCajaAutomatica_();
+assert.strictEqual(syncAuto.ok, true);
+assert.strictEqual(syncAuto.omitida, 'sin_credenciales');
+const triggers = env.ctx.configurarTriggers();
+assert.strictEqual(triggers.reactivacion, true);
+assert.strictEqual(triggers.creados, 1);
+assert.strictEqual(triggers.handler, 'fudoSincronizacionCajaAutomatica_');
+
 assert.strictEqual(env.ctx.fudoSincronizacionStockDiaria_(), undefined);
 assert.strictEqual(env.ctx.tareaDiaria_(), undefined);
 
-console.log('✓ Reactivación: Usuarios + FUDO + Caja activos; resto bloqueado');
+console.log('✓ Reactivación: Usuarios + FUDO + Caja activos; FUDO financiero cada 15 min; resto bloqueado');
