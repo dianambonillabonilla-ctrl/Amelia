@@ -6,7 +6,8 @@
  *
  * Objetivo: comprobar la conexión y los flujos reales de FUDO sin reactivar el módulo FUDO en la
  * Web App y sin crear triggers. La función sincroniza de forma idempotente HOY + AYER para ventas y
- * pagos, actualiza el snapshot consolidado de stock, y compara el catálogo SOLO EN LECTURA.
+ * pagos, actualiza el snapshot consolidado de stock, compara el catálogo SOLO EN LECTURA y prueba
+ * las 19 familias de recursos publicadas en el OpenAPI de FUDO versionado con DILANA OS.
  *
  * NO hace:
  * - no llama configurarTriggers();
@@ -15,6 +16,28 @@
  * - no hace PATCH de nombres hacia FUDO;
  * - no habilita ninguna action del router HTTP.
  */
+
+const FUDO_VERIFICACION_RECURSOS_OPENAPI_ = [
+  'customers',
+  'discounts',
+  'expenses',
+  'expense-categories',
+  'ingredients',
+  'items',
+  'kitchens',
+  'payments',
+  'payment-methods',
+  'product-categories',
+  'product-modifiers',
+  'products',
+  'providers',
+  'roles',
+  'rooms',
+  'sales',
+  'subitems',
+  'tables',
+  'users'
+];
 
 function fudoVerificacionConteos_() {
   return {
@@ -54,35 +77,17 @@ function fudoVerificacionResumirSonda_(respuesta) {
   };
 }
 
+function fudoVerificacionSondaSimple_(recurso, opciones) {
+  return fudoVerificacionResumirSonda_(
+    fudoApiProbarConexionRecursoSeguro_(recurso, opciones || { pageSize: 1 })
+  );
+}
+
 function fudoVerificacionSondas_() {
   return {
-    ventas: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('sales', {
-      pageSize: 1,
-      orden: '-id',
-      include: FUDO_API_SALES_INCLUDE_,
-      campos: { cashRegister: 'name' }
-    })),
-    pagos: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('payments', {
-      pageSize: 1,
-      orden: '-id',
-      include: 'paymentMethod,sale'
-    })),
-    productos: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('products', {
-      pageSize: 1,
-      include: 'unit'
-    })),
-    ingredientes: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('ingredients', {
-      pageSize: 1,
-      include: 'unit'
-    })),
-    salas: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('rooms', {
-      pageSize: 10
-    })),
-    usuarios_fudo: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('users', {
-      pageSize: 10,
-      include: 'role,tablesCashRegister,deliveryCashRegister,takeAwayCashRegister'
-    })),
-    gastos: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('expenses', {
+    customers: fudoVerificacionSondaSimple_('customers', { pageSize: 2, orden: '-id' }),
+    discounts: fudoVerificacionSondaSimple_('discounts', { pageSize: 2, orden: '-id' }),
+    expenses: fudoVerificacionSondaSimple_('expenses', {
       pageSize: 5,
       orden: '-date',
       include: 'cashRegister,paymentMethod',
@@ -90,14 +95,52 @@ function fudoVerificacionSondas_() {
         expense: 'amount,canceled,createdAt,date,description,dueDate,paymentDate,receiptNumber,status,useInCashCount,cashRegister,paymentMethod',
         cashRegister: 'name'
       }
-    })),
-    metodos_pago: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('payment-methods', {
-      pageSize: 20
-    })),
-    mesas: fudoVerificacionResumirSonda_(fudoApiProbarConexionRecursoSeguro_('tables', {
+    }),
+    expense_categories: fudoVerificacionSondaSimple_('expense-categories', { pageSize: 5 }),
+    ingredients: fudoVerificacionSondaSimple_('ingredients', { pageSize: 2, include: 'unit' }),
+    items: fudoVerificacionSondaSimple_('items', { pageSize: 2, orden: '-id' }),
+    kitchens: fudoVerificacionSondaSimple_('kitchens', { pageSize: 5 }),
+    payments: fudoVerificacionSondaSimple_('payments', {
+      pageSize: 2,
+      orden: '-id',
+      include: 'paymentMethod,sale'
+    }),
+    payment_methods: fudoVerificacionSondaSimple_('payment-methods', { pageSize: 20 }),
+    product_categories: fudoVerificacionSondaSimple_('product-categories', { pageSize: 20 }),
+    product_modifiers: fudoVerificacionSondaSimple_('product-modifiers', { pageSize: 20 }),
+    products: fudoVerificacionSondaSimple_('products', { pageSize: 2, include: 'unit' }),
+    providers: fudoVerificacionSondaSimple_('providers', { pageSize: 10 }),
+    roles: fudoVerificacionSondaSimple_('roles', { pageSize: 10 }),
+    rooms: fudoVerificacionSondaSimple_('rooms', { pageSize: 10 }),
+    sales: fudoVerificacionSondaSimple_('sales', {
+      pageSize: 2,
+      orden: '-id',
+      include: FUDO_API_SALES_INCLUDE_,
+      campos: { cashRegister: 'name' }
+    }),
+    subitems: fudoVerificacionSondaSimple_('subitems', { pageSize: 2, orden: '-id' }),
+    tables: fudoVerificacionSondaSimple_('tables', {
       pageSize: 20,
       include: 'activeSales,activeSales.payments,activeSales.tips,room'
-    }))
+    }),
+    users: fudoVerificacionSondaSimple_('users', {
+      pageSize: 10,
+      include: 'role,tablesCashRegister,deliveryCashRegister,takeAwayCashRegister'
+    })
+  };
+}
+
+function fudoVerificacionResumenSondas_(sondas) {
+  const nombres = Object.keys(sondas || {});
+  const exitosos = nombres.filter(function (k) { return sondas[k] && sondas[k].ok === true; });
+  const fallidos = nombres.filter(function (k) { return !sondas[k] || sondas[k].ok !== true; });
+  return {
+    recursos_esperados: FUDO_VERIFICACION_RECURSOS_OPENAPI_.length,
+    recursos_probados: nombres.length,
+    exitosos: exitosos.length,
+    fallidos: fallidos.length,
+    recursos_fallidos: fallidos,
+    todos_accesibles: nombres.length === FUDO_VERIFICACION_RECURSOS_OPENAPI_.length && fallidos.length === 0
   };
 }
 
@@ -124,15 +167,22 @@ function fudoVerificarSincronizacionFase0_() {
 
   const informe = {
     ok: false,
+    integracion_completa: false,
     modo: 'FASE_0_VERIFICACION_MANUAL',
     periodo: { desde: fechaDesde, hasta: fechaHasta },
     credenciales_configuradas: credenciales,
     triggers: fudoVerificacionTriggers_(),
     automatizacion_reactivada: false,
+    cobertura_persistente_actual: {
+      sincronizacion_principal: ['sales', 'payments', 'products', 'ingredients'],
+      derivados_de_sales: ['items', 'discounts', 'tips', 'subitems'],
+      solo_consulta_diagnostico: ['customers', 'expenses', 'expense-categories', 'kitchens', 'payment-methods', 'product-categories', 'product-modifiers', 'providers', 'roles', 'rooms', 'tables', 'users'],
+      nota: 'Los recursos de solo consulta se prueban contra la API, pero DILANA OS aún no tiene persistencia completa para ellos.'
+    },
     advertencias: [
       'La sincronización automática permanece apagada durante Fase 0.',
       'Stock_FUDO_Base es referencia consolidada de FUDO, no inventario oficial por sede.',
-      'Gastos, mesas, salas, usuarios y métodos de pago se verifican como recursos de API; no se persisten como módulos operativos en esta función.',
+      'La disponibilidad de un endpoint no significa que DILANA OS ya persista todos sus campos.',
       'Catálogo se compara en solo lectura; esta verificación no crea, vincula ni renombra productos.'
     ]
   };
@@ -144,6 +194,7 @@ function fudoVerificarSincronizacionFase0_() {
   }
 
   informe.sondas = fudoVerificacionSondas_();
+  informe.resumen_sondas = fudoVerificacionResumenSondas_(informe.sondas);
   informe.antes = fudoVerificacionConteos_();
 
   try {
@@ -190,12 +241,21 @@ function fudoVerificarSincronizacionFase0_() {
   const ventasOk = informe.sincronizacion_ventas && informe.sincronizacion_ventas.ok !== false;
   const pagosOk = informe.sincronizacion_pagos && informe.sincronizacion_pagos.ok !== false;
   const stockOk = informe.snapshot_stock && informe.snapshot_stock.ok !== false;
-  const sondasCriticas = ['ventas', 'pagos', 'productos', 'ingredientes'];
-  const sondasOk = sondasCriticas.every(function (k) {
+  const sondasCriticas = ['sales', 'payments', 'products', 'ingredients'];
+  const sondasCriticasOk = sondasCriticas.every(function (k) {
     return informe.sondas[k] && informe.sondas[k].ok === true;
   });
 
-  informe.ok = !!(ventasOk && pagosOk && stockOk && sondasOk);
+  informe.ok = !!(ventasOk && pagosOk && stockOk && sondasCriticasOk);
+  // "integracion_completa" exige además que las 19 colecciones probadas sean accesibles, pero
+  // seguirá siendo false a nivel funcional mientras haya recursos marcados como solo consulta.
+  informe.integracion_completa = !!(
+    informe.ok &&
+    informe.resumen_sondas &&
+    informe.resumen_sondas.todos_accesibles &&
+    informe.cobertura_persistente_actual.solo_consulta_diagnostico.length === 0
+  );
+
   Logger.log(JSON.stringify(informe));
   return informe;
 }
