@@ -20,7 +20,7 @@ const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 
-function crearEntorno() {
+function crearEntorno(opciones = {}) {
   const stats = { lecturas: 0, porHoja: {} };
   const hojas = [];
 
@@ -136,6 +136,9 @@ function crearEntorno() {
   const props = new Map();
   const cache = new Map();
   const ctx = {
+    // Por defecto, las pruebas históricas ejercen todos los módulos aunque producción esté en
+    // reactivación. Para probar el candado real usar crearEntorno({ reactivacionReal: true }).
+    DILANA_TEST_DESACTIVAR_REACTIVACION: opciones.reactivacionReal !== true,
     console, Math, Date: FechaControlada, JSON, String, Number, Boolean, Object, Array, RegExp, Error, Promise,
     isNaN, isFinite, parseFloat, parseInt, encodeURIComponent, decodeURIComponent,
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, openById: () => spreadsheet, flush: () => {} },

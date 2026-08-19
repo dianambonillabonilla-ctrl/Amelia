@@ -40,6 +40,18 @@ const Sesion = {
   }
 };
 
+
+// FASE 0 — bloqueo de navegación directa: aunque alguien conozca una URL antigua,
+// solo index, Usuarios y cambio de contraseña pueden permanecer abiertos durante esta etapa.
+const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'cambiar-password.html', ''];
+(function bloquearPaginaInactiva_() {
+  if (!MODO_REACTIVACION) return;
+  const pagina = window.location.pathname.split('/').pop();
+  if (!PAGINAS_PERMITIDAS_REACTIVACION.includes(pagina)) {
+    window.location.replace(Sesion.token() ? 'usuarios.html' : 'index.html');
+  }
+})();
+
 // Sin esto, una petición que se queda colgada (ej. caja_estado esperando a que responda la API de
 // FUDO) dejaba la pantalla en "Consultando…" indefinidamente — el navegador no le pone límite de
 // tiempo a fetch() por sí solo.
