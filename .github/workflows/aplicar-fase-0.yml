@@ -24,7 +24,9 @@ jobs:
           cache: npm
 
       - name: Aplicar candados de Fase 0
-        run: python scripts/aplicar_fase_0.py
+        run: |
+          python scripts/aplicar_fase_0.py
+          python scripts/ajustar_pruebas_fase0.py
 
       - name: Ejecutar pruebas completas
         run: |
@@ -39,6 +41,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps-script/Code.gs apps-script/FudoApi.gs assets/config.js tests/fase-0-reactivacion.test.js package.json
+          git add apps-script/Code.gs apps-script/FudoApi.gs assets/config.js tests/helpers/entorno-apps-script.js tests/fase-0-reactivacion.test.js package.json
           git commit -m "Bloquear completamente módulos durante Fase 0"
           git push origin HEAD:${{ github.head_ref }}
