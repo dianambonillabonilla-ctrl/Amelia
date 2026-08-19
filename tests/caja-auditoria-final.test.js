@@ -1,0 +1,32 @@
+const assert = require('assert');
+const fs = require('fs');
+const { crearEntorno } = require('./helpers/entorno-apps-script.js');
+
+const SEDE='San Antonio', D1='2026-08-18', D2='2026-08-19';
+function nuevo(){const env=crearEntorno();env.ctx.configurarHojas();env.ctx.fudoGastosArqueoAsegurarEstructura_();env.ctx.crearAdministradorInicial_('Diana','diana','contrasegura1','diana@example.com');const l=env.post({action:'login',usuario:'diana',password:'contrasegura1'});assert.ok(l.ok);return {env,token:l.token};}
+function post(env,token,b){return env.post(Object.assign({token},b));}
+
+// 1. No existe salida implícita en el cierre.
+(function(){const {env,token}=nuevo();env.fijarReloj('2026-08-19T17:00:00-05:00');assert.ok(post(env,token,{action:'caja_abrir',item:{fecha:D2,sede:SEDE,base_inicial:100000,caja_fuerte_inicial:0,observacion_apertura:'inicio'}}).ok);const mal=post(env,token,{action:'caja_cerrar',item:{fecha:D2,sede:SEDE,efectivo_contado:100000,caja_fuerte_contada:0,base_siguiente:50000}});assert.strictEqual(mal.ok,false);assert.ok(String(mal.error).includes('registra primero la entrega'));const bien=post(env,token,{action:'caja_cerrar',item:{fecha:D2,sede:SEDE,efectivo_contado:100000,caja_fuerte_contada:0,base_siguiente:100000}});assert.ok(bien.ok);assert.equal(bien.base_siguiente,100000);})();
+
+// 2. Entrega marcada como gasto FUDO + gasto FUDO = una sola salida física.
+(function(){const {env,token}=nuevo();env.fijarReloj('2026-08-19T17:00:00-05:00');assert.ok(post(env,token,{action:'caja_abrir',item:{fecha:D2,sede:SEDE,base_inicial:100000,caja_fuerte_inicial:0,observacion_apertura:'inicio'}}).ok);env.avanzarReloj(60000);const e=post(env,token,{action:'caja_movimiento_registrar',item:{fecha:D2,sede:SEDE,tipo:'Entrega administrador desde caja',valor:20000,persona_entrega:'Caja',persona_recibe:'Diana',motivo:'Pago proveedor',es_gasto_fudo:true,idempotency_key:'gasto-fudo-1'}});assert.ok(e.ok);env.agregar('Fudo_Gastos_Arqueo',[{id_movimiento:'P:1',id_gasto:'1',fecha_pago:D2,momento_fudo:new env.ctx.Date(),monto:20000,cancelado:false,usa_arqueo:true,es_efectivo:true,metodo_pago:'Efectivo',metodo_tipo:'CASH',caja_fudo:'San Antonio',sede:SEDE,modelo:'payment',descripcion:'Proveedor',primera_sincronizacion_en:new env.ctx.Date(),ultima_sincronizacion_en:new env.ctx.Date(),importado_por:'test'}]);const s=post(env,token,{action:'caja_estado',fecha:D2,sede:SEDE});assert.ok(s.ok);assert.equal(s.movimientos_resumen.entregas_gasto_fudo,20000);assert.equal(s.movimientos_resumen.gastos_fudo_arqueo,20000);assert.equal(s.movimientos_resumen.gastos_fudo_compensados_por_entrega,20000);assert.equal(s.efectivo_esperado,80000,'el mismo dinero no se descuenta dos veces');})();
+
+// 3. Una entrega normal + gasto FUDO distinto sí son dos salidas.
+(function(){const {env,token}=nuevo();env.fijarReloj('2026-08-19T17:00:00-05:00');post(env,token,{action:'caja_abrir',item:{fecha:D2,sede:SEDE,base_inicial:100000,caja_fuerte_inicial:0,observacion_apertura:'inicio'}});env.avanzarReloj(60000);post(env,token,{action:'caja_movimiento_registrar',item:{fecha:D2,sede:SEDE,tipo:'Entrega administrador desde caja',valor:10000,persona_entrega:'Caja',persona_recibe:'Diana',motivo:'Entrega no asociada',es_gasto_fudo:false}});env.agregar('Fudo_Gastos_Arqueo',[{id_movimiento:'P:2',id_gasto:'2',fecha_pago:D2,momento_fudo:new env.ctx.Date(),monto:15000,cancelado:false,usa_arqueo:true,es_efectivo:true,metodo_pago:'Efectivo',metodo_tipo:'CASH',caja_fudo:'San Antonio',sede:SEDE,modelo:'payment',descripcion:'Otro gasto',primera_sincronizacion_en:new env.ctx.Date(),ultima_sincronizacion_en:new env.ctx.Date(),importado_por:'test'}]);const s=post(env,token,{action:'caja_estado',fecha:D2,sede:SEDE});assert.equal(s.efectivo_esperado,75000);})();
+
+// 4. No se puede insertar historia después de que existe un turno posterior.
+(function(){const {env,token}=nuevo();env.fijarReloj('2026-08-18T17:00:00-05:00');post(env,token,{action:'caja_abrir',item:{fecha:D1,sede:SEDE,base_inicial:50000,caja_fuerte_inicial:0,observacion_apertura:'d1'}});post(env,token,{action:'caja_cerrar',item:{fecha:D1,sede:SEDE,efectivo_contado:50000,caja_fuerte_contada:0,base_siguiente:50000}});env.fijarReloj('2026-08-19T17:00:00-05:00');post(env,token,{action:'caja_abrir',item:{fecha:D2,sede:SEDE,base_inicial:50000,caja_fuerte_inicial:0}});const retro=post(env,token,{action:'caja_movimiento_registrar',item:{fecha:D1,sede:SEDE,tipo:'Entrega administrador desde caja',valor:10000,persona_entrega:'Caja',persona_recibe:'Diana',motivo:'retro'}});assert.strictEqual(retro.ok,false);assert.ok(String(retro.error).includes('retroactivos'));const abrirViejo=env.ctx.cajaAbrir_({fecha:'2026-08-17',sede:SEDE,base_inicial:0,caja_fuerte_inicial:0},{id:'a',nombre:'Admin',rol:'Administrador',sede:'Ambas'});assert.strictEqual(abrirViejo.ok,false);})();
+
+// 5. Sin FUDO confirmado, nunca se pinta una conciliación verde.
+(function(){const {env,token}=nuevo();env.fijarReloj('2026-08-18T17:00:00-05:00');post(env,token,{action:'caja_abrir',item:{fecha:D1,sede:SEDE,base_inicial:10000,caja_fuerte_inicial:0,observacion_apertura:'d1'}});post(env,token,{action:'caja_cerrar',item:{fecha:D1,sede:SEDE,efectivo_contado:10000,caja_fuerte_contada:0,base_siguiente:10000}});const c=env.ctx.cajaConciliacionApertura_(D2,SEDE);assert.strictEqual(c.fudo_confirmado,false);assert.strictEqual(c.estado_conciliacion,'NO_CONFIRMADA_FUDO');assert.strictEqual(c.cuadra_fudo_dilana,null);})();
+
+// 6. Gerencia/Lectura no hereda acceso de Caja por el alias histórico.
+(function(){const {env}=nuevo();assert.throws(()=>env.ctx.requiereRol_({rol:'Gerencia'},['Administrador','Encargado','Lectura']),/no tiene acceso/i);assert.doesNotThrow(()=>env.ctx.requiereRol_({rol:'Caja'},['Administrador','Encargado']));})();
+
+// 7. Solo queda una capa ZZ de reactivación de Caja; se retiró el override final duplicado.
+assert.ok(fs.existsSync('apps-script/ZZ_ReactivacionCajaFinal.gs'));
+assert.ok(!fs.existsSync('apps-script/ZZ_ReactivacionFudo.gs'));
+assert.ok(!fs.existsSync('apps-script/ZZz_CajaFudoArqueoFinal.gs'));
+
+console.log('caja-auditoria-final: OK');
