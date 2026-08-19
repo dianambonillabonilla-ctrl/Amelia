@@ -78,4 +78,35 @@ function gasto(env, datos) {
   assert.equal(estado.efectivo_esperado, 70000);
 })();
 
+// 5) Parser real de /expenses: cashRegister no basta; Expense.useInCashCount debe ser true.
+(function () {
+  const { env } = nuevo();
+  const incluidos = {
+    'Payment:90': {
+      type:'Payment', id:'90',
+      attributes:{ amount:20000, paid_at:'2026-07-26T19:00:00-05:00', canceled:false },
+      relationships:{
+        paymentMethod:{ data:{ type:'PaymentMethod', id:'1' } },
+        cashRegister:{ data:{ type:'CashRegister', id:'10' } }
+      }
+    },
+    'PaymentMethod:1': { type:'PaymentMethod', id:'1', attributes:{ name:'Efectivo', code:'CASH' } },
+    'CashRegister:10': { type:'CashRegister', id:'10', attributes:{ name:'San Antonio' } }
+  };
+  function expense(useInCashCount) {
+    return {
+      type:'Expense', id:useInCashCount ? '1' : '2',
+      attributes:{ amount:20000, date:FECHA, useInCashCount:useInCashCount, canceled:false },
+      relationships:{ payments:{ data:[{ type:'Payment', id:'90' }] } }
+    };
+  }
+  const si = env.ctx.fudoGastosArqueoFilasDesdeExpense_(expense(true), incluidos, FECHA, FECHA);
+  const no = env.ctx.fudoGastosArqueoFilasDesdeExpense_(expense(false), incluidos, FECHA, FECHA);
+  assert.equal(si.length, 1);
+  assert.equal(si[0].usa_arqueo, true, 'gasto marcado Usar en arqueo sí debe impactar');
+  assert.equal(si[0].es_efectivo, true);
+  assert.equal(no.length, 1);
+  assert.equal(no[0].usa_arqueo, false, 'tener cashRegister no debe sustituir useInCashCount=false');
+})();
+
 console.log('caja-fudo-gastos-arqueo: OK');
