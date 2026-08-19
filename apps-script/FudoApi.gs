@@ -602,6 +602,10 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
  * error, todavía no se corrió fudoApiConfigurarCredenciales_.
  */
 function fudoSincronizacionAutomatica_() {
+  if (typeof automatizacionesPermitidasEnReactivacion_ === 'function' && !automatizacionesPermitidasEnReactivacion_()) {
+    Logger.log('Fase 0 activa: fudoSincronizacionAutomatica_ omitida.');
+    return;
+  }
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty(FUDO_API_PROP_KEY_) || !props.getProperty(FUDO_API_PROP_SECRET_)) {
     return;
@@ -644,6 +648,10 @@ function fudoSincronizacionAutomatica_() {
  * silencio: queda como "Error" en la tarjeta "Stock (snapshot)" de fudo.html.
  */
 function fudoSincronizacionStockDiaria_() {
+  if (typeof automatizacionesPermitidasEnReactivacion_ === 'function' && !automatizacionesPermitidasEnReactivacion_()) {
+    Logger.log('Fase 0 activa: fudoSincronizacionStockDiaria_ omitida.');
+    return;
+  }
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty(FUDO_API_PROP_KEY_) || !props.getProperty(FUDO_API_PROP_SECRET_)) {
     return;
