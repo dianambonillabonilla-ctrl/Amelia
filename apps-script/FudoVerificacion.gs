@@ -7,7 +7,7 @@
  * Objetivo: comprobar la conexión y los flujos reales de FUDO sin reactivar el módulo FUDO en la
  * Web App y sin crear triggers. La función sincroniza de forma idempotente HOY + AYER para ventas y
  * pagos, actualiza el snapshot consolidado de stock, compara el catálogo SOLO EN LECTURA y prueba
- * las 18 familias de recursos publicadas en el OpenAPI de FUDO versionado con DILANA OS.
+ * las 19 familias de recursos publicadas en el OpenAPI de FUDO versionado con DILANA OS.
  *
  * NO hace:
  * - no llama configurarTriggers();
