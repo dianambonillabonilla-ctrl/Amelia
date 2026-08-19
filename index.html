@@ -45,14 +45,18 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
   Sesion.guardar(data.token, data.usuario);
 
   if (MODO_REACTIVACION) {
-    if (data.usuario.rol === 'Administrador' && MODULOS_ACTIVOS.includes('sincronizacion')) {
-      window.location.href = 'fudo.html';
+    if (data.usuario.rol === 'Administrador') {
+      window.location.href = MODULOS_ACTIVOS.includes('sincronizacion') ? 'fudo.html' : 'caja.html';
+      return;
+    }
+    if (data.usuario.rol === 'Caja' && MODULOS_ACTIVOS.includes('caja')) {
+      window.location.href = 'caja.html';
       return;
     }
 
     try { await llamar('logout'); } catch (err) {}
     Sesion.limpiarLocal();
-    errorEl.textContent = 'Tu cuenta está activa, pero durante esta reactivación Usuarios y Sincronización FUDO están disponibles solo para Administración.';
+    errorEl.textContent = 'Tu cuenta está activa, pero todavía no hay un módulo habilitado para tu perfil en esta etapa de reactivación.';
     errorEl.style.display = 'block';
     return;
   }
