@@ -33,7 +33,6 @@ function gasto(env, datos) {
   }, datos || {})]);
 }
 
-// 1) gasto en efectivo que impacta arqueo resta del cajón.
 (function () {
   const { env, token } = nuevo();
   abrir(env, token, 100000);
@@ -45,7 +44,6 @@ function gasto(env, datos) {
   assert.equal(estado.efectivo_esperado, 80000);
 })();
 
-// 2) tarjeta/transferencia no toca el efectivo físico.
 (function () {
   const { env, token } = nuevo();
   abrir(env, token, 100000);
@@ -56,7 +54,6 @@ function gasto(env, datos) {
   assert.equal(estado.efectivo_esperado, 100000);
 })();
 
-// 3) cancelado o fuera del arqueo no resta.
 (function () {
   const { env, token } = nuevo();
   abrir(env, token, 100000);
@@ -68,7 +65,6 @@ function gasto(env, datos) {
   assert.equal(estado.efectivo_esperado, 100000);
 })();
 
-// 4) gasto que ya existía antes de abrir DILANA no se vuelve a descontar: el conteo inicial ya lo absorbió.
 (function () {
   const { env, token } = nuevo();
   gasto(env, { monto:30000, momento_fudo:new env.ctx.Date('2026-07-26T17:00:00-05:00'), primera_sincronizacion_en:new env.ctx.Date('2026-07-26T17:30:00-05:00') });
@@ -78,13 +74,15 @@ function gasto(env, datos) {
   assert.equal(estado.efectivo_esperado, 70000);
 })();
 
-// 5) Parser real de /expenses: cashRegister no basta; Expense.useInCashCount debe ser true.
+// Parser real de /expenses: cashRegister no basta; Expense.useInCashCount debe ser true.
 (function () {
   const { env } = nuevo();
   const incluidos = {
     'Payment:90': {
       type:'Payment', id:'90',
-      attributes:{ amount:20000, paid_at:'2026-07-26T19:00:00-05:00', canceled:false },
+      // 18:30 -05 sigue siendo 26-jul en el mock UTC de Utilities.formatDate; evita que la prueba
+      // dependa del huso horario del runner de GitHub Actions.
+      attributes:{ amount:20000, paid_at:'2026-07-26T18:30:00-05:00', canceled:false },
       relationships:{
         paymentMethod:{ data:{ type:'PaymentMethod', id:'1' } },
         cashRegister:{ data:{ type:'CashRegister', id:'10' } }
