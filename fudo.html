@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Panel Fudo</title>
+<title>Dilana OS — Sincronización FUDO</title>
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -15,123 +15,62 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Panel Fudo</h1>
+      <h1>Sincronización FUDO</h1>
       <div id="barra-usuario"></div>
     </div>
 
+    <div class="card" style="border-left:4px solid var(--gold)">
+      <h2 style="margin-top:0">Conexión, no espejo completo</h2>
+      <p style="margin-bottom:8px">FUDO es la fuente de la información financiera. DILANA conserva únicamente la información necesaria para control y conciliación.</p>
+      <p style="margin:0;color:var(--grey);font-size:.88rem"><strong>Regla de inventario:</strong> las cantidades de alimentos informadas por FUDO no se usan para ajustar inventario. Las cantidades reales de alimentos se controlarán en DILANA desde compras, producción, traslados, mermas, conteos y ajustes. Las bebidas podrán usar cantidades FUDO únicamente cuando estén identificadas como confiables.</p>
+    </div>
+
+    <div id="aviso-sin-credenciales" class="card" style="display:none;border-color:var(--amber);background:#FFFBF0">
+      <strong style="color:var(--amber)">Conexión FUDO sin configurar</strong>
+      <p style="margin:8px 0 0;font-size:.88rem">Las credenciales de la API no están configuradas en Apps Script. La sincronización automática no funcionará hasta configurarlas.</p>
+    </div>
+
     <div class="card">
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Estado de la integración con Fudo: última sincronización, datos de hoy, ventas sin sede y
-        productos del snapshot que aún no están en el catálogo. Para importar archivos Excel o
-        configurar la API en detalle, usa <a href="importar.html">Importar de FUDO</a>.
-      </p>
-      <button class="btn fantasma" id="btn-actualizar">Actualizar</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn fantasma" id="btn-actualizar" type="button">Actualizar estado</button>
+        <button class="btn fantasma" id="btn-probar" type="button" style="display:none">Probar conexión</button>
+      </div>
     </div>
 
-    <div id="aviso-sin-credenciales" class="card" style="display:none; border-color:var(--amber); background:#FFFBF0">
-      <strong style="color:var(--amber)">API sin configurar</strong>
-      <p style="margin:8px 0 0; font-size:.88rem">Las credenciales de la API de Fudo no están guardadas en Apps Script — la sincronización automática no funcionará hasta que un desarrollador ejecute <code>fudoApiConfigurarCredenciales_</code> desde el editor.</p>
+    <div class="grid grid-2" id="tarjetas-sync" style="margin-bottom:20px">
+      <div class="card"><h3>Ventas</h3><div class="vacio">Cargando…</div></div>
+      <div class="card"><h3>Pagos</h3><div class="vacio">Cargando…</div></div>
     </div>
-
-    <div class="grid grid-3" id="tarjetas-sync" style="margin-bottom:20px"></div>
 
     <div class="grid grid-2">
       <div class="card">
-        <h2>Hoy en Amelia</h2>
+        <h2>Información de hoy</h2>
         <div id="resumen-hoy" class="vacio">Cargando…</div>
       </div>
       <div class="card">
-        <h2>Stock Fudo (referencia)</h2>
-        <div id="resumen-stock" class="vacio">Cargando…</div>
-        <p id="acciones-stock-admin" style="display:none; margin:12px 0 0">
-          <button class="btn dorado" id="btn-snapshot-stock">Tomar snapshot desde API</button>
-        </p>
+        <h2>Qué sincronizamos</h2>
+        <table>
+          <tbody>
+            <tr><td>Ventas y valores</td><td><span class="badge ok">Sí</span></td></tr>
+            <tr><td>Pagos / medios de pago</td><td><span class="badge ok">Sí</span></td></tr>
+            <tr><td>Descuentos</td><td><span class="badge ok">Sí</span></td></tr>
+            <tr><td>Propinas</td><td><span class="badge ok">Sí</span></td></tr>
+            <tr><td>Cantidad de alimentos para inventario</td><td><span class="badge alerta">No</span></td></tr>
+            <tr><td>Stock FUDO como inventario oficial</td><td><span class="badge alerta">No</span></td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <div class="card" id="card-pendientes" style="display:none">
-      <h2>Ventas sin sede identificada</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Fudo no trae sede directamente — estas ventas no calzaron con ningún mapeo conocido.
-        Asígnalas en <a href="importar.html#card-ventas-pendientes-sede">Importar de FUDO</a>.
-      </p>
-      <table>
-        <thead><tr><th>Referencia</th><th>Líneas</th><th>Desde</th><th>Hasta</th></tr></thead>
-        <tbody id="tabla-pendientes"></tbody>
-      </table>
-    </div>
-
-    <div class="card" id="card-sin-catalogo" style="display:none">
-      <h2>Productos en Fudo sin catálogo en Amelia</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">Del último snapshot de stock — revisa si falta registrarlos en <a href="catalogo.html">Registrar producto</a>.</p>
-      <ul id="lista-sin-catalogo" style="margin:0; padding-left:20px"></ul>
-    </div>
-
-    <div class="card" id="card-ventas-normalizadas">
-      <h2>Ventas normalizadas (Fudo_Ventas / Fudo_Items)</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Dual-write experimental desde <code>Ventas_FUDO</code> — la conciliación sigue leyendo la
-        tabla plana. Cada importación o sync copia también aquí, agrupado por id de venta.
-      </p>
-      <p id="estado-ventas-normalizadas" class="vacio">Cargando…</p>
-      <p id="acciones-ventas-normalizadas" style="display:none; margin:12px 0 0">
-        <button class="btn fantasma" id="btn-migrar-ventas-flat">Migrar histórico desde Ventas_FUDO</button>
-      </p>
-      <pre id="resultado-migracion-ventas" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
-    </div>
-
-    <div class="card" id="card-pagos-normalizados">
-      <h2>Pagos normalizados (Fudo_Pagos)</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Dual-write experimental desde <code>Pagos_FUDO</code> — el cierre de turno sigue leyendo la
-        tabla plana. Cada sync de pagos copia también aquí, con flag <code>es_efectivo</code> precalculado.
-      </p>
-      <p id="estado-pagos-normalizados" class="vacio">Cargando…</p>
-      <p id="acciones-pagos-normalizados" style="display:none; margin:12px 0 0">
-        <button class="btn fantasma" id="btn-migrar-pagos-flat">Migrar histórico desde Pagos_FUDO</button>
-      </p>
-      <pre id="resultado-migracion-pagos" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
-    </div>
-
-    <div class="card" id="card-descuentos-propinas">
-      <h2>Descuentos y propinas (Fudo_Descuentos / Fudo_Propinas)</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Se extraen de cada sync de ventas vía API — no hay tabla plana previa. Útil para conciliación
-        de caja y análisis futuro.
-      </p>
-      <p id="estado-descuentos-propinas" class="vacio">Cargando…</p>
-      <p id="acciones-descuentos-propinas" style="display:none; margin:12px 0 0">
-        <span style="font-size:.85rem; color:var(--grey)">Re-extraer de la API (mismo rango que sync rápida):</span><br>
-        <button class="btn fantasma" id="btn-migrar-descuentos-propinas" type="button" style="margin-top:8px">Extraer histórico desde API</button>
-      </p>
-      <pre id="resultado-migracion-descuentos-propinas" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
-    </div>
-
-    <div class="card" id="card-subitems-normalizados">
-      <h2>Subítems / modificadores (Fudo_Subitems)</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Extras y modificadores de cada línea de venta — se extraen en cada sync de ventas vía API
-        (<code>items.subitems.product</code>). Sin tabla plana previa.
-      </p>
-      <p id="estado-subitems-normalizados" class="vacio">Cargando…</p>
-      <p id="acciones-subitems-normalizados" style="display:none; margin:12px 0 0">
-        <button class="btn fantasma" id="btn-migrar-subitems-api" type="button">Extraer histórico desde API</button>
-      </p>
-      <pre id="resultado-migracion-subitems" style="display:none; margin-top:10px; font-size:.78rem; white-space:pre-wrap"></pre>
-    </div>
-
-    <div class="card" id="card-sync-rapida" style="display:none">
-      <h2>Sincronización rápida</h2>
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">Solo Administrador. Ventas primero, pagos después — mismo criterio que en Importar.</p>
+    <div class="card" id="card-sync" style="display:none">
+      <h2>Sincronizar un rango</h2>
+      <p style="color:var(--grey);font-size:.85rem;margin-top:0">La sincronización trae ventas y después pagos. Los descuentos y propinas llegan junto con las ventas.</p>
       <div class="grid grid-3" style="align-items:end">
         <div class="campo"><label>Desde</label><input type="date" id="sync-desde"></div>
         <div class="campo"><label>Hasta</label><input type="date" id="sync-hasta"></div>
-        <button class="btn dorado" id="btn-sync-hoy">Sincronizar ventas y pagos</button>
+        <button class="btn dorado" id="btn-sync" type="button">Sincronizar</button>
       </div>
-      <p style="margin:8px 0 0">
-        <button class="btn fantasma" id="btn-reintentar-ultimo" type="button">Reintentar último rango de ventas</button>
-      </p>
-      <pre id="resultado-sync" style="display:none; margin-top:12px; max-height:200px; overflow:auto; background:#F4F6F8; padding:12px; border-radius:8px; font-size:.78rem"></pre>
+      <pre id="resultado-sync" style="display:none;margin-top:12px;max-height:240px;overflow:auto;background:#F4F6F8;padding:12px;border-radius:8px;font-size:.78rem;white-space:pre-wrap"></pre>
     </div>
   </main>
 </div>
@@ -143,262 +82,101 @@ requerirRol_(['Administrador', 'Encargado']);
 montarBarraUsuario();
 
 const usuario = Sesion.usuario();
-const esAdmin = usuario.rol === 'Administrador';
+const esAdmin = usuario && usuario.rol === 'Administrador';
 if (esAdmin) {
-  document.getElementById('card-sync-rapida').style.display = 'block';
-  document.getElementById('acciones-stock-admin').style.display = 'block';
-  document.getElementById('acciones-ventas-normalizadas').style.display = 'block';
-  document.getElementById('acciones-pagos-normalizados').style.display = 'block';
-  document.getElementById('acciones-descuentos-propinas').style.display = 'block';
-  document.getElementById('acciones-subitems-normalizados').style.display = 'block';
+  document.getElementById('card-sync').style.display = 'block';
+  document.getElementById('btn-probar').style.display = 'inline-block';
 }
 
 const hoy = fechaLocalHoy_();
 document.getElementById('sync-desde').value = hoy;
 document.getElementById('sync-hasta').value = hoy;
 
-let ultimoEstado = null;
-
 document.getElementById('btn-actualizar').addEventListener('click', cargar);
+document.getElementById('btn-probar').addEventListener('click', probarConexion);
+document.getElementById('btn-sync').addEventListener('click', sincronizar);
 cargar();
 
 async function cargar() {
-  const data = await llamar('fudo_panel_estado', {});
-  if (!data.ok) { alert(data.error || 'No se pudo cargar el panel'); return; }
-  ultimoEstado = data;
-  pintarCredenciales(data);
-  pintarTarjetasSync(data.ultima_sincronizacion);
-  pintarResumenHoy(data.resumen_hoy);
-  pintarStock(data.stock_fudo_base);
-  pintarPendientes(data.ventas_pendientes_sede);
-  pintarSinCatalogo(data.productos_sin_catalogo);
-  pintarVentasNormalizadas(data.ventas_normalizadas);
-  pintarPagosNormalizados(data.pagos_normalizados);
-  pintarDescuentosPropinas(data.descuentos_propinas);
-  pintarSubitemsNormalizados(data.subitems_normalizados);
-}
-
-function pintarCredenciales(data) {
+  const data = await llamar('fudo_panel_estado');
+  if (!data.ok) {
+    document.getElementById('tarjetas-sync').innerHTML = `<div class="card"><p class="error-msg">${escapeHtml(data.error || 'No se pudo consultar FUDO')}</p></div>`;
+    return;
+  }
   document.getElementById('aviso-sin-credenciales').style.display = data.credenciales_configuradas ? 'none' : 'block';
+  pintarTarjetas(data.ultima_sincronizacion || {});
+  pintarResumen(data);
 }
 
-// Umbral de "lleva rato sin sincronizar": el trigger automático corre cada 15 min (ventas/pagos) —
-// 3 corridas seguidas sin dejar registro (90 min) ya es señal de que algo se atascó (credenciales
-// vencidas, fu.do caído, el trigger se borró), no solo mala suerte de horario.
-const FUDO_SYNC_MINUTOS_DESACTUALIZADO_ = 90;
-
-function haceTiempo_(fechaMs) {
-  const minutos = Math.max(0, Math.round((Date.now() - fechaMs) / 60000));
-  if (minutos < 1) return 'hace un momento';
-  if (minutos < 60) return `hace ${minutos} min`;
-  const horas = Math.floor(minutos / 60);
-  if (horas < 24) return `hace ${horas} h`;
-  return `hace ${Math.floor(horas / 24)} d`;
+function pintarTarjetas(sync) {
+  const tarjetas = [
+    { titulo: 'Ventas', dato: sync.ventas },
+    { titulo: 'Pagos', dato: sync.pagos }
+  ];
+  document.getElementById('tarjetas-sync').innerHTML = tarjetas.map(t => {
+    const s = t.dato;
+    if (!s) return `<div class="card"><h3 style="margin-top:0">${t.titulo}</h3><span class="badge aviso">Sin registro</span></div>`;
+    const fecha = s.timestamp ? new Date(s.timestamp).toLocaleString('es-CO') : '—';
+    const badge = s.ok === false ? '<span class="badge alerta">Error</span>' : '<span class="badge ok">OK</span>';
+    let detalle = '';
+    if (s.fecha_desde || s.fecha_hasta) detalle += `<p style="font-size:.85rem;margin:8px 0 0">${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}</p>`;
+    if (s.importados !== undefined) detalle += `<p style="font-size:.85rem;margin:4px 0 0">Importados: <strong>${escapeHtml(s.importados)}</strong></p>`;
+    if (s.error) detalle += `<p class="error-msg">${escapeHtml(s.error)}</p>`;
+    return `<div class="card"><h3 style="margin-top:0">${t.titulo}</h3>${badge}<span style="margin-left:8px;color:var(--grey);font-size:.8rem">${escapeHtml(fecha)}</span>${detalle}</div>`;
+  }).join('');
 }
 
-function formatoSync_(s) {
-  if (!s) return '<span class="badge aviso">Nunca</span>';
-  const fechaMs = s.timestamp ? new Date(s.timestamp).getTime() : null;
-  const fecha = fechaMs ? new Date(fechaMs).toLocaleString('es-CO') : '—';
-  const desactualizado = s.ok !== false && fechaMs && (Date.now() - fechaMs) / 60000 > FUDO_SYNC_MINUTOS_DESACTUALIZADO_;
-  const badge = s.ok === false
-    ? `<span class="badge alerta">Error</span>`
-    : desactualizado
-      ? `<span class="badge aviso">Desactualizado</span>`
-      : `<span class="badge ok">OK</span>`;
-  let detalle = '';
-  if (s.tipo === 'ventas' || s.fecha_desde) {
-    detalle = `Rango: ${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}<br>`;
-    if (s.importados !== undefined) detalle += `Importados: ${escapeHtml(s.importados)} · Duplicados omitidos: ${escapeHtml(s.omitidos_duplicados || 0)}<br>`;
-    if (s.ventas_encontradas !== undefined) detalle += `Ventas en API: ${escapeHtml(s.ventas_encontradas)}<br>`;
-  }
-  if (s.tipo === 'pagos') {
-    detalle = `Rango: ${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}<br>`;
-    detalle += `Importados: ${escapeHtml(s.importados || 0)} · Actualizados: ${escapeHtml(s.actualizados || 0)}<br>`;
-  }
-  if (s.tipo === 'stock') {
-    detalle = `Productos API: ${escapeHtml(s.productos_api || 0)} · Creados: ${escapeHtml(s.creados || 0)} · Actualizados: ${escapeHtml(s.actualizados || 0)}<br>`;
-  }
-  if (s.usuario) detalle += `Por: ${escapeHtml(s.usuario)}<br>`;
-  if (desactualizado) detalle += `<span style="color:var(--amber)">Lleva ${haceTiempo_(fechaMs)} sin sincronizar de nuevo — revisa el trigger fudoSincronizacionAutomatica_ en Apps Script.</span><br>`;
-  if (s.error) detalle += `<span style="color:var(--red)">${escapeHtml(s.error)}</span>`;
-  return `${badge} <span style="font-size:.85rem; color:var(--grey)">${fecha} (${fechaMs ? haceTiempo_(fechaMs) : '—'})</span><p style="margin:8px 0 0; font-size:.85rem">${detalle}</p>`;
+function pintarResumen(data) {
+  const r = data.resumen_hoy || {};
+  const dp = data.descuentos_propinas || {};
+  const partes = [
+    `<p style="margin:0"><strong>${escapeHtml(r.fecha || hoy)}</strong></p>`,
+    `<p style="margin:8px 0 0">Líneas de venta registradas: <strong>${escapeHtml(r.ventas_lineas ?? 0)}</strong></p>`,
+    `<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros ?? 0)}</strong></p>`
+  ];
+  if (dp.monto_descuentos !== undefined) partes.push(`<p style="margin:4px 0 0">Descuentos registrados: <strong>$${formatearDinero_(dp.monto_descuentos)}</strong></p>`);
+  if (dp.monto_propinas !== undefined) partes.push(`<p style="margin:4px 0 0">Propinas registradas: <strong>$${formatearDinero_(dp.monto_propinas)}</strong></p>`);
+  document.getElementById('resumen-hoy').innerHTML = partes.join('');
 }
 
-function pintarTarjetasSync(sync) {
-  sync = sync || {};
-  document.getElementById('tarjetas-sync').innerHTML = [
-    { titulo: 'Ventas', key: 'ventas' },
-    { titulo: 'Pagos', key: 'pagos' },
-    { titulo: 'Stock (snapshot)', key: 'stock' }
-  ].map(t => `<div class="card" style="margin:0"><h3 style="margin:0 0 8px">${t.titulo}</h3>${formatoSync_(sync[t.key])}</div>`).join('');
+function formatearDinero_(v) {
+  return Number(v || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
 }
 
-function pintarResumenHoy(r) {
-  if (!r) return;
-  document.getElementById('resumen-hoy').innerHTML =
-    `<p style="margin:0"><strong>${escapeHtml(r.fecha)}</strong></p>` +
-    `<p style="margin:8px 0 0">Líneas de venta importadas: <strong>${escapeHtml(r.ventas_lineas)}</strong>${r.fuente_ventas ? ` <span style="color:var(--grey)">(${escapeHtml(r.fuente_ventas)})</span>` : ''}</p>` +
-    `<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros)}</strong>${r.fuente_pagos ? ` <span style="color:var(--grey)">(${escapeHtml(r.fuente_pagos)})</span>` : ''}</p>`;
-}
-
-function pintarStock(stock) {
-  if (!stock) return;
-  const u = stock.ultimo_import;
-  document.getElementById('resumen-stock').innerHTML =
-    `<p style="margin:0">Productos en Stock_FUDO_Base: <strong>${escapeHtml(stock.productos)}</strong></p>` +
-    (u && u.importado_en
-      ? `<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Última carga: ${escapeHtml(new Date(u.importado_en).toLocaleString('es-CO'))} por ${escapeHtml(u.importado_por || '—')}</p>`
-      : `<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Sin snapshot cargado todavía.</p>`);
-}
-
-function pintarPendientes(p) {
-  const card = document.getElementById('card-pendientes');
-  if (!p || !p.grupos) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-  const body = document.getElementById('tabla-pendientes');
-  if (!p.grupos) {
-    body.innerHTML = '<tr><td colspan="4" class="vacio">No hay ventas pendientes de sede.</td></tr>';
-    return;
-  }
-  if (!p.detalle || !p.detalle.length) {
-    body.innerHTML = '<tr><td colspan="4" class="vacio">No hay ventas pendientes de sede.</td></tr>';
-    return;
-  }
-  body.innerHTML = p.detalle.map(g => `<tr>
-    <td>${escapeHtml(g.creada_por || '(vacío)')}</td>
-    <td>${escapeHtml(g.cantidad)}</td>
-    <td>${escapeHtml(String(g.primera_fecha || '').slice(0, 10))}</td>
-    <td>${escapeHtml(String(g.ultima_fecha || '').slice(0, 10))}</td>
-  </tr>`).join('') +
-    (p.grupos > p.detalle.length ? `<tr><td colspan="4" style="color:var(--grey); font-size:.85rem">… y ${p.grupos - p.detalle.length} grupos más en Importar.</td></tr>` : '');
-}
-
-function pintarVentasNormalizadas(vn) {
-  const el = document.getElementById('estado-ventas-normalizadas');
-  if (!vn) { el.textContent = 'Sin datos.'; return; }
-  el.innerHTML =
-    `<p style="margin:0">Líneas planas (Ventas_FUDO): <strong>${escapeHtml(vn.flat_lineas)}</strong></p>` +
-    `<p style="margin:8px 0 0">Ventas agrupadas (Fudo_Ventas): <strong>${escapeHtml(vn.ventas)}</strong></p>` +
-    `<p style="margin:4px 0 0">Ítems (Fudo_Items): <strong>${escapeHtml(vn.items)}</strong></p>`;
-}
-
-function pintarPagosNormalizados(pn) {
-  const el = document.getElementById('estado-pagos-normalizados');
-  if (!pn) { el.textContent = 'Sin datos.'; return; }
-  el.innerHTML =
-    `<p style="margin:0">Registros planos (Pagos_FUDO): <strong>${escapeHtml(pn.flat_registros)}</strong></p>` +
-    `<p style="margin:8px 0 0">Pagos normalizados (Fudo_Pagos): <strong>${escapeHtml(pn.pagos)}</strong></p>` +
-    `<p style="margin:4px 0 0">Efectivo acumulado (no cancelado): <strong>$${escapeHtml(Number(pn.efectivo_total || 0).toLocaleString('es-CO'))}</strong></p>`;
-}
-
-function pintarDescuentosPropinas(dp) {
-  const el = document.getElementById('estado-descuentos-propinas');
-  if (!dp) { el.textContent = 'Sin datos.'; return; }
-  el.innerHTML =
-    `<p style="margin:0">Descuentos (Fudo_Descuentos): <strong>${escapeHtml(dp.descuentos)}</strong> — total no cancelado: <strong>$${escapeHtml(Number(dp.monto_descuentos || 0).toLocaleString('es-CO'))}</strong></p>` +
-    `<p style="margin:8px 0 0">Propinas (Fudo_Propinas): <strong>${escapeHtml(dp.propinas)}</strong> — total no cancelado: <strong>$${escapeHtml(Number(dp.monto_propinas || 0).toLocaleString('es-CO'))}</strong></p>`;
-}
-
-function pintarSubitemsNormalizados(sn) {
-  const el = document.getElementById('estado-subitems-normalizados');
-  if (!sn) { el.textContent = 'Sin datos.'; return; }
-  el.innerHTML =
-    `<p style="margin:0">Subítems / modificadores (Fudo_Subitems): <strong>${escapeHtml(sn.subitems)}</strong></p>`;
-}
-
-function pintarSinCatalogo(sc) {
-  const card = document.getElementById('card-sin-catalogo');
-  if (!sc || !sc.total) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-  const lista = document.getElementById('lista-sin-catalogo');
-  lista.innerHTML = sc.muestra.map(n => `<li>${escapeHtml(n)}</li>`).join('') +
-    (sc.total > sc.muestra.length ? `<li style="color:var(--grey)">… y ${sc.total - sc.muestra.length} más</li>` : '');
-}
-
-document.getElementById('btn-migrar-ventas-flat').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-ventas-flat'), async () => {
-  if (!confirm('¿Copiar todo Ventas_FUDO a Fudo_Ventas/Fudo_Items? Es idempotente — no duplica ítems que ya existan.')) return;
-  const data = await llamar('fudo_ventas_migrar', {});
-  const pre = document.getElementById('resultado-migracion-ventas');
-  pre.style.display = 'block';
-  pre.textContent = JSON.stringify(data, null, 2);
-  if (data.ok) { avisarGuardado(`Migración: ${data.items_creados || 0} ítems nuevos.`); cargar(); }
-  else alert(data.error || 'Error en la migración');
-}));
-
-document.getElementById('btn-migrar-pagos-flat').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-pagos-flat'), async () => {
-  if (!confirm('¿Copiar todo Pagos_FUDO a Fudo_Pagos? Es idempotente — actualiza pagos que ya existan.')) return;
-  const data = await llamar('fudo_pagos_migrar', {});
-  const pre = document.getElementById('resultado-migracion-pagos');
-  pre.style.display = 'block';
-  pre.textContent = JSON.stringify(data, null, 2);
-  if (data.ok) { avisarGuardado(`Migración: ${data.creados || 0} nuevos, ${data.actualizados || 0} actualizados.`); cargar(); }
-  else alert(data.error || 'Error en la migración');
-}));
-
-document.getElementById('btn-migrar-subitems-api').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-subitems-api'), async () => {
-  const desde = document.getElementById('sync-desde').value;
-  const hasta = document.getElementById('sync-hasta').value;
-  if (!desde || !hasta) { alert('Indica el rango de fechas en Sincronización rápida.'); return; }
-  if (!confirm(`¿Extraer subítems de la API para ${desde} → ${hasta}? Es idempotente.`)) return;
-  const data = await llamar('fudo_subitems_migrar', { fecha_desde: desde, fecha_hasta: hasta });
-  const pre = document.getElementById('resultado-migracion-subitems');
-  pre.style.display = 'block';
-  pre.textContent = JSON.stringify(data, null, 2);
-  if (data.ok) {
-    avisarGuardado(`Extraídos: ${data.creados || 0} subítems nuevos, ${data.actualizados || 0} actualizados.`);
-    cargar();
-  } else alert(data.error || 'Error en la extracción');
-}));
-
-document.getElementById('btn-migrar-descuentos-propinas').addEventListener('click', conBotonProtegido(document.getElementById('btn-migrar-descuentos-propinas'), async () => {
-  const desde = document.getElementById('sync-desde').value;
-  const hasta = document.getElementById('sync-hasta').value;
-  if (!desde || !hasta) { alert('Indica el rango de fechas en Sincronización rápida.'); return; }
-  if (!confirm(`¿Extraer descuentos y propinas de la API para ${desde} → ${hasta}? Es idempotente.`)) return;
-  const data = await llamar('fudo_descuentos_propinas_migrar', { fecha_desde: desde, fecha_hasta: hasta });
-  const pre = document.getElementById('resultado-migracion-descuentos-propinas');
-  pre.style.display = 'block';
-  pre.textContent = JSON.stringify(data, null, 2);
-  if (data.ok) {
-    avisarGuardado(`Extraídos: ${data.descuentos_creados || 0} descuentos nuevos, ${data.propinas_creadas || 0} propinas nuevas.`);
-    cargar();
-  } else alert(data.error || 'Error en la extracción');
-}));
-
-document.getElementById('btn-sync-hoy').addEventListener('click', conBotonProtegido(document.getElementById('btn-sync-hoy'), sincronizarRango));
-document.getElementById('btn-reintentar-ultimo').addEventListener('click', async () => {
-  const u = ultimoEstado && ultimoEstado.ultima_sincronizacion && ultimoEstado.ultima_sincronizacion.ventas;
-  if (!u || !u.fecha_desde || !u.fecha_hasta) { alert('No hay un rango de ventas anterior guardado.'); return; }
-  document.getElementById('sync-desde').value = String(u.fecha_desde).slice(0, 10);
-  document.getElementById('sync-hasta').value = String(u.fecha_hasta).slice(0, 10);
-  await sincronizarRango();
-});
-
-document.getElementById('btn-snapshot-stock').addEventListener('click', conBotonProtegido(document.getElementById('btn-snapshot-stock'), async () => {
-  const data = await llamar('fudo_api_tomar_snapshot_stock', {});
-  const pre = document.getElementById('resultado-sync');
-  pre.style.display = 'block';
-  pre.textContent = JSON.stringify(data, null, 2);
-  if (data.ok) { avisarGuardado('Snapshot de stock actualizado.'); cargar(); }
-  else alert(data.error || 'Error al tomar snapshot');
-}));
-
-async function sincronizarRango() {
-  const desde = document.getElementById('sync-desde').value;
-  const hasta = document.getElementById('sync-hasta').value;
-  const pre = document.getElementById('resultado-sync');
-  pre.style.display = 'block';
-  pre.textContent = 'Sincronizando ventas…';
+async function probarConexion() {
+  const btn = document.getElementById('btn-probar');
+  btn.disabled = true;
   try {
-    const dataVentas = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: desde, fecha_hasta: hasta });
-    pre.textContent = 'Ventas:\n' + JSON.stringify(dataVentas, null, 2) + '\n\nSincronizando pagos…';
-    const dataPagos = await llamar('fudo_api_sincronizar_pagos', { fecha_desde: desde, fecha_hasta: hasta });
-    pre.textContent = 'Ventas:\n' + JSON.stringify(dataVentas, null, 2) + '\n\nPagos:\n' + JSON.stringify(dataPagos, null, 2);
-    if (dataVentas.ok && dataPagos.ok) avisarGuardado('Sincronización completada.');
-    cargar();
-  } catch (err) {
-    pre.textContent = 'Error: ' + err.message;
+    const r = await llamar('fudo_api_probar_conexion');
+    alert(r.ok === false ? (r.error || 'La conexión falló') : 'Conexión con FUDO correcta.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sincronizar() {
+  const desde = document.getElementById('sync-desde').value;
+  const hasta = document.getElementById('sync-hasta').value;
+  const salida = document.getElementById('resultado-sync');
+  const btn = document.getElementById('btn-sync');
+  if (!desde || !hasta) return alert('Selecciona las dos fechas.');
+  if (desde > hasta) return alert('La fecha Desde no puede ser posterior a Hasta.');
+
+  btn.disabled = true;
+  salida.style.display = 'block';
+  salida.textContent = 'Sincronizando ventas…';
+  try {
+    const ventas = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: desde, fecha_hasta: hasta });
+    if (!ventas.ok) {
+      salida.textContent = 'Ventas: ' + (ventas.error || 'Error');
+      return;
+    }
+    salida.textContent = 'Ventas OK. Sincronizando pagos…';
+    const pagos = await llamar('fudo_api_sincronizar_pagos', { fecha_desde: desde, fecha_hasta: hasta });
+    salida.textContent = `Ventas: ${ventas.importados || 0} importadas / ${ventas.omitidos_duplicados || 0} ya existentes\nPagos: ${pagos.ok ? (pagos.importados || 0) + ' importados / ' + (pagos.actualizados || 0) + ' actualizados' : (pagos.error || 'Error')}`;
+    await cargar();
+  } finally {
+    btn.disabled = false;
   }
 }
 </script>
