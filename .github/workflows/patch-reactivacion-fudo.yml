@@ -1,21 +1,21 @@
 name: Patch reactivacion FUDO
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/usuarios-sincronizacion-fudo
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'agent/usuarios-sincronizacion-fudo'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/usuarios-sincronizacion-fudo
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Abrir solo acciones FUDO aprobadas
         shell: python
@@ -52,4 +52,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps-script/Code.gs
           git commit -m "Reactivación: habilitar sincronización manual FUDO"
-          git push origin HEAD:agent/usuarios-sincronizacion-fudo
+          git push origin HEAD:${{ github.head_ref }}
