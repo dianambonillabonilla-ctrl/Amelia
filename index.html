@@ -45,14 +45,14 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
   Sesion.guardar(data.token, data.usuario);
 
   if (MODO_REACTIVACION) {
-    if (['Administrador', 'Caja'].includes(data.usuario.rol) && MODULOS_ACTIVOS.includes('sincronizacion')) {
+    if (data.usuario.rol === 'Administrador' && MODULOS_ACTIVOS.includes('sincronizacion')) {
       window.location.href = 'fudo.html';
       return;
     }
 
     try { await llamar('logout'); } catch (err) {}
     Sesion.limpiarLocal();
-    errorEl.textContent = 'Tu cuenta está activa, pero por ahora solo están habilitados Usuarios y Sincronización FUDO.';
+    errorEl.textContent = 'Tu cuenta está activa, pero durante esta reactivación Usuarios y Sincronización FUDO están disponibles solo para Administración.';
     errorEl.style.display = 'block';
     return;
   }
