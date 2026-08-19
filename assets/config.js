@@ -1,5 +1,12 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
+// REACTIVACIÓN POR MÓDULOS (ago 2026)
+// Durante esta fase solo Usuarios está habilitado. No se borra ningún módulo: basta cambiar
+// este indicador cuando se valide el siguiente. El backend aplica el mismo bloqueo, por lo que
+// esconder el menú no es la única protección.
+const MODO_REACTIVACION = true;
+const MODULOS_ACTIVOS = ['usuarios'];
+
 const Sesion = {
   guardar(token, usuario) {
     sessionStorage.setItem('dilana_token', token);
@@ -10,10 +17,13 @@ const Sesion = {
     try { return JSON.parse(sessionStorage.getItem('dilana_usuario')); }
     catch (e) { return null; }
   },
-  async cerrar() {
-    try { await llamar('logout'); } catch (e) {}
+  limpiarLocal() {
     sessionStorage.removeItem('dilana_token');
     sessionStorage.removeItem('dilana_usuario');
+  },
+  async cerrar() {
+    try { await llamar('logout'); } catch (e) {}
+    this.limpiarLocal();
     window.location.href = 'index.html';
   },
   requerir() {
@@ -204,7 +214,7 @@ function conBotonProtegido(boton, fn) {
   };
 }
 
-const MENU_PRINCIPAL = [
+const MENU_PRINCIPAL_COMPLETO = [
   { grupo: 'HOY' },
   { href: 'inicio.html', texto: 'Inicio de turno' },
   { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador','Encargado','Lectura'] },
@@ -225,8 +235,15 @@ const MENU_PRINCIPAL = [
   { href: 'fudo.html', texto: 'Panel FUDO', soloRol: ['Administrador','Encargado'] },
   { href: 'importar.html', texto: 'Importar de FUDO', soloRol: ['Administrador'] },
   { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] },
-  { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'] }
+  { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
 ];
+
+const MENU_PRINCIPAL = MODO_REACTIVACION
+  ? [
+      { grupo: 'MÓDULO ACTIVO' },
+      { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
+    ]
+  : MENU_PRINCIPAL_COMPLETO;
 
 function montarMenu_(rolActual) {
   const nav = document.getElementById('menu-nav');
@@ -236,6 +253,7 @@ function montarMenu_(rolActual) {
   MENU_PRINCIPAL.forEach(item => {
     if (item.grupo) { grupoPendiente = item.grupo; return; }
     if (item.soloRol && !item.soloRol.includes(rolActual)) return;
+    if (MODO_REACTIVACION && item.modulo && !MODULOS_ACTIVOS.includes(item.modulo)) return;
     if (grupoPendiente) { html += `<div class="nav-grupo">${escapeHtml(grupoPendiente)}</div>`; grupoPendiente = ''; }
     html += `<a href="${escapeHtml(item.href)}"${item.href === actual ? ' class="activo"' : ''}>${escapeHtml(item.texto)}</a>`;
   });
@@ -246,6 +264,7 @@ function montarBarraUsuario() {
   const u = Sesion.usuario();
   const el = document.getElementById('barra-usuario');
   if (el && u) {
+    // Cambiar contraseña sigue siendo una función de seguridad, no un módulo operativo.
     el.innerHTML = `<span>${escapeHtml(u.nombre)} · ${escapeHtml(u.rol)} · ${escapeHtml(u.sede)}</span><a href="cambiar-password.html" style="font-size:.8rem">Cambiar contraseña</a><button id="btn-salir">Salir</button>`;
     document.getElementById('btn-salir').addEventListener('click', () => Sesion.cerrar());
   }
@@ -264,7 +283,7 @@ function requerirRol_(rolesPermitidos) {
   const u = Sesion.usuario();
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
-    window.location.href = 'inicio.html';
+    window.location.href = MODO_REACTIVACION ? 'index.html' : 'inicio.html';
   }
 }
 
