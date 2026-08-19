@@ -1,10 +1,10 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
 // REACTIVACIÓN POR MÓDULOS (ago 2026)
-// Solo Usuarios y Sincronización FUDO están habilitados. El resto no se elimina: permanece
+// Usuarios, Sincronización FUDO y Caja están habilitados. El resto no se elimina: permanece
 // inactivo hasta que se valide y reactive por etapas.
 const MODO_REACTIVACION = true;
-const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion'];
+const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];
 const ACCIONES_PERMITIDAS_REACTIVACION = [
   'login',
   'logout',
@@ -16,7 +16,13 @@ const ACCIONES_PERMITIDAS_REACTIVACION = [
   'fudo_panel_estado',
   'fudo_api_probar_conexion',
   'fudo_api_sincronizar_ventas',
-  'fudo_api_sincronizar_pagos'
+  'fudo_api_sincronizar_pagos',
+  'caja_estado',
+  'caja_abrir',
+  'caja_movimiento_registrar',
+  'caja_movimientos_listar',
+  'caja_cerrar',
+  'caja_sincronizar_ahora'
 ];
 
 const Sesion = {
@@ -44,14 +50,15 @@ const Sesion = {
 };
 
 // Bloqueo de navegación directa: una URL vieja no reactiva por accidente un módulo operativo.
-const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'cambiar-password.html', ''];
+const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'caja.html', 'cambiar-password.html', ''];
 (function bloquearPaginaInactiva_() {
   if (!MODO_REACTIVACION) return;
   const pagina = window.location.pathname.split('/').pop();
   if (PAGINAS_PERMITIDAS_REACTIVACION.includes(pagina)) return;
   const u = Sesion.usuario();
-  const puedeVerSync = u && u.rol === 'Administrador';
-  window.location.replace(puedeVerSync ? 'fudo.html' : 'index.html');
+  if (u && u.rol === 'Administrador') return window.location.replace('fudo.html');
+  if (u && u.rol === 'Caja') return window.location.replace('caja.html');
+  window.location.replace('index.html');
 })();
 
 const LLAMAR_TIMEOUT_MS = 45000;
@@ -261,6 +268,7 @@ const MENU_PRINCIPAL_COMPLETO = [
 const MENU_PRINCIPAL = MODO_REACTIVACION
   ? [
       { grupo: 'ACTIVO' },
+      { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Caja'], modulo: 'caja' },
       { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador'], modulo: 'sincronizacion' },
       { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
     ]
@@ -304,7 +312,9 @@ function requerirRol_(rolesPermitidos) {
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
     if (MODO_REACTIVACION) {
-      window.location.href = u && u.rol === 'Administrador' ? 'fudo.html' : 'index.html';
+      if (u && u.rol === 'Administrador') return void (window.location.href = 'fudo.html');
+      if (u && u.rol === 'Caja') return void (window.location.href = 'caja.html');
+      window.location.href = 'index.html';
       return;
     }
     window.location.href = 'inicio.html';
