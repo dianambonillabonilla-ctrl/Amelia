@@ -19,12 +19,11 @@ for (const action of [
   assert(candado.includes(`'${action}'`), `Falta ${action} en el candado backend`);
 }
 assert(extension.includes('ACCIONES_CAJA_PERMITIDAS_REACTIVACION_'));
-assert(extension.includes("Caja: 'Encargado'"));
+assert(extension.includes("Caja:'Encargado'"));
 assert(code.includes("codigo: 'MODULO_INACTIVO'"));
 assert(code.indexOf('if (!accionPermitidaEnReactivacion_(action))') < code.indexOf("if (action === 'login')"), 'El bloqueo debe correr antes del router');
 
 // Durante Caja se reactiva ÚNICAMENTE la sincronización financiera FUDO cada 15 minutos.
-// Stock, inventario y tarea diaria general continúan apagados.
 assert(extension.includes('function fudoSincronizacionCajaAutomatica_()'));
 assert(extension.includes("newTrigger('fudoSincronizacionCajaAutomatica_').timeBased().everyMinutes(15).create()"));
 assert(extension.includes("fudoApiSincronizarVentas_(fechaDesde, fechaHasta"));
@@ -33,12 +32,27 @@ assert(extension.includes("fn === 'tareaDiaria_'"));
 assert(extension.includes("fn === 'fudoSincronizacionAutomatica_'"));
 assert(fudo.includes("Fase 0 activa: fudoSincronizacionStockDiaria_ omitida."));
 
+// Apertura conciliada: FUDO anterior + cierre DILANA anterior + movimientos posteriores + conteo físico.
+assert(extension.includes('function cajaConciliacionApertura_('));
+assert(extension.includes('function cajaMovimientosPosterioresAlCierre_('));
+assert(extension.includes('function cajaCustodiaEsperadaTrasCierre_('));
+assert(extension.includes('esperado_cierre_con_fudo_actual'));
+assert(extension.includes('diferencia_fudo_dilana'));
+assert(extension.includes('custodia_esperada_hoy'));
+assert(extension.includes('conciliacion_apertura: conciliacionApertura'));
+assert(cajaHtml.includes('Conciliación del cierre anterior'));
+assert(cajaHtml.includes('Efectivo FUDO cierre anterior'));
+assert(cajaHtml.includes('DILANA recalculado con FUDO actual'));
+assert(cajaHtml.includes('Lo que DILANA espera encontrar hoy'));
+assert(cajaHtml.includes('Conteo físico al llegar'));
+assert(cajaHtml.includes('Diferencia física · Caja:'));
+
 assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];"));
 assert(config.includes("'caja.html'"));
 assert(config.includes("texto: 'Caja', soloRol: ['Administrador','Caja']"));
 assert(cajaHtml.includes("requerirRol_(['Administrador','Caja'])"));
 assert(cajaHtml.includes('Nombre de quien recibe'));
-assert(cajaHtml.includes("if (!recibe) return alert('Es obligatorio escribir el nombre de la persona que recibe el dinero.')"));
+assert(cajaHtml.includes("if(!recibe)return alert('Es obligatorio escribir el nombre de la persona que recibe el dinero.')"));
 
 // Prueba conductual del candado en modo producción.
 const env = crearEntorno({ reactivacionReal: true });
@@ -49,20 +63,15 @@ assert.strictEqual(login.ok, true, 'login debe seguir activo');
 assert.strictEqual(env.post({ action: 'usuarios_listar', token: login.token }).ok, true, 'Usuarios debe seguir activo');
 assert.strictEqual(env.post({ action: 'fudo_panel_estado', token: login.token }).ok, true, 'FUDO debe seguir activo');
 
-// Caja ya atraviesa el candado. Sin una caja abierta, caja_estado responde normalmente y no
-// MODULO_INACTIVO; eso prueba que el router está habilitado sin crear movimientos artificiales.
 const cajaEstado = env.post({ action: 'caja_estado', token: login.token, fecha: '2026-08-19', sede: 'San Antonio' });
 assert.strictEqual(cajaEstado.ok, true, 'Caja debe estar activa');
 
-// Todo lo demás continúa cerrado.
 for (const action of ['conteo_listar', 'produccion_registrar', 'traslado_crear', 'catalogo_listar', 'conciliacion', 'fudo_api_sincronizar_stock', 'fudo_catalogo_sincronizar']) {
   const r = env.post({ action, token: login.token });
   assert.strictEqual(r.ok, false, `${action} debe estar bloqueada`);
   assert.strictEqual(r.codigo, 'MODULO_INACTIVO', `${action} debe responder MODULO_INACTIVO`);
 }
 
-// Sin credenciales, el sincronizador financiero periódico se omite de forma segura; configurar
-// triggers en reactivación crea exactamente un trigger, el financiero de FUDO.
 const syncAuto = env.ctx.fudoSincronizacionCajaAutomatica_();
 assert.strictEqual(syncAuto.ok, true);
 assert.strictEqual(syncAuto.omitida, 'sin_credenciales');
@@ -74,4 +83,4 @@ assert.strictEqual(triggers.handler, 'fudoSincronizacionCajaAutomatica_');
 assert.strictEqual(env.ctx.fudoSincronizacionStockDiaria_(), undefined);
 assert.strictEqual(env.ctx.tareaDiaria_(), undefined);
 
-console.log('✓ Reactivación: Usuarios + FUDO + Caja activos; FUDO financiero cada 15 min; resto bloqueado');
+console.log('✓ Reactivación: Caja concilia FUDO + DILANA + físico; FUDO financiero cada 15 min; resto bloqueado');
