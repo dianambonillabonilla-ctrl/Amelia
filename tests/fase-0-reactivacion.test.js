@@ -4,6 +4,7 @@ const { crearEntorno } = require('./helpers/entorno-apps-script.js');
 
 const code = fs.readFileSync('apps-script/Code.gs', 'utf8');
 const extension = fs.readFileSync('apps-script/ZZ_ReactivacionFudo.gs', 'utf8');
+const cajaFinal = fs.readFileSync('apps-script/ZZz_CajaFudoArqueoFinal.gs', 'utf8');
 const fudo = fs.readFileSync('apps-script/FudoApi.gs', 'utf8');
 const config = fs.readFileSync('assets/config.js', 'utf8');
 const cajaHtml = fs.readFileSync('caja.html', 'utf8');
@@ -24,10 +25,17 @@ assert(code.includes("codigo: 'MODULO_INACTIVO'"));
 assert(code.indexOf('if (!accionPermitidaEnReactivacion_(action))') < code.indexOf("if (action === 'login')"), 'El bloqueo debe correr antes del router');
 
 // Durante Caja se reactiva ÚNICAMENTE la sincronización financiera FUDO cada 15 minutos.
-assert(extension.includes('function fudoSincronizacionCajaAutomatica_()'));
+// fudoSincronizacionCajaAutomatica_ vive en ZZz_CajaFudoArqueoFinal.gs (se carga último) — no debe
+// haber una segunda copia en ZZ_ReactivacionFudo.gs, esa duplicación fue justo el bug que dejaba las
+// fallas del sync automático invisibles en el Panel FUDO (la copia vieja sí registraba el error, la
+// que realmente corría no lo hacía).
+assert(!extension.includes('function fudoSincronizacionCajaAutomatica_()'), 'no debe haber una copia duplicada de fudoSincronizacionCajaAutomatica_ en ZZ_ReactivacionFudo.gs');
+assert(cajaFinal.includes('function fudoSincronizacionCajaAutomatica_()'));
 assert(extension.includes("newTrigger('fudoSincronizacionCajaAutomatica_').timeBased().everyMinutes(15).create()"));
-assert(extension.includes("fudoApiSincronizarVentas_(fechaDesde, fechaHasta"));
-assert(extension.includes("fudoApiSincronizarPagos_(fechaDesde, fechaHasta"));
+assert(cajaFinal.includes("fudoApiSincronizarVentas_(fechaDesde, fechaHasta"));
+assert(cajaFinal.includes("fudoApiSincronizarPagos_(fechaDesde, fechaHasta"));
+// El sync automático debe dejar rastro en el Panel FUDO cuando falla, igual que el resto del sistema.
+assert(cajaFinal.includes('fudoApiSyncRegistrar_'));
 assert(extension.includes("fn === 'tareaDiaria_'"));
 assert(extension.includes("fn === 'fudoSincronizacionAutomatica_'"));
 assert(fudo.includes("Fase 0 activa: fudoSincronizacionStockDiaria_ omitida."));
@@ -82,5 +90,22 @@ assert.strictEqual(triggers.handler, 'fudoSincronizacionCajaAutomatica_');
 
 assert.strictEqual(env.ctx.fudoSincronizacionStockDiaria_(), undefined);
 assert.strictEqual(env.ctx.tareaDiaria_(), undefined);
+
+// Una falla del sync automático (FUDO caído, credenciales vencidas...) debe quedar visible en el
+// Panel FUDO, no solo en el valor de retorno que nadie lee porque el trigger corre en segundo plano.
+// Esto reproduce el bug real: la copia de fudoSincronizacionCajaAutomatica_ que de verdad corría
+// (ZZz_CajaFudoArqueoFinal.gs) no llamaba a fudoApiSyncRegistrar_, así que fudo_panel_estado nunca
+// se enteraba de una falla entre una apertura/cierre y la siguiente.
+env.ctx.PropertiesService.getScriptProperties().setProperty('FUDO_API_KEY', 'test-key');
+env.ctx.PropertiesService.getScriptProperties().setProperty('FUDO_API_SECRET', 'test-secret');
+env.ctx.fudoApiSincronizarVentas_ = function () { throw new Error('API caída de prueba'); };
+env.ctx.fudoApiSincronizarPagos_ = function () { return { ok: true }; };
+env.ctx.fudoApiSincronizarGastosArqueo_ = function () { return { ok: true }; };
+const syncFallido = env.ctx.fudoSincronizacionCajaAutomatica_();
+assert.strictEqual(syncFallido.ok, false, 'el sync automático debe reportar la falla en su propio resultado');
+const panelTrasFalla = env.post({ action: 'fudo_panel_estado', token: login.token });
+assert.ok(panelTrasFalla.ultima_sincronizacion.ventas, 'la falla de ventas debe quedar registrada en el Panel FUDO');
+assert.strictEqual(panelTrasFalla.ultima_sincronizacion.ventas.ok, false);
+assert.ok(String(panelTrasFalla.ultima_sincronizacion.ventas.error || '').includes('API caída de prueba'));
 
 console.log('✓ Reactivación: Caja concilia FUDO + DILANA + físico; FUDO financiero cada 15 min; resto bloqueado');

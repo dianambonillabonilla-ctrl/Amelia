@@ -78,6 +78,22 @@ function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
   };
 }
 
+/**
+ * Registra en el Panel FUDO (fudoApiSyncLeer_/fudo_panel_estado) el resultado de una fuente de la
+ * sincronización automática — sin esto, una falla del trigger de 15 minutos (API caída, credenciales
+ * vencidas, etc.) queda invisible entre una apertura/cierre/sincronización manual y la siguiente:
+ * esas sí fuerzan su propio sync y muestran el error en pantalla, pero nadie se entera de lo que pasó
+ * en el resto del turno. Mismo patrón que fudoSincronizacionAutomatica_ (FudoApi.gs) para ventas/pagos.
+ */
+function cajaFudoAutomaticaRegistrarResultado_(tipo, fechaDesde, fechaHasta, usuarioNombre, resultado, error) {
+  if (typeof fudoApiSyncRegistrar_ !== 'function') return;
+  fudoApiSyncRegistrar_(tipo, {
+    ok: !error && !(resultado && resultado.ok === false),
+    fecha_desde: fechaDesde, fecha_hasta: fechaHasta, usuario: usuarioNombre,
+    error: error || (resultado && resultado.ok === false ? (resultado.error || 'No se pudo sincronizar.') : '')
+  });
+}
+
 /** Sincronización automática financiera exclusiva de Caja: hoy + ayer. */
 function fudoSincronizacionCajaAutomatica_() {
   const props = PropertiesService.getScriptProperties();
@@ -100,5 +116,13 @@ function fudoSincronizacionCajaAutomatica_() {
   if (resultado.ventas && resultado.ventas.ok === false) resultado.ok=false;
   if (resultado.pagos && resultado.pagos.ok === false) resultado.ok=false;
   if (resultado.gastos && resultado.gastos.ok === false) resultado.ok=false;
+
+  cajaFudoAutomaticaRegistrarResultado_('ventas', fechaDesde, fechaHasta, usuario.nombre, resultado.ventas, resultado.error_ventas);
+  cajaFudoAutomaticaRegistrarResultado_('pagos', fechaDesde, fechaHasta, usuario.nombre, resultado.pagos, resultado.error_pagos);
+  // 'gastos_arqueo' ya se registra a sí mismo en su propio éxito (fudoApiSincronizarGastosArqueo_,
+  // ZZ_FudoGastosArqueo.gs) — aquí solo hace falta cubrir el caso que ese código nunca alcanza a
+  // correr: una excepción lanzada antes de llegar a su propio fudoApiSyncRegistrar_.
+  if (resultado.error_gastos) cajaFudoAutomaticaRegistrarResultado_('gastos_arqueo', fechaDesde, fechaHasta, usuario.nombre, resultado.gastos, resultado.error_gastos);
+
   return resultado;
 }

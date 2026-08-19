@@ -392,40 +392,11 @@ function cajaSincronizarAhora_(fecha, sede, usuario) {
   };
 }
 
-/** Sincronización financiera periódica exclusiva de la fase Caja: HOY + AYER. */
-function fudoSincronizacionCajaAutomatica_() {
-  const props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('FUDO_API_KEY') || !props.getProperty('FUDO_API_SECRET')) return { ok:true, omitida:'sin_credenciales' };
-
-  const hoy = new Date();
-  const ayer = new Date(hoy.getTime());
-  ayer.setDate(ayer.getDate() - 1);
-  const fechaDesde = formatearFecha_(ayer);
-  const fechaHasta = formatearFecha_(hoy);
-  const usuarioAutomatico = { id:'sistema-fudo', nombre:'Sincronización automática FUDO', rol:'Administrador', sede:'Ambas' };
-  const resultado = { ok:true, fecha_desde:fechaDesde, fecha_hasta:fechaHasta, ventas:null, pagos:null };
-
-  try {
-    resultado.ventas = fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuarioAutomatico, {});
-    if (resultado.ventas && resultado.ventas.ok === false) resultado.ok = false;
-  } catch (err) {
-    resultado.ok = false;
-    resultado.error_ventas = err && err.message ? err.message : String(err);
-    Logger.log('fudoSincronizacionCajaAutomatica_ (ventas) falló: ' + resultado.error_ventas);
-    if (typeof fudoApiSyncRegistrar_ === 'function') fudoApiSyncRegistrar_('ventas', { ok:false, fecha_desde:fechaDesde, fecha_hasta:fechaHasta, usuario:usuarioAutomatico.nombre, error:resultado.error_ventas });
-  }
-
-  try {
-    resultado.pagos = fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuarioAutomatico, {});
-    if (resultado.pagos && resultado.pagos.ok === false) resultado.ok = false;
-  } catch (err) {
-    resultado.ok = false;
-    resultado.error_pagos = err && err.message ? err.message : String(err);
-    Logger.log('fudoSincronizacionCajaAutomatica_ (pagos) falló: ' + resultado.error_pagos);
-    if (typeof fudoApiSyncRegistrar_ === 'function') fudoApiSyncRegistrar_('pagos', { ok:false, fecha_desde:fechaDesde, fecha_hasta:fechaHasta, usuario:usuarioAutomatico.nombre, error:resultado.error_pagos });
-  }
-  return resultado;
-}
+// fudoSincronizacionCajaAutomatica_ vive en ZZz_CajaFudoArqueoFinal.gs (se carga después de este
+// archivo, ver el comentario al inicio de ese archivo) — antes había una copia también aquí que
+// quedaba muerta y desactualizada en silencio (no sincronizaba gastos, no era la que corría de
+// verdad). No la recrees aquí; configurarTriggers() solo necesita el NOMBRE de la función para el
+// trigger, no que esté definida en este mismo archivo.
 
 /** Durante reactivación crea SOLO el trigger financiero FUDO cada 15 minutos. */
 function configurarTriggers() {

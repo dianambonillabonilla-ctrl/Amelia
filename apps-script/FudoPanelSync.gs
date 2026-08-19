@@ -11,6 +11,7 @@ var FUDO_PANEL_SYNC_PROP_PAGOS_ = 'FUDO_SYNC_ULTIMA_PAGOS';
 var FUDO_PANEL_SYNC_PROP_STOCK_ = 'FUDO_SYNC_ULTIMA_STOCK';
 var FUDO_PANEL_SYNC_PROP_CATALOGO_ = 'FUDO_SYNC_ULTIMA_CATALOGO';
 var FUDO_PANEL_SYNC_PROP_CATALOGO_PUSH_ = 'FUDO_SYNC_ULTIMA_CATALOGO_PUSH';
+var FUDO_PANEL_SYNC_PROP_GASTOS_ARQUEO_ = 'FUDO_SYNC_ULTIMA_GASTOS_ARQUEO';
 
 function fudoApiSyncPropKey_(tipo) {
   if (tipo === 'ventas') return FUDO_PANEL_SYNC_PROP_VENTAS_;
@@ -18,6 +19,7 @@ function fudoApiSyncPropKey_(tipo) {
   if (tipo === 'stock') return FUDO_PANEL_SYNC_PROP_STOCK_;
   if (tipo === 'catalogo') return FUDO_PANEL_SYNC_PROP_CATALOGO_;
   if (tipo === 'catalogo_push') return FUDO_PANEL_SYNC_PROP_CATALOGO_PUSH_;
+  if (tipo === 'gastos_arqueo') return FUDO_PANEL_SYNC_PROP_GASTOS_ARQUEO_;
   return null;
 }
 
@@ -114,7 +116,8 @@ function fudoApiEstadoPanelSinCache_() {
       pagos: fudoApiSyncLeer_('pagos'),
       stock: fudoApiSyncLeer_('stock'),
       catalogo: fudoApiSyncLeer_('catalogo'),
-      catalogo_push: fudoApiSyncLeer_('catalogo_push')
+      catalogo_push: fudoApiSyncLeer_('catalogo_push'),
+      gastos_arqueo: fudoApiSyncLeer_('gastos_arqueo')
     },
     resumen_hoy: {
       fecha: hoy,
