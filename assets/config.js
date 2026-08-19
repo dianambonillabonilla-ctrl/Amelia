@@ -2,10 +2,19 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxH
 
 // REACTIVACIÓN POR MÓDULOS (ago 2026)
 // Durante esta fase solo Usuarios está habilitado. No se borra ningún módulo: basta cambiar
-// este indicador cuando se valide el siguiente. El backend aplica el mismo bloqueo, por lo que
-// esconder el menú no es la única protección.
+// este indicador cuando se valide el siguiente. El cliente común bloquea además las llamadas de
+// módulos inactivos, para que abrir por accidente una URL vieja no ejecute operación.
 const MODO_REACTIVACION = true;
 const MODULOS_ACTIVOS = ['usuarios'];
+const ACCIONES_PERMITIDAS_REACTIVACION = [
+  'login',
+  'logout',
+  'whoami',
+  'cambiar_password',
+  'usuarios_listar',
+  'usuarios_guardar',
+  'usuario_resetear_password'
+];
 
 const Sesion = {
   guardar(token, usuario) {
@@ -37,6 +46,14 @@ const Sesion = {
 const LLAMAR_TIMEOUT_MS = 45000;
 
 async function llamar(action, params = {}) {
+  if (MODO_REACTIVACION && !ACCIONES_PERMITIDAS_REACTIVACION.includes(action)) {
+    return {
+      ok: false,
+      codigo: 'MODULO_INACTIVO',
+      error: 'Este módulo está temporalmente inactivo mientras se valida la aplicación por etapas.'
+    };
+  }
+
   const body = Object.assign({ action, token: Sesion.token() }, params);
   const controlador = new AbortController();
   const limite = setTimeout(() => controlador.abort(), LLAMAR_TIMEOUT_MS);
