@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dilana OS — Caja</title>
 <link rel="stylesheet" href="assets/styles.css">
+<style>
+  .caja-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:14px 0}
+  .caja-kpi{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff}
+  .caja-kpi span{display:block;color:var(--grey);font-size:.78rem;margin-bottom:5px}
+  .caja-kpi strong{font-size:1.35rem;color:var(--navy)}
+  .caja-kpi.principal{border:2px solid var(--gold)}
+  .acciones-dinero{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .accion-caja{border:1px solid var(--line);border-radius:12px;padding:18px;background:#fff}
+  .accion-caja h3{margin-top:0}
+  .estado-sync{font-size:.82rem;color:var(--grey)}
+  .estado-sync.ok{color:var(--green)}
+  .estado-sync.error{color:var(--red)}
+  .tabla-scroll{overflow-x:auto}
+  .nota-simple{font-size:.82rem;color:var(--grey);margin-top:5px}
+  .caja-cerrada{border-left:4px solid var(--green)}
+</style>
 </head>
 <body>
 <div class="shell">
@@ -14,487 +30,311 @@
   </aside>
   <main class="main">
     <div class="topbar"><h1>Caja</h1><div id="barra-usuario"></div></div>
-    <div class="caja-wrap">
+
+    <div class="card">
+      <div class="grid grid-3">
+        <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
+        <div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option></select></div>
+        <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <button class="btn fantasma" id="actualizar">Actualizar</button>
+          <button class="btn" id="sincronizar">Sincronizar FUDO</button>
+        </div>
+      </div>
+      <p id="fudo-estado" class="estado-sync">Consultando sincronización…</p>
+    </div>
+
+    <section id="cargando" class="card"><p class="vacio">Consultando la caja…</p></section>
+
+    <section id="sin-abrir" class="card oculto" style="border:2px solid var(--gold)">
+      <h2>Iniciar caja</h2>
+      <p class="nota-simple">Antes de empezar, cuenta el efectivo operativo y el dinero que ya está físicamente en la caja fuerte.</p>
+      <div class="caja-resumen">
+        <div class="caja-kpi"><span>Base esperada según cierre anterior</span><strong id="base-esperada">$0</strong></div>
+        <div class="caja-kpi"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
+      </div>
+      <div class="grid grid-2">
+        <div class="campo"><label>Efectivo contado al iniciar</label><input type="number" min="0" step="1" id="base-inicial"></div>
+        <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="fuerte-inicial"></div>
+      </div>
+      <div class="campo"><label>Observación si hay diferencia</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base anterior"></div>
+      <button class="btn dorado" id="abrir-caja">Iniciar caja</button>
+    </section>
+
+    <section id="abierta" class="oculto">
       <div class="card">
-        <div class="grid grid-3">
-          <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
-          <div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option></select></div>
-          <div style="display:flex;align-items:end"><button class="btn fantasma" id="actualizar">Actualizar</button></div>
+        <h2>Resumen de efectivo</h2>
+        <div class="caja-resumen">
+          <div class="caja-kpi"><span>Base con la que inició</span><strong id="k-base">$0</strong></div>
+          <div class="caja-kpi"><span>Efectivo reportado por FUDO</span><strong id="k-fudo">$0</strong></div>
+          <div class="caja-kpi"><span>Guardado en caja fuerte hoy</span><strong id="k-guardado">$0</strong></div>
+          <div class="caja-kpi"><span>Entregado a personas hoy</span><strong id="k-entregado">$0</strong></div>
+          <div class="caja-kpi principal"><span>Efectivo esperado en caja operativa</span><strong id="k-operativa">$0</strong></div>
+          <div class="caja-kpi principal"><span>Esperado en caja fuerte</span><strong id="k-fuerte">$0</strong></div>
+        </div>
+        <p class="nota-simple">FUDO define el efectivo vendido. DILANA solo registra dónde quedó ese dinero o a quién se entregó.</p>
+      </div>
+
+      <div class="acciones-dinero">
+        <div class="accion-caja">
+          <h3>Guardar en caja fuerte</h3>
+          <p class="nota-simple">Mueve efectivo de la caja operativa a la caja fuerte.</p>
+          <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="fuerte-valor"></div>
+          <div class="campo"><label>Observación opcional</label><input id="fuerte-motivo" placeholder="Ej. retiro preventivo de efectivo"></div>
+          <button class="btn" id="guardar-fuerte">Guardar en caja fuerte</button>
+        </div>
+
+        <div class="accion-caja">
+          <h3>Entregar a una persona</h3>
+          <p class="nota-simple">El nombre de quien recibe es obligatorio y queda guardado en el historial.</p>
+          <div class="campo"><label>Sale de</label><select id="entrega-origen"><option value="caja">Caja operativa</option><option value="fuerte">Caja fuerte</option></select></div>
+          <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="entrega-valor"></div>
+          <div class="campo"><label>Nombre de quien recibe</label><input id="entrega-recibe" autocomplete="off" placeholder="Nombre completo"></div>
+          <div class="campo"><label>Motivo</label><input id="entrega-motivo" placeholder="Ej. entrega de efectivo, pago, retiro autorizado"></div>
+          <button class="btn" id="guardar-entrega">Registrar entrega</button>
         </div>
       </div>
 
-      <section id="panel-admin" class="card oculto" style="border-color:var(--navy)">
-        <h2>Panel de Caja — todas las sedes</h2>
-        <p style="color:var(--grey);font-size:.85rem;margin-top:0">Vista rápida de las dos sedes para la fecha elegida arriba. Toca una fila para ir a esa sede.</p>
-        <div style="overflow-x:auto"><table>
-          <thead><tr><th>Sede</th><th>Estado</th><th>Responsable</th><th>Efectivo esperado</th><th>Caja fuerte</th><th>Sin identificar</th><th>Confianza</th></tr></thead>
-          <tbody id="panel-admin-filas"></tbody>
-        </table></div>
-      </section>
-
-      <!-- Diana (ago 2026): nada de esto bloquea abrir/cerrar caja — es puro seguimiento para que
-           el Administrador se entere y concilie las diferencias/FUDO sin sincronizar aparte. -->
-      <section id="panel-novedades" class="card oculto" style="border-color:var(--red)">
-        <h2>Novedades de Administrador</h2>
-        <p style="color:var(--grey);font-size:.85rem;margin-top:0">Diferencias al abrir/cerrar y cierres sin FUDO sincronizado, pendientes de revisar. No bloquean nada — es solo para que las concilies.</p>
-        <div style="overflow-x:auto"><table>
-          <thead><tr><th>Fecha</th><th>Sede</th><th>Motivo</th><th>Detalle</th><th></th></tr></thead>
-          <tbody id="novedades-filas"></tbody>
-        </table></div>
-      </section>
-
-      <section class="cabecera-caja">
-        <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
-        <div class="estado" id="estado">Consultando…</div>
-      </section>
-      <p style="font-size:.82rem;margin:-8px 0 14px">
-        <span id="fudo-sync-info"></span>
-        <button class="btn fantasma" id="btn-sincronizar-fudo" style="margin-left:8px;padding:2px 10px;font-size:.78rem">Sincronizar FUDO</button>
-      </p>
-
-      <section id="cargando" class="card">
-        <p class="vacio" id="cargando-texto">Consultando el estado de la caja…</p>
-        <p id="cargando-reintentar" class="oculto"><button class="btn fantasma" id="reintentar">Reintentar</button></p>
-      </section>
-
-      <section id="sin-abrir" class="oculto">
-        <!-- La apertura la hace quien está físicamente en la sede (Encargado), no la
-             Administradora — a ella solo le interesa saber si ya está abierta o no. -->
-        <div id="apertura-solo-lectura" class="card oculto">
-          <h2>Caja sin abrir</h2>
-          <p>Todavía nadie ha abierto la caja de hoy en esta sede. La apertura la hace quien esté en la sede.</p>
-          <p style="margin-top:10px"><a href="#" id="abrir-de-todas-formas" style="font-size:.85rem">Abrir esta caja de todas formas</a></p>
+      <div class="card" style="margin-top:16px">
+        <h2>Movimientos del día</h2>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr><th>Hora</th><th>Movimiento</th><th>Valor</th><th>Recibe</th><th>Registrado por</th><th>Motivo</th></tr></thead>
+            <tbody id="movimientos"></tbody>
+          </table>
         </div>
-        <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
-          <h2>Abrir mi caja</h2>
-          <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
-          <div class="dinero-grid">
-            <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
-            <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
-            <div class="dinero"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
-            <div class="dinero"><span>Caja fuerte contada al abrir</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" style="margin-top:8px"></div>
-          </div>
-          <p class="diferencia" id="diferencia-apertura"></p>
-          <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
-          <button class="btn dorado" id="abrir">Abrir caja</button>
+      </div>
+
+      <div class="card">
+        <h2>Cerrar caja</h2>
+        <p class="nota-simple">Al cerrar, cuenta por separado la caja operativa y la caja fuerte. Si existe una diferencia, deja una observación.</p>
+        <div class="grid grid-3">
+          <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-operativa"></div>
+          <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
+          <div class="campo"><label>Base que queda para el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
         </div>
-      </section>
+        <div class="campo"><label>Observación si hay diferencia</label><input id="cierre-observacion"></div>
+        <button class="btn dorado" id="cerrar-caja">Cerrar caja</button>
+      </div>
+    </section>
 
-      <section id="abierta" class="oculto">
-        <div id="rappi-pendiente" class="rappi">
-          <div><strong>⚠ No olvides prender Rappi</strong><div style="font-size:.83rem;margin-top:4px">Confirma cuando esté encendido y recibiendo pedidos.</div></div>
-          <button class="btn dorado" id="rappi">Rappi encendido</button>
-        </div>
-        <div id="rappi-ok" class="rappi-ok oculto">✓ Rappi confirmado como encendido.</div>
-
-        <div class="card" style="margin-top:18px">
-          <h2>Dinero que debería haber ahora</h2>
-          <div class="dinero-grid">
-            <div class="dinero"><span>Dinero contado al abrir</span><strong id="d-base">$0</strong></div>
-            <div class="dinero"><span>Efectivo FUDO desde apertura</span><strong id="d-fudo">$0</strong></div>
-            <div class="dinero"><span>Otros ingresos</span><strong id="d-ingresos">$0</strong></div>
-            <div class="dinero"><span>Enviado a caja fuerte</span><strong id="d-envio-fuerte">$0</strong></div>
-            <div class="dinero"><span>Entregado al administrador</span><strong id="d-entregas">$0</strong></div>
-            <div class="dinero"><span>Gastos y salidas</span><strong id="d-gastos">$0</strong></div>
-            <div class="dinero principal"><span>Efectivo esperado en caja</span><strong id="d-esperado">$0</strong></div>
-            <div class="dinero principal"><span>Esperado en caja fuerte</span><strong id="d-fuerte">$0</strong></div>
-            <div class="dinero principal"><span>Total bajo custodia</span><strong id="d-total">$0</strong></div>
-          </div>
-          <p style="font-size:.8rem;color:var(--grey)">Abierta por <strong id="abierta-por">—</strong> a las <strong id="abierta-hora">—</strong>.</p>
-        </div>
-
-        <div class="dos-columnas">
-          <div class="card">
-            <h2>Registrar movimiento</h2>
-            <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Envío a caja fuerte</option><option>Retiro de caja fuerte</option><option>Entrega administrador desde caja</option><option>Entrega administrador desde caja fuerte</option><option>Otro ingreso</option></select></div>
-            <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="mov-valor"></div>
-            <div id="datos-entrega">
-              <div class="campo"><label>Quién entrega</label><input id="mov-entrega"></div>
-              <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
-            </div>
-            <div class="campo"><label>Motivo u observación</label><input id="mov-motivo"></div>
-            <button class="btn" id="guardar-movimiento">Guardar movimiento</button>
-          </div>
-
-          <div class="card">
-            <h2>Cerrar caja</h2>
-            <div class="advertencia">Cuenta por separado el efectivo operativo y el dinero guardado en caja fuerte.</div>
-            <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
-            <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
-            <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
-            <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
-            <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
-            <button class="btn dorado" id="cerrar">Cerrar caja</button>
-          </div>
-        </div>
-
-        <div class="card"><h2>Movimientos registrados</h2><div id="movimientos"><p class="vacio">Sin movimientos.</p></div></div>
-      </section>
-
-      <section id="cerrada" class="card oculto" style="border-left:4px solid var(--green)">
-        <h2>✓ Caja cerrada</h2><div id="resumen-cierre"></div>
-        <div id="bloque-correccion" class="oculto" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
-          <p style="margin:0"><a href="#" id="link-mostrar-correccion" style="font-size:.85rem">Corregir este cierre</a></p>
-          <div id="form-correccion" class="oculto" style="margin-top:12px">
-            <p style="color:var(--grey);font-size:.82rem;margin-top:0">
-              Solo para cuando el número original quedó mal (ej. un error al contar). Queda
-              registrado quién corrigió y por qué; lo esperado original no cambia, solo lo contado
-              y la diferencia resultante.
-            </p>
-            <div class="dinero-grid">
-              <div class="dinero"><span>Efectivo contado (corregido)</span><input type="number" min="0" step="1" id="correccion-efectivo" style="margin-top:8px"></div>
-              <div class="dinero"><span>Caja fuerte contada (corregida)</span><input type="number" min="0" step="1" id="correccion-fuerte" style="margin-top:8px"></div>
-              <div class="dinero"><span>Base para el siguiente turno</span><input type="number" min="0" step="1" id="correccion-base-siguiente" style="margin-top:8px"></div>
-            </div>
-            <div class="campo"><label>Observación del cierre (opcional, reemplaza la actual)</label><input id="correccion-observacion"></div>
-            <div class="campo"><label>Motivo de la corrección</label><input id="correccion-motivo" placeholder="ej. se contó mal el efectivo original, el real era..."></div>
-            <button class="btn dorado" id="btn-corregir-cierre">Guardar corrección</button>
-          </div>
-        </div>
-      </section>
-    </div>
+    <section id="cerrada" class="card caja-cerrada oculto">
+      <h2>✓ Caja cerrada</h2>
+      <div class="caja-resumen">
+        <div class="caja-kpi"><span>Efectivo esperado</span><strong id="cerrada-esperado">$0</strong></div>
+        <div class="caja-kpi"><span>Efectivo contado</span><strong id="cerrada-contado">$0</strong></div>
+        <div class="caja-kpi"><span>Diferencia caja</span><strong id="cerrada-diferencia">$0</strong></div>
+        <div class="caja-kpi"><span>Caja fuerte contada</span><strong id="cerrada-fuerte">$0</strong></div>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Hora</th><th>Movimiento</th><th>Valor</th><th>Recibe</th><th>Registrado por</th><th>Motivo</th></tr></thead>
+          <tbody id="movimientos-cerrada"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 </div>
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
-requerirRol_(['Administrador','Encargado']);
+requerirRol_(['Administrador','Caja']);
 montarBarraUsuario();
-const usuario=Sesion.usuario();
-const fechaEl=document.getElementById('fecha');
-const sedeEl=document.getElementById('sede');
-// El historial de Caja (historial-caja.html) enlaza aquí con ?fecha=YYYY-MM-DD&sede=... para ir
-// directo al detalle de un día — si no vienen en la URL, se usa hoy como siempre.
-const parametrosUrl_=new URLSearchParams(location.search);
-fechaEl.value=parametrosUrl_.get('fecha')||fechaLocalHoy_();
+
+const usuario = Sesion.usuario();
+const fechaEl = document.getElementById('fecha');
+const sedeEl = document.getElementById('sede');
+fechaEl.value = fechaLocalHoy_();
 restringirSelectorSede_(sedeEl);
-// Caja solo existe en sedes de venta; Centro de Producción no debe aparecer aquí.
-Array.from(sedeEl.options).forEach(o=>{if(o.value==='Centro de Producción')o.remove();});
-if(parametrosUrl_.get('sede')&&Array.from(sedeEl.options).some(o=>o.value===parametrosUrl_.get('sede')))sedeEl.value=parametrosUrl_.get('sede');
-if(!sedeEl.value && sedeEl.options.length)sedeEl.value=sedeEl.options[0].value;
-document.getElementById('responsable').textContent=usuario.nombre||usuario.usuario;
-document.getElementById('perfil').textContent=`${usuario.rol} · ${usuario.sede}`;
-let estadoActual=null;
-const dinero=n=>Number(n||0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
-const mostrar=id=>['cargando','sin-abrir','abierta','cerrada'].forEach(x=>document.getElementById(x).classList.toggle('oculto',x!==id));
-const parametros=()=>({fecha:fechaEl.value,sede:sedeEl.value});
-function fechaHoraFudo_(valor){
-  if(!valor)return '—';
-  const d=new Date(valor);
-  return isNaN(d.getTime())?String(valor):d.toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-}
-// Semáforo de confianza: sintetiza fudo_sync + efectivo Sin identificar + diferencia ya cerrada
-// (todo esto ya lo calcula cajaNivelConfianza_ en el backend) en un solo símbolo, en vez de que la
-// persona tenga que leer varias señales sueltas para saber si puede confiar en el número.
-const CONFIANZA_INFO_={
-  confiable:{icono:'🟢',texto:'Cuadre confiable'},
-  pendiente:{icono:'🟡',texto:'Cuadre pendiente de revisar'},
-  no_confiable:{icono:'🔴',texto:'Cuadre no confiable'}
+Array.from(sedeEl.options).forEach(o => { if (o.value === 'Centro de Producción') o.remove(); });
+if (!sedeEl.value && sedeEl.options.length) sedeEl.value = sedeEl.options[0].value;
+
+let estadoActual = null;
+let sincronizandoAutomatico = false;
+const dinero = n => Number(n || 0).toLocaleString('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 });
+const params = () => ({ fecha: fechaEl.value, sede: sedeEl.value });
+const mostrar = id => ['cargando','sin-abrir','abierta','cerrada'].forEach(x => document.getElementById(x).classList.toggle('oculto', x !== id));
+const hora = v => {
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' });
 };
-function confianzaBadge_(nivel){
-  return CONFIANZA_INFO_[nivel]||CONFIANZA_INFO_.confiable;
+
+function nombreMovimiento_(m) {
+  const t = String(m.tipo || '');
+  if (t === 'Envío a caja fuerte') return 'Guardado en caja fuerte';
+  if (t === 'Entrega administrador desde caja') return 'Entrega a persona · caja operativa';
+  if (t === 'Entrega administrador desde caja fuerte') return 'Entrega a persona · caja fuerte';
+  if (t === 'Entrega administrador') return 'Entrega a persona';
+  if (t === 'Retiro de caja fuerte') return 'Retiro de caja fuerte';
+  return t;
 }
-function pintarFudoSync(){
-  const el=document.getElementById('fudo-sync-info');
-  const sync=(estadoActual&&estadoActual.fudo_sync)||null;
-  // El efectivo "Sin identificar" es solo informativo — nunca bloquea abrir ni cerrar caja. El
-  // Administrador lo concilia desde "Ventas pendientes de sede" (Importar de FUDO); si no se
-  // concilia, sigue apareciendo día a día.
-  const sinIdentificar=Number(estadoActual&&estadoActual.efectivo_sin_identificar)||0;
-  const avisoSinIdentificar=sinIdentificar>0
-    ? `<br><span style="color:var(--amber)">⚠ ${dinero(sinIdentificar)} en efectivo Sin identificar hoy — revisa "Ventas pendientes de sede" en Importar.</span>`
-    : '';
-  if(!sync||sync.aplica===false){el.innerHTML=avisoSinIdentificar.replace(/^<br>/,'');return;}
-  if(estadoActual.cuadre_confiable){
-    el.innerHTML=`<span style="color:var(--grey)">✓ FUDO actualizado: ${fechaHoraFudo_(sync.sincronizado_en)}</span>${avisoSinIdentificar}`;
-  }else if(sync.pendiente){
-    // Todavía no hay ningún intento guardado para esta fecha/sede (caché vacío). Si la caja está
-    // abierta hoy, sincronizarFudoSiPendiente_ ya lo está pidiendo en segundo plano; si no, el
-    // botón "Sincronizar FUDO" de al lado permite pedirlo a mano. No es un error de FUDO, por eso
-    // no se pinta en rojo, pero sí se avisa que lo mostrado puede no ser lo último.
-    el.innerHTML=`<span style="color:var(--amber)">⚠ FUDO pendiente de actualizar. Los valores mostrados usan la última información guardada.</span>${avisoSinIdentificar}`;
-  }else{
-    el.innerHTML=`<span style="color:var(--red)">⚠ Cuadre no confiable: ${sync.error||'no fue posible actualizar FUDO'}.</span>${avisoSinIdentificar}`;
+
+function pintarSync_() {
+  const el = document.getElementById('fudo-estado');
+  const s = estadoActual && estadoActual.fudo_sync;
+  if (!s) { el.className='estado-sync'; el.textContent='Sin información de sincronización.'; return; }
+  if (s.aplica === false) { el.className='estado-sync'; el.textContent='La integración FUDO no está configurada en este entorno.'; return; }
+  if (s.ok) {
+    el.className='estado-sync ok';
+    el.textContent='✓ FUDO sincronizado' + (s.sincronizado_en ? ' · ' + new Date(s.sincronizado_en).toLocaleString('es-CO') : '');
+  } else {
+    el.className='estado-sync error';
+    el.textContent=s.pendiente ? 'FUDO pendiente de sincronizar.' : ('FUDO: ' + (s.error || 'no se pudo sincronizar'));
   }
 }
-function diferenciaApertura(){
-  if(!estadoActual||estadoActual.apertura)return;
-  const dif=Number(document.getElementById('base-contada').value||0)-Number(estadoActual.base_esperada||0);
-  const el=document.getElementById('diferencia-apertura');
-  el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
-  el.style.color=dif===0?'var(--green)':'var(--red)';
+
+function pintarResumenAbierta_() {
+  const a = estadoActual.apertura || {};
+  const r = estadoActual.movimientos_resumen || {};
+  document.getElementById('k-base').textContent = dinero(a.base_inicial);
+  document.getElementById('k-fudo').textContent = dinero(estadoActual.pagos_efectivo_dia);
+  document.getElementById('k-guardado').textContent = dinero(r.envios_caja_fuerte);
+  document.getElementById('k-entregado').textContent = dinero(r.entregas_administrador);
+  document.getElementById('k-operativa').textContent = dinero(estadoActual.efectivo_esperado);
+  document.getElementById('k-fuerte').textContent = dinero(estadoActual.caja_fuerte_esperada);
+  if (!document.getElementById('cierre-base').value) document.getElementById('cierre-base').value = Number(a.base_inicial || 0);
 }
-function calculoCierre(){
-  if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
-  const contado=Number(document.getElementById('cierre-contado').value||0);
-  const base=Number(document.getElementById('cierre-base').value||0);
-  const fuerteContada=Number(document.getElementById('cierre-fuerte').value||0);
-  const esperado=Number(estadoActual.efectivo_esperado||0);
-  const fuerteEsperada=Number(estadoActual.caja_fuerte_esperada||0);
-  const dif=contado-esperado;
-  const difFuerte=fuerteContada-fuerteEsperada;
-  const entrega=contado-base;
-  const fudoNoConfiable=estadoActual.cuadre_confiable===false;
-  const hayDiferenciaDinero=dif!==0||difFuerte!==0;
-  let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>`;
-  if(difFuerte!==0)html+=`Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong><br>`;
-  html+=`Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
-  // Diana (ago 2026): ni una diferencia de dinero ni que FUDO no haya sincronizado bloquean el
-  // cierre — la caja se cierra siempre. Una diferencia sí exige dejar por escrito qué pasó; que
-  // FUDO no sincronizara no (el sistema ya lo sabe y se lo avisa al Administrador aparte).
-  if(fudoNoConfiable)html+=`<br><span style="color:var(--amber)">⚠ FUDO no está sincronizado — este número usa la última información guardada. Puedes cerrar igual; el Administrador lo revisa después.</span>`;
-  if(hayDiferenciaDinero)html+=`<br><strong style="color:var(--red)">Hay una diferencia — escribe abajo una observación explicando qué pasó para poder cerrar.</strong>`;
-  document.getElementById('calculo-cierre').innerHTML=html;
+
+function pintarCerrada_() {
+  const a = estadoActual.apertura || {};
+  document.getElementById('cerrada-esperado').textContent = dinero(a.efectivo_esperado);
+  document.getElementById('cerrada-contado').textContent = dinero(a.efectivo_contado);
+  document.getElementById('cerrada-diferencia').textContent = dinero(a.diferencia);
+  document.getElementById('cerrada-fuerte').textContent = dinero(a.caja_fuerte_contada);
 }
-function pintarMovimientos(lista){
-  const el=document.getElementById('movimientos');
-  if(!lista||!lista.length){el.innerHTML='<p class="vacio">Sin movimientos registrados.</p>';return;}
-  el.innerHTML=lista.map(m=>{const resta=m.tipo!=='Otro ingreso' && m.tipo!=='Retiro de caja fuerte';return `<div class="movimiento"><strong>${escapeHtml(m.tipo)}</strong><span class="${resta?'negativo':'positivo'}">${resta?'−':'+'}${dinero(m.valor)}</span><span>${escapeHtml(m.motivo||'')}</span><span>${escapeHtml(m.persona_recibe||m.usuario||'')}</span></div>`;}).join('');
+
+function filaMovimiento_(m) {
+  return `<tr><td>${escapeHtml(hora(m.hora || m.timestamp))}</td><td>${escapeHtml(nombreMovimiento_(m))}</td><td>${escapeHtml(dinero(m.valor))}</td><td>${escapeHtml(m.persona_recibe || '—')}</td><td>${escapeHtml(m.usuario || m.persona_entrega || '—')}</td><td>${escapeHtml(m.motivo || '—')}</td></tr>`;
 }
-async function cargarPanelAdmin(){
-  if(usuario.rol!=='Administrador')return;
-  const panel=document.getElementById('panel-admin');
-  const r=await llamar('caja_resumen_admin',{fecha:fechaEl.value});
-  if(!r.ok){panel.classList.add('oculto');return;}
-  panel.classList.remove('oculto');
-  document.getElementById('panel-admin-filas').innerHTML=r.sedes.map(s=>{
-    const confianza=confianzaBadge_(s.nivel_confianza);
-    const estadoTexto=!s.apertura?'Sin abrir':(s.apertura.estado==='Cerrado'?'Cerrada':'Abierta');
-    const responsable=(s.apertura&&(s.apertura.usuario_apertura))||'—';
-    return `<tr data-sede="${escapeHtml(s.sede)}" style="cursor:pointer" title="Ver ${escapeHtml(s.sede)}">
-      <td><strong>${escapeHtml(s.sede)}</strong></td>
-      <td>${estadoTexto}</td>
-      <td>${escapeHtml(responsable)}</td>
-      <td>${dinero(s.efectivo_esperado||0)}</td>
-      <td>${dinero(s.caja_fuerte_esperada||0)}</td>
-      <td>${s.efectivo_sin_identificar>0?`<span style="color:var(--amber)">${dinero(s.efectivo_sin_identificar)}</span>`:dinero(0)}</td>
-      <td title="${confianza.texto}">${confianza.icono}</td>
-    </tr>`;
-  }).join('');
-  // Tocar una fila lleva a esa sede en la vista de detalle de abajo, sin recargar la página.
-  Array.from(document.querySelectorAll('#panel-admin-filas tr')).forEach(fila=>{
-    fila.addEventListener('click',()=>{sedeEl.value=fila.dataset.sede;cargar();});
-  });
+
+async function cargarMovimientos_() {
+  const data = await llamar('caja_movimientos_listar', params());
+  const filas = data.ok && Array.isArray(data.data) ? data.data : [];
+  const html = filas.length ? filas.map(filaMovimiento_).join('') : '<tr><td colspan="6" class="vacio">Sin movimientos registrados.</td></tr>';
+  document.getElementById('movimientos').innerHTML = html;
+  document.getElementById('movimientos-cerrada').innerHTML = html;
 }
-// Diana (ago 2026): esto es puro seguimiento — nunca bloquea nada, ni descuenta a nadie. "Conciliar"
-// solo marca la novedad como revisada, con una nota opcional; no toca los números ya guardados.
-async function cargarNovedades(){
-  if(usuario.rol!=='Administrador')return;
-  const panel=document.getElementById('panel-novedades');
-  const r=await llamar('caja_novedades_listar',{});
-  if(!r.ok||!r.novedades.length){panel.classList.add('oculto');return;}
-  panel.classList.remove('oculto');
-  document.getElementById('novedades-filas').innerHTML=r.novedades.map(n=>{
-    const detalle=[];
-    if(n.diferencia_apertura)detalle.push(`Apertura: ${dinero(n.diferencia_apertura)}`);
-    if(n.diferencia_caja_fuerte_apertura)detalle.push(`Caja fuerte apertura: ${dinero(n.diferencia_caja_fuerte_apertura)}`);
-    if(n.diferencia)detalle.push(`Cierre: ${dinero(n.diferencia)}`);
-    if(n.diferencia_caja_fuerte)detalle.push(`Caja fuerte cierre: ${dinero(n.diferencia_caja_fuerte)}`);
-    if(n.fudo_cambio_tras_cierre)detalle.push(`FUDO ahora dice ${dinero(n.fudo_cambio_tras_cierre.esperado_actual)} (guardado: ${dinero(n.fudo_cambio_tras_cierre.esperado_guardado)})`);
-    return `<tr>
-      <td>${escapeHtml(n.fecha)}</td>
-      <td>${escapeHtml(n.sede)}</td>
-      <td>${escapeHtml(n.motivos.join(', '))}</td>
-      <td>${escapeHtml(detalle.join(' · ')||'—')}</td>
-      <td><button class="btn fantasma btn-conciliar" data-fecha="${escapeHtml(n.fecha)}" data-sede="${escapeHtml(n.sede)}">Marcar como resuelta</button></td>
-    </tr>`;
-  }).join('');
-  Array.from(document.querySelectorAll('.btn-conciliar')).forEach(boton=>{
-    boton.addEventListener('click',conBotonProtegido(boton,async()=>{
-      const nota=prompt('Nota sobre cómo se resolvió (opcional):')||'';
-      const resp=await llamar('caja_novedad_conciliar',{fecha:boton.dataset.fecha,sede:boton.dataset.sede,nota});
-      if(!resp.ok){alert(resp.error);return;}
-      cargarNovedades();
-    }));
-  });
-}
-// ago 2026: caja_estado ya no espera a FUDO — si el caché está vencido o nunca se llenó, devuelve
-// eso mismo (fudo_sync.pendiente=true) y la pantalla se dibuja YA con lo que hay. Esta función
-// dispara la sincronización real aparte, sin bloquear nada, y cuando termina vuelve a pedir
-// caja_estado en silencio (sin pasar otra vez por "Consultando…") para refrescar el semáforo.
-//
-// Solo vale la pena hacerlo cuando la caja está ABIERTA hoy: es el único caso donde la pantalla
-// muestra un efectivo esperado calculado en vivo con los pagos de FUDO. Si todavía no se ha abierto,
-// el estado ("sin abrir") no depende de FUDO para nada; si ya está cerrada, lo que se muestra es el
-// número que quedó guardado al cerrar (no se recalcula), así que sincronizar no cambiaría nada en
-// pantalla. Sincronizar en esos dos casos solo gasta cuota de la API sin ningún beneficio.
-function sincronizarFudoSiPendiente_(){
-  if(!estadoActual||!estadoActual.abierta)return;
-  if(!estadoActual.fudo_sync||!estadoActual.fudo_sync.pendiente)return;
-  llamar('caja_sincronizar_ahora',parametros()).then(()=>cargar({silencioso:true}));
-}
-async function cargar(opciones){
-  opciones=opciones||{};
-  if(!opciones.silencioso){
-    mostrar('cargando');
-    document.getElementById('cargando-texto').textContent='Consultando el estado de la caja…';
-    document.getElementById('cargando-reintentar').classList.add('oculto');
-    // Limpiar el texto de la consulta anterior — si no, mientras esta nueva consulta está en
-    // camino, la cabecera y el aviso de FUDO se quedan mostrando el resultado de la fecha/sede de
-    // ANTES, dando la impresión de que la pantalla dice dos cosas contradictorias a la vez.
-    document.getElementById('estado').textContent='Consultando…';
-    document.getElementById('fudo-sync-info').textContent='';
+
+async function cargar_(sinAutoSync) {
+  mostrar('cargando');
+  const data = await llamar('caja_estado', params());
+  if (!data.ok) { alert(data.error || 'No se pudo consultar la caja'); return; }
+  estadoActual = data;
+  pintarSync_();
+
+  if (!data.apertura) {
+    document.getElementById('base-esperada').textContent = dinero(data.base_esperada);
+    document.getElementById('fuerte-esperada').textContent = dinero(data.caja_fuerte_esperada);
+    mostrar('sin-abrir');
+  } else if (data.abierta) {
+    pintarResumenAbierta_();
+    mostrar('abierta');
+    await cargarMovimientos_();
+  } else {
+    pintarCerrada_();
+    mostrar('cerrada');
+    await cargarMovimientos_();
   }
-  cargarPanelAdmin();
-  cargarNovedades();
-  const p=parametros();
-  const data=await llamar('caja_estado',p);
-  if(!data.ok){
-    // No dejar la pantalla pegada en "Consultando…" si de verdad falló (red, timeout, error del
-    // servidor) — se explica el error y se ofrece reintentar en el mismo lugar, sin recargar todo.
-    mostrar('cargando');
-    document.getElementById('cargando-texto').textContent='⚠ No se pudo actualizar el estado: '+(data.error||'error desconocido')+'.';
-    document.getElementById('cargando-reintentar').classList.remove('oculto');
-    return;
+
+  if (!sinAutoSync && data.fudo_sync && data.fudo_sync.pendiente && !sincronizandoAutomatico) {
+    sincronizandoAutomatico = true;
+    const sync = await llamar('caja_sincronizar_ahora', params());
+    sincronizandoAutomatico = false;
+    if (sync.ok) await cargar_(true);
   }
-  estadoActual=data;
-  pintarFudoSync();
-  sincronizarFudoSiPendiente_();
-  document.getElementById('estado').className='estado';
-  const confianza=confianzaBadge_(data.nivel_confianza);
-  if(!data.apertura){
-    document.getElementById('estado').textContent=`${confianza.icono} Caja sin abrir`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
-    // La Administradora no abre caja — eso lo hace quien está en la sede. A ella solo le
-    // interesa ver que sigue sin abrir, sin el formulario de conteo físico — pero el formulario
-    // igual se llena con los valores reales (no solo "$0"), por si usa "Abrir de todas formas".
-    const esAdmin=usuario.rol==='Administrador';
-    document.getElementById('apertura-solo-lectura').classList.toggle('oculto',!esAdmin);
-    document.getElementById('apertura-form').classList.toggle('oculto',esAdmin);
-    // Los montos esperados se muestran siempre (aunque el formulario esté oculto para
-    // Administrador, por si usa "Abrir de todas formas"), pero los campos de conteo quedan
-    // deliberadamente VACÍOS — no precargados con lo esperado: si se prellenan con el mismo valor
-    // que se va a comparar, cualquiera puede abrir sin contar nada de verdad, y siempre daría "sin
-    // diferencia" sin que nadie haya tocado el dinero.
-    document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
-    document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
-    document.getElementById('base-contada').value='';
-    document.getElementById('fuerte-contada-apertura').value='';
-    mostrar('sin-abrir');diferenciaApertura();return;
+}
+
+async function sincronizar_() {
+  const btn = document.getElementById('sincronizar');
+  btn.disabled = true;
+  btn.textContent = 'Sincronizando…';
+  try {
+    const r = await llamar('caja_sincronizar_ahora', params());
+    if (!r.ok) alert(r.error || 'No se pudo sincronizar FUDO');
+    await cargar_(true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sincronizar FUDO';
   }
-  if(data.apertura.estado==='Cerrado'){
-    document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
-    const a=data.apertura;const dif=Number(a.diferencia||0);
-    let resumenHtml=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado por ${escapeHtml(a.usuario_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
-    // Diana (ago 2026): FUDO sigue sincronizando "ayer" cada 15 minutos — si algo cambió después de
-    // cerrar, que se vea aquí mismo (Encargado o Administrador, quien sea que mire este día), no
-    // solo en el panel de novedades del Administrador.
-    if(data.fudo_cambio_tras_cierre){
-      const c=data.fudo_cambio_tras_cierre;
-      resumenHtml+=`<br><br><span style="color:var(--amber)">⚠ FUDO actualizó esta información después del cierre: ahora dice ${dinero(c.esperado_actual)} en vez de ${dinero(c.esperado_guardado)} guardado (${c.diferencia>0?'+':''}${dinero(c.diferencia)}). Coméntalo con el Administrador.</span>`;
+}
+
+document.getElementById('actualizar').addEventListener('click', () => cargar_(false));
+document.getElementById('sincronizar').addEventListener('click', sincronizar_);
+fechaEl.addEventListener('change', () => cargar_(false));
+sedeEl.addEventListener('change', () => cargar_(false));
+
+document.getElementById('abrir-caja').addEventListener('click', conBotonProtegido(document.getElementById('abrir-caja'), async () => {
+  const r = await llamar('caja_abrir', {
+    ...params(),
+    item: {
+      ...params(),
+      base_inicial: document.getElementById('base-inicial').value,
+      caja_fuerte_inicial: document.getElementById('fuerte-inicial').value,
+      observacion_apertura: document.getElementById('observacion-apertura').value.trim()
     }
-    document.getElementById('resumen-cierre').innerHTML=resumenHtml;
-    document.getElementById('bloque-correccion').classList.toggle('oculto',usuario.rol!=='Administrador');
-    document.getElementById('form-correccion').classList.add('oculto');
-    document.getElementById('correccion-efectivo').value=a.efectivo_contado;
-    document.getElementById('correccion-fuerte').value=a.caja_fuerte_contada;
-    document.getElementById('correccion-base-siguiente').value=a.base_siguiente;
-    document.getElementById('correccion-observacion').value=a.observacion_cierre||'';
-    document.getElementById('correccion-motivo').value='';
-    mostrar('cerrada');return;
-  }
-  document.getElementById('estado').textContent=`${confianza.icono} Caja abierta`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('abierta');
-  document.getElementById('d-base').textContent=dinero(data.apertura.base_inicial);
-  document.getElementById('d-fudo').textContent=dinero(data.pagos_efectivo_esperado);
-  document.getElementById('d-ingresos').textContent=dinero(data.movimientos_resumen.otros_ingresos);
-  document.getElementById('d-envio-fuerte').textContent='−'+dinero(data.movimientos_resumen.envios_caja_fuerte||0);
-  document.getElementById('d-entregas').textContent='−'+dinero(data.movimientos_resumen.entregas_administrador||0);
-  document.getElementById('d-gastos').textContent='−'+dinero(data.movimientos_resumen.gastos);
-  document.getElementById('d-esperado').textContent=dinero(data.efectivo_esperado);
-  document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
-  document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
-  document.getElementById('abierta-por').textContent=data.apertura.usuario_apertura||'—';
-  document.getElementById('abierta-hora').textContent=new Date(data.apertura.hora_apertura).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
-  const rappi=String(data.apertura.rappi_encendido).toLowerCase()==='true';
-  document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
-  document.getElementById('mov-entrega').value=usuario.nombre||'';
-  // Igual que al abrir: los campos de conteo del cierre quedan vacíos, no precargados con lo
-  // esperado — "cierre-base" (lo que se decide dejar para el siguiente turno) no es un conteo
-  // contra algo, así que ese sí puede sugerir la base con la que se abrió hoy.
-  document.getElementById('cierre-contado').value='';
-  document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
-  document.getElementById('cierre-fuerte').value='';
-  const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
-  mostrar('abierta');calculoCierre();
-}
-document.getElementById('base-contada').addEventListener('input',diferenciaApertura);
-document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
-document.getElementById('cierre-base').addEventListener('input',calculoCierre);
-document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
-document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
-fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
-document.getElementById('reintentar').addEventListener('click',()=>cargar());
-// Botón manual: a diferencia del disparo automático en segundo plano (que solo corre si la caja
-// está abierta hoy), este siempre fuerza la sincronización real cuando la persona la pide de
-// verdad, sin importar el estado de la caja — es una decisión explícita suya, no automática.
-document.getElementById('btn-sincronizar-fudo').addEventListener('click',conBotonProtegido(document.getElementById('btn-sincronizar-fudo'),async(e)=>{
-  e.preventDefault();
-  const r=await llamar('caja_sincronizar_ahora',parametros());
-  if(!r.ok){alert(r.error);return;}
-  cargar({silencioso:true});
-}));
-// El Administrador es super usuario: normalmente solo revisa si la caja está abierta (por eso el
-// formulario queda oculto por defecto), pero puede abrirla él mismo si de verdad hace falta.
-document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
-  e.preventDefault();
-  document.getElementById('apertura-solo-lectura').classList.add('oculto');
-  document.getElementById('apertura-form').classList.remove('oculto');
-});
-document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{
-  const item={...parametros(),base_inicial:document.getElementById('base-contada').value,caja_fuerte_inicial:document.getElementById('fuerte-contada-apertura').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()};
-  if(Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)&&!item.observacion_apertura){alert('La base no coincide. Escribe una observación.');return;}
-  const r=await llamar('caja_abrir',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja abierta. Ahora confirma Rappi.');cargar();
-}));
-document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
-// Diana (ago 2026): un doble clic, o reintentar tras un timeout de red pensando que no se guardó,
-// registraba el MISMO movimiento dos veces (no se puede editar ni borrar después). La clave se
-// genera una vez por intento y se reutiliza en cada reintento; solo se renueva cuando el guardado
-// SÍ tuvo éxito, para que el siguiente movimiento (uno de verdad distinto) tenga su propia clave.
-let movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
-document.getElementById('guardar-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('guardar-movimiento'),async()=>{
-  const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim(),idempotency_key:movimientoIdempotencyKey_};
-  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}
-  movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
-  ['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');avisarGuardado('Movimiento registrado.');cargar();
-}));
-document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
-  if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
-  // Igual que al abrir (auditoría externa, ago 2026): se envía el valor TAL CUAL del campo, no
-  // Number(valor||0) — así, si quedó vacío, el backend lo distingue de "$0 contados de verdad" y
-  // rechaza el cierre en vez de aceptar un conteo que nunca se hizo.
-  const contadoRaw=document.getElementById('cierre-contado').value;
-  const fuerteRaw=document.getElementById('cierre-fuerte').value;
-  const contado=Number(contadoRaw||0);const base=Number(document.getElementById('cierre-base').value||0);
-  if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
-  const item={...parametros(),efectivo_contado:contadoRaw,caja_fuerte_contada:fuerteRaw,base_siguiente:base,observacion:document.getElementById('cierre-observacion').value.trim()};
-  const fuerteContada_=Number(fuerteRaw||0);
-  const hayDiferenciaDinero_=contado!==Number(estadoActual.efectivo_esperado||0)||fuerteContada_!==Number(estadoActual.caja_fuerte_esperada||0);
-  if(hayDiferenciaDinero_&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
-  const r=await llamar('caja_cerrar',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja cerrada correctamente.');cargar();
+  });
+  if (!r.ok) return alert(r.error || 'No se pudo iniciar la caja');
+  avisarGuardado('Caja iniciada');
+  await cargar_(false);
 }));
 
-document.getElementById('link-mostrar-correccion').addEventListener('click',(e)=>{
-  e.preventDefault();
-  document.getElementById('form-correccion').classList.toggle('oculto');
-});
-document.getElementById('btn-corregir-cierre').addEventListener('click',conBotonProtegido(document.getElementById('btn-corregir-cierre'),async()=>{
-  const motivo=document.getElementById('correccion-motivo').value.trim();
-  if(!motivo){alert('Escribe el motivo de la corrección.');return;}
-  const efectivoRaw=document.getElementById('correccion-efectivo').value;
-  const fuerteRaw=document.getElementById('correccion-fuerte').value;
-  const baseSiguiente=Number(document.getElementById('correccion-base-siguiente').value||0);
-  if(!confirm('¿Confirmas la corrección de este cierre? Quedará registrado quién y por qué.'))return;
-  const item={
-    ...parametros(),
-    efectivo_contado:efectivoRaw,caja_fuerte_contada:fuerteRaw,base_siguiente:baseSiguiente,
-    observacion_cierre:document.getElementById('correccion-observacion').value.trim(),
-    motivo_correccion:motivo
-  };
-  const r=await llamar('caja_corregir',{item});
-  if(!r.ok){alert(r.error);return;}
-  avisarGuardado('Cierre corregido.');
-  cargar();
+document.getElementById('guardar-fuerte').addEventListener('click', conBotonProtegido(document.getElementById('guardar-fuerte'), async () => {
+  const valor = Number(document.getElementById('fuerte-valor').value);
+  if (!valor || valor <= 0) return alert('Escribe el valor que vas a guardar en caja fuerte.');
+  const motivo = document.getElementById('fuerte-motivo').value.trim() || 'Guardado en caja fuerte';
+  const r = await llamar('caja_movimiento_registrar', {
+    item: {
+      ...params(), tipo:'Envío a caja fuerte', valor,
+      persona_entrega: usuario.nombre, persona_recibe:'Caja fuerte', motivo,
+      idempotency_key: 'fuerte-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+    }
+  });
+  if (!r.ok) return alert(r.error || 'No se pudo guardar el movimiento');
+  document.getElementById('fuerte-valor').value='';
+  document.getElementById('fuerte-motivo').value='';
+  avisarGuardado('Dinero registrado en caja fuerte');
+  await cargar_(true);
 }));
-cargar();
+
+document.getElementById('guardar-entrega').addEventListener('click', conBotonProtegido(document.getElementById('guardar-entrega'), async () => {
+  const valor = Number(document.getElementById('entrega-valor').value);
+  const recibe = document.getElementById('entrega-recibe').value.trim();
+  const motivo = document.getElementById('entrega-motivo').value.trim();
+  const origen = document.getElementById('entrega-origen').value;
+  if (!valor || valor <= 0) return alert('Escribe el valor entregado.');
+  if (!recibe) return alert('Es obligatorio escribir el nombre de la persona que recibe el dinero.');
+  if (!motivo) return alert('Escribe el motivo de la entrega.');
+  const tipo = origen === 'fuerte' ? 'Entrega administrador desde caja fuerte' : 'Entrega administrador desde caja';
+  const r = await llamar('caja_movimiento_registrar', {
+    item: {
+      ...params(), tipo, valor,
+      persona_entrega: usuario.nombre, persona_recibe: recibe, motivo,
+      idempotency_key: 'entrega-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+    }
+  });
+  if (!r.ok) return alert(r.error || 'No se pudo registrar la entrega');
+  document.getElementById('entrega-valor').value='';
+  document.getElementById('entrega-recibe').value='';
+  document.getElementById('entrega-motivo').value='';
+  avisarGuardado('Entrega registrada a ' + recibe);
+  await cargar_(true);
+}));
+
+document.getElementById('cerrar-caja').addEventListener('click', conBotonProtegido(document.getElementById('cerrar-caja'), async () => {
+  const r = await llamar('caja_cerrar', {
+    item: {
+      ...params(),
+      efectivo_contado: document.getElementById('cierre-operativa').value,
+      caja_fuerte_contada: document.getElementById('cierre-fuerte').value,
+      base_siguiente: document.getElementById('cierre-base').value,
+      observacion: document.getElementById('cierre-observacion').value.trim()
+    }
+  });
+  if (!r.ok) return alert(r.error || 'No se pudo cerrar la caja');
+  avisarGuardado('Caja cerrada');
+  await cargar_(true);
+}));
+
+cargar_(false);
 </script>
 </body>
 </html>
