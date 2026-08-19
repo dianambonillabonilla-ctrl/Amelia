@@ -20,6 +20,12 @@
   .tabla-scroll{overflow-x:auto}
   .nota-simple{font-size:.82rem;color:var(--grey);margin-top:5px}
   .caja-cerrada{border-left:4px solid var(--green)}
+  .conciliacion{border:1px solid var(--line);border-radius:12px;padding:15px;margin:14px 0;background:#fff}
+  .conciliacion h3{margin:0 0 8px}
+  .conciliacion-estado{font-weight:700;margin:8px 0}
+  .conciliacion-estado.ok{color:var(--green)}
+  .conciliacion-estado.error{color:var(--red)}
+  .diferencia-apertura{margin:10px 0 14px;padding:10px 12px;border-radius:8px;background:#f7f7f7;font-size:.88rem}
 </style>
 </head>
 <body>
@@ -47,16 +53,35 @@
 
     <section id="sin-abrir" class="card oculto" style="border:2px solid var(--gold)">
       <h2>Iniciar caja</h2>
-      <p class="nota-simple">Antes de empezar, cuenta el efectivo operativo y el dinero que ya está físicamente en la caja fuerte.</p>
-      <div class="caja-resumen">
-        <div class="caja-kpi"><span>Base esperada según cierre anterior</span><strong id="base-esperada">$0</strong></div>
-        <div class="caja-kpi"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
+      <p class="nota-simple">DILANA compara primero el cierre anterior de FUDO con el cierre anterior de DILANA. Después tú confirmas cuánto dinero encuentras físicamente.</p>
+
+      <div id="conciliacion-apertura" class="conciliacion">
+        <h3>Conciliación del cierre anterior</h3>
+        <p id="conciliacion-fecha" class="nota-simple">Consultando FUDO y DILANA…</p>
+        <div class="caja-resumen">
+          <div class="caja-kpi"><span>Efectivo FUDO cierre anterior</span><strong id="conc-fudo-efectivo">—</strong></div>
+          <div class="caja-kpi"><span>Esperado DILANA guardado</span><strong id="conc-dilana-guardado">—</strong></div>
+          <div class="caja-kpi"><span>DILANA recalculado con FUDO actual</span><strong id="conc-dilana-actual">—</strong></div>
+          <div class="caja-kpi"><span>Diferencia FUDO/DILANA</span><strong id="conc-diferencia">—</strong></div>
+        </div>
+        <p id="conciliacion-estado" class="conciliacion-estado">Pendiente de sincronizar.</p>
+        <p id="conciliacion-movimientos" class="nota-simple"></p>
       </div>
+
+      <h3>Lo que DILANA espera encontrar hoy</h3>
+      <div class="caja-resumen">
+        <div class="caja-kpi principal"><span>Caja operativa esperada</span><strong id="base-esperada">$0</strong></div>
+        <div class="caja-kpi principal"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
+        <div class="caja-kpi"><span>Total esperado bajo custodia</span><strong id="custodia-esperada">$0</strong></div>
+      </div>
+
+      <h3>Conteo físico al llegar</h3>
       <div class="grid grid-2">
-        <div class="campo"><label>Efectivo contado al iniciar</label><input type="number" min="0" step="1" id="base-inicial"></div>
+        <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="base-inicial"></div>
         <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="fuerte-inicial"></div>
       </div>
-      <div class="campo"><label>Observación si hay diferencia</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base anterior"></div>
+      <div id="diferencia-apertura-vista" class="diferencia-apertura">Escribe ambos conteos para comparar contra DILANA.</div>
+      <div class="campo"><label>Observación si hay diferencia</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 frente a lo esperado"></div>
       <button class="btn dorado" id="abrir-caja">Iniciar caja</button>
     </section>
 
@@ -71,7 +96,7 @@
           <div class="caja-kpi principal"><span>Efectivo esperado en caja operativa</span><strong id="k-operativa">$0</strong></div>
           <div class="caja-kpi principal"><span>Esperado en caja fuerte</span><strong id="k-fuerte">$0</strong></div>
         </div>
-        <p class="nota-simple">FUDO define el efectivo vendido. DILANA solo registra dónde quedó ese dinero o a quién se entregó.</p>
+        <p class="nota-simple">FUDO define la operación económica. DILANA registra dónde quedó físicamente el dinero.</p>
       </div>
 
       <div class="acciones-dinero">
@@ -96,17 +121,12 @@
 
       <div class="card" style="margin-top:16px">
         <h2>Movimientos del día</h2>
-        <div class="tabla-scroll">
-          <table>
-            <thead><tr><th>Hora</th><th>Movimiento</th><th>Valor</th><th>Recibe</th><th>Registrado por</th><th>Motivo</th></tr></thead>
-            <tbody id="movimientos"></tbody>
-          </table>
-        </div>
+        <div class="tabla-scroll"><table><thead><tr><th>Hora</th><th>Movimiento</th><th>Valor</th><th>Recibe</th><th>Registrado por</th><th>Motivo</th></tr></thead><tbody id="movimientos"></tbody></table></div>
       </div>
 
       <div class="card">
         <h2>Cerrar caja</h2>
-        <p class="nota-simple">Al cerrar, cuenta por separado la caja operativa y la caja fuerte. Si existe una diferencia, deja una observación.</p>
+        <p class="nota-simple">Primero cierra el arqueo en FUDO. DILANA hará una sincronización final antes de calcular el cuadre.</p>
         <div class="grid grid-3">
           <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-operativa"></div>
           <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
@@ -125,12 +145,7 @@
         <div class="caja-kpi"><span>Diferencia caja</span><strong id="cerrada-diferencia">$0</strong></div>
         <div class="caja-kpi"><span>Caja fuerte contada</span><strong id="cerrada-fuerte">$0</strong></div>
       </div>
-      <div class="tabla-scroll">
-        <table>
-          <thead><tr><th>Hora</th><th>Movimiento</th><th>Valor</th><th>Recibe</th><th>Registrado por</th><th>Motivo</th></tr></thead>
-          <tbody id="movimientos-cerrada"></tbody>
-        </table>
-      </div>
+      <div class="tabla-scroll"><table><thead><tr><th>Hora</th><th>Movimiento</th><th>Valor</th><th>Recibe</th><th>Registrado por</th><th>Motivo</th></tr></thead><tbody id="movimientos-cerrada"></tbody></table></div>
     </section>
   </main>
 </div>
@@ -149,14 +164,12 @@ Array.from(sedeEl.options).forEach(o => { if (o.value === 'Centro de Producción
 if (!sedeEl.value && sedeEl.options.length) sedeEl.value = sedeEl.options[0].value;
 
 let estadoActual = null;
+let conciliacionAperturaActual = null;
 let sincronizandoAutomatico = false;
 const dinero = n => Number(n || 0).toLocaleString('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 });
 const params = () => ({ fecha: fechaEl.value, sede: sedeEl.value });
 const mostrar = id => ['cargando','sin-abrir','abierta','cerrada'].forEach(x => document.getElementById(x).classList.toggle('oculto', x !== id));
-const hora = v => {
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' });
-};
+const hora = v => { const d = new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' }); };
 
 function nombreMovimiento_(m) {
   const t = String(m.tipo || '');
@@ -173,165 +186,145 @@ function pintarSync_() {
   const s = estadoActual && estadoActual.fudo_sync;
   if (!s) { el.className='estado-sync'; el.textContent='Sin información de sincronización.'; return; }
   if (s.aplica === false) { el.className='estado-sync'; el.textContent='La integración FUDO no está configurada en este entorno.'; return; }
-  if (s.ok) {
-    el.className='estado-sync ok';
-    el.textContent='✓ FUDO sincronizado' + (s.sincronizado_en ? ' · ' + new Date(s.sincronizado_en).toLocaleString('es-CO') : '');
-  } else {
-    el.className='estado-sync error';
-    el.textContent=s.pendiente ? 'FUDO pendiente de sincronizar.' : ('FUDO: ' + (s.error || 'no se pudo sincronizar'));
+  if (s.ok) { el.className='estado-sync ok'; el.textContent='✓ FUDO sincronizado' + (s.sincronizado_en ? ' · ' + new Date(s.sincronizado_en).toLocaleString('es-CO') : ''); }
+  else { el.className='estado-sync error'; el.textContent=s.pendiente ? 'FUDO pendiente de sincronizar.' : ('FUDO: ' + (s.error || 'no se pudo sincronizar')); }
+}
+
+function pintarConciliacionApertura_() {
+  const c = conciliacionAperturaActual;
+  const est = document.getElementById('conciliacion-estado');
+  if (!c) {
+    document.getElementById('conciliacion-fecha').textContent='Consultando el cierre anterior en FUDO y DILANA…';
+    ['conc-fudo-efectivo','conc-dilana-guardado','conc-dilana-actual','conc-diferencia'].forEach(id => document.getElementById(id).textContent='—');
+    est.className='conciliacion-estado'; est.textContent='Pendiente de sincronizar.';
+    return;
   }
+  document.getElementById('conciliacion-fecha').textContent='Referencia: ' + c.fecha_referencia;
+  document.getElementById('conc-fudo-efectivo').textContent=dinero(c.fudo && c.fudo.efectivo);
+  if (!c.tiene_cierre_dilana) {
+    document.getElementById('conc-dilana-guardado').textContent='Sin cierre previo';
+    document.getElementById('conc-dilana-actual').textContent='Sin cierre previo';
+    document.getElementById('conc-diferencia').textContent='—';
+    est.className='conciliacion-estado'; est.textContent=c.mensaje || 'No hay cierre DILANA anterior para comparar.';
+  } else {
+    document.getElementById('conc-dilana-guardado').textContent=dinero(c.dilana.esperado_cierre_guardado);
+    document.getElementById('conc-dilana-actual').textContent=dinero(c.dilana.esperado_cierre_con_fudo_actual);
+    document.getElementById('conc-diferencia').textContent=dinero(c.diferencia_fudo_dilana);
+    est.className='conciliacion-estado ' + (c.cuadra_fudo_dilana ? 'ok' : 'error');
+    est.textContent=c.cuadra_fudo_dilana ? '✓ FUDO y el cierre DILANA anterior siguen conciliados.' : '⚠ FUDO cambió frente al cierre guardado en DILANA. La diferencia queda visible para revisión.';
+  }
+  const mp=c.movimientos_posteriores;
+  document.getElementById('conciliacion-movimientos').textContent=mp && mp.cantidad ? ('Después del cierre anterior hay ' + mp.cantidad + ' movimiento(s) DILANA ya incorporados a lo esperado de hoy. Entregado a personas: ' + dinero(mp.entregado_personas) + '.') : 'No hay movimientos DILANA posteriores al cierre anterior.';
+  const cust=c.custodia_esperada_hoy || {};
+  document.getElementById('base-esperada').textContent=dinero(cust.caja_operativa);
+  document.getElementById('fuerte-esperada').textContent=dinero(cust.caja_fuerte);
+  document.getElementById('custodia-esperada').textContent=dinero(cust.total);
+  pintarDiferenciaFisica_();
+}
+
+function pintarDiferenciaFisica_() {
+  const el=document.getElementById('diferencia-apertura-vista');
+  const vCaja=document.getElementById('base-inicial').value;
+  const vFuerte=document.getElementById('fuerte-inicial').value;
+  if (vCaja==='' || vFuerte==='') { el.textContent='Escribe ambos conteos para comparar contra DILANA.'; return; }
+  const esperadoCaja=conciliacionAperturaActual && conciliacionAperturaActual.custodia_esperada_hoy ? Number(conciliacionAperturaActual.custodia_esperada_hoy.caja_operativa||0) : Number(estadoActual && estadoActual.base_esperada || 0);
+  const esperadoFuerte=conciliacionAperturaActual && conciliacionAperturaActual.custodia_esperada_hoy ? Number(conciliacionAperturaActual.custodia_esperada_hoy.caja_fuerte||0) : Number(estadoActual && estadoActual.caja_fuerte_esperada || 0);
+  const difCaja=Number(vCaja)-esperadoCaja, difFuerte=Number(vFuerte)-esperadoFuerte;
+  if (Math.abs(difCaja)<0.01 && Math.abs(difFuerte)<0.01) el.textContent='✓ El conteo físico coincide con lo esperado por DILANA.';
+  else el.textContent='Diferencia física · Caja: ' + dinero(difCaja) + ' · Caja fuerte: ' + dinero(difFuerte) + '. Escribe una observación antes de iniciar.';
 }
 
 function pintarResumenAbierta_() {
-  const a = estadoActual.apertura || {};
-  const r = estadoActual.movimientos_resumen || {};
-  document.getElementById('k-base').textContent = dinero(a.base_inicial);
-  document.getElementById('k-fudo').textContent = dinero(estadoActual.pagos_efectivo_dia);
-  document.getElementById('k-guardado').textContent = dinero(r.envios_caja_fuerte);
-  document.getElementById('k-entregado').textContent = dinero(r.entregas_administrador);
-  document.getElementById('k-operativa').textContent = dinero(estadoActual.efectivo_esperado);
-  document.getElementById('k-fuerte').textContent = dinero(estadoActual.caja_fuerte_esperada);
-  if (!document.getElementById('cierre-base').value) document.getElementById('cierre-base').value = Number(a.base_inicial || 0);
+  const a=estadoActual.apertura||{}, r=estadoActual.movimientos_resumen||{};
+  document.getElementById('k-base').textContent=dinero(a.base_inicial);
+  document.getElementById('k-fudo').textContent=dinero(estadoActual.pagos_efectivo_dia);
+  document.getElementById('k-guardado').textContent=dinero(r.envios_caja_fuerte);
+  document.getElementById('k-entregado').textContent=dinero(r.entregas_administrador);
+  document.getElementById('k-operativa').textContent=dinero(estadoActual.efectivo_esperado);
+  document.getElementById('k-fuerte').textContent=dinero(estadoActual.caja_fuerte_esperada);
+  if (!document.getElementById('cierre-base').value) document.getElementById('cierre-base').value=Number(a.base_inicial||0);
 }
 
 function pintarCerrada_() {
-  const a = estadoActual.apertura || {};
-  document.getElementById('cerrada-esperado').textContent = dinero(a.efectivo_esperado);
-  document.getElementById('cerrada-contado').textContent = dinero(a.efectivo_contado);
-  document.getElementById('cerrada-diferencia').textContent = dinero(a.diferencia);
-  document.getElementById('cerrada-fuerte').textContent = dinero(a.caja_fuerte_contada);
+  const a=estadoActual.apertura||{};
+  document.getElementById('cerrada-esperado').textContent=dinero(a.efectivo_esperado);
+  document.getElementById('cerrada-contado').textContent=dinero(a.efectivo_contado);
+  document.getElementById('cerrada-diferencia').textContent=dinero(a.diferencia);
+  document.getElementById('cerrada-fuerte').textContent=dinero(a.caja_fuerte_contada);
 }
 
-function filaMovimiento_(m) {
-  return `<tr><td>${escapeHtml(hora(m.hora || m.timestamp))}</td><td>${escapeHtml(nombreMovimiento_(m))}</td><td>${escapeHtml(dinero(m.valor))}</td><td>${escapeHtml(m.persona_recibe || '—')}</td><td>${escapeHtml(m.usuario || m.persona_entrega || '—')}</td><td>${escapeHtml(m.motivo || '—')}</td></tr>`;
-}
+function filaMovimiento_(m) { return `<tr><td>${escapeHtml(hora(m.hora||m.timestamp))}</td><td>${escapeHtml(nombreMovimiento_(m))}</td><td>${escapeHtml(dinero(m.valor))}</td><td>${escapeHtml(m.persona_recibe||'—')}</td><td>${escapeHtml(m.usuario||m.persona_entrega||'—')}</td><td>${escapeHtml(m.motivo||'—')}</td></tr>`; }
 
 async function cargarMovimientos_() {
-  const data = await llamar('caja_movimientos_listar', params());
-  const filas = data.ok && Array.isArray(data.data) ? data.data : [];
-  const html = filas.length ? filas.map(filaMovimiento_).join('') : '<tr><td colspan="6" class="vacio">Sin movimientos registrados.</td></tr>';
-  document.getElementById('movimientos').innerHTML = html;
-  document.getElementById('movimientos-cerrada').innerHTML = html;
+  const data=await llamar('caja_movimientos_listar',params());
+  const filas=data.ok&&Array.isArray(data.data)?data.data:[];
+  const html=filas.length?filas.map(filaMovimiento_).join(''):'<tr><td colspan="6" class="vacio">Sin movimientos registrados.</td></tr>';
+  document.getElementById('movimientos').innerHTML=html;
+  document.getElementById('movimientos-cerrada').innerHTML=html;
 }
 
 async function cargar_(sinAutoSync) {
   mostrar('cargando');
-  const data = await llamar('caja_estado', params());
-  if (!data.ok) { alert(data.error || 'No se pudo consultar la caja'); return; }
-  estadoActual = data;
-  pintarSync_();
+  const data=await llamar('caja_estado',params());
+  if(!data.ok){alert(data.error||'No se pudo consultar la caja');return;}
+  estadoActual=data; pintarSync_();
 
-  if (!data.apertura) {
-    document.getElementById('base-esperada').textContent = dinero(data.base_esperada);
-    document.getElementById('fuerte-esperada').textContent = dinero(data.caja_fuerte_esperada);
-    mostrar('sin-abrir');
-  } else if (data.abierta) {
-    pintarResumenAbierta_();
-    mostrar('abierta');
-    await cargarMovimientos_();
-  } else {
-    pintarCerrada_();
-    mostrar('cerrada');
-    await cargarMovimientos_();
-  }
-
-  if (!sinAutoSync && data.fudo_sync && data.fudo_sync.pendiente && !sincronizandoAutomatico) {
-    sincronizandoAutomatico = true;
-    const sync = await llamar('caja_sincronizar_ahora', params());
-    sincronizandoAutomatico = false;
-    if (sync.ok) await cargar_(true);
-  }
+  if(!data.apertura){
+    document.getElementById('base-esperada').textContent=dinero(data.base_esperada);
+    document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada);
+    document.getElementById('custodia-esperada').textContent=dinero(Number(data.base_esperada||0)+Number(data.caja_fuerte_esperada||0));
+    mostrar('sin-abrir'); pintarConciliacionApertura_();
+    if(!sinAutoSync && !conciliacionAperturaActual && !sincronizandoAutomatico){
+      sincronizandoAutomatico=true;
+      const sync=await llamar('caja_sincronizar_ahora',params());
+      sincronizandoAutomatico=false;
+      if(sync.conciliacion_apertura) conciliacionAperturaActual=sync.conciliacion_apertura;
+      await cargar_(true); return;
+    }
+  } else if(data.abierta){ conciliacionAperturaActual=null; pintarResumenAbierta_(); mostrar('abierta'); await cargarMovimientos_(); }
+  else { conciliacionAperturaActual=null; pintarCerrada_(); mostrar('cerrada'); await cargarMovimientos_(); }
 }
 
 async function sincronizar_() {
-  const btn = document.getElementById('sincronizar');
-  btn.disabled = true;
-  btn.textContent = 'Sincronizando…';
-  try {
-    const r = await llamar('caja_sincronizar_ahora', params());
-    if (!r.ok) alert(r.error || 'No se pudo sincronizar FUDO');
+  const btn=document.getElementById('sincronizar'); btn.disabled=true; btn.textContent='Sincronizando…';
+  try{
+    const r=await llamar('caja_sincronizar_ahora',params());
+    if(r.conciliacion_apertura) conciliacionAperturaActual=r.conciliacion_apertura;
+    if(!r.ok && !r.conciliacion_apertura) alert(r.error||'No se pudo sincronizar FUDO');
     await cargar_(true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Sincronizar FUDO';
-  }
+  } finally {btn.disabled=false;btn.textContent='Sincronizar FUDO';}
 }
 
-document.getElementById('actualizar').addEventListener('click', () => cargar_(false));
-document.getElementById('sincronizar').addEventListener('click', sincronizar_);
-fechaEl.addEventListener('change', () => cargar_(false));
-sedeEl.addEventListener('change', () => cargar_(false));
+function cambiarContexto_(){conciliacionAperturaActual=null;cargar_(false);}
+document.getElementById('actualizar').addEventListener('click',()=>{conciliacionAperturaActual=null;cargar_(false);});
+document.getElementById('sincronizar').addEventListener('click',sincronizar_);
+fechaEl.addEventListener('change',cambiarContexto_); sedeEl.addEventListener('change',cambiarContexto_);
+document.getElementById('base-inicial').addEventListener('input',pintarDiferenciaFisica_);
+document.getElementById('fuerte-inicial').addEventListener('input',pintarDiferenciaFisica_);
 
-document.getElementById('abrir-caja').addEventListener('click', conBotonProtegido(document.getElementById('abrir-caja'), async () => {
-  const r = await llamar('caja_abrir', {
-    ...params(),
-    item: {
-      ...params(),
-      base_inicial: document.getElementById('base-inicial').value,
-      caja_fuerte_inicial: document.getElementById('fuerte-inicial').value,
-      observacion_apertura: document.getElementById('observacion-apertura').value.trim()
-    }
-  });
-  if (!r.ok) return alert(r.error || 'No se pudo iniciar la caja');
-  avisarGuardado('Caja iniciada');
-  await cargar_(false);
+document.getElementById('abrir-caja').addEventListener('click',conBotonProtegido(document.getElementById('abrir-caja'),async()=>{
+  const r=await llamar('caja_abrir',{...params(),item:{...params(),base_inicial:document.getElementById('base-inicial').value,caja_fuerte_inicial:document.getElementById('fuerte-inicial').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()}});
+  if(!r.ok)return alert(r.error||'No se pudo iniciar la caja'); conciliacionAperturaActual=null; avisarGuardado('Caja iniciada'); await cargar_(false);
 }));
 
-document.getElementById('guardar-fuerte').addEventListener('click', conBotonProtegido(document.getElementById('guardar-fuerte'), async () => {
-  const valor = Number(document.getElementById('fuerte-valor').value);
-  if (!valor || valor <= 0) return alert('Escribe el valor que vas a guardar en caja fuerte.');
-  const motivo = document.getElementById('fuerte-motivo').value.trim() || 'Guardado en caja fuerte';
-  const r = await llamar('caja_movimiento_registrar', {
-    item: {
-      ...params(), tipo:'Envío a caja fuerte', valor,
-      persona_entrega: usuario.nombre, persona_recibe:'Caja fuerte', motivo,
-      idempotency_key: 'fuerte-' + Date.now() + '-' + Math.random().toString(36).slice(2)
-    }
-  });
-  if (!r.ok) return alert(r.error || 'No se pudo guardar el movimiento');
-  document.getElementById('fuerte-valor').value='';
-  document.getElementById('fuerte-motivo').value='';
-  avisarGuardado('Dinero registrado en caja fuerte');
-  await cargar_(true);
+document.getElementById('guardar-fuerte').addEventListener('click',conBotonProtegido(document.getElementById('guardar-fuerte'),async()=>{
+  const valor=Number(document.getElementById('fuerte-valor').value); if(!valor||valor<=0)return alert('Escribe el valor que vas a guardar en caja fuerte.');
+  const motivo=document.getElementById('fuerte-motivo').value.trim()||'Guardado en caja fuerte';
+  const r=await llamar('caja_movimiento_registrar',{item:{...params(),tipo:'Envío a caja fuerte',valor,persona_entrega:usuario.nombre,persona_recibe:'Caja fuerte',motivo,idempotency_key:'fuerte-'+Date.now()+'-'+Math.random().toString(36).slice(2)}});
+  if(!r.ok)return alert(r.error||'No se pudo guardar el movimiento'); document.getElementById('fuerte-valor').value='';document.getElementById('fuerte-motivo').value='';avisarGuardado('Dinero registrado en caja fuerte');await cargar_(true);
 }));
 
-document.getElementById('guardar-entrega').addEventListener('click', conBotonProtegido(document.getElementById('guardar-entrega'), async () => {
-  const valor = Number(document.getElementById('entrega-valor').value);
-  const recibe = document.getElementById('entrega-recibe').value.trim();
-  const motivo = document.getElementById('entrega-motivo').value.trim();
-  const origen = document.getElementById('entrega-origen').value;
-  if (!valor || valor <= 0) return alert('Escribe el valor entregado.');
-  if (!recibe) return alert('Es obligatorio escribir el nombre de la persona que recibe el dinero.');
-  if (!motivo) return alert('Escribe el motivo de la entrega.');
-  const tipo = origen === 'fuerte' ? 'Entrega administrador desde caja fuerte' : 'Entrega administrador desde caja';
-  const r = await llamar('caja_movimiento_registrar', {
-    item: {
-      ...params(), tipo, valor,
-      persona_entrega: usuario.nombre, persona_recibe: recibe, motivo,
-      idempotency_key: 'entrega-' + Date.now() + '-' + Math.random().toString(36).slice(2)
-    }
-  });
-  if (!r.ok) return alert(r.error || 'No se pudo registrar la entrega');
-  document.getElementById('entrega-valor').value='';
-  document.getElementById('entrega-recibe').value='';
-  document.getElementById('entrega-motivo').value='';
-  avisarGuardado('Entrega registrada a ' + recibe);
-  await cargar_(true);
+document.getElementById('guardar-entrega').addEventListener('click',conBotonProtegido(document.getElementById('guardar-entrega'),async()=>{
+  const valor=Number(document.getElementById('entrega-valor').value), recibe=document.getElementById('entrega-recibe').value.trim(), motivo=document.getElementById('entrega-motivo').value.trim(), origen=document.getElementById('entrega-origen').value;
+  if(!valor||valor<=0)return alert('Escribe el valor entregado.'); if(!recibe)return alert('Es obligatorio escribir el nombre de la persona que recibe el dinero.'); if(!motivo)return alert('Escribe el motivo de la entrega.');
+  const tipo=origen==='fuerte'?'Entrega administrador desde caja fuerte':'Entrega administrador desde caja';
+  const r=await llamar('caja_movimiento_registrar',{item:{...params(),tipo,valor,persona_entrega:usuario.nombre,persona_recibe:recibe,motivo,idempotency_key:'entrega-'+Date.now()+'-'+Math.random().toString(36).slice(2)}});
+  if(!r.ok)return alert(r.error||'No se pudo registrar la entrega'); document.getElementById('entrega-valor').value='';document.getElementById('entrega-recibe').value='';document.getElementById('entrega-motivo').value='';avisarGuardado('Entrega registrada a '+recibe);await cargar_(true);
 }));
 
-document.getElementById('cerrar-caja').addEventListener('click', conBotonProtegido(document.getElementById('cerrar-caja'), async () => {
-  const r = await llamar('caja_cerrar', {
-    item: {
-      ...params(),
-      efectivo_contado: document.getElementById('cierre-operativa').value,
-      caja_fuerte_contada: document.getElementById('cierre-fuerte').value,
-      base_siguiente: document.getElementById('cierre-base').value,
-      observacion: document.getElementById('cierre-observacion').value.trim()
-    }
-  });
-  if (!r.ok) return alert(r.error || 'No se pudo cerrar la caja');
-  avisarGuardado('Caja cerrada');
-  await cargar_(true);
+document.getElementById('cerrar-caja').addEventListener('click',conBotonProtegido(document.getElementById('cerrar-caja'),async()=>{
+  const r=await llamar('caja_cerrar',{item:{...params(),efectivo_contado:document.getElementById('cierre-operativa').value,caja_fuerte_contada:document.getElementById('cierre-fuerte').value,base_siguiente:document.getElementById('cierre-base').value,observacion:document.getElementById('cierre-observacion').value.trim()}});
+  if(!r.ok)return alert(r.error||'No se pudo cerrar la caja'); avisarGuardado('Caja cerrada');await cargar_(true);
 }));
 
 cargar_(false);
