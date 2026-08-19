@@ -9,7 +9,8 @@ const ACCIONES_FUDO_PERMITIDAS_REACTIVACION_ = [
   'fudo_panel_estado','fudo_api_probar_conexion','fudo_api_sincronizar_ventas','fudo_api_sincronizar_pagos'
 ];
 const ACCIONES_CAJA_PERMITIDAS_REACTIVACION_ = [
-  'caja_estado','caja_abrir','caja_movimiento_registrar','caja_movimientos_listar','caja_cerrar','caja_sincronizar_ahora'
+  'caja_estado','caja_abrir','caja_movimiento_registrar','caja_movimientos_listar','caja_cerrar','caja_sincronizar_ahora',
+  'caja_resumen_admin','caja_novedades_listar','caja_novedad_conciliar','caja_historial_listar','caja_corregir'
 ];
 
 function accionPermitidaEnReactivacion_(action) {
@@ -356,11 +357,20 @@ function cajaSincronizarAhora_(fecha,sede,usuario) {
 }
 
 function fudoSincronizacionCajaAutomatica_() {
-  const p=PropertiesService.getScriptProperties();if(!p.getProperty('FUDO_API_KEY')||!p.getProperty('FUDO_API_SECRET'))return {ok:true,omitida:'sin_credenciales'};
+  const p=PropertiesService.getScriptProperties();
+  if(!p.getProperty('FUDO_API_KEY')||!p.getProperty('FUDO_API_SECRET'))return {ok:true,omitida:'sin_credenciales'};
   const hoy=new Date(),ayer=new Date(hoy.getTime());ayer.setDate(ayer.getDate()-1);const desde=formatearFecha_(ayer),hasta=formatearFecha_(hoy);
   const u={id:'sistema-fudo',nombre:'Sincronización automática FUDO',rol:'Administrador',sede:'Ambas'},res={ok:true,fecha_desde:desde,fecha_hasta:hasta,ventas:null,pagos:null,gastos:null};
-  try{res.ventas=fudoApiSincronizarVentas_(desde,hasta,u,{});}catch(e){res.ok=false;res.error_ventas=e.message||String(e);}try{res.pagos=fudoApiSincronizarPagos_(desde,hasta,u,{});}catch(e){res.ok=false;res.error_pagos=e.message||String(e);}try{res.gastos=fudoApiSincronizarGastosArqueo_(desde,hasta,u);}catch(e){res.ok=false;res.error_gastos=e.message||String(e);}
-  if(res.ventas&&res.ventas.ok===false)res.ok=false;if(res.pagos&&res.pagos.ok===false)res.ok=false;if(res.gastos&&res.gastos.ok===false)res.ok=false;return res;
+  function fallo(tipo,error) {
+    const mensaje=error&&error.message?error.message:String(error||'Falló la sincronización automática.');
+    res.ok=false;
+    if(typeof fudoApiSyncRegistrar_==='function')fudoApiSyncRegistrar_(tipo,{ok:false,error:mensaje,fecha_desde:desde,fecha_hasta:hasta,origen:'caja_automatica'});
+    return mensaje;
+  }
+  try{res.ventas=fudoApiSincronizarVentas_(desde,hasta,u,{});if(!res.ventas||res.ventas.ok===false)res.error_ventas=fallo('ventas',(res.ventas&&res.ventas.error)||'Falló la sincronización automática de ventas.');}catch(e){res.error_ventas=fallo('ventas',e);}
+  try{res.pagos=fudoApiSincronizarPagos_(desde,hasta,u,{});if(!res.pagos||res.pagos.ok===false)res.error_pagos=fallo('pagos',(res.pagos&&res.pagos.error)||'Falló la sincronización automática de pagos.');}catch(e){res.error_pagos=fallo('pagos',e);}
+  try{res.gastos=fudoApiSincronizarGastosArqueo_(desde,hasta,u);if(!res.gastos||res.gastos.ok===false)res.error_gastos=fallo('gastos_arqueo',(res.gastos&&res.gastos.error)||'Falló la sincronización automática de gastos de arqueo.');}catch(e){res.error_gastos=fallo('gastos_arqueo',e);}
+  return res;
 }
 
 function configurarTriggers() {
