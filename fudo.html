@@ -33,7 +33,7 @@
     <div class="card">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="btn fantasma" id="btn-actualizar" type="button">Actualizar estado</button>
-        <button class="btn fantasma" id="btn-probar" type="button" style="display:none">Probar conexión</button>
+        <button class="btn fantasma" id="btn-probar" type="button">Probar conexión</button>
       </div>
     </div>
 
@@ -62,7 +62,7 @@
       </div>
     </div>
 
-    <div class="card" id="card-sync" style="display:none">
+    <div class="card">
       <h2>Sincronizar un rango</h2>
       <p style="color:var(--grey);font-size:.85rem;margin-top:0">La sincronización trae ventas y después pagos. Los descuentos y propinas llegan junto con las ventas.</p>
       <div class="grid grid-3" style="align-items:end">
@@ -78,15 +78,8 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
-requerirRol_(['Administrador', 'Caja']);
+requerirRol_(['Administrador']);
 montarBarraUsuario();
-
-const usuario = Sesion.usuario();
-const esAdmin = usuario && usuario.rol === 'Administrador';
-if (esAdmin) {
-  document.getElementById('card-sync').style.display = 'block';
-  document.getElementById('btn-probar').style.display = 'inline-block';
-}
 
 const hoy = fechaLocalHoy_();
 document.getElementById('sync-desde').value = hoy;
@@ -173,7 +166,7 @@ async function sincronizar() {
     }
     salida.textContent = 'Ventas OK. Sincronizando pagos…';
     const pagos = await llamar('fudo_api_sincronizar_pagos', { fecha_desde: desde, fecha_hasta: hasta });
-    salida.textContent = `Ventas: ${ventas.importados || 0} importadas / ${ventas.omitidos_duplicados || 0} ya existentes\nPagos: ${pagos.ok ? (pagos.importados || 0) + ' importados / ' + (pagos.actualizados || 0) + ' actualizados' : (pagos.error || 'Error')}`;
+    salida.textContent = `Ventas: ${ventas.importados || 0} importadas / ${ventas.omitidos_duplicados || 0} ya existentes\nCantidades de alimentos descartadas: ${ventas.cantidades_omitidas_no_bebidas || 0}\nPagos: ${pagos.ok ? (pagos.importados || 0) + ' importados / ' + (pagos.actualizados || 0) + ' actualizados' : (pagos.error || 'Error')}`;
     await cargar();
   } finally {
     btn.disabled = false;
