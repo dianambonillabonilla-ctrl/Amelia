@@ -1,11 +1,10 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
 // REACTIVACIÓN POR MÓDULOS (ago 2026)
-// Durante esta fase solo Usuarios está habilitado. No se borra ningún módulo: basta cambiar
-// este indicador cuando se valide el siguiente. El cliente común bloquea además las llamadas de
-// módulos inactivos, para que abrir por accidente una URL vieja no ejecute operación.
+// Durante esta fase solo Usuarios y Sincronización FUDO están habilitados. No se borra ningún
+// módulo: el resto queda disponible en el código para reactivarlo después de validarlo.
 const MODO_REACTIVACION = true;
-const MODULOS_ACTIVOS = ['usuarios'];
+const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion'];
 const ACCIONES_PERMITIDAS_REACTIVACION = [
   'login',
   'logout',
@@ -13,7 +12,11 @@ const ACCIONES_PERMITIDAS_REACTIVACION = [
   'cambiar_password',
   'usuarios_listar',
   'usuarios_guardar',
-  'usuario_resetear_password'
+  'usuario_resetear_password',
+  'fudo_panel_estado',
+  'fudo_api_probar_conexion',
+  'fudo_api_sincronizar_ventas',
+  'fudo_api_sincronizar_pagos'
 ];
 
 const Sesion = {
@@ -40,9 +43,19 @@ const Sesion = {
   }
 };
 
-// Sin esto, una petición que se queda colgada (ej. caja_estado esperando a que responda la API de
-// FUDO) dejaba la pantalla en "Consultando…" indefinidamente — el navegador no le pone límite de
-// tiempo a fetch() por sí solo.
+// Evita que una URL vieja permita entrar visualmente a un módulo que todavía está inactivo.
+function validarRutaReactivacion_() {
+  if (!MODO_REACTIVACION) return;
+  const pagina = window.location.pathname.split('/').pop();
+  const permitidas = ['', 'index.html', 'usuarios.html', 'fudo.html', 'cambiar-password.html'];
+  if (permitidas.includes(pagina)) return;
+  const u = Sesion.usuario();
+  const puedeVerSync = u && ['Administrador', 'Encargado'].includes(u.rol);
+  window.location.replace(puedeVerSync ? 'fudo.html' : 'index.html');
+}
+validarRutaReactivacion_();
+
+// Sin esto, una petición que se queda colgada dejaba la pantalla en "Consultando…" indefinidamente.
 const LLAMAR_TIMEOUT_MS = 45000;
 
 async function llamar(action, params = {}) {
@@ -94,10 +107,7 @@ function escapeHtml(valor) {
 /**
  * conteo_registrar, ajuste_inventario_registrar, compra_registrar_factura, produccion_registrar/
  * produccion_con_obligatorios_registrar y traslado_crear pueden responder
- * `{ ok:false, requiere_confirmacion:true, cantidades_raras:[...] }` en vez de un error normal —
- * una cantidad que se ve como un posible error de tecleo (CantidadesRaras.gs en el backend), no
- * algo inválido. Nunca bloquea: solo pide un `confirm()` antes de reenviar la misma solicitud con
- * `opciones.confirmar_cantidades_raras:true` para guardarla igual.
+ * `{ ok:false, requiere_confirmacion:true, cantidades_raras:[...] }` en vez de un error normal.
  */
 function confirmarCantidadesRaras_(cantidadesRaras) {
   const detalle = cantidadesRaras.map(r =>
@@ -257,7 +267,8 @@ const MENU_PRINCIPAL_COMPLETO = [
 
 const MENU_PRINCIPAL = MODO_REACTIVACION
   ? [
-      { grupo: 'MÓDULO ACTIVO' },
+      { grupo: 'ACTIVO' },
+      { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador','Encargado'], modulo: 'sincronizacion' },
       { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
     ]
   : MENU_PRINCIPAL_COMPLETO;
@@ -281,7 +292,6 @@ function montarBarraUsuario() {
   const u = Sesion.usuario();
   const el = document.getElementById('barra-usuario');
   if (el && u) {
-    // Cambiar contraseña sigue siendo una función de seguridad, no un módulo operativo.
     el.innerHTML = `<span>${escapeHtml(u.nombre)} · ${escapeHtml(u.rol)} · ${escapeHtml(u.sede)}</span><a href="cambiar-password.html" style="font-size:.8rem">Cambiar contraseña</a><button id="btn-salir">Salir</button>`;
     document.getElementById('btn-salir').addEventListener('click', () => Sesion.cerrar());
   }
@@ -300,7 +310,11 @@ function requerirRol_(rolesPermitidos) {
   const u = Sesion.usuario();
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
-    window.location.href = MODO_REACTIVACION ? 'index.html' : 'inicio.html';
+    if (MODO_REACTIVACION) {
+      window.location.href = u && ['Administrador', 'Encargado'].includes(u.rol) ? 'fudo.html' : 'index.html';
+      return;
+    }
+    window.location.href = 'inicio.html';
   }
 }
 
