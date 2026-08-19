@@ -100,13 +100,14 @@
         <h2>Resumen de efectivo</h2>
         <div class="caja-resumen">
           <div class="caja-kpi"><span>Base con la que inició</span><strong id="k-base">$0</strong></div>
-          <div class="caja-kpi"><span>Efectivo reportado por FUDO</span><strong id="k-fudo">$0</strong></div>
+          <div class="caja-kpi"><span>Cobros en efectivo FUDO</span><strong id="k-fudo">$0</strong></div>
+          <div class="caja-kpi"><span>Gastos FUDO que reducen arqueo</span><strong id="k-gastos-fudo">$0</strong></div>
           <div class="caja-kpi"><span>Guardado en caja fuerte hoy</span><strong id="k-guardado">$0</strong></div>
           <div class="caja-kpi"><span>Entregado a personas hoy</span><strong id="k-entregado">$0</strong></div>
           <div class="caja-kpi principal"><span>Efectivo esperado en caja operativa</span><strong id="k-operativa">$0</strong></div>
           <div class="caja-kpi principal"><span>Esperado en caja fuerte</span><strong id="k-fuerte">$0</strong></div>
         </div>
-        <p class="nota-simple">FUDO define la operación económica. DILANA registra dónde quedó físicamente el dinero.</p>
+        <p class="nota-simple">FUDO aporta cobros y gastos en efectivo marcados para arqueo. DILANA registra dónde quedó físicamente el dinero y calcula la custodia esperada.</p>
       </div>
 
       <div class="acciones-dinero">
@@ -238,6 +239,7 @@ function pintarResumenAbierta_() {
   const a=estadoActual.apertura||{}, r=estadoActual.movimientos_resumen||{};
   document.getElementById('k-base').textContent=dinero(a.base_inicial);
   document.getElementById('k-fudo').textContent=dinero(estadoActual.pagos_efectivo_dia);
+  document.getElementById('k-gastos-fudo').textContent=dinero(r.gastos_fudo_arqueo);
   document.getElementById('k-guardado').textContent=dinero(r.envios_caja_fuerte);
   document.getElementById('k-entregado').textContent=dinero(r.entregas_administrador);
   document.getElementById('k-operativa').textContent=dinero(estadoActual.efectivo_esperado);
