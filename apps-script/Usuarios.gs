@@ -1,44 +1,79 @@
 /**
- * USUARIOS Y ROLES
- * Roles esperados:
- *  - Administrador: todo, incluyendo importar de FUDO, gestionar el catálogo y crear usuarios.
- *  - Encargado: registra conteos y producción, ve Disponible Hoy y Conciliación — NO puede
- *    importar de FUDO ni gestionar catálogo/usuarios (ver requiereAdmin_ en Code.gs).
- *  - Cocina: igual que Encargado pero sin necesidad de ver conciliación (solo registra).
- *  - Lectura: solo ve dashboards (disponible_hoy, conciliación), no puede registrar nada
- *    (conteo_registrar/produccion_registrar exigen Administrador/Encargado/Cocina).
+ * USUARIOS, PERFILES Y ALCANCE
  *
- * La sede del usuario (columna `sede`: "Ambas", o una sede específica) limita para qué sede
- * puede registrar conteos/producción — ver la validación en Conteos.gs/Produccion.gs. Un usuario
- * que necesite registrar traslados entre sedes (ej. mover algo de Centro de Producción a una
- * sede) debe tener sede = "Ambas"; si su sede es una sola, el backend rechaza registrar para
- * cualquier otra.
+ * Perfiles definitivos:
+ *  - Administrador: superusuario. Puede hacer todo, en todas las sedes, incluida configuración,
+ *    correcciones, usuarios y acciones administrativas.
+ *  - Caja: perfil operativo amplio de su sede. Puede registrar operaciones nuevas como caja,
+ *    conteos, producción, recepciones, traslados y las demás que se habiliten módulo por módulo.
+ *    NO puede corregir, borrar ni modificar registros ya guardados. Sí podrá ver el estado de la
+ *    sincronización con FUDO y consultar inventario de todas las sedes para decidir traslados.
+ *  - Cocina: perfil operativo de cocina/producción. Puede registrar las operaciones habilitadas de
+ *    su sede y consultar inventario de todas las sedes para detectar necesidades de traslado.
+ *    Consultar otra sede NO autoriza a registrar en ella.
+ *  - Gerencia: perfil de consulta, control, indicadores e históricos. No registra operación.
  *
- * `sectores_permitidos` (texto separado por comas, ej. "Cocina, Café") es aparte del rol: es qué
- * sectores puede elegir esa persona como su responsabilidad del día (ver Turnos.gs) — alguien
- * puede ser rol "Cocina" un día y elegir sector "Café" otro, sin cambiar de cuenta ni de rol.
- * Vacío = no se le pide elegir sector (puede seguir contando cualquier cosa, como hoy).
+ * Perfil, sede y sector son conceptos diferentes:
+ *  - perfil = qué puede hacer la persona;
+ *  - sede = dónde puede registrar operación;
+ *  - sectores_permitidos = responsabilidades que puede asumir en un turno.
+ *
+ * Durante la reactivación por etapas solo el módulo Usuarios está activo. Los permisos operativos
+ * se irán aplicando y probando al reactivar cada módulo; esta pantalla ya deja los perfiles y la
+ * sede correctamente definidos para no seguir usando los nombres antiguos Encargado/Lectura.
  */
+
+const ROLES_DISPONIBLES = ['Administrador', 'Caja', 'Cocina', 'Gerencia'];
+const SEDES_DISPONIBLES = ['Ambas', 'San Antonio', 'Capri', 'Centro de Producción'];
+const ROLES_LEGACY_ = { Encargado: 'Caja', Lectura: 'Gerencia' };
+
+function normalizarRolUsuario_(rol) {
+  return ROLES_LEGACY_[rol] || rol;
+}
 
 function usuariosListar_(usuario) {
   requiereAdmin_(usuario);
   const rows = leerTabla_(SHEET_NAMES.USUARIOS);
-  return { ok: true, data: rows.map(function (r) { return { id: r.id, nombre: r.nombre, usuario: r.usuario, rol: r.rol, sede: r.sede, activo: r.activo, email: r.email, sectores_permitidos: r.sectores_permitidos || '' }; }) };
+  return {
+    ok: true,
+    data: rows.map(function (r) {
+      return {
+        id: r.id,
+        nombre: r.nombre,
+        usuario: r.usuario,
+        rol: normalizarRolUsuario_(r.rol),
+        sede: r.sede,
+        activo: r.activo,
+        email: r.email,
+        sectores_permitidos: r.sectores_permitidos || ''
+      };
+    })
+  };
 }
 
 function usuarioGuardar_(item, usuarioSesion) {
   requiereAdmin_(usuarioSesion);
   if (!item) return { ok: false, error: 'Faltan datos del usuario' };
-  // Crear un usuario nuevo sí exige nombre/usuario/rol. Actualizar uno existente (ej. el botón
-  // Activar/Desactivar de usuarios.html, que solo manda { id, activo }) NO debe exigir estos tres
-  // campos de nuevo — antes esta validación corría siempre, así que ese botón fallaba en silencio
-  // cada vez con "Faltan campos obligatorios (nombre, usuario, rol)" sin que nadie lo notara.
+
+  // Acepta temporalmente nombres antiguos al editar cuentas existentes, pero siempre guarda el
+  // nombre canónico. Así la pantalla no pierde usuarios creados antes del cambio de perfiles.
+  if (item.rol !== undefined) item.rol = normalizarRolUsuario_(item.rol);
+
+  // Crear un usuario nuevo sí exige nombre/usuario/rol. Actualizar uno existente (ej. activar o
+  // desactivar) puede enviar solo los campos que cambian.
   if (!item.id && (!item.nombre || !item.usuario || !item.rol)) {
-    return { ok: false, error: 'Faltan campos obligatorios (nombre, usuario, rol)' };
+    return { ok: false, error: 'Faltan campos obligatorios (nombre, usuario, perfil)' };
   }
   if (item.rol !== undefined && ROLES_DISPONIBLES.indexOf(item.rol) === -1) {
-    return { ok: false, error: 'Rol no válido: ' + item.rol };
+    return { ok: false, error: 'Perfil no válido: ' + item.rol };
   }
+  if (item.sede !== undefined && SEDES_DISPONIBLES.indexOf(item.sede) === -1) {
+    return { ok: false, error: 'Sede no válida: ' + item.sede };
+  }
+
+  // El Administrador es superusuario: su alcance de sede siempre es Ambas.
+  if (item.rol === 'Administrador') item.sede = 'Ambas';
+
   const sh = sheet_(SHEET_NAMES.USUARIOS);
   const data = sh.getDataRange().getValues();
   const headers = data[0];
@@ -48,14 +83,12 @@ function usuarioGuardar_(item, usuarioSesion) {
   if (item.id) {
     for (let r = 1; r < data.length; r++) {
       if (data[r][idCol] === item.id) {
-        // Evita que el Administrador que está haciendo la gestión se saque a sí mismo del sistema
-        // por accidente. Si necesita cambiar su propia cuenta, primero debe dejar otro
-        // Administrador activo y hacer el cambio desde esa otra cuenta.
+        // Evita que el Administrador que está gestionando cuentas se saque a sí mismo del sistema.
         if (item.id === usuarioSesion.id && item.activo === false) {
           return { ok: false, error: 'No puedes desactivar tu propia cuenta mientras la estás usando' };
         }
         if (item.id === usuarioSesion.id && item.rol !== undefined && item.rol !== 'Administrador') {
-          return { ok: false, error: 'No puedes quitarte a ti mismo el rol de Administrador' };
+          return { ok: false, error: 'No puedes quitarte a ti mismo el perfil de Administrador' };
         }
 
         if (item.usuario !== undefined && item.usuario !== data[r][usuarioCol]) {
@@ -64,19 +97,16 @@ function usuarioGuardar_(item, usuarioSesion) {
           });
           if (enUsoPorOtro) return { ok: false, error: 'Ya existe un usuario con ese nombre de acceso' };
         }
+
         const filaAnterior = {};
         headers.forEach(function (h, c) { filaAnterior[h] = data[r][c]; });
 
-        // neutralizarFormula_ (Code.gs): 'nombre'/'email'/'usuario' son texto libre — sin esto,
-        // algo como "=HYPERLINK(...)" se guardaba tal cual y Sheets lo interpretaba como fórmula al
-        // abrir la hoja (auditoría de seguridad, jul 2026). Solo se limpia lo que se ESCRIBE; la
-        // bitácora de más abajo sigue registrando el valor tal como lo mandó el Administrador.
         headers.forEach(function (h, c) {
-          if (h === 'password_hash' || h === 'salt') return; // la contraseña se cambia con cambiarPassword_
+          if (h === 'password_hash' || h === 'salt') return;
           if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(neutralizarFormula_(item[h]));
         });
 
-        // Bitácora: registra los campos que cambian permisos o alcance del usuario.
+        // Bitácora de los campos que cambian permisos o alcance.
         const camposAuditados = ['nombre', 'rol', 'sede', 'activo', 'sectores_permitidos'];
         const anterior = {};
         const nuevo = {};
@@ -118,7 +148,7 @@ function usuarioGuardar_(item, usuarioSesion) {
   return { ok: true, creado: true };
 }
 
-/** Cambio de contraseña propio: requiere conocer la actual. Usado por la pantalla "Cambiar contraseña". */
+/** Cambio de contraseña propio: requiere conocer la actual. */
 function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
   if (!passwordActual || !passwordNueva) return { ok: false, error: 'Falta la contraseña actual o la nueva' };
   if (String(passwordNueva).length < PASSWORD_LARGO_MINIMO) {
@@ -132,18 +162,11 @@ function cambiarPassword_(usuarioSesion, passwordActual, passwordNueva) {
   if (!resultado.valido) return { ok: false, error: 'La contraseña actual no es correcta' };
 
   establecerPassword_(fila.id, passwordNueva);
-  // Cierra todas las sesiones (incluida la actual) — un token robado no debe seguir sirviendo
-  // después de que la víctima cambió su contraseña pensando que eso bastaba (ver Code.gs).
   eliminarSesionesDeUsuario_(fila.id);
   return { ok: true };
 }
 
-/**
- * Restablecimiento de contraseña por un Administrador — NO requiere conocer la contraseña
- * anterior. Existe para poder reaccionar rápido si una contraseña quedó expuesta (ej. guardada
- * en texto plano en la hoja por error): el Administrador le pone una nueva de una vez, sin
- * depender de que el usuario afectado la recuerde o la comparta por otro medio inseguro.
- */
+/** Restablecimiento de contraseña por un Administrador. */
 function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
   requiereAdmin_(usuarioSesion);
   if (!id) return { ok: false, error: 'Falta el id del usuario' };
@@ -154,10 +177,6 @@ function usuarioResetearPassword_(id, passwordNueva, usuarioSesion) {
   if (!existe) return { ok: false, error: 'No se encontró el usuario' };
 
   establecerPassword_(id, passwordNueva);
-  // Mismo motivo que en cambiarPassword_: un restablecimiento por Administrador debe cerrar
-  // cualquier sesión ya abierta con la contraseña vieja (ej. una cuenta comprometida).
   eliminarSesionesDeUsuario_(id);
   return { ok: true };
 }
-
-const ROLES_DISPONIBLES = ['Administrador', 'Encargado', 'Cocina', 'Lectura'];
