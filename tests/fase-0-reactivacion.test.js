@@ -3,8 +3,10 @@ const assert = require('assert');
 const { crearEntorno } = require('./helpers/entorno-apps-script.js');
 
 const code = fs.readFileSync('apps-script/Code.gs', 'utf8');
+const extensionFudo = fs.readFileSync('apps-script/ZZ_ReactivacionFudo.gs', 'utf8');
 const fudo = fs.readFileSync('apps-script/FudoApi.gs', 'utf8');
 const config = fs.readFileSync('assets/config.js', 'utf8');
+const candado = code + '\n' + extensionFudo;
 
 assert(code.includes('const MODO_REACTIVACION_BACKEND = true;'));
 for (const action of [
@@ -12,8 +14,9 @@ for (const action of [
   'usuarios_listar','usuarios_guardar','usuario_resetear_password',
   'fudo_panel_estado','fudo_api_probar_conexion','fudo_api_sincronizar_ventas','fudo_api_sincronizar_pagos'
 ]) {
-  assert(code.includes(`'${action}'`), `Falta ${action} en lista blanca backend`);
+  assert(candado.includes(`'${action}'`), `Falta ${action} en el candado backend`);
 }
+assert(extensionFudo.includes('ACCIONES_FUDO_PERMITIDAS_REACTIVACION_'));
 assert(code.includes("codigo: 'MODULO_INACTIVO'"));
 assert(code.indexOf('if (!accionPermitidaEnReactivacion_(action))') < code.indexOf("if (action === 'login')"), 'El bloqueo debe correr antes del router');
 assert(code.includes('function desactivarTriggersReactivacion_()'));
