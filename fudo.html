@@ -8,16 +8,9 @@
 </head>
 <body>
 <div class="shell">
-  <aside class="sidebar">
-    <div class="marca">Dilana <span>OS</span></div>
-    <nav id="menu-nav"></nav>
-  </aside>
-
+  <aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside>
   <main class="main">
-    <div class="topbar">
-      <h1>Sincronización FUDO</h1>
-      <div id="barra-usuario"></div>
-    </div>
+    <div class="topbar"><h1>Sincronización FUDO</h1><div id="barra-usuario"></div></div>
 
     <div class="card" style="border-left:4px solid var(--gold)">
       <h2 style="margin-top:0">Conexión, no espejo completo</h2>
@@ -25,153 +18,40 @@
       <p style="margin:0;color:var(--grey);font-size:.88rem"><strong>Regla de inventario:</strong> las cantidades de alimentos informadas por FUDO no se usan para ajustar inventario. Las cantidades reales de alimentos se controlarán en DILANA desde compras, producción, traslados, mermas, conteos y ajustes. Las bebidas podrán usar cantidades FUDO únicamente cuando estén identificadas como confiables.</p>
     </div>
 
-    <div id="aviso-sin-credenciales" class="card" style="display:none;border-color:var(--amber);background:#FFFBF0">
-      <strong style="color:var(--amber)">Conexión FUDO sin configurar</strong>
-      <p style="margin:8px 0 0;font-size:.88rem">Las credenciales de la API no están configuradas en Apps Script. La sincronización automática no funcionará hasta configurarlas.</p>
-    </div>
+    <div id="aviso-sin-credenciales" class="card" style="display:none;border-color:var(--amber);background:#FFFBF0"><strong style="color:var(--amber)">Conexión FUDO sin configurar</strong><p style="margin:8px 0 0;font-size:.88rem">Las credenciales de la API no están configuradas en Apps Script. La sincronización automática no funcionará hasta configurarlas.</p></div>
+    <div class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn fantasma" id="btn-actualizar" type="button">Actualizar estado</button><button class="btn fantasma" id="btn-probar" type="button">Probar conexión</button></div></div>
 
-    <div class="card">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <button class="btn fantasma" id="btn-actualizar" type="button">Actualizar estado</button>
-        <button class="btn fantasma" id="btn-probar" type="button">Probar conexión</button>
-      </div>
-    </div>
-
-    <div class="grid grid-2" id="tarjetas-sync" style="margin-bottom:20px">
+    <div class="grid grid-3" id="tarjetas-sync" style="margin-bottom:20px">
       <div class="card"><h3>Ventas</h3><div class="vacio">Cargando…</div></div>
       <div class="card"><h3>Pagos</h3><div class="vacio">Cargando…</div></div>
+      <div class="card"><h3>Gastos de arqueo</h3><div class="vacio">Cargando…</div></div>
     </div>
 
     <div class="grid grid-2">
-      <div class="card">
-        <h2>Información de hoy</h2>
-        <div id="resumen-hoy" class="vacio">Cargando…</div>
-      </div>
-      <div class="card">
-        <h2>Qué sincronizamos</h2>
-        <table>
-          <tbody>
-            <tr><td>Ventas y valores</td><td><span class="badge ok">Sí</span></td></tr>
-            <tr><td>Pagos / medios de pago</td><td><span class="badge ok">Sí</span></td></tr>
-            <tr><td>Descuentos</td><td><span class="badge ok">Sí</span></td></tr>
-            <tr><td>Propinas</td><td><span class="badge ok">Sí</span></td></tr>
-            <tr><td>Cantidad de alimentos para inventario</td><td><span class="badge alerta">No</span></td></tr>
-            <tr><td>Stock FUDO como inventario oficial</td><td><span class="badge alerta">No</span></td></tr>
-          </tbody>
-        </table>
-      </div>
+      <div class="card"><h2>Información de hoy</h2><div id="resumen-hoy" class="vacio">Cargando…</div></div>
+      <div class="card"><h2>Qué sincronizamos</h2><table><tbody><tr><td>Ventas y valores</td><td><span class="badge ok">Sí</span></td></tr><tr><td>Pagos / medios de pago</td><td><span class="badge ok">Sí</span></td></tr><tr><td>Gastos en efectivo que afectan arqueo</td><td><span class="badge ok">Sí</span></td></tr><tr><td>Descuentos</td><td><span class="badge ok">Sí</span></td></tr><tr><td>Propinas</td><td><span class="badge ok">Sí</span></td></tr><tr><td>Cantidad de alimentos para inventario</td><td><span class="badge alerta">No</span></td></tr><tr><td>Stock FUDO como inventario oficial</td><td><span class="badge alerta">No</span></td></tr></tbody></table></div>
     </div>
 
     <div class="card">
       <h2>Sincronizar un rango</h2>
-      <p style="color:var(--grey);font-size:.85rem;margin-top:0">La sincronización trae ventas y después pagos. Los descuentos y propinas llegan junto con las ventas.</p>
-      <div class="grid grid-3" style="align-items:end">
-        <div class="campo"><label>Desde</label><input type="date" id="sync-desde"></div>
-        <div class="campo"><label>Hasta</label><input type="date" id="sync-hasta"></div>
-        <button class="btn dorado" id="btn-sync" type="button">Sincronizar</button>
-      </div>
+      <p style="color:var(--grey);font-size:.85rem;margin-top:0">La sincronización manual trae ventas y después pagos. Los gastos de arqueo se actualizan automáticamente desde Caja y en las sincronizaciones de apertura/cierre.</p>
+      <div class="grid grid-3" style="align-items:end"><div class="campo"><label>Desde</label><input type="date" id="sync-desde"></div><div class="campo"><label>Hasta</label><input type="date" id="sync-hasta"></div><button class="btn dorado" id="btn-sync" type="button">Sincronizar</button></div>
       <pre id="resultado-sync" style="display:none;margin-top:12px;max-height:240px;overflow:auto;background:#F4F6F8;padding:12px;border-radius:8px;font-size:.78rem;white-space:pre-wrap"></pre>
     </div>
   </main>
 </div>
-
 <script src="assets/config.js"></script>
 <script>
-Sesion.requerir();
-requerirRol_(['Administrador']);
-montarBarraUsuario();
+Sesion.requerir();requerirRol_(['Administrador']);montarBarraUsuario();
+const hoy=fechaLocalHoy_();document.getElementById('sync-desde').value=hoy;document.getElementById('sync-hasta').value=hoy;
+document.getElementById('btn-actualizar').addEventListener('click',cargar);document.getElementById('btn-probar').addEventListener('click',probarConexion);document.getElementById('btn-sync').addEventListener('click',sincronizar);cargar();
 
-const hoy = fechaLocalHoy_();
-document.getElementById('sync-desde').value = hoy;
-document.getElementById('sync-hasta').value = hoy;
-
-document.getElementById('btn-actualizar').addEventListener('click', cargar);
-document.getElementById('btn-probar').addEventListener('click', probarConexion);
-document.getElementById('btn-sync').addEventListener('click', sincronizar);
-cargar();
-
-async function cargar() {
-  const data = await llamar('fudo_panel_estado');
-  if (!data.ok) {
-    document.getElementById('tarjetas-sync').innerHTML = `<div class="card"><p class="error-msg">${escapeHtml(data.error || 'No se pudo consultar FUDO')}</p></div>`;
-    return;
-  }
-  document.getElementById('aviso-sin-credenciales').style.display = data.credenciales_configuradas ? 'none' : 'block';
-  pintarTarjetas(data.ultima_sincronizacion || {});
-  pintarResumen(data);
-}
-
-function pintarTarjetas(sync) {
-  const tarjetas = [
-    { titulo: 'Ventas', dato: sync.ventas },
-    { titulo: 'Pagos', dato: sync.pagos }
-  ];
-  document.getElementById('tarjetas-sync').innerHTML = tarjetas.map(t => {
-    const s = t.dato;
-    if (!s) return `<div class="card"><h3 style="margin-top:0">${t.titulo}</h3><span class="badge aviso">Sin registro</span></div>`;
-    const fecha = s.timestamp ? new Date(s.timestamp).toLocaleString('es-CO') : '—';
-    const badge = s.ok === false ? '<span class="badge alerta">Error</span>' : '<span class="badge ok">OK</span>';
-    let detalle = '';
-    if (s.fecha_desde || s.fecha_hasta) detalle += `<p style="font-size:.85rem;margin:8px 0 0">${escapeHtml(s.fecha_desde || '—')} → ${escapeHtml(s.fecha_hasta || '—')}</p>`;
-    if (s.importados !== undefined) detalle += `<p style="font-size:.85rem;margin:4px 0 0">Importados: <strong>${escapeHtml(s.importados)}</strong></p>`;
-    if (s.error) detalle += `<p class="error-msg">${escapeHtml(s.error)}</p>`;
-    return `<div class="card"><h3 style="margin-top:0">${t.titulo}</h3>${badge}<span style="margin-left:8px;color:var(--grey);font-size:.8rem">${escapeHtml(fecha)}</span>${detalle}</div>`;
-  }).join('');
-}
-
-function pintarResumen(data) {
-  const r = data.resumen_hoy || {};
-  const dp = data.descuentos_propinas || {};
-  const partes = [
-    `<p style="margin:0"><strong>${escapeHtml(r.fecha || hoy)}</strong></p>`,
-    `<p style="margin:8px 0 0">Líneas de venta registradas: <strong>${escapeHtml(r.ventas_lineas ?? 0)}</strong></p>`,
-    `<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros ?? 0)}</strong></p>`
-  ];
-  if (dp.monto_descuentos !== undefined) partes.push(`<p style="margin:4px 0 0">Descuentos registrados: <strong>$${formatearDinero_(dp.monto_descuentos)}</strong></p>`);
-  if (dp.monto_propinas !== undefined) partes.push(`<p style="margin:4px 0 0">Propinas registradas: <strong>$${formatearDinero_(dp.monto_propinas)}</strong></p>`);
-  document.getElementById('resumen-hoy').innerHTML = partes.join('');
-}
-
-function formatearDinero_(v) {
-  return Number(v || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
-}
-
-async function probarConexion() {
-  const btn = document.getElementById('btn-probar');
-  btn.disabled = true;
-  try {
-    const r = await llamar('fudo_api_probar_conexion');
-    alert(r.ok === false ? (r.error || 'La conexión falló') : 'Conexión con FUDO correcta.');
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function sincronizar() {
-  const desde = document.getElementById('sync-desde').value;
-  const hasta = document.getElementById('sync-hasta').value;
-  const salida = document.getElementById('resultado-sync');
-  const btn = document.getElementById('btn-sync');
-  if (!desde || !hasta) return alert('Selecciona las dos fechas.');
-  if (desde > hasta) return alert('La fecha Desde no puede ser posterior a Hasta.');
-
-  btn.disabled = true;
-  salida.style.display = 'block';
-  salida.textContent = 'Sincronizando ventas…';
-  try {
-    const ventas = await llamar('fudo_api_sincronizar_ventas', { fecha_desde: desde, fecha_hasta: hasta });
-    if (!ventas.ok) {
-      salida.textContent = 'Ventas: ' + (ventas.error || 'Error');
-      return;
-    }
-    salida.textContent = 'Ventas OK. Sincronizando pagos…';
-    const pagos = await llamar('fudo_api_sincronizar_pagos', { fecha_desde: desde, fecha_hasta: hasta });
-    salida.textContent = `Ventas: ${ventas.importados || 0} importadas / ${ventas.omitidos_duplicados || 0} ya existentes\nCantidades de alimentos descartadas: ${ventas.cantidades_omitidas_no_bebidas || 0}\nPagos: ${pagos.ok ? (pagos.importados || 0) + ' importados / ' + (pagos.actualizados || 0) + ' actualizados' : (pagos.error || 'Error')}`;
-    await cargar();
-  } finally {
-    btn.disabled = false;
-  }
-}
+async function cargar(){const data=await llamar('fudo_panel_estado');if(!data.ok){document.getElementById('tarjetas-sync').innerHTML=`<div class="card"><p class="error-msg">${escapeHtml(data.error||'No se pudo consultar FUDO')}</p></div>`;return;}document.getElementById('aviso-sin-credenciales').style.display=data.credenciales_configuradas?'none':'block';pintarTarjetas(data.ultima_sincronizacion||{});pintarResumen(data);}
+function pintarTarjetas(sync){const tarjetas=[{titulo:'Ventas',dato:sync.ventas},{titulo:'Pagos',dato:sync.pagos},{titulo:'Gastos de arqueo',dato:sync.gastos_arqueo}];document.getElementById('tarjetas-sync').innerHTML=tarjetas.map(t=>{const s=t.dato;if(!s)return `<div class="card"><h3 style="margin-top:0">${t.titulo}</h3><span class="badge aviso">Sin registro</span></div>`;const fecha=s.timestamp?new Date(s.timestamp).toLocaleString('es-CO'):'—';const badge=s.ok===false?'<span class="badge alerta">Error</span>':'<span class="badge ok">OK</span>';let detalle='';if(s.fecha_desde||s.fecha_hasta)detalle+=`<p style="font-size:.85rem;margin:8px 0 0">${escapeHtml(s.fecha_desde||'—')} → ${escapeHtml(s.fecha_hasta||'—')}</p>`;if(s.importados!==undefined)detalle+=`<p style="font-size:.85rem;margin:4px 0 0">Importados: <strong>${escapeHtml(s.importados)}</strong></p>`;if(s.error)detalle+=`<p class="error-msg">${escapeHtml(s.error)}</p>`;return `<div class="card"><h3 style="margin-top:0">${t.titulo}</h3>${badge}<span style="margin-left:8px;color:var(--grey);font-size:.8rem">${escapeHtml(fecha)}</span>${detalle}</div>`;}).join('');}
+function pintarResumen(data){const r=data.resumen_hoy||{},dp=data.descuentos_propinas||{},partes=[`<p style="margin:0"><strong>${escapeHtml(r.fecha||hoy)}</strong></p>`,`<p style="margin:8px 0 0">Líneas de venta registradas: <strong>${escapeHtml(r.ventas_lineas??0)}</strong></p>`,`<p style="margin:4px 0 0">Pagos registrados: <strong>${escapeHtml(r.pagos_registros??0)}</strong></p>`];if(dp.monto_descuentos!==undefined)partes.push(`<p style="margin:4px 0 0">Descuentos registrados: <strong>$${formatearDinero_(dp.monto_descuentos)}</strong></p>`);if(dp.monto_propinas!==undefined)partes.push(`<p style="margin:4px 0 0">Propinas registradas: <strong>$${formatearDinero_(dp.monto_propinas)}</strong></p>`);document.getElementById('resumen-hoy').innerHTML=partes.join('');}
+function formatearDinero_(v){return Number(v||0).toLocaleString('es-CO',{maximumFractionDigits:0});}
+async function probarConexion(){const btn=document.getElementById('btn-probar');btn.disabled=true;try{const r=await llamar('fudo_api_probar_conexion');alert(r.ok===false?(r.error||'La conexión falló'):'Conexión con FUDO correcta.');}finally{btn.disabled=false;}}
+async function sincronizar(){const desde=document.getElementById('sync-desde').value,hasta=document.getElementById('sync-hasta').value,salida=document.getElementById('resultado-sync'),btn=document.getElementById('btn-sync');if(!desde||!hasta)return alert('Selecciona las dos fechas.');if(desde>hasta)return alert('La fecha Desde no puede ser posterior a Hasta.');btn.disabled=true;salida.style.display='block';salida.textContent='Sincronizando ventas…';try{const ventas=await llamar('fudo_api_sincronizar_ventas',{fecha_desde:desde,fecha_hasta:hasta});if(!ventas.ok){salida.textContent='Ventas: '+(ventas.error||'Error');return;}salida.textContent='Ventas OK. Sincronizando pagos…';const pagos=await llamar('fudo_api_sincronizar_pagos',{fecha_desde:desde,fecha_hasta:hasta});salida.textContent=`Ventas: ${ventas.importados||0} importadas / ${ventas.omitidos_duplicados||0} ya existentes\nCantidades de alimentos descartadas: ${ventas.cantidades_omitidas_no_bebidas||0}\nPagos: ${pagos.ok?(pagos.importados||0)+' importados / '+(pagos.actualizados||0)+' actualizados':(pagos.error||'Error')}`;await cargar();}finally{btn.disabled=false;}}
 </script>
 </body>
 </html>

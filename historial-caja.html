@@ -3,123 +3,109 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dilana OS — Histórico de Caja</title>
+<title>Dilana OS — Control e Histórico de Caja</title>
 <link rel="stylesheet" href="assets/styles.css">
+<style>
+  .resumen-sedes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .sede-card{border:1px solid var(--line);border-radius:12px;padding:15px;background:#fff}
+  .kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+  .kpi{background:#f7f7f7;border-radius:8px;padding:10px}.kpi span{display:block;font-size:.74rem;color:var(--grey)}.kpi strong{font-size:1.02rem;color:var(--navy)}
+  .novedad{border-left:4px solid var(--amber);padding:12px 14px;margin:10px 0;background:#fff}.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.nota{font-size:.82rem;color:var(--grey)}
+</style>
 </head>
 <body>
 <div class="shell">
-  <aside class="sidebar">
-    <div class="marca">Dilana <span>OS</span></div>
-    <nav id="menu-nav"></nav>
-  </aside>
-
+  <aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside>
   <main class="main">
-    <div class="topbar">
-      <h1>Histórico de Caja</h1>
-      <div id="barra-usuario"></div>
-    </div>
+    <div class="topbar"><h1>Control e Histórico de Caja</h1><div id="barra-usuario"></div></div>
 
-    <div class="card">
-      <p style="color:var(--grey); font-size:.85rem; margin-top:0">
-        Días anteriores de Caja, con lo que quedó guardado en cada apertura/cierre — no se
-        recalcula nada en vivo. Toca un día para verlo en detalle en Caja.
-      </p>
+    <section class="card">
+      <div class="grid grid-2" style="align-items:end">
+        <div class="campo"><label>Fecha para torre de control</label><input type="date" id="fecha-resumen"></div>
+        <button class="btn" id="btn-resumen">Actualizar ambas sedes</button>
+      </div>
+      <p class="nota">Vista administrativa de San Antonio y Capri. No modifica dinero; las correcciones de cierres quedan auditadas.</p>
+      <div id="resumen-sedes" class="resumen-sedes"><p class="vacio">Cargando…</p></div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div><h2 style="margin-bottom:3px">Novedades de Caja</h2><p class="nota" style="margin-top:0">Diferencias, cierres sin FUDO confirmado o cambios de FUDO después del cierre.</p></div>
+        <label class="nota"><input type="checkbox" id="solo-pendientes" checked> Solo pendientes</label>
+      </div>
+      <div id="novedades"><p class="vacio">Cargando…</p></div>
+    </section>
+
+    <section class="card">
+      <h2>Histórico</h2>
+      <p class="nota">Consulta cierres anteriores. Solo el Administrador puede corregir un cierre, y únicamente si no existe un cierre posterior que dependa de él.</p>
       <div class="grid grid-4" style="margin-bottom:14px">
         <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
         <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta"></div>
-        <div class="campo">
-          <label>Sede</label>
-          <select id="filtro-sede">
-            <option value="Ambas">Ambas (todas)</option>
-            <option>San Antonio</option>
-            <option>Capri</option>
-          </select>
-        </div>
-        <div class="campo" style="display:flex; align-items:flex-end">
-          <button class="btn dorado" id="btn-filtrar" style="width:100%">Filtrar</button>
-        </div>
+        <div class="campo"><label>Sede</label><select id="filtro-sede"><option value="Ambas">Ambas</option><option>San Antonio</option><option>Capri</option></select></div>
+        <div class="campo" style="display:flex;align-items:flex-end"><button class="btn dorado" id="btn-filtrar" style="width:100%">Filtrar</button></div>
       </div>
-      <p id="contador" class="vacio" style="display:none"></p>
-    </div>
-
+      <p id="contador" class="vacio"></p>
+    </section>
     <div id="lista-historial"></div>
   </main>
 </div>
-
 <script src="assets/config.js"></script>
 <script>
-if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embebido');
 Sesion.requerir();
-requerirRol_(['Administrador', 'Encargado']);
+requerirRol_(['Administrador']);
 montarBarraUsuario();
-restringirSelectorSede_(document.getElementById('filtro-sede'));
-// Caja solo existe en sedes de venta; Centro de Producción no debe aparecer aquí.
-Array.from(document.getElementById('filtro-sede').options).forEach(o => { if (o.value === 'Centro de Producción') o.remove(); });
+const hoy=fechaLocalHoy_();
+const dinero=n=>Number(n||0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
+const fechaResumen=document.getElementById('fecha-resumen');fechaResumen.value=hoy;
+const d30=new Date();d30.setDate(d30.getDate()-30);const hace30=d30.getFullYear()+'-'+String(d30.getMonth()+1).padStart(2,'0')+'-'+String(d30.getDate()).padStart(2,'0');
+document.getElementById('filtro-desde').value=hace30;document.getElementById('filtro-hasta').value=hoy;
 
-const hoy = fechaLocalHoy_();
-// toISOString() usa UTC, no la hora local — en Colombia (UTC-5), de noche ya cae en el día
-// siguiente en UTC y el rango de "hace 30 días" quedaba corrido un día (auditoría externa, ago
-// 2026). fechaLocalHoy_() ya resuelve esto para "hoy"; aquí se hace lo mismo restando 30 días.
-const hace30dias = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() - 30);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-})();
-document.getElementById('filtro-desde').value = hace30dias;
-document.getElementById('filtro-hasta').value = hoy;
+document.getElementById('btn-resumen').addEventListener('click',cargarResumen);
+document.getElementById('solo-pendientes').addEventListener('change',cargarNovedades);
+document.getElementById('btn-filtrar').addEventListener('click',cargarHistorial);
+Promise.all([cargarResumen(),cargarNovedades(),cargarHistorial()]);
 
-document.getElementById('btn-filtrar').addEventListener('click', cargar);
-cargar();
-
-async function cargar() {
-  const params = {
-    fecha_desde: document.getElementById('filtro-desde').value,
-    fecha_hasta: document.getElementById('filtro-hasta').value,
-    sede: document.getElementById('filtro-sede').value
-  };
-  const data = await llamar('caja_historial_listar', params);
-  if (!data.ok) { alert(data.error); return; }
-  const filas = data.historial || [];
-  document.getElementById('contador').style.display = 'block';
-  document.getElementById('contador').textContent = filas.length
-    ? `${filas.length} día(s) en el rango`
-    : 'No hay cajas en este rango.';
-  pintar(filas);
+async function cargarResumen(){
+  const cont=document.getElementById('resumen-sedes');
+  const r=await llamar('caja_resumen_admin',{fecha:fechaResumen.value,sedes:['San Antonio','Capri']});
+  if(!r.ok){cont.innerHTML=`<p class="error-msg">${escapeHtml(r.error||'No se pudo consultar Caja')}</p>`;return;}
+  cont.innerHTML=(r.sedes||[]).map(s=>{
+    const t=s.apertura||null,estado=t?(s.abierta?'Abierta':'Cerrada'):'Sin abrir';
+    return `<div class="sede-card"><h3 style="margin:0 0 6px">${escapeHtml(s.sede)}</h3><span class="badge ${s.abierta?'aviso':'ok'}">${escapeHtml(estado)}</span><div class="kpis"><div class="kpi"><span>Esperado caja</span><strong>${dinero(s.efectivo_esperado)}</strong></div><div class="kpi"><span>Esperado caja fuerte</span><strong>${dinero(s.caja_fuerte_esperada)}</strong></div><div class="kpi"><span>Efectivo FUDO</span><strong>${dinero(s.pagos_efectivo_dia)}</strong></div><div class="kpi"><span>Diferencia cierre</span><strong>${dinero(t&&t.diferencia)}</strong></div></div><div class="acciones"><a class="btn fantasma" href="caja.html?fecha=${encodeURIComponent(fechaResumen.value)}&sede=${encodeURIComponent(s.sede)}">Ver día</a></div></div>`;
+  }).join('')||'<p class="vacio">Sin información.</p>';
 }
 
-function dinero_(n) {
-  return Number(n || 0).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+async function cargarNovedades(){
+  const cont=document.getElementById('novedades');
+  const r=await llamar('caja_novedades_listar',{solo_pendientes:document.getElementById('solo-pendientes').checked});
+  if(!r.ok){cont.innerHTML=`<p class="error-msg">${escapeHtml(r.error||'No se pudieron consultar las novedades')}</p>`;return;}
+  const filas=r.novedades||[];
+  if(!filas.length){cont.innerHTML='<p class="vacio">No hay novedades pendientes.</p>';return;}
+  cont.innerHTML=filas.map((n,i)=>`<div class="novedad"><strong>${escapeHtml(n.fecha)} · ${escapeHtml(n.sede)}</strong><p style="margin:5px 0">${escapeHtml((n.motivos||[]).join(' · '))}</p><p class="nota">Diferencia apertura: ${dinero(n.diferencia_apertura)} · cierre: ${dinero(n.diferencia)} · caja fuerte: ${dinero(n.diferencia_caja_fuerte)}</p>${n.nota_conciliacion?`<p class="nota">Nota: ${escapeHtml(n.nota_conciliacion)}</p>`:''}<div class="acciones"><a class="btn fantasma" href="caja.html?fecha=${encodeURIComponent(n.fecha)}&sede=${encodeURIComponent(n.sede)}">Ver día</a>${n.estado_conciliacion==='Resuelta'?'':`<button class="btn" data-revisar="${i}">Marcar revisada</button>`}</div></div>`).join('');
+  cont.querySelectorAll('[data-revisar]').forEach(btn=>btn.addEventListener('click',async()=>{const n=filas[Number(btn.dataset.revisar)];const nota=prompt('Nota de revisión para '+n.fecha+' · '+n.sede+':','Revisado por administración');if(nota===null)return;btn.disabled=true;try{const rr=await llamar('caja_novedad_conciliar',{fecha:n.fecha,sede:n.sede,nota:nota.trim()});if(!rr.ok)return alert(rr.error||'No se pudo marcar como revisada');avisarGuardado('Novedad revisada');await cargarNovedades();}finally{btn.disabled=false;}}));
 }
 
-function pintar(filas) {
-  const cont = document.getElementById('lista-historial');
-  if (!filas.length) {
-    cont.innerHTML = '<div class="card"><p class="vacio">No hay cajas en este rango.</p></div>';
-    return;
-  }
-  cont.innerHTML = filas.map(f => {
-    const estadoTexto = f.estado === 'Cerrado' ? 'Cerrada' : (f.estado === 'Abierto' ? 'Abierta' : f.estado);
-    const novedad = f.motivos_novedad && f.motivos_novedad.length
-      ? `<span style="color:var(--red)">⚠ ${escapeHtml(f.motivos_novedad.join(', '))}${f.estado_conciliacion === 'Resuelta' ? ' — ya conciliada' : ''}</span>`
-      : '<span style="color:var(--green)">Sin novedades</span>';
-    return `<div class="card historial-caja-fila" data-fecha="${escapeHtml(f.fecha)}" data-sede="${escapeHtml(f.sede)}" style="cursor:pointer">
-      <h3 style="margin:0 0 6px">${escapeHtml(f.fecha)} — ${escapeHtml(f.sede)}</h3>
-      <p style="margin:0 0 8px; font-size:.85rem; color:var(--grey)">
-        ${estadoTexto} · Abrió ${escapeHtml(f.usuario_apertura || '—')}${f.usuario_cierre ? ` · Cerró ${escapeHtml(f.usuario_cierre)}` : ''}
-      </p>
-      <p style="margin:0; font-size:.88rem">
-        Efectivo esperado: ${dinero_(f.efectivo_esperado)} · Efectivo contado: ${dinero_(f.efectivo_contado)} ·
-        Caja fuerte: ${dinero_(f.caja_fuerte_esperada)}
-      </p>
-      <p style="margin:6px 0 0; font-size:.88rem">${novedad}</p>
-      ${f.corregido_por ? `<p style="margin:6px 0 0; font-size:.82rem; color:var(--navy)">✎ Corregido por ${escapeHtml(f.corregido_por)}: ${escapeHtml(f.motivo_correccion)}</p>` : ''}
-    </div>`;
-  }).join('');
-  Array.from(document.querySelectorAll('.historial-caja-fila')).forEach(fila => {
-    fila.addEventListener('click', () => {
-      location.href = `caja.html?fecha=${encodeURIComponent(fila.dataset.fecha)}&sede=${encodeURIComponent(fila.dataset.sede)}`;
-    });
-  });
+async function cargarHistorial(){
+  const params={fecha_desde:document.getElementById('filtro-desde').value,fecha_hasta:document.getElementById('filtro-hasta').value,sede:document.getElementById('filtro-sede').value};
+  const r=await llamar('caja_historial_listar',params);if(!r.ok){alert(r.error||'No se pudo cargar el historial');return;}
+  const filas=r.historial||[];document.getElementById('contador').textContent=filas.length?filas.length+' día(s) en el rango':'No hay cajas en este rango.';pintarHistorial(filas);
+}
+
+function pintarHistorial(filas){
+  const cont=document.getElementById('lista-historial');if(!filas.length){cont.innerHTML='';return;}
+  cont.innerHTML=filas.map((f,i)=>`<div class="card"><h3 style="margin:0 0 6px">${escapeHtml(f.fecha)} — ${escapeHtml(f.sede)}</h3><p class="nota">${escapeHtml(f.estado)} · Abrió ${escapeHtml(f.usuario_apertura||'—')}${f.usuario_cierre?' · Cerró '+escapeHtml(f.usuario_cierre):''}</p><p>Efectivo esperado: <strong>${dinero(f.efectivo_esperado)}</strong> · Contado: <strong>${dinero(f.efectivo_contado)}</strong> · Caja fuerte contada: <strong>${dinero(f.caja_fuerte_contada)}</strong></p>${f.motivos_novedad&&f.motivos_novedad.length?`<p style="color:var(--red)">⚠ ${escapeHtml(f.motivos_novedad.join(', '))}</p>`:'<p style="color:var(--green)">Sin novedades</p>'}${f.corregido_por?`<p class="nota">✎ Corregido por ${escapeHtml(f.corregido_por)}: ${escapeHtml(f.motivo_correccion)}</p>`:''}<div class="acciones"><a class="btn fantasma" href="caja.html?fecha=${encodeURIComponent(f.fecha)}&sede=${encodeURIComponent(f.sede)}">Ver detalle</a>${f.estado==='Cerrado'?`<button class="btn" data-corregir="${i}">Corregir cierre</button>`:''}</div></div>`).join('');
+  cont.querySelectorAll('[data-corregir]').forEach(btn=>btn.addEventListener('click',()=>corregirCierre(filas[Number(btn.dataset.corregir)],btn)));
+}
+
+async function corregirCierre(f,btn){
+  const efectivo=prompt('Efectivo contado corregido para '+f.fecha+' · '+f.sede+':',String(Number(f.efectivo_contado||0)));if(efectivo===null)return;
+  const fuerte=prompt('Caja fuerte contada corregida:',String(Number(f.caja_fuerte_contada||0)));if(fuerte===null)return;
+  const base=prompt('Base que queda para el siguiente turno:',String(Number(efectivo)));if(base===null)return;
+  const motivo=prompt('Motivo obligatorio de la corrección:','');if(motivo===null||!motivo.trim())return alert('Debes escribir el motivo de la corrección.');
+  const observacion=prompt('Observación de cierre (opcional):',f.observacion_cierre||'');if(observacion===null)return;
+  if(!confirm('Vas a corregir un cierre ya realizado. El cambio quedará registrado en auditoría. ¿Continuar?'))return;
+  btn.disabled=true;try{const r=await llamar('caja_corregir',{item:{fecha:f.fecha,sede:f.sede,efectivo_contado:efectivo,caja_fuerte_contada:fuerte,base_siguiente:base,observacion_cierre:observacion,motivo_correccion:motivo.trim()}});if(!r.ok)return alert(r.error||'No se pudo corregir el cierre');avisarGuardado('Cierre corregido y auditado');await Promise.all([cargarHistorial(),cargarResumen(),cargarNovedades()]);}finally{btn.disabled=false;}
 }
 </script>
 </body>

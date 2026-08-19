@@ -22,7 +22,12 @@ const ACCIONES_PERMITIDAS_REACTIVACION = [
   'caja_movimiento_registrar',
   'caja_movimientos_listar',
   'caja_cerrar',
-  'caja_sincronizar_ahora'
+  'caja_sincronizar_ahora',
+  'caja_resumen_admin',
+  'caja_novedades_listar',
+  'caja_novedad_conciliar',
+  'caja_historial_listar',
+  'caja_corregir'
 ];
 
 const Sesion = {
@@ -50,7 +55,7 @@ const Sesion = {
 };
 
 // Bloqueo de navegación directa: una URL vieja no reactiva por accidente un módulo operativo.
-const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'caja.html', 'cambiar-password.html', ''];
+const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'caja.html', 'historial-caja.html', 'cambiar-password.html', ''];
 (function bloquearPaginaInactiva_() {
   if (!MODO_REACTIVACION) return;
   const pagina = window.location.pathname.split('/').pop();
@@ -269,6 +274,7 @@ const MENU_PRINCIPAL = MODO_REACTIVACION
   ? [
       { grupo: 'ACTIVO' },
       { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Caja'], modulo: 'caja' },
+      { href: 'historial-caja.html', texto: 'Historial de Caja', soloRol: ['Administrador'], modulo: 'caja' },
       { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador'], modulo: 'sincronizacion' },
       { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
     ]
