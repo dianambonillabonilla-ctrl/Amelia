@@ -1,1 +1,0 @@
-Aplicar Fase 0 mediante PR verificable.
