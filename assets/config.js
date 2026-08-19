@@ -50,7 +50,7 @@ const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.ht
   const pagina = window.location.pathname.split('/').pop();
   if (PAGINAS_PERMITIDAS_REACTIVACION.includes(pagina)) return;
   const u = Sesion.usuario();
-  const puedeVerSync = u && ['Administrador', 'Caja'].includes(u.rol);
+  const puedeVerSync = u && u.rol === 'Administrador';
   window.location.replace(puedeVerSync ? 'fudo.html' : 'index.html');
 })();
 
@@ -261,7 +261,7 @@ const MENU_PRINCIPAL_COMPLETO = [
 const MENU_PRINCIPAL = MODO_REACTIVACION
   ? [
       { grupo: 'ACTIVO' },
-      { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador','Caja'], modulo: 'sincronizacion' },
+      { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador'], modulo: 'sincronizacion' },
       { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
     ]
   : MENU_PRINCIPAL_COMPLETO;
@@ -304,7 +304,7 @@ function requerirRol_(rolesPermitidos) {
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
     if (MODO_REACTIVACION) {
-      window.location.href = u && ['Administrador', 'Caja'].includes(u.rol) ? 'fudo.html' : 'index.html';
+      window.location.href = u && u.rol === 'Administrador' ? 'fudo.html' : 'index.html';
       return;
     }
     window.location.href = 'inicio.html';
