@@ -442,8 +442,7 @@ function cajaMovimientoRegistrar_(item,usuario) {
   if(CAJA_TIPOS_MOVIMIENTO_.indexOf(item.tipo)===-1)return {ok:false,error:'Tipo de movimiento inválido'};
   const valor=Number(item.valor);if(!valor||valor<=0)return {ok:false,error:'El valor debe ser mayor a cero'};
   if(!item.motivo)return {ok:false,error:'Falta el motivo'};
-  const esEntrega = String(item.tipo).indexOf('Entrega administrador')===0;
-  if(esEntrega&&(!item.persona_entrega||!item.persona_recibe))return {ok:false,error:'La entrega necesita quién entrega y quién recibe'};
+  if(String(item.tipo).indexOf('Entrega administrador')===0&&(!item.persona_entrega||!item.persona_recibe))return {ok:false,error:'La entrega necesita quién entrega y quién recibe'};
 
   // Candado + idempotencia (Diana, ago 2026): sin esto, un doble clic o un reintento tras un
   // timeout de red guardaban el MISMO movimiento dos veces — silencioso, plausible e irreversible,
@@ -456,12 +455,7 @@ function cajaMovimientoRegistrar_(item,usuario) {
   }
   try {
     const apertura=cajaTurnoFila_(fecha,item.sede);
-    // Diana (ago 2026): una entrega de efectivo a una persona es un movimiento físico
-    // independiente del estado del turno — se registra igual aunque la caja DILANA todavía no se
-    // haya abierto ese día, o ya se haya cerrado. El resto de movimientos (guardar en caja fuerte,
-    // retiro, otro ingreso) sigue exigiendo un turno abierto: describen el cajón de ESE turno.
-    if(!esEntrega&&(!apertura||apertura.estado==='Cerrado'))return {ok:false,error:'La caja no está abierta'};
-    const cajaAbiertaAhora = !!apertura && apertura.estado==='Abierto';
+    if(!apertura||apertura.estado==='Cerrado')return {ok:false,error:'La caja no está abierta'};
     const movimientosActuales=cajaMovimientosDelDia_(fecha,item.sede);
     if (item.idempotency_key) {
       const repetido = movimientosActuales.find(function(m){ return m.idempotency_key && m.idempotency_key === item.idempotency_key; });
@@ -470,13 +464,11 @@ function cajaMovimientoRegistrar_(item,usuario) {
     // Tope: no se puede sacar más de lo que hay disponible en ese momento (Diana, ago 2026) — antes
     // un retiro de caja fuerte vacía la dejaba en negativo e inflaba la caja operativa con dinero
     // que nunca existió; un envío/entrega más grande que lo disponible dejaba un faltante permanente.
-    // Solo aplica con un turno abierto: sin él no hay un cajón DILANA conocido contra el cual medir
-    // (entrega fuera de horario), así que la entrega se registra igual, solo con la auditoría.
-    if (cajaAbiertaAhora && CAJA_TIPOS_RESTAN_OPERATIVA_.indexOf(item.tipo) !== -1) {
+    if (CAJA_TIPOS_RESTAN_OPERATIVA_.indexOf(item.tipo) !== -1) {
       const disponible = cajaEfectivoEsperado_(apertura, movimientosActuales, fecha, item.sede).esperado;
       if (valor > disponible) return {ok:false,error:'No puedes registrar este movimiento: excede el efectivo disponible en la caja operativa en este momento.'};
     }
-    if (cajaAbiertaAhora && CAJA_TIPOS_RESTAN_FUERTE_.indexOf(item.tipo) !== -1) {
+    if (CAJA_TIPOS_RESTAN_FUERTE_.indexOf(item.tipo) !== -1) {
       const disponibleFuerte = cajaEfectivoEsperado_(apertura, movimientosActuales, fecha, item.sede).caja_fuerte_esperada;
       if (valor > disponibleFuerte) return {ok:false,error:'No puedes registrar este movimiento: excede lo disponible en la caja fuerte en este momento.'};
     }

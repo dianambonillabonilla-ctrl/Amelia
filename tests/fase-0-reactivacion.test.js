@@ -39,7 +39,7 @@ assert(extension.includes('function cajaCustodiaEsperadaTrasCierre_('));
 assert(extension.includes('esperado_cierre_con_fudo_actual'));
 assert(extension.includes('diferencia_fudo_dilana'));
 assert(extension.includes('custodia_esperada_hoy'));
-assert(extension.includes('conciliacion_apertura: conciliacionApertura'));
+assert(/conciliacion_apertura:\s*conciliacionApertura/.test(extension));
 assert(cajaHtml.includes('Conciliación del cierre anterior'));
 assert(cajaHtml.includes('Efectivo FUDO cierre anterior'));
 assert(cajaHtml.includes('DILANA recalculado con FUDO actual'));
