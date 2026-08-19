@@ -10,7 +10,7 @@
 <div class="login-shell">
   <div class="login-card">
     <div class="marca"><h1>Dilana <span>OS</span></h1></div>
-    <p style="text-align:center;color:var(--grey);font-size:.85rem;margin:-10px 0 20px">Ingresa para administrar el módulo activo.</p>
+    <p style="text-align:center;color:var(--grey);font-size:.85rem;margin:-10px 0 20px">Ingresa para administrar los módulos activos.</p>
     <form id="form-login">
       <div class="campo">
         <label for="usuario">Usuario</label>
@@ -36,29 +36,28 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
   errorEl.style.display = 'none';
 
   const data = await llamar('login', { usuario, password });
-  if (data.ok) {
-    Sesion.guardar(data.token, data.usuario);
+  if (!data.ok) {
+    errorEl.textContent = data.error || 'No se pudo iniciar sesión';
+    errorEl.style.display = 'block';
+    return;
+  }
 
-    if (MODO_REACTIVACION) {
-      if (data.usuario.rol === 'Administrador' && MODULOS_ACTIVOS.includes('usuarios')) {
-        window.location.href = 'usuarios.html';
-        return;
-      }
+  Sesion.guardar(data.token, data.usuario);
 
-      // En esta etapa las demás cuentas siguen existiendo y el login se valida, pero no deben
-      // quedar con una sesión abierta hacia módulos todavía inactivos.
-      try { await llamar('logout'); } catch (err) {}
-      Sesion.limpiarLocal();
-      errorEl.textContent = 'Por ahora solo está activo el módulo Usuarios para Administración.';
-      errorEl.style.display = 'block';
+  if (MODO_REACTIVACION) {
+    if (['Administrador', 'Caja'].includes(data.usuario.rol) && MODULOS_ACTIVOS.includes('sincronizacion')) {
+      window.location.href = 'fudo.html';
       return;
     }
 
-    window.location.href = 'inicio.html';
-  } else {
-    errorEl.textContent = data.error || 'No se pudo iniciar sesión';
+    try { await llamar('logout'); } catch (err) {}
+    Sesion.limpiarLocal();
+    errorEl.textContent = 'Tu cuenta está activa, pero por ahora solo están habilitados Usuarios y Sincronización FUDO.';
     errorEl.style.display = 'block';
+    return;
   }
+
+  window.location.href = 'inicio.html';
 });
 </script>
 </body>
