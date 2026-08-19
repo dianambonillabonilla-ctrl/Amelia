@@ -48,6 +48,16 @@ function usuarioGuardar_(item, usuarioSesion) {
   if (item.id) {
     for (let r = 1; r < data.length; r++) {
       if (data[r][idCol] === item.id) {
+        // Evita que el Administrador que está haciendo la gestión se saque a sí mismo del sistema
+        // por accidente. Si necesita cambiar su propia cuenta, primero debe dejar otro
+        // Administrador activo y hacer el cambio desde esa otra cuenta.
+        if (item.id === usuarioSesion.id && item.activo === false) {
+          return { ok: false, error: 'No puedes desactivar tu propia cuenta mientras la estás usando' };
+        }
+        if (item.id === usuarioSesion.id && item.rol !== undefined && item.rol !== 'Administrador') {
+          return { ok: false, error: 'No puedes quitarte a ti mismo el rol de Administrador' };
+        }
+
         if (item.usuario !== undefined && item.usuario !== data[r][usuarioCol]) {
           const enUsoPorOtro = data.slice(1).some(function (row, i) {
             return (i + 1) !== r && row[usuarioCol] === item.usuario;
@@ -66,10 +76,8 @@ function usuarioGuardar_(item, usuarioSesion) {
           if (item[h] !== undefined) sh.getRange(r + 1, c + 1).setValue(neutralizarFormula_(item[h]));
         });
 
-        // Bitácora: solo los campos sensibles que de verdad cambiaron (rol/sede/nombre/activo) —
-        // sin esto, editar un usuario sobrescribía en silencio quién tenía qué rol o sede antes,
-        // sin dejar rastro de cuándo ni quién lo cambió (auditoría de seguridad, jul 2026).
-        const camposAuditados = ['nombre', 'rol', 'sede', 'activo'];
+        // Bitácora: registra los campos que cambian permisos o alcance del usuario.
+        const camposAuditados = ['nombre', 'rol', 'sede', 'activo', 'sectores_permitidos'];
         const anterior = {};
         const nuevo = {};
         camposAuditados.forEach(function (h) {
@@ -104,7 +112,8 @@ function usuarioGuardar_(item, usuarioSesion) {
     rol: item.rol,
     sede: item.sede || 'Ambas',
     activo: true,
-    email: item.email || ''
+    email: item.email || '',
+    sectores_permitidos: item.sectores_permitidos || ''
   });
   return { ok: true, creado: true };
 }
