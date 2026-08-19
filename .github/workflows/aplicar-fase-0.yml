@@ -1,5 +1,6 @@
 name: Aplicar Fase 0
 
+# Este workflow se dispara una sola vez para aplicar el candado inicial de reactivación.
 on:
   push:
     branches:
