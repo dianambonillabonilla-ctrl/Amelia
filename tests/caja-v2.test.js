@@ -444,7 +444,10 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   const sinNovedad = ctx.cajaNovedadesAdministrador_({});
   assert.equal(sinNovedad.ok, true);
   assert.equal(sinNovedad.novedades.length, 1, 'una diferencia al abrir debe verse como novedad pendiente');
-  assert.deepEqual(sinNovedad.novedades[0].motivos, ['Diferencia al abrir']);
+  // El turno de esta prueba queda 'Abierto' con fecha 2026-07-15 (fixture de abrirTurno_) y nunca se
+  // cierra — hoy (fecha real de la prueba) es posterior, así que también cuenta como "quedó abierta
+  // sin cerrar" (ago 2026, ver cajaTurnoMotivosNovedad_).
+  assert.deepEqual(sinNovedad.novedades[0].motivos, ['Diferencia al abrir', 'Caja quedó abierta sin cerrar']);
   assert.equal(sinNovedad.novedades[0].estado_conciliacion, '');
 
   const conciliada = ctx.cajaNovedadConciliar_('2026-07-15', 'San Antonio', 'ya se revisó, fue un préstamo', administrador);
@@ -461,6 +464,23 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(todas.novedades[0].estado_conciliacion, 'Resuelta');
 
   assert.equal(ctx.cajaNovedadConciliar_('', 'San Antonio', '', administrador).ok, false, 'debe exigir fecha y sede');
+}
+
+// Una caja que se quedó 'Abierto' de un día anterior y nadie la cerró debe verse como novedad —
+// antes era invisible del todo (ago 2026, auditoría al retomar el uso real de Caja). El turno de
+// HOY sigue sin avisar nada mientras esté en curso, es su estado normal durante el día.
+{
+  const { ctx, turnos } = construirEntorno_();
+  const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
+  const fechaAyer = ctx.formatearFecha_(ayer);
+  const fechaHoy = ctx.formatearFecha_(new Date());
+  abrirTurno_(ctx, turnos, { fecha: fechaAyer, base_inicial: 100000, caja_fuerte_inicial: 0 });
+  abrirTurno_(ctx, turnos, { id: 't2', fecha: fechaHoy, sede: 'Capri', base_inicial: 50000, caja_fuerte_inicial: 0 });
+
+  const novedades = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(novedades.novedades.length, 1, 'solo la de ayer debe avisar, la de hoy sigue en curso normalmente');
+  assert.equal(novedades.novedades[0].fecha, fechaAyer);
+  assert.deepEqual(novedades.novedades[0].motivos, ['Caja quedó abierta sin cerrar']);
 }
 
 // Diferencia al cerrar y FUDO no sincronizado al cerrar también cuentan como novedad — pero ninguna

@@ -273,8 +273,9 @@ const MENU_PRINCIPAL_COMPLETO = [
 const MENU_PRINCIPAL = MODO_REACTIVACION
   ? [
       { grupo: 'ACTIVO' },
+      // Historial de Caja (antes su propio link) ahora es la pestaña "Historial" dentro de Caja —
+      // Diana, ago 2026: "todo lo de caja debe funcionar en un solo link que se llama caja".
       { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Caja'], modulo: 'caja' },
-      { href: 'historial-caja.html', texto: 'Historial de Caja', soloRol: ['Administrador'], modulo: 'caja' },
       { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador'], modulo: 'sincronizacion' },
       { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
     ]
