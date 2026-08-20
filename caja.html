@@ -82,6 +82,15 @@
           <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
             <h2>Abrir mi caja</h2>
             <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
+            <!-- Caja inicia oficialmente el 20/08/2026 (CajaInicioOperacion20260820.gs): mientras
+                 esta sede no tenga todavía un cierre DILANA desde esa fecha, "esperado" de aquí abajo
+                 se calcula contra el historial viejo y da $0 — no es la referencia real. La real es el
+                 total de FUDO del día anterior, y solo se ve en "Ver conciliación" más abajo. -->
+            <div id="aviso-referencia-inicial" class="advertencia oculto" style="margin-bottom:14px">
+              ⚠ Primera apertura de esta sede desde el inicio oficial de Caja (20/08/2026): "$0" de aquí
+              abajo NO es la referencia real. Toca <strong>"Ver conciliación"</strong> más abajo para
+              ver el total de FUDO del día anterior antes de contar.
+            </div>
             <div class="dinero-grid">
               <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
               <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
@@ -401,7 +410,12 @@ const ESTADO_CONCILIACION_INFO_={
   NO_CONFIRMADA_FUDO:{icono:'🔴',texto:'No se pudo confirmar FUDO (NO_CONFIRMADA_FUDO) para la fecha de referencia — la conciliación no se declara todavía.'},
   FUDO_CAMBIO_DESDE_CIERRE:{icono:'🟡',texto:'Cambio desde el cierre: FUDO actualizó ventas después de que se cerró ese turno.'},
   DIFERENCIA_CUSTODIA:{icono:'🟡',texto:'Diferencia de custodia: los movimientos posteriores al cierre no cuadran con lo que debería haber ahora.'},
-  SIN_CIERRE_DILANA:{icono:'⚪',texto:'No existe un cierre anterior en Caja para comparar contra FUDO.'}
+  SIN_CIERRE_DILANA:{icono:'⚪',texto:'No existe un cierre anterior en Caja para comparar contra FUDO.'},
+  // Primera apertura de la sede desde el inicio oficial de Caja (20/08/2026, ver
+  // CajaInicioOperacion20260820.gs): todavía no hay cierre DILANA, así que FUDO del día anterior
+  // (menos gastos de arqueo en efectivo) es la referencia TOTAL — no distingue caja operativa de
+  // caja fuerte, eso lo fija el primer conteo físico real de hoy.
+  REFERENCIA_INICIAL_FUDO:{icono:'🟡',texto:'Inicio oficial de Caja: FUDO del día anterior es la referencia TOTAL (no reparte entre caja operativa y caja fuerte). El primer conteo físico de hoy fija esa distribución real.'}
 };
 async function cargarConciliacionApertura_(){
   const cuerpo=document.getElementById('conciliacion-apertura-cuerpo');
@@ -419,6 +433,11 @@ async function cargarConciliacionApertura_(){
     html+=`<p style="margin:8px 0 0;color:var(--grey)">Cierre de referencia (${escapeHtml(c.fecha_referencia)}): esperado guardado ${dinero(c.dilana.esperado_cierre_guardado)}`;
     if(c.fudo_cambio_desde_cierre)html+=`, ahora con FUDO actual ${dinero(c.dilana.esperado_cierre_con_fudo_actual)} (${c.fudo_cambio_desde_cierre>0?'+':''}${dinero(c.fudo_cambio_desde_cierre)})`;
     html+='.</p>';
+  }else if(c.modo_referencia_inicial_fudo){
+    // Sin cierre DILANA todavía: la referencia real para contrastar contra lo que se va a contar es
+    // este total (FUDO del día de referencia menos gastos de arqueo en efectivo), no el "$0" que
+    // muestra el formulario de apertura de arriba.
+    html+=`<p style="margin:8px 0 0;color:var(--grey)">FUDO ${escapeHtml(c.fecha_referencia)}: efectivo ${dinero(c.fudo.efectivo)} − gastos de arqueo ${dinero(c.fudo.gastos_efectivo)} = <strong style="color:var(--navy)">referencia total ${dinero(c.custodia_esperada_hoy.total)}</strong> (caja operativa + caja fuerte juntas).</p>`;
   }
   cuerpo.innerHTML=html;
 }
@@ -586,6 +605,12 @@ async function cargar(opciones){
     document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
     document.getElementById('base-contada').value='';
     document.getElementById('fuerte-contada-apertura').value='';
+    // Caja inicia oficialmente el 20/08/2026 — antes de ese cierre DILANA, base_esperada/
+    // caja_fuerte_esperada de arriba dan $0 porque no hay nada que comparar todavía, pero eso NO es
+    // la referencia real que cajaAbrir_ va a usar (el total de FUDO del día anterior). El aviso solo
+    // se muestra en ese caso probable (fecha ya en la era nueva + esperado en $0), no siempre.
+    const posibleReferenciaInicial=fechaEl.value>='2026-08-20'&&Number(data.base_esperada)===0&&Number(data.caja_fuerte_esperada||0)===0;
+    document.getElementById('aviso-referencia-inicial').classList.toggle('oculto',!posibleReferenciaInicial);
     // La conciliación ya no se pide sola al cargar (auditoría, ago 2026): sincroniza en vivo contra
     // FUDO, así que se deja bajo demanda con el botón "Ver conciliación" en vez de gastar cuota cada
     // vez que se abre o refresca esta pantalla.
