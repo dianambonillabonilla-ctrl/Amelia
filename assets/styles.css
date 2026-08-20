@@ -238,15 +238,62 @@ body.embebido .main { padding: 16px; max-width: none; }
 .caja-wrap .rappi { background: #FFF3E6; border: 2px solid #E47911; border-radius: 12px; padding: 16px; color: #8B4100; display: flex; justify-content: space-between; gap: 14px; align-items: center; }
 .caja-wrap .rappi-ok { background: #F2F8F4; border: 1px solid var(--green); color: var(--green); border-radius: 12px; padding: 15px; font-weight: 700; }
 .caja-wrap .dos-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.caja-wrap .movimiento { display: grid; grid-template-columns: 170px 120px 1fr 160px; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
 .caja-wrap .positivo { color: var(--green); font-weight: 700; }
 .caja-wrap .negativo { color: var(--red); font-weight: 700; }
 .caja-wrap .diferencia { font-weight: 700; margin: 8px 0; }
 .caja-wrap .advertencia { background: #FFF8E8; border-left: 4px solid var(--gold); padding: 12px; border-radius: 7px; font-size: .85rem; }
+
+/* Franja "hero" con el número que más importa (efectivo esperado) grande, más caja fuerte y total
+   bajo custodia como cifras secundarias — antes esto era una tarjeta más entre nueve iguales, sin
+   ninguna jerarquía (pedido de Diana, ago 2026: mezclar el número grande con el resto del rediseño). */
+.caja-wrap .hero-esperado { background: linear-gradient(135deg, var(--navy), var(--navy-light)); border-radius: 18px; padding: 26px 30px; margin-bottom: 18px; color: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 18px; box-shadow: 0 14px 30px rgba(11,31,58,.22); }
+.caja-wrap .hero-esperado .etiqueta { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
+.caja-wrap .hero-esperado .valor-grande { font-size: 2.8rem; font-weight: 800; margin: 4px 0; color: var(--gold-soft); line-height: 1.05; }
+.caja-wrap .hero-esperado .sub { font-size: .8rem; opacity: .75; margin-top: 4px; }
+.caja-wrap .hero-esperado .mini-stats { display: flex; gap: 26px; }
+.caja-wrap .hero-esperado .mini-stats > div { text-align: right; }
+.caja-wrap .hero-esperado .mini-stats .e { font-size: .7rem; text-transform: uppercase; opacity: .7; }
+.caja-wrap .hero-esperado .mini-stats .v { font-size: 1.3rem; font-weight: 700; }
+
+/* Lo que entra (verde) separado de lo que sale (rojo) en vez de nueve tarjetas idénticas seguidas
+   — para ver de un vistazo si el hueco viene de ingresos que faltan o de salidas de más. */
+.caja-wrap .bloques-dinero { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+.caja-wrap .bloque { border-radius: 14px; padding: 18px 20px; }
+.caja-wrap .bloque h3 { margin: 0 0 10px; font-size: .92rem; display: flex; align-items: center; gap: 8px; }
+.caja-wrap .bloque.entra { background: #F2F8F4; border: 1px solid var(--green); }
+.caja-wrap .bloque.entra h3 { color: var(--green); }
+.caja-wrap .bloque.sale { background: #FEF4F3; border: 1px solid var(--red); }
+.caja-wrap .bloque.sale h3 { color: var(--red); }
+.caja-wrap .bloque .linea { display: flex; justify-content: space-between; align-items: center; font-size: .87rem; padding: 7px 0; border-bottom: 1px dashed rgba(0,0,0,.08); }
+.caja-wrap .bloque .linea:last-child { border-bottom: none; }
+.caja-wrap .bloque .linea .etq { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.caja-wrap .bloque .linea strong { font-size: .95rem; }
+
+/* Movimientos como línea de tiempo con un punto de color por tipo, en vez de filas de tabla planas
+   — más fácil de leer de arriba hacia abajo cuando hay varios en el día. */
+.caja-wrap .timeline { position: relative; padding-left: 28px; }
+.caja-wrap .timeline::before { content: ''; position: absolute; left: 10px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+.caja-wrap .tl-item { position: relative; padding-bottom: 16px; }
+.caja-wrap .tl-item:last-child { padding-bottom: 0; }
+.caja-wrap .tl-item .punto { position: absolute; left: -28px; top: 1px; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .78rem; background: #fff; border: 2px solid var(--green); }
+.caja-wrap .tl-item.negativo .punto { border-color: var(--red); }
+.caja-wrap .tl-item .cuerpo-tl { display: flex; justify-content: space-between; gap: 10px; }
+.caja-wrap .tl-item .tipo { font-weight: 700; font-size: .88rem; }
+.caja-wrap .tl-item .detalle { font-size: .78rem; color: var(--grey); }
+.caja-wrap .tl-item .valor-tl { font-weight: 700; white-space: nowrap; }
+.caja-wrap .tl-item.positivo .valor-tl { color: var(--green); }
+.caja-wrap .tl-item.negativo .valor-tl { color: var(--red); }
+
+/* Fila de historial (antes su propia página, historial-caja.html — ago 2026 se metió como pestaña
+   aquí mismo) e ítems del resumen del día (antes historial-cierres-turno.html, misma fusión). */
+.caja-wrap .historial-fila { cursor: pointer; }
+.caja-wrap .historial-fila:hover { border-color: var(--gold); }
+
 @media (max-width: 780px) {
   .caja-wrap .dos-columnas { grid-template-columns: 1fr; }
   .caja-wrap .cabecera-caja { flex-direction: column; align-items: flex-start; }
-  .caja-wrap .movimiento { grid-template-columns: 1fr 1fr; }
+  .caja-wrap .hero-esperado { flex-direction: column; align-items: flex-start; }
+  .caja-wrap .bloques-dinero { grid-template-columns: 1fr; }
 }
 
 /* ===== Inventario y abastecimiento (antes en el <style> propio de abastecimiento.html) =====

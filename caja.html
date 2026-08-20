@@ -15,157 +15,256 @@
   <main class="main">
     <div class="topbar"><h1>Caja</h1><div id="barra-usuario"></div></div>
     <div class="caja-wrap">
-      <div class="card">
-        <div class="grid grid-3">
-          <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
-          <div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option></select></div>
-          <div style="display:flex;align-items:end"><button class="btn fantasma" id="actualizar">Actualizar</button></div>
-        </div>
+
+      <!-- Diana (ago 2026): "todo lo de caja debe funcionar en un solo link que se llama caja" —
+           antes había 3 páginas separadas (caja.html, historial-caja.html, historial-cierres-
+           turno.html). Ahora son 3 pestañas de la misma pantalla; las dos páginas viejas quedaron
+           como redirect hacia acá (ver base-caja.html/gestiones.html para el mismo patrón). -->
+      <div class="tabs" id="tabs-caja">
+        <button class="tab-btn activo" data-tab="dia">Caja del día</button>
+        <button class="tab-btn" data-tab="historial">Historial</button>
+        <button class="tab-btn" data-tab="cierres">Resumen del día</button>
       </div>
 
-      <section id="panel-admin" class="card oculto" style="border-color:var(--navy)">
-        <h2>Panel de Caja — todas las sedes</h2>
-        <p style="color:var(--grey);font-size:.85rem;margin-top:0">Vista rápida de las dos sedes para la fecha elegida arriba. Toca una fila para ir a esa sede.</p>
-        <div style="overflow-x:auto"><table>
-          <thead><tr><th>Sede</th><th>Estado</th><th>Responsable</th><th>Efectivo esperado</th><th>Caja fuerte</th><th>Sin identificar</th><th>Confianza</th></tr></thead>
-          <tbody id="panel-admin-filas"></tbody>
-        </table></div>
-      </section>
-
-      <!-- Diana (ago 2026): nada de esto bloquea abrir/cerrar caja — es puro seguimiento para que
-           el Administrador se entere y concilie las diferencias/FUDO sin sincronizar aparte. -->
-      <section id="panel-novedades" class="card oculto" style="border-color:var(--red)">
-        <h2>Novedades de Administrador</h2>
-        <p style="color:var(--grey);font-size:.85rem;margin-top:0">Diferencias al abrir/cerrar y cierres sin FUDO sincronizado, pendientes de revisar. No bloquean nada — es solo para que las concilies.</p>
-        <div style="overflow-x:auto"><table>
-          <thead><tr><th>Fecha</th><th>Sede</th><th>Motivo</th><th>Detalle</th><th></th></tr></thead>
-          <tbody id="novedades-filas"></tbody>
-        </table></div>
-      </section>
-
-      <section class="cabecera-caja">
-        <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
-        <div class="estado" id="estado">Consultando…</div>
-      </section>
-      <p style="font-size:.82rem;margin:-8px 0 14px">
-        <span id="fudo-sync-info"></span>
-        <button class="btn fantasma" id="btn-sincronizar-fudo" style="margin-left:8px;padding:2px 10px;font-size:.78rem">Sincronizar FUDO</button>
-      </p>
-
-      <section id="cargando" class="card">
-        <p class="vacio" id="cargando-texto">Consultando el estado de la caja…</p>
-        <p id="cargando-reintentar" class="oculto"><button class="btn fantasma" id="reintentar">Reintentar</button></p>
-      </section>
-
-      <section id="sin-abrir" class="oculto">
-        <!-- La apertura la hace quien está físicamente en la sede (Encargado), no la
-             Administradora — a ella solo le interesa saber si ya está abierta o no. -->
-        <div id="apertura-solo-lectura" class="card oculto">
-          <h2>Caja sin abrir</h2>
-          <p>Todavía nadie ha abierto la caja de hoy en esta sede. La apertura la hace quien esté en la sede.</p>
-          <p style="margin-top:10px"><a href="#" id="abrir-de-todas-formas" style="font-size:.85rem">Abrir esta caja de todas formas</a></p>
-        </div>
-        <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
-          <h2>Abrir mi caja</h2>
-          <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
-          <div class="dinero-grid">
-            <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
-            <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
-            <div class="dinero"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
-            <div class="dinero"><span>Caja fuerte contada al abrir</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" style="margin-top:8px"></div>
-          </div>
-          <p class="diferencia" id="diferencia-apertura"></p>
-          <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
-          <button class="btn dorado" id="abrir">Abrir caja</button>
-        </div>
-      </section>
-
-      <section id="abierta" class="oculto">
-        <div id="rappi-pendiente" class="rappi">
-          <div><strong>⚠ No olvides prender Rappi</strong><div style="font-size:.83rem;margin-top:4px">Confirma cuando esté encendido y recibiendo pedidos.</div></div>
-          <button class="btn dorado" id="rappi">Rappi encendido</button>
-        </div>
-        <div id="rappi-ok" class="rappi-ok oculto">✓ Rappi confirmado como encendido.</div>
-
-        <div class="card" style="margin-top:18px">
-          <h2>Dinero que debería haber ahora</h2>
-          <div class="dinero-grid">
-            <div class="dinero"><span>Dinero contado al abrir</span><strong id="d-base">$0</strong></div>
-            <div class="dinero"><span>Efectivo FUDO desde apertura</span><strong id="d-fudo">$0</strong></div>
-            <div class="dinero"><span>Otros ingresos</span><strong id="d-ingresos">$0</strong></div>
-            <div class="dinero"><span>Enviado a caja fuerte</span><strong id="d-envio-fuerte">$0</strong></div>
-            <div class="dinero"><span>Entregado al administrador</span><strong id="d-entregas">$0</strong></div>
-            <div class="dinero"><span>Gastos y salidas</span><strong id="d-gastos">$0</strong></div>
-            <div class="dinero principal"><span>Efectivo esperado en caja</span><strong id="d-esperado">$0</strong></div>
-            <div class="dinero principal"><span>Esperado en caja fuerte</span><strong id="d-fuerte">$0</strong></div>
-            <div class="dinero principal"><span>Total bajo custodia</span><strong id="d-total">$0</strong></div>
-          </div>
-          <p style="font-size:.8rem;color:var(--grey)">Abierta por <strong id="abierta-por">—</strong> a las <strong id="abierta-hora">—</strong>.</p>
-        </div>
-
-        <div class="dos-columnas">
-          <div class="card">
-            <h2>Registrar movimiento</h2>
-            <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Envío a caja fuerte</option><option>Retiro de caja fuerte</option><option>Entrega administrador desde caja</option><option>Entrega administrador desde caja fuerte</option><option>Otro ingreso</option></select></div>
-            <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="mov-valor"></div>
-            <div id="datos-entrega">
-              <div class="campo"><label>Quién entrega</label><input id="mov-entrega"></div>
-              <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
-            </div>
-            <div class="campo"><label>Motivo u observación</label><input id="mov-motivo"></div>
-            <button class="btn" id="guardar-movimiento">Guardar movimiento</button>
-          </div>
-
-          <div class="card">
-            <h2>Cerrar caja</h2>
-            <div class="advertencia">Cuenta por separado el efectivo operativo y el dinero guardado en caja fuerte.</div>
-            <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
-            <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
-            <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
-            <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
-            <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
-            <button class="btn dorado" id="cerrar">Cerrar caja</button>
+      <!-- ===================== PESTAÑA: CAJA DEL DÍA ===================== -->
+      <div class="tab-panel activo" id="tab-dia">
+        <div class="card">
+          <div class="grid grid-3">
+            <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
+            <div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option></select></div>
+            <div style="display:flex;align-items:end"><button class="btn fantasma" id="actualizar">Actualizar</button></div>
           </div>
         </div>
 
-        <div class="card"><h2>Movimientos registrados</h2><div id="movimientos"><p class="vacio">Sin movimientos.</p></div></div>
-      </section>
+        <section id="panel-admin" class="card oculto" style="border-color:var(--navy)">
+          <h2>Panel de Caja — todas las sedes</h2>
+          <p style="color:var(--grey);font-size:.85rem;margin-top:0">Vista rápida de las dos sedes para la fecha elegida arriba. Toca una fila para ir a esa sede.</p>
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Sede</th><th>Estado</th><th>Responsable</th><th>Efectivo esperado</th><th>Caja fuerte</th><th>Sin identificar</th><th>Confianza</th></tr></thead>
+            <tbody id="panel-admin-filas"></tbody>
+          </table></div>
+        </section>
 
-      <section id="cerrada" class="card oculto" style="border-left:4px solid var(--green)">
-        <h2>✓ Caja cerrada</h2><div id="resumen-cierre"></div>
-        <div id="bloque-correccion" class="oculto" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
-          <p style="margin:0"><a href="#" id="link-mostrar-correccion" style="font-size:.85rem">Corregir este cierre</a></p>
-          <div id="form-correccion" class="oculto" style="margin-top:12px">
-            <p style="color:var(--grey);font-size:.82rem;margin-top:0">
-              Solo para cuando el número original quedó mal (ej. un error al contar). Queda
-              registrado quién corrigió y por qué; lo esperado original no cambia, solo lo contado
-              y la diferencia resultante.
-            </p>
+        <!-- Diana (ago 2026): nada de esto bloquea abrir/cerrar caja — es puro seguimiento para que
+             el Administrador se entere y concilie las diferencias/FUDO sin sincronizar aparte. -->
+        <section id="panel-novedades" class="card oculto" style="border-color:var(--red)">
+          <h2>Novedades de Administrador</h2>
+          <p style="color:var(--grey);font-size:.85rem;margin-top:0">Diferencias al abrir/cerrar y cierres sin FUDO sincronizado, pendientes de revisar. No bloquean nada — es solo para que las concilies.</p>
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Fecha</th><th>Sede</th><th>Motivo</th><th>Detalle</th><th></th></tr></thead>
+            <tbody id="novedades-filas"></tbody>
+          </table></div>
+        </section>
+
+        <section class="cabecera-caja">
+          <div><small>Responsable del turno</small><h2 id="responsable">—</h2><p class="perfil" id="perfil">—</p></div>
+          <div class="estado" id="estado">Consultando…</div>
+        </section>
+        <p style="font-size:.82rem;margin:-8px 0 14px">
+          <span id="fudo-sync-info"></span>
+          <button class="btn fantasma" id="btn-sincronizar-fudo" style="margin-left:8px;padding:2px 10px;font-size:.78rem">Sincronizar FUDO</button>
+        </p>
+
+        <section id="cargando" class="card">
+          <p class="vacio" id="cargando-texto">Consultando el estado de la caja…</p>
+          <p id="cargando-reintentar" class="oculto"><button class="btn fantasma" id="reintentar">Reintentar</button></p>
+        </section>
+
+        <section id="sin-abrir" class="oculto">
+          <!-- La apertura la hace quien está físicamente en la sede (Encargado), no la
+               Administradora — a ella solo le interesa saber si ya está abierta o no. -->
+          <div id="apertura-solo-lectura" class="card oculto">
+            <h2>Caja sin abrir</h2>
+            <p>Todavía nadie ha abierto la caja de hoy en esta sede. La apertura la hace quien esté en la sede.</p>
+            <p style="margin-top:10px"><a href="#" id="abrir-de-todas-formas" style="font-size:.85rem">Abrir esta caja de todas formas</a></p>
+          </div>
+          <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
+            <h2>Abrir mi caja</h2>
+            <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
             <div class="dinero-grid">
-              <div class="dinero"><span>Efectivo contado (corregido)</span><input type="number" min="0" step="1" id="correccion-efectivo" style="margin-top:8px"></div>
-              <div class="dinero"><span>Caja fuerte contada (corregida)</span><input type="number" min="0" step="1" id="correccion-fuerte" style="margin-top:8px"></div>
-              <div class="dinero"><span>Base para el siguiente turno</span><input type="number" min="0" step="1" id="correccion-base-siguiente" style="margin-top:8px"></div>
+              <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
+              <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
+              <div class="dinero"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
+              <div class="dinero"><span>Caja fuerte contada al abrir</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" style="margin-top:8px"></div>
             </div>
-            <div class="campo"><label>Observación del cierre (opcional, reemplaza la actual)</label><input id="correccion-observacion"></div>
-            <div class="campo"><label>Motivo de la corrección</label><input id="correccion-motivo" placeholder="ej. se contó mal el efectivo original, el real era..."></div>
-            <button class="btn dorado" id="btn-corregir-cierre">Guardar corrección</button>
+            <p class="diferencia" id="diferencia-apertura"></p>
+            <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
+            <button class="btn dorado" id="abrir">Abrir caja</button>
           </div>
+        </section>
+
+        <section id="abierta" class="oculto">
+          <div id="rappi-pendiente" class="rappi">
+            <div><strong>⚠ No olvides prender Rappi</strong><div style="font-size:.83rem;margin-top:4px">Confirma cuando esté encendido y recibiendo pedidos.</div></div>
+            <button class="btn dorado" id="rappi">Rappi encendido</button>
+          </div>
+          <div id="rappi-ok" class="rappi-ok oculto">✓ Rappi confirmado como encendido.</div>
+
+          <div class="hero-esperado" style="margin-top:18px">
+            <div>
+              <div class="etiqueta">Efectivo esperado en caja ahora</div>
+              <div class="valor-grande" id="d-esperado">$0</div>
+              <div class="sub">Abierta por <strong id="abierta-por">—</strong> a las <strong id="abierta-hora">—</strong></div>
+            </div>
+            <div class="mini-stats">
+              <div><div class="e">Caja fuerte</div><div class="v" id="d-fuerte">$0</div></div>
+              <div><div class="e">Total custodia</div><div class="v" id="d-total">$0</div></div>
+            </div>
+          </div>
+
+          <div class="bloques-dinero">
+            <div class="bloque entra">
+              <h3>📥 Entra</h3>
+              <div class="linea"><span class="etq">💵 Contado al abrir</span><strong id="d-base">$0</strong></div>
+              <div class="linea"><span class="etq">🧾 FUDO efectivo desde apertura</span><strong id="d-fudo">$0</strong></div>
+              <div class="linea"><span class="etq">📥 Otros ingresos</span><strong id="d-ingresos">$0</strong></div>
+            </div>
+            <div class="bloque sale">
+              <h3>📤 Sale</h3>
+              <div class="linea"><span class="etq">🔒 Enviado a caja fuerte</span><strong id="d-envio-fuerte">$0</strong></div>
+              <div class="linea"><span class="etq">🤝 Entregado al administrador</span><strong id="d-entregas">$0</strong></div>
+              <div class="linea"><span class="etq">💸 Gastos y salidas</span><strong id="d-gastos">$0</strong></div>
+            </div>
+          </div>
+
+          <div class="dos-columnas">
+            <div class="card">
+              <h2>Registrar movimiento</h2>
+              <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Envío a caja fuerte</option><option>Retiro de caja fuerte</option><option>Entrega administrador desde caja</option><option>Entrega administrador desde caja fuerte</option><option>Otro ingreso</option></select></div>
+              <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="mov-valor"></div>
+              <div id="datos-entrega">
+                <div class="campo"><label>Quién entrega</label><input id="mov-entrega"></div>
+                <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
+              </div>
+              <div class="campo"><label>Motivo u observación</label><input id="mov-motivo"></div>
+              <button class="btn" id="guardar-movimiento">Guardar movimiento</button>
+            </div>
+
+            <div class="card">
+              <h2>Cerrar caja</h2>
+              <div class="advertencia">Cuenta por separado el efectivo operativo y el dinero guardado en caja fuerte.</div>
+              <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
+              <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
+              <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
+              <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
+              <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
+              <button class="btn dorado" id="cerrar">Cerrar caja</button>
+            </div>
+          </div>
+
+          <div class="card"><h2>Movimientos registrados</h2><div id="movimientos"><p class="vacio">Sin movimientos.</p></div></div>
+        </section>
+
+        <section id="cerrada" class="card oculto" style="border-left:4px solid var(--green)">
+          <h2>✓ Caja cerrada</h2><div id="resumen-cierre"></div>
+          <div id="bloque-correccion" class="oculto" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+            <p style="margin:0"><a href="#" id="link-mostrar-correccion" style="font-size:.85rem">Corregir este cierre</a></p>
+            <div id="form-correccion" class="oculto" style="margin-top:12px">
+              <p style="color:var(--grey);font-size:.82rem;margin-top:0">
+                Solo para cuando el número original quedó mal (ej. un error al contar). Queda
+                registrado quién corrigió y por qué; lo esperado original no cambia, solo lo contado
+                y la diferencia resultante.
+              </p>
+              <div class="dinero-grid">
+                <div class="dinero"><span>Efectivo contado (corregido)</span><input type="number" min="0" step="1" id="correccion-efectivo" style="margin-top:8px"></div>
+                <div class="dinero"><span>Caja fuerte contada (corregida)</span><input type="number" min="0" step="1" id="correccion-fuerte" style="margin-top:8px"></div>
+                <div class="dinero"><span>Base para el siguiente turno</span><input type="number" min="0" step="1" id="correccion-base-siguiente" style="margin-top:8px"></div>
+              </div>
+              <div class="campo"><label>Observación del cierre (opcional, reemplaza la actual)</label><input id="correccion-observacion"></div>
+              <div class="campo"><label>Motivo de la corrección</label><input id="correccion-motivo" placeholder="ej. se contó mal el efectivo original, el real era..."></div>
+              <button class="btn dorado" id="btn-corregir-cierre">Guardar corrección</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================== PESTAÑA: HISTORIAL (antes historial-caja.html) ===================== -->
+      <div class="tab-panel" id="tab-historial" hidden>
+        <div class="card">
+          <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+            Días anteriores de Caja, con lo que quedó guardado en cada apertura/cierre — no se
+            recalcula nada en vivo. Toca un día para verlo en detalle en "Caja del día".
+          </p>
+          <div class="grid grid-4" style="margin-bottom:14px">
+            <div class="campo"><label>Desde</label><input type="date" id="hist-desde"></div>
+            <div class="campo"><label>Hasta</label><input type="date" id="hist-hasta"></div>
+            <div class="campo">
+              <label>Sede</label>
+              <select id="hist-sede">
+                <option value="Ambas">Ambas (todas)</option>
+                <option>San Antonio</option>
+                <option>Capri</option>
+              </select>
+            </div>
+            <div class="campo" style="display:flex; align-items:flex-end">
+              <button class="btn dorado" id="hist-btn-filtrar" style="width:100%">Filtrar</button>
+            </div>
+          </div>
+          <p id="hist-contador" class="vacio" style="display:none"></p>
         </div>
-      </section>
+        <div id="hist-lista"></div>
+      </div>
+
+      <!-- ===================== PESTAÑA: RESUMEN DEL DÍA (antes historial-cierres-turno.html) ===================== -->
+      <div class="tab-panel" id="tab-cierres" hidden>
+        <div class="card">
+          <p style="color:var(--grey); font-size:.85rem; margin-top:0">
+            Snapshot guardado al momento de cerrar cada turno — ventas y pagos Fudo, caja, traslados
+            pendientes y diferencias de inventario (teórico vs. contado ese día). No se recalcula
+            después. Cubre las 3 sedes, no solo las de Caja.
+          </p>
+          <div class="grid grid-4" style="margin-bottom:14px">
+            <div class="campo"><label>Desde</label><input type="date" id="cier-desde"></div>
+            <div class="campo"><label>Hasta</label><input type="date" id="cier-hasta"></div>
+            <div class="campo">
+              <label>Sede</label>
+              <select id="cier-sede">
+                <option value="Ambas">Ambas (todas)</option>
+                <option>San Antonio</option>
+                <option>Capri</option>
+                <option>Centro de Producción</option>
+              </select>
+            </div>
+            <div class="campo" style="display:flex; align-items:flex-end">
+              <button class="btn dorado" id="cier-btn-filtrar" style="width:100%">Filtrar</button>
+            </div>
+          </div>
+          <p id="cier-contador" class="vacio" style="display:none"></p>
+        </div>
+        <div id="cier-lista"></div>
+      </div>
+
     </div>
   </main>
 </div>
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
-requerirRol_(['Administrador','Encargado']);
+// Diana (ago 2026): "Resumen del día" (antes historial-cierres-turno.html) sí dejaba entrar a
+// Lectura; para no quitarle algo que ya podía ver al fusionar las 3 páginas en una, la pantalla
+// completa se abre para Lectura también, pero las acciones que mueven dinero (abrir/cerrar caja,
+// registrar movimiento, corregir un cierre) siguen ocultas para cualquiera que no sea
+// Administrador o Encargado — eso no cambia.
+requerirRol_(['Administrador','Encargado','Lectura']);
 montarBarraUsuario();
 const usuario=Sesion.usuario();
+const puedeOperarCaja_=usuario.rol==='Administrador'||usuario.rol==='Encargado';
+
+/* ===================== Pestañas ===================== */
+const parametrosUrl_=new URLSearchParams(location.search);
+function activarTab_(nombre){
+  document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.classList.toggle('activo',b.dataset.tab===nombre));
+  ['dia','historial','cierres'].forEach(t=>{
+    document.getElementById('tab-'+t).hidden=(t!==nombre);
+  });
+  if(nombre==='historial'&&!historialCargado_){historialCargado_=true;cargarHistorial_();}
+  if(nombre==='cierres'&&!cierresCargado_){cierresCargado_=true;cargarCierres_();}
+}
+document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.addEventListener('click',()=>activarTab_(b.dataset.tab)));
+
+/* ===================== PESTAÑA: Caja del día ===================== */
 const fechaEl=document.getElementById('fecha');
 const sedeEl=document.getElementById('sede');
-// El historial de Caja (historial-caja.html) enlaza aquí con ?fecha=YYYY-MM-DD&sede=... para ir
-// directo al detalle de un día — si no vienen en la URL, se usa hoy como siempre.
-const parametrosUrl_=new URLSearchParams(location.search);
 fechaEl.value=parametrosUrl_.get('fecha')||fechaLocalHoy_();
 restringirSelectorSede_(sedeEl);
 // Caja solo existe en sedes de venta; Centro de Producción no debe aparecer aquí.
@@ -174,6 +273,13 @@ if(parametrosUrl_.get('sede')&&Array.from(sedeEl.options).some(o=>o.value===para
 if(!sedeEl.value && sedeEl.options.length)sedeEl.value=sedeEl.options[0].value;
 document.getElementById('responsable').textContent=usuario.nombre||usuario.usuario;
 document.getElementById('perfil').textContent=`${usuario.rol} · ${usuario.sede}`;
+// Lectura ve la pantalla pero no puede abrir/cerrar/registrar nada — se oculta el botón de acción,
+// el resto (números, historial) sigue visible igual que ya podía ver en Resumen del día.
+if(!puedeOperarCaja_){
+  ['abrir','rappi','guardar-movimiento','cerrar','btn-corregir-cierre','abrir-de-todas-formas','btn-sincronizar-fudo'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.classList.add('oculto');
+  });
+}
 let estadoActual=null;
 const dinero=n=>Number(n||0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0});
 const mostrar=id=>['cargando','sin-abrir','abierta','cerrada'].forEach(x=>document.getElementById(x).classList.toggle('oculto',x!==id));
@@ -246,10 +352,28 @@ function calculoCierre(){
   if(hayDiferenciaDinero)html+=`<br><strong style="color:var(--red)">Hay una diferencia — escribe abajo una observación explicando qué pasó para poder cerrar.</strong>`;
   document.getElementById('calculo-cierre').innerHTML=html;
 }
+// Ícono por tipo de movimiento para la línea de tiempo — mismos 5 tipos que ofrece el selector de
+// "Registrar movimiento"; cualquier otro valor (ej. movimientos migrados de un histórico viejo) usa
+// un ícono genérico en vez de romper o dejar el punto vacío.
+const ICONO_MOV_={
+  'Envío a caja fuerte':'🔒','Retiro de caja fuerte':'🔓',
+  'Entrega administrador desde caja':'🤝','Entrega administrador desde caja fuerte':'🤝',
+  'Gasto':'💸','Otro ingreso':'📥'
+};
 function pintarMovimientos(lista){
   const el=document.getElementById('movimientos');
   if(!lista||!lista.length){el.innerHTML='<p class="vacio">Sin movimientos registrados.</p>';return;}
-  el.innerHTML=lista.map(m=>{const resta=m.tipo!=='Otro ingreso' && m.tipo!=='Retiro de caja fuerte';return `<div class="movimiento"><strong>${escapeHtml(m.tipo)}</strong><span class="${resta?'negativo':'positivo'}">${resta?'−':'+'}${dinero(m.valor)}</span><span>${escapeHtml(m.motivo||'')}</span><span>${escapeHtml(m.persona_recibe||m.usuario||'')}</span></div>`;}).join('');
+  el.innerHTML='<div class="timeline">'+lista.map(m=>{
+    const resta=m.tipo!=='Otro ingreso' && m.tipo!=='Retiro de caja fuerte';
+    const icono=ICONO_MOV_[m.tipo]||'💼';
+    return `<div class="tl-item ${resta?'negativo':'positivo'}">
+      <span class="punto">${icono}</span>
+      <div class="cuerpo-tl">
+        <div><div class="tipo">${escapeHtml(m.tipo)}</div><div class="detalle">${escapeHtml(m.motivo||'')}${m.motivo&&(m.persona_recibe||m.usuario)?' · ':''}${escapeHtml(m.persona_recibe||m.usuario||'')}</div></div>
+        <div class="valor-tl">${resta?'−':'+'}${dinero(m.valor)}</div>
+      </div>
+    </div>`;
+  }).join('')+'</div>';
 }
 async function cargarPanelAdmin(){
   if(usuario.rol!=='Administrador')return;
@@ -359,7 +483,7 @@ async function cargar(opciones){
     // igual se llena con los valores reales (no solo "$0"), por si usa "Abrir de todas formas".
     const esAdmin=usuario.rol==='Administrador';
     document.getElementById('apertura-solo-lectura').classList.toggle('oculto',!esAdmin);
-    document.getElementById('apertura-form').classList.toggle('oculto',esAdmin);
+    document.getElementById('apertura-form').classList.toggle('oculto',esAdmin||!puedeOperarCaja_);
     // Los montos esperados se muestran siempre (aunque el formulario esté oculto para
     // Administrador, por si usa "Abrir de todas formas"), pero los campos de conteo quedan
     // deliberadamente VACÍOS — no precargados con lo esperado: si se prellenan con el mismo valor
@@ -405,7 +529,7 @@ async function cargar(opciones){
   document.getElementById('abierta-por').textContent=data.apertura.usuario_apertura||'—';
   document.getElementById('abierta-hora').textContent=new Date(data.apertura.hora_apertura).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
   const rappi=String(data.apertura.rappi_encendido).toLowerCase()==='true';
-  document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
+  document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi||!puedeOperarCaja_);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
   document.getElementById('mov-entrega').value=usuario.nombre||'';
   // Igual que al abrir: los campos de conteo del cierre quedan vacíos, no precargados con lo
   // esperado — "cierre-base" (lo que se decide dejar para el siguiente turno) no es un conteo
@@ -495,6 +619,142 @@ document.getElementById('btn-corregir-cierre').addEventListener('click',conBoton
   cargar();
 }));
 cargar();
+
+/* ===================== PESTAÑA: Historial (antes historial-caja.html) ===================== */
+let historialCargado_=false;
+restringirSelectorSede_(document.getElementById('hist-sede'));
+Array.from(document.getElementById('hist-sede').options).forEach(o=>{if(o.value==='Centro de Producción')o.remove();});
+function hace30dias_(){
+  const d=new Date();d.setDate(d.getDate()-30);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+document.getElementById('hist-desde').value=hace30dias_();
+document.getElementById('hist-hasta').value=fechaLocalHoy_();
+document.getElementById('hist-btn-filtrar').addEventListener('click',cargarHistorial_);
+async function cargarHistorial_(){
+  const params={
+    fecha_desde:document.getElementById('hist-desde').value,
+    fecha_hasta:document.getElementById('hist-hasta').value,
+    sede:document.getElementById('hist-sede').value
+  };
+  const data=await llamar('caja_historial_listar',params);
+  if(!data.ok){alert(data.error);return;}
+  const filas=data.historial||[];
+  document.getElementById('hist-contador').style.display='block';
+  document.getElementById('hist-contador').textContent=filas.length?`${filas.length} día(s) en el rango`:'No hay cajas en este rango.';
+  pintarHistorial_(filas);
+}
+function pintarHistorial_(filas){
+  const cont=document.getElementById('hist-lista');
+  if(!filas.length){cont.innerHTML='<div class="card"><p class="vacio">No hay cajas en este rango.</p></div>';return;}
+  cont.innerHTML=filas.map(f=>{
+    const estadoTexto=f.estado==='Cerrado'?'Cerrada':(f.estado==='Abierto'?'Abierta':f.estado);
+    const novedad=f.motivos_novedad&&f.motivos_novedad.length
+      ?`<span style="color:var(--red)">⚠ ${escapeHtml(f.motivos_novedad.join(', '))}${f.estado_conciliacion==='Resuelta'?' — ya conciliada':''}</span>`
+      :'<span style="color:var(--green)">Sin novedades</span>';
+    return `<div class="card historial-fila" data-fecha="${escapeHtml(f.fecha)}" data-sede="${escapeHtml(f.sede)}">
+      <h3 style="margin:0 0 6px">${escapeHtml(f.fecha)} — ${escapeHtml(f.sede)}</h3>
+      <p style="margin:0 0 8px; font-size:.85rem; color:var(--grey)">
+        ${estadoTexto} · Abrió ${escapeHtml(f.usuario_apertura||'—')}${f.usuario_cierre?` · Cerró ${escapeHtml(f.usuario_cierre)}`:''}
+      </p>
+      <p style="margin:0; font-size:.88rem">
+        Efectivo esperado: ${dinero(f.efectivo_esperado)} · Efectivo contado: ${dinero(f.efectivo_contado)} ·
+        Caja fuerte: ${dinero(f.caja_fuerte_esperada)}
+      </p>
+      <p style="margin:6px 0 0; font-size:.88rem">${novedad}</p>
+      ${f.corregido_por?`<p style="margin:6px 0 0; font-size:.82rem; color:var(--navy)">✎ Corregido por ${escapeHtml(f.corregido_por)}: ${escapeHtml(f.motivo_correccion)}</p>`:''}
+    </div>`;
+  }).join('');
+  // Antes esto navegaba a caja.html?fecha=...&sede=... (otra página); ahora es la misma página, así
+  // que solo cambia fecha/sede y salta a la pestaña "Caja del día" sin recargar nada.
+  Array.from(document.querySelectorAll('#hist-lista .historial-fila')).forEach(fila=>{
+    fila.addEventListener('click',()=>{
+      fechaEl.value=fila.dataset.fecha;sedeEl.value=fila.dataset.sede;
+      activarTab_('dia');cargar();
+    });
+  });
+}
+
+/* ===================== PESTAÑA: Resumen del día (antes historial-cierres-turno.html) ===================== */
+let cierresCargado_=false;
+restringirSelectorSede_(document.getElementById('cier-sede'));
+document.getElementById('cier-desde').value=hace30dias_();
+document.getElementById('cier-hasta').value=fechaLocalHoy_();
+document.getElementById('cier-btn-filtrar').addEventListener('click',cargarCierres_);
+async function cargarCierres_(){
+  const filtros={
+    fecha_desde:document.getElementById('cier-desde').value,
+    fecha_hasta:document.getElementById('cier-hasta').value,
+    sede:document.getElementById('cier-sede').value
+  };
+  const data=await llamar('cierres_turno_listar',{filtros});
+  if(!data.ok){alert(data.error);return;}
+  const filas=data.data||[];
+  document.getElementById('cier-contador').style.display='block';
+  document.getElementById('cier-contador').textContent=filas.length?`${filas.length} cierre(s) en el rango`:'No hay cierres en este rango.';
+  pintarCierres_(filas);
+}
+function formatoMonedaCier_(n){
+  if(n===''||n===undefined||n===null)return '—';
+  return '$'+Number(n).toLocaleString('es-CO');
+}
+function formatearFechaLocalCier_(v){
+  if(!v)return '';
+  if(typeof v==='string')return v.slice(0,10);
+  try{return new Date(v).toISOString().slice(0,10);}catch(e){return String(v);}
+}
+function pintarCierres_(filas){
+  const cont=document.getElementById('cier-lista');
+  if(!filas.length){cont.innerHTML='<div class="card"><p class="vacio">No hay cierres de turno en este rango.</p></div>';return;}
+  cont.innerHTML=filas.map(f=>{
+    const ts=f.timestamp?new Date(f.timestamp).toLocaleString('es-CO'):'—';
+    const diffs=f.diferencias_inventario||[];
+    const tablaDiffs=diffs.length
+      ?`<table style="margin-top:10px; font-size:.85rem"><thead><tr><th>Producto</th><th>Contado</th><th>Teórico</th><th>Diferencia</th></tr></thead><tbody>`+
+        diffs.map(d=>`<tr>
+          <td>${escapeHtml(d.producto)}</td>
+          <td>${escapeHtml(d.contado)} ${escapeHtml(d.unidad||'')}</td>
+          <td>${escapeHtml(d.teorico)} ${escapeHtml(d.unidad||'')}</td>
+          <td>${Math.abs(d.diferencia)<0.001?'<span class="badge ok">OK</span>':escapeHtml(d.diferencia)}</td>
+        </tr>`).join('')+'</tbody></table>'
+      :(Number(f.diferencia_inventario)>0
+        ?'<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Detalle no guardado (cierre anterior a jul 2026) — <a href="libro-inventario.html">ver libro</a>.</p>'
+        :'<p style="margin:8px 0 0; font-size:.85rem; color:var(--grey)">Sin diferencias de inventario ese día.</p>');
+    return `<div class="card">
+      <h3 style="margin:0 0 6px">${escapeHtml(formatearFechaLocalCier_(f.fecha))} — ${escapeHtml(f.sede)}</h3>
+      <p style="margin:0 0 8px; font-size:.85rem; color:var(--grey)">Cerrado por ${escapeHtml(f.usuario)} · ${escapeHtml(ts)}</p>
+      <p style="margin:0; font-size:.88rem">
+        Ventas Fudo: ${formatoMonedaCier_(f.ventas_fudo_total)} ·
+        Pagos Fudo: ${formatoMonedaCier_(f.pagos_fudo_total)} ·
+        Efectivo esperado: ${formatoMonedaCier_(f.pagos_efectivo_esperado)} ·
+        Efectivo contado: ${formatoMonedaCier_(f.efectivo_contado)} ·
+        Diferencia caja: ${formatoMonedaCier_(f.diferencia_caja)}
+      </p>
+      <p style="margin:6px 0 0; font-size:.88rem">
+        Traslados pendientes: ${escapeHtml(f.traslados_pendientes??0)} ·
+        Producciones: ${escapeHtml(f.producciones_registradas??0)} ·
+        Productos contados: ${escapeHtml(f.inventario_contado??'—')} ·
+        Con diferencia inventario: ${escapeHtml(f.diferencia_inventario??0)}
+      </p>
+      ${(Number(f.descuentos_total)>0||Number(f.propinas_total)>0||f.fuente_ventas||f.fuente_pagos)
+        ?`<p style="margin:6px 0 0; font-size:.85rem; color:var(--grey)">`+
+          (Number(f.descuentos_total)>0?`Descuentos: ${formatoMonedaCier_(f.descuentos_total)} · `:'')+
+          (Number(f.propinas_total)>0?`Propinas: ${formatoMonedaCier_(f.propinas_total)} · `:'')+
+          (f.fuente_ventas?`Ventas desde ${escapeHtml(f.fuente_ventas)} · `:'')+
+          (f.fuente_pagos?`Pagos desde ${escapeHtml(f.fuente_pagos)} · `:'')+
+          (f.sync_ventas_en?`Sync ventas: ${escapeHtml(new Date(f.sync_ventas_en).toLocaleString('es-CO'))} · `:'')+
+          (f.sync_pagos_en?`Sync pagos: ${escapeHtml(new Date(f.sync_pagos_en).toLocaleString('es-CO'))}`:'')+
+          `</p>`:''}
+      ${f.observaciones?`<p style="margin:6px 0 0; font-size:.85rem"><strong>Observaciones:</strong> ${escapeHtml(f.observaciones)}</p>`:''}
+      ${tablaDiffs}
+    </div>`;
+  }).join('');
+}
+
+// Deep-link desde los redirects de las páginas viejas (historial-caja.html / historial-cierres-
+// turno.html): ?tab=historial o ?tab=cierres abre directo esa pestaña en vez de "Caja del día".
+const tabInicial_=parametrosUrl_.get('tab');
+if(tabInicial_==='historial'||tabInicial_==='cierres')activarTab_(tabInicial_);
 </script>
 </body>
 </html>
