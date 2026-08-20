@@ -153,6 +153,36 @@ function cajaCustodiaEsperadaTrasCierre_(ultimoCierre, fechaActual, sede) {
     total:Number((operativa+cajaFuerte).toFixed(2)), movimientos:movimientos, resumen:r };
 }
 
+/**
+ * Al corregir un cierre solo se revalidan los movimientos que realmente dependen de ese cierre:
+ * los vinculados por turno_id (incluye entregas pre-apertura del día siguiente) y los movimientos
+ * del mismo día hechos después de cerrar. Así una migración histórica posterior y no relacionada
+ * no puede volver inválida una corrección legítima de otro periodo.
+ */
+function cajaCustodiaTrasCorreccion_(turno, contado, fuerteContada) {
+  const fechaCierre = formatearFecha_(turno.fecha);
+  const tsCierre = cajaFechaMs_(turno.timestamp_cierre || turno.hora_cierre);
+  const turnoId = String(turno.id || '');
+  const movimientos = leerTabla_(SHEET_NAMES.CAJA_MOVIMIENTOS).filter(function (m) {
+    if (m.sede !== turno.sede) return false;
+    const ts = cajaFechaMs_(m.timestamp || m.hora);
+    if (tsCierre && ts && ts <= tsCierre) return false;
+    if (turnoId && String(m.turno_id || '') === turnoId) return true;
+    return formatearFecha_(m.fecha) === fechaCierre && !!ts && ts > tsCierre;
+  });
+  const r = cajaMovimientosResumen_(movimientos);
+  const operativa = Number(contado) + r.otros_ingresos + r.retiros_caja_fuerte -
+    r.envios_caja_fuerte - r.entregas_admin_caja - r.gastos;
+  const fuerte = Number(fuerteContada) + r.envios_caja_fuerte -
+    r.retiros_caja_fuerte - r.entregas_admin_caja_fuerte;
+  return {
+    caja_operativa:Number(operativa.toFixed(2)),
+    caja_fuerte:Number(fuerte.toFixed(2)),
+    movimientos:movimientos,
+    resumen:r
+  };
+}
+
 function cajaCierreReferenciaCustodia_(fecha,sede) {
   const turnoDia = cajaTurnoFila_(fecha,sede);
   if (turnoDia && turnoDia.estado === 'Cerrado') return turnoDia;
@@ -305,7 +335,7 @@ function cajaCorregir_(item,usuario) {
   const fecha=formatearFecha_(item.fecha),turno=cajaTurnoFila_(fecha,item.sede);
   if(!turno)return {ok:false,error:'No existe esa caja'};
   if(turno.estado!=='Cerrado')return {ok:false,error:'Esta caja no está cerrada — no hay nada que corregir'};
-  if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno posterior de '+item.sede+'. Ese turno ya depende de este cierre y debe resolverse antes de corregir historia.'};
+  if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno más reciente de '+item.sede+'. Ese turno posterior ya depende de este cierre y debe resolverse antes de corregir historia.'};
   if(!String(item.motivo_correccion||'').trim())return {ok:false,error:'Escribe el motivo de la corrección.'};
   const contadoV=cajaValorContadoValido_(item.efectivo_contado);if(!contadoV.ok)return {ok:false,error:'Efectivo contado: '+contadoV.error};
   const fuerteV=cajaValorContadoValido_(item.caja_fuerte_contada);if(!fuerteV.ok)return {ok:false,error:'Caja fuerte contada: '+fuerteV.error};
@@ -317,11 +347,10 @@ function cajaCorregir_(item,usuario) {
   try{
     const turnoAhora=cajaTurnoFila_(fecha,item.sede);
     if(!turnoAhora||turnoAhora.estado!=='Cerrado')return {ok:false,error:'Esta caja no está cerrada — no hay nada que corregir'};
-    if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno posterior de '+item.sede+'. Ese turno ya depende de este cierre.'};
+    if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno más reciente de '+item.sede+'. Ese turno posterior ya depende de este cierre.'};
     const esperado=Number(turnoAhora.efectivo_esperado)||0,fuerteEsperada=Number(turnoAhora.caja_fuerte_esperada)||0;
     const dif=Number((contado-esperado).toFixed(2)),difF=Number((fuerteContada-fuerteEsperada).toFixed(2));
-    const cierreHipotetico=Object.assign({},turnoAhora,{base_siguiente:contado,caja_fuerte_siguiente:fuerteContada});
-    const custodiaPosterior=cajaCustodiaEsperadaTrasCierre_(cierreHipotetico,formatearFecha_(new Date()),item.sede);
+    const custodiaPosterior=cajaCustodiaTrasCorreccion_(turnoAhora,contado,fuerteContada);
     if(custodiaPosterior.caja_operativa < -0.01 || custodiaPosterior.caja_fuerte < -0.01){
       return {ok:false,error:'No se puede aplicar esta corrección porque contradice movimientos de custodia ya registrados después del cierre y dejaría un saldo negativo.'};
     }
