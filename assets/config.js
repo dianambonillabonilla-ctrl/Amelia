@@ -1,5 +1,35 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxHeReHZS5kxcuOPURApSpOT7z_7NSQ5gIwvVAlv3aRrEaWYQ/exec';
 
+// REACTIVACIÓN POR MÓDULOS (ago 2026)
+// Usuarios, Sincronización FUDO y Caja están habilitados. El resto no se elimina: permanece
+// inactivo hasta que se valide y reactive por etapas.
+const MODO_REACTIVACION = true;
+const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];
+const ACCIONES_PERMITIDAS_REACTIVACION = [
+  'login',
+  'logout',
+  'whoami',
+  'cambiar_password',
+  'usuarios_listar',
+  'usuarios_guardar',
+  'usuario_resetear_password',
+  'fudo_panel_estado',
+  'fudo_api_probar_conexion',
+  'fudo_api_sincronizar_ventas',
+  'fudo_api_sincronizar_pagos',
+  'caja_estado',
+  'caja_abrir',
+  'caja_movimiento_registrar',
+  'caja_movimientos_listar',
+  'caja_cerrar',
+  'caja_sincronizar_ahora',
+  'caja_resumen_admin',
+  'caja_novedades_listar',
+  'caja_novedad_conciliar',
+  'caja_historial_listar',
+  'caja_corregir'
+];
+
 const Sesion = {
   guardar(token, usuario) {
     sessionStorage.setItem('dilana_token', token);
@@ -10,10 +40,13 @@ const Sesion = {
     try { return JSON.parse(sessionStorage.getItem('dilana_usuario')); }
     catch (e) { return null; }
   },
-  async cerrar() {
-    try { await llamar('logout'); } catch (e) {}
+  limpiarLocal() {
     sessionStorage.removeItem('dilana_token');
     sessionStorage.removeItem('dilana_usuario');
+  },
+  async cerrar() {
+    try { await llamar('logout'); } catch (e) {}
+    this.limpiarLocal();
     window.location.href = 'index.html';
   },
   requerir() {
@@ -21,12 +54,29 @@ const Sesion = {
   }
 };
 
-// Sin esto, una petición que se queda colgada (ej. caja_estado esperando a que responda la API de
-// FUDO) dejaba la pantalla en "Consultando…" indefinidamente — el navegador no le pone límite de
-// tiempo a fetch() por sí solo.
+// Bloqueo de navegación directa: una URL vieja no reactiva por accidente un módulo operativo.
+const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'caja.html', 'historial-caja.html', 'cambiar-password.html', ''];
+(function bloquearPaginaInactiva_() {
+  if (!MODO_REACTIVACION) return;
+  const pagina = window.location.pathname.split('/').pop();
+  if (PAGINAS_PERMITIDAS_REACTIVACION.includes(pagina)) return;
+  const u = Sesion.usuario();
+  if (u && u.rol === 'Administrador') return window.location.replace('fudo.html');
+  if (u && u.rol === 'Caja') return window.location.replace('caja.html');
+  window.location.replace('index.html');
+})();
+
 const LLAMAR_TIMEOUT_MS = 45000;
 
 async function llamar(action, params = {}) {
+  if (MODO_REACTIVACION && !ACCIONES_PERMITIDAS_REACTIVACION.includes(action)) {
+    return {
+      ok: false,
+      codigo: 'MODULO_INACTIVO',
+      error: 'Este módulo está temporalmente inactivo mientras se valida la aplicación por etapas.'
+    };
+  }
+
   const body = Object.assign({ action, token: Sesion.token() }, params);
   const controlador = new AbortController();
   const limite = setTimeout(() => controlador.abort(), LLAMAR_TIMEOUT_MS);
@@ -64,14 +114,6 @@ function escapeHtml(valor) {
   }[c]));
 }
 
-/**
- * conteo_registrar, ajuste_inventario_registrar, compra_registrar_factura, produccion_registrar/
- * produccion_con_obligatorios_registrar y traslado_crear pueden responder
- * `{ ok:false, requiere_confirmacion:true, cantidades_raras:[...] }` en vez de un error normal —
- * una cantidad que se ve como un posible error de tecleo (CantidadesRaras.gs en el backend), no
- * algo inválido. Nunca bloquea: solo pide un `confirm()` antes de reenviar la misma solicitud con
- * `opciones.confirmar_cantidades_raras:true` para guardarla igual.
- */
 function confirmarCantidadesRaras_(cantidadesRaras) {
   const detalle = cantidadesRaras.map(r =>
     `- ${r.producto}: ${r.cantidad} ${r.unidad} (lo máximo registrado hasta ahora equivale a ${r.referencia} ${r.unidad_base}, esto es ${r.veces}x más)`
@@ -204,7 +246,7 @@ function conBotonProtegido(boton, fn) {
   };
 }
 
-const MENU_PRINCIPAL = [
+const MENU_PRINCIPAL_COMPLETO = [
   { grupo: 'HOY' },
   { href: 'inicio.html', texto: 'Inicio de turno' },
   { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador','Encargado','Lectura'] },
@@ -225,8 +267,18 @@ const MENU_PRINCIPAL = [
   { href: 'fudo.html', texto: 'Panel FUDO', soloRol: ['Administrador','Encargado'] },
   { href: 'importar.html', texto: 'Importar de FUDO', soloRol: ['Administrador'] },
   { href: 'diagnostico.html', texto: 'Diagnóstico', soloRol: ['Administrador'] },
-  { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'] }
+  { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
 ];
+
+const MENU_PRINCIPAL = MODO_REACTIVACION
+  ? [
+      { grupo: 'ACTIVO' },
+      { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Caja'], modulo: 'caja' },
+      { href: 'historial-caja.html', texto: 'Historial de Caja', soloRol: ['Administrador'], modulo: 'caja' },
+      { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador'], modulo: 'sincronizacion' },
+      { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
+    ]
+  : MENU_PRINCIPAL_COMPLETO;
 
 function montarMenu_(rolActual) {
   const nav = document.getElementById('menu-nav');
@@ -236,6 +288,7 @@ function montarMenu_(rolActual) {
   MENU_PRINCIPAL.forEach(item => {
     if (item.grupo) { grupoPendiente = item.grupo; return; }
     if (item.soloRol && !item.soloRol.includes(rolActual)) return;
+    if (MODO_REACTIVACION && item.modulo && !MODULOS_ACTIVOS.includes(item.modulo)) return;
     if (grupoPendiente) { html += `<div class="nav-grupo">${escapeHtml(grupoPendiente)}</div>`; grupoPendiente = ''; }
     html += `<a href="${escapeHtml(item.href)}"${item.href === actual ? ' class="activo"' : ''}>${escapeHtml(item.texto)}</a>`;
   });
@@ -264,6 +317,12 @@ function requerirRol_(rolesPermitidos) {
   const u = Sesion.usuario();
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
+    if (MODO_REACTIVACION) {
+      if (u && u.rol === 'Administrador') return void (window.location.href = 'fudo.html');
+      if (u && u.rol === 'Caja') return void (window.location.href = 'caja.html');
+      window.location.href = 'index.html';
+      return;
+    }
     window.location.href = 'inicio.html';
   }
 }
