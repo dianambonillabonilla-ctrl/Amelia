@@ -50,6 +50,17 @@ function cajaExisteTurnoPosteriorA_(fecha, sede) {
   });
 }
 
+/**
+ * Una sede solo puede tener un turno abierto a la vez (auditoría externa, ago 2026): sin este
+ * candado se podía abrir el día 21 sin haber cerrado el 20 — cajaExisteTurnoPosteriorA_ solo bloquea
+ * retroactividad hacia atrás, nunca revisó si quedaba algo abierto hacia adelante.
+ */
+function cajaExisteTurnoAbiertoAnteriorA_(fecha, sede) {
+  return leerTabla_(SHEET_NAMES.CAJA_TURNO).some(function (r) {
+    return r.sede === sede && r.estado === 'Abierto' && formatearFecha_(r.fecha) < fecha;
+  });
+}
+
 function cajaMovimientosVentanaTurno_(turno, movimientos) {
   if (!turno) return movimientos || [];
   const desde = cajaFechaMs_(turno.hora_apertura);
@@ -205,9 +216,10 @@ function cajaAbrir_(item,usuario) {
   if (CAJA_SEDES_VALIDAS_.indexOf(item.sede)===-1) return {ok:false,error:'Caja solo existe en San Antonio y Capri.'};
   if (!sedeEscrituraPermitida_(usuario,item.sede)) return {ok:false,error:'No puedes abrir la caja de otra sede'};
   const fecha=formatearFecha_(item.fecha);
-  if (!cajaFechaOperacionPermitida_(fecha)) return {ok:false,error:'La operación oficial de Caja inicia el 20/08/2026. Las fechas anteriores quedaron archivadas.'};
+  if (!cajaFechaOperacionPermitida_(fecha)) return {ok:false,error:cajaMensajeFechaNoPermitida_(fecha)};
   if (fecha>formatearFecha_(new Date())) return {ok:false,error:'No puedes abrir la caja de una fecha futura.'};
   if (cajaExisteTurnoPosteriorA_(fecha,item.sede)) return {ok:false,error:'No puedes abrir una caja retroactiva porque ya existe un turno posterior de esta sede. Usa la corrección administrativa si necesitas ajustar historia.'};
+  if (cajaExisteTurnoAbiertoAnteriorA_(fecha,item.sede)) return {ok:false,error:'Ya existe un turno anterior de esta sede que sigue abierto sin cerrar. Ciérralo antes de abrir uno nuevo.'};
   const existente=cajaTurnoFila_(fecha,item.sede);
   if (existente) return existente.estado==='Cerrado'?{ok:false,error:'La caja ya se cerró'}:{ok:true,ya_abierta:true,item:existente};
 
@@ -259,6 +271,7 @@ function cajaAbrir_(item,usuario) {
   try {
     const ahora=cajaTurnoFila_(fecha,item.sede); if(ahora)return ahora.estado==='Cerrado'?{ok:false,error:'La caja ya se cerró'}:{ok:true,ya_abierta:true,item:ahora};
     if (cajaExisteTurnoPosteriorA_(fecha,item.sede)) return {ok:false,error:'Ya existe un turno posterior de esta sede.'};
+    if (cajaExisteTurnoAbiertoAnteriorA_(fecha,item.sede)) return {ok:false,error:'Ya existe un turno anterior de esta sede que sigue abierto sin cerrar.'};
     appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,fila);
     auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fecha+'|'+item.sede,null,fila,item.sede,item.observacion_apertura||'');
   } finally { lock.releaseLock(); }
@@ -270,7 +283,7 @@ function cajaMovimientoRegistrar_(item,usuario) {
   if(!item||!item.fecha||!item.sede)return {ok:false,error:'Falta fecha o sede'};
   if(!sedeEscrituraPermitida_(usuario,item.sede))return {ok:false,error:'No puedes registrar movimientos de otra sede'};
   const fecha=formatearFecha_(item.fecha);
-  if(!cajaFechaOperacionPermitida_(fecha))return {ok:false,error:'Caja inicia oficialmente el 20/08/2026; los movimientos anteriores quedaron archivados.'};
+  if(!cajaFechaOperacionPermitida_(fecha))return {ok:false,error:cajaMensajeFechaNoPermitida_(fecha)};
   if(fecha>formatearFecha_(new Date()))return {ok:false,error:'No puedes registrar movimientos de una fecha futura.'};
   if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'No puedes insertar movimientos retroactivos porque ya existe un turno posterior de esta sede.'};
   if(CAJA_TIPOS_MOVIMIENTO_.indexOf(item.tipo)===-1)return {ok:false,error:'Tipo de movimiento inválido'};

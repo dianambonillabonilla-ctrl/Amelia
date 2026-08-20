@@ -1,4 +1,17 @@
 /**
+ * ADVERTENCIA (auditoría externa, ago 2026): este archivo carga SOLO CajaTurno.gs de forma aislada
+ * (ver construirEntorno_ más abajo) — NO carga ZZ_ReactivacionCajaFinal.gs. Mientras
+ * MODO_REACTIVACION_BACKEND=true, ese archivo ZZ redefine cajaAbrir_/cajaCerrar_/cajaCorregir_/
+ * cajaMovimientoRegistrar_/cajaEfectivoEsperado_ (y varias más) por encima de las de CajaTurno.gs —
+ * son las que de verdad corren en producción hoy. Las funciones que prueba este archivo están
+ * "dormidas": no reciben tráfico real ahora, pero tampoco se borran, porque están pensadas para
+ * volver a activarse cuando termine la reactivación por etapas. Un test en verde aquí NO garantiza
+ * que el comportamiento equivalente de ZZ_ReactivacionCajaFinal.gs sea igual — para esa ruta ver
+ * caja-auditoria-final.test.js, caja-integridad-final.test.js, caja-entregas-fuera-turno.test.js,
+ * caja-corregir.test.js, caja-cierre-medianoche.test.js, caja-fudo-gastos-arqueo.test.js y
+ * caja-inicio-20260820.test.js, que sí corren a través del router completo (env.post) y por lo
+ * tanto sí cargan y ejercitan las funciones ZZ activas.
+ *
  * CajaTurno.gs (consolidado — antes esta prueba cargaba CajaTurno.gs + CajaV2.gs por separado,
  * hasta que ambos archivos declaraban las mismas funciones globales y competían entre sí según el
  * orden de carga; CajaV2.gs se eliminó y todo quedó en un solo archivo): al abrir o cerrar con una
