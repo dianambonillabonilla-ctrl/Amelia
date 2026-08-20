@@ -220,6 +220,7 @@ function cajaMovimientoRegistrar_(item,usuario) {
   if(!item||!item.fecha||!item.sede)return {ok:false,error:'Falta fecha o sede'};
   if(!sedeEscrituraPermitida_(usuario,item.sede))return {ok:false,error:'No puedes registrar movimientos de otra sede'};
   const fecha=formatearFecha_(item.fecha);
+  if(fecha>formatearFecha_(new Date()))return {ok:false,error:'No puedes registrar movimientos de una fecha futura.'};
   if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'No puedes insertar movimientos retroactivos porque ya existe un turno posterior de esta sede.'};
   if(CAJA_TIPOS_MOVIMIENTO_.indexOf(item.tipo)===-1)return {ok:false,error:'Tipo de movimiento inválido'};
   const valor=Number(item.valor); if(!valor||valor<=0)return {ok:false,error:'El valor debe ser mayor a cero'};
@@ -230,6 +231,7 @@ function cajaMovimientoRegistrar_(item,usuario) {
   if(esGastoFudo&&item.tipo!=='Entrega administrador desde caja')return {ok:false,error:'Solo una entrega desde caja operativa puede marcarse como gasto FUDO.'};
   const lock=LockService.getScriptLock(); if(!lock.tryLock(10000))return {ok:false,error:'Otro movimiento se está guardando ahora mismo.'};
   try {
+    if(fecha>formatearFecha_(new Date()))return {ok:false,error:'No puedes registrar movimientos de una fecha futura.'};
     if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno posterior de esta sede.'};
     const turnoDia=cajaTurnoFila_(fecha,item.sede), abierta=!!turnoDia&&turnoDia.estado==='Abierto';
     if(!esEntrega&&!abierta)return {ok:false,error:'La caja no está abierta'};
@@ -303,7 +305,7 @@ function cajaCorregir_(item,usuario) {
   const fecha=formatearFecha_(item.fecha),turno=cajaTurnoFila_(fecha,item.sede);
   if(!turno)return {ok:false,error:'No existe esa caja'};
   if(turno.estado!=='Cerrado')return {ok:false,error:'Esta caja no está cerrada — no hay nada que corregir'};
-  if(cajaExisteCierrePosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un cierre más reciente de '+item.sede+'. Corrige primero ese día (o los días entre medio) antes de corregir este.'};
+  if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno posterior de '+item.sede+'. Ese turno ya depende de este cierre y debe resolverse antes de corregir historia.'};
   if(!String(item.motivo_correccion||'').trim())return {ok:false,error:'Escribe el motivo de la corrección.'};
   const contadoV=cajaValorContadoValido_(item.efectivo_contado);if(!contadoV.ok)return {ok:false,error:'Efectivo contado: '+contadoV.error};
   const fuerteV=cajaValorContadoValido_(item.caja_fuerte_contada);if(!fuerteV.ok)return {ok:false,error:'Caja fuerte contada: '+fuerteV.error};
@@ -315,9 +317,14 @@ function cajaCorregir_(item,usuario) {
   try{
     const turnoAhora=cajaTurnoFila_(fecha,item.sede);
     if(!turnoAhora||turnoAhora.estado!=='Cerrado')return {ok:false,error:'Esta caja no está cerrada — no hay nada que corregir'};
-    if(cajaExisteCierrePosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un cierre más reciente de '+item.sede+'. Corrige primero ese día.'};
+    if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un turno posterior de '+item.sede+'. Ese turno ya depende de este cierre.'};
     const esperado=Number(turnoAhora.efectivo_esperado)||0,fuerteEsperada=Number(turnoAhora.caja_fuerte_esperada)||0;
     const dif=Number((contado-esperado).toFixed(2)),difF=Number((fuerteContada-fuerteEsperada).toFixed(2));
+    const cierreHipotetico=Object.assign({},turnoAhora,{base_siguiente:contado,caja_fuerte_siguiente:fuerteContada});
+    const custodiaPosterior=cajaCustodiaEsperadaTrasCierre_(cierreHipotetico,formatearFecha_(new Date()),item.sede);
+    if(custodiaPosterior.caja_operativa < -0.01 || custodiaPosterior.caja_fuerte < -0.01){
+      return {ok:false,error:'No se puede aplicar esta corrección porque contradice movimientos de custodia ya registrados después del cierre y dejaría un saldo negativo.'};
+    }
     const anterior={efectivo_contado:turnoAhora.efectivo_contado,diferencia:turnoAhora.diferencia,caja_fuerte_contada:turnoAhora.caja_fuerte_contada,
       diferencia_caja_fuerte:turnoAhora.diferencia_caja_fuerte,base_siguiente:turnoAhora.base_siguiente,caja_fuerte_siguiente:turnoAhora.caja_fuerte_siguiente,
       entrega_cierre:turnoAhora.entrega_cierre,observacion_cierre:turnoAhora.observacion_cierre};
