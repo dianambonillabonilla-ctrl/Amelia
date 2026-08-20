@@ -4,7 +4,7 @@ const path = require('path');
 const { crearEntorno } = require('./helpers/entorno-apps-script.js');
 
 const inicio = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'CajaInicioOperacion20260820.gs'), 'utf8');
-const capa = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'ZZZ_CajaInicioOperacionFinal.gs'), 'utf8');
+const caja = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'ZZ_ReactivacionCajaFinal.gs'), 'utf8');
 
 assert.match(inicio, /CAJA_FECHA_INICIO_OFICIAL_\s*=\s*'2026-08-20'/);
 assert.match(inicio, /Caja_Turno_Archivo_Pre20260820/);
@@ -12,9 +12,10 @@ assert.match(inicio, /Caja_Movimientos_Archivo_Pre20260820/);
 assert.match(inicio, /CAJA_MIGRACION_HISTORICA_HECHA/);
 assert.match(inicio, /cajaInicializarOperacionDesde20Agosto2026/);
 assert.match(inicio, /cajaReferenciaFudoDiaAnterior_/);
-assert.match(capa, /modo_referencia_inicial_fudo:true/);
-assert.match(capa, /tipo_referencia_apertura:usaReferenciaInicial\?'FUDO_DIA_ANTERIOR':'CIERRE_DILANA'/);
-assert.match(capa, /CAJA_FUDO_ESTADO\|/);
+assert.match(inicio, /CAJA_FUDO_ESTADO\|/);
+assert.match(caja, /modo_referencia_inicial_fudo:true/);
+assert.match(caja, /tipo_referencia_apertura:usaReferenciaInicial\?'FUDO_DIA_ANTERIOR':'CIERRE_DILANA'/);
+assert.match(caja, /cajaGuardarEstadoFudoPersistente_/);
 
 // La referencia inicial es TOTAL: efectivo FUDO del 19 menos gastos de arqueo en efectivo.
 (function () {
