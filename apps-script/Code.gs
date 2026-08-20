@@ -15,6 +15,38 @@
  * también configurarTriggers() una vez para activar la limpieza diaria de sesiones y las alertas.
  */
 
+// FASE 0 — BLOQUEO TOTAL DE REACTIVACIÓN
+// Mientras esta bandera sea true, el backend solo acepta autenticación y Usuarios.
+// No basta ocultar pantallas: este es el candado autoritativo del Web App /exec.
+const MODO_REACTIVACION_BACKEND = true;
+const ACCIONES_PERMITIDAS_REACTIVACION_BACKEND = [
+  'login',
+  'logout',
+  'whoami',
+  'cambiar_password',
+  'usuarios_listar',
+  'usuarios_guardar',
+  'usuario_resetear_password'
+];
+
+function reactivacionBackendActiva_() {
+  // Exclusivamente para el VM de las pruebas offline de Node. Esta variable no existe en el
+  // runtime real de Apps Script ni puede enviarse por HTTP, por lo que no abre ningún bypass en
+  // producción. Permite seguir probando la lógica de módulos todavía inactivos.
+  if (typeof DILANA_TEST_DESACTIVAR_REACTIVACION !== 'undefined' && DILANA_TEST_DESACTIVAR_REACTIVACION === true) {
+    return false;
+  }
+  return MODO_REACTIVACION_BACKEND;
+}
+
+function accionPermitidaEnReactivacion_(action) {
+  return !reactivacionBackendActiva_() || ACCIONES_PERMITIDAS_REACTIVACION_BACKEND.indexOf(action) !== -1;
+}
+
+function automatizacionesPermitidasEnReactivacion_() {
+  return !reactivacionBackendActiva_();
+}
+
 const SHEET_NAMES = {
   USUARIOS: 'Usuarios',
   CATALOGO: 'Catalogo_Maestro',
@@ -193,25 +225,41 @@ function asegurarColumnas_(sh, columnas) {
 }
 
 /**
- * Corre UNA vez (o de nuevo si cambian los triggers) para activar:
- * - tareaDiaria_ (diario ~6am): limpia sesiones vencidas, revisa alertas de stock bajo y toma el
- *   snapshot diario de stock consolidado de FUDO (fudoSincronizacionStockDiaria_).
- * - fudoSincronizacionAutomatica_ (cada 15 min): sincroniza ventas y pagos de FUDO solos, sin que
- *   un Administrador tenga que entrar a "Importar de FUDO" y sincronizar a mano. Si no hay
- *   credenciales de la API configuradas todavía (fudoApiConfigurarCredenciales_), no hace nada —
- *   la sincronización manual de importar.html sigue disponible igual como respaldo.
+ * Fase 0: configurarTriggers() NO enciende automatizaciones mientras la reactivación esté activa.
+ * Primero elimina cualquier trigger operativo antiguo; solo cuando MODO_REACTIVACION_BACKEND sea
+ * false vuelve a crear tareaDiaria_ y la sincronización automática de FUDO.
  */
 function configurarTriggers() {
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    const fn = t.getHandlerFunction();
-    if (fn === 'tareaDiaria_' || fn === 'fudoSincronizacionAutomatica_') ScriptApp.deleteTrigger(t);
-  });
+  const eliminados = desactivarTriggersReactivacion_();
+  if (MODO_REACTIVACION_BACKEND) {
+    Logger.log('Fase 0 activa: automatizaciones desactivadas. Triggers eliminados: ' + eliminados);
+    return { reactivacion: true, creados: 0, eliminados: eliminados };
+  }
   ScriptApp.newTrigger('tareaDiaria_').timeBased().everyDays(1).atHour(6).create();
   ScriptApp.newTrigger('fudoSincronizacionAutomatica_').timeBased().everyMinutes(15).create();
   Logger.log('Triggers configurados: tareaDiaria_ (diario ~6am) y fudoSincronizacionAutomatica_ (cada 15 min).');
+  return { reactivacion: false, creados: 2, eliminados: eliminados };
+}
+
+/** Ejecutar manualmente una vez al instalar Fase 0 para retirar triggers ya instalados. */
+function desactivarTriggersReactivacion_() {
+  let eliminados = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    const fn = t.getHandlerFunction();
+    if (fn === 'tareaDiaria_' || fn === 'fudoSincronizacionAutomatica_') {
+      ScriptApp.deleteTrigger(t);
+      eliminados++;
+    }
+  });
+  Logger.log('Fase 0: ' + eliminados + ' trigger(s) operativo(s) eliminado(s).');
+  return eliminados;
 }
 
 function tareaDiaria_() {
+  if (!automatizacionesPermitidasEnReactivacion_()) {
+    Logger.log('Fase 0 activa: tareaDiaria_ omitida.');
+    return;
+  }
   limpiarSesionesVencidas_();
   try {
     revisarAlertas_();
@@ -261,6 +309,16 @@ function handleRequest_(e, method) {
   }
   const params = Object.assign({}, e.parameter || {}, body || {});
   const action = params.action;
+
+  // Candado autoritativo de Fase 0. Se evalúa ANTES de autenticar o entrar al switch para que
+  // ninguna URL directa al /exec pueda alcanzar un módulo aún inactivo, incluso con token válido.
+  if (!accionPermitidaEnReactivacion_(action)) {
+    return jsonOut_({
+      ok: false,
+      codigo: 'MODULO_INACTIVO',
+      error: 'Este módulo está temporalmente inactivo mientras se valida la aplicación por etapas.'
+    });
+  }
 
   try {
     // Login y logout no requieren sesión previa válida (logout debe funcionar incluso con token vencido)

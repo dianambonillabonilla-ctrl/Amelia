@@ -10,7 +10,7 @@
 <div class="login-shell">
   <div class="login-card">
     <div class="marca"><h1>Dilana <span>OS</span></h1></div>
-    <p style="text-align:center;color:var(--grey);font-size:.85rem;margin:-10px 0 20px">Ingresa para comenzar tu turno.</p>
+    <p style="text-align:center;color:var(--grey);font-size:.85rem;margin:-10px 0 20px">Ingresa para administrar los módulos activos.</p>
     <form id="form-login">
       <div class="campo">
         <label for="usuario">Usuario</label>
@@ -36,13 +36,32 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
   errorEl.style.display = 'none';
 
   const data = await llamar('login', { usuario, password });
-  if (data.ok) {
-    Sesion.guardar(data.token, data.usuario);
-    window.location.href = 'inicio.html';
-  } else {
+  if (!data.ok) {
     errorEl.textContent = data.error || 'No se pudo iniciar sesión';
     errorEl.style.display = 'block';
+    return;
   }
+
+  Sesion.guardar(data.token, data.usuario);
+
+  if (MODO_REACTIVACION) {
+    if (data.usuario.rol === 'Administrador') {
+      window.location.href = MODULOS_ACTIVOS.includes('sincronizacion') ? 'fudo.html' : 'caja.html';
+      return;
+    }
+    if (data.usuario.rol === 'Caja' && MODULOS_ACTIVOS.includes('caja')) {
+      window.location.href = 'caja.html';
+      return;
+    }
+
+    try { await llamar('logout'); } catch (err) {}
+    Sesion.limpiarLocal();
+    errorEl.textContent = 'Tu cuenta está activa, pero todavía no hay un módulo habilitado para tu perfil en esta etapa de reactivación.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  window.location.href = 'inicio.html';
 });
 </script>
 </body>

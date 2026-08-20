@@ -15,7 +15,7 @@
 
   <main class="main">
     <div class="topbar">
-      <h1>Usuarios y roles</h1>
+      <h1>Usuarios y perfiles</h1>
       <div id="barra-usuario"></div>
     </div>
 
@@ -24,15 +24,16 @@
       <div class="grid grid-4">
         <div class="campo"><label>Nombre</label><input type="text" id="nuevo-nombre"></div>
         <div class="campo"><label>Usuario de acceso</label><input type="text" id="nuevo-usuario"></div>
-        <div class="campo"><label>Rol</label>
+        <div class="campo"><label>Perfil</label>
           <select id="nuevo-rol">
+            <option value="">Selecciona un perfil</option>
             <option>Administrador</option>
-            <option>Encargado</option>
+            <option>Caja</option>
             <option>Cocina</option>
-            <option>Lectura</option>
+            <option>Gerencia</option>
           </select>
         </div>
-        <div class="campo"><label>Sede</label>
+        <div class="campo"><label>Sede autorizada para registrar</label>
           <select id="nuevo-sede">
             <option>Ambas</option>
             <option>San Antonio</option>
@@ -43,24 +44,25 @@
       </div>
       <div class="grid grid-3">
         <div class="campo"><label>Contraseña inicial</label><input type="password" id="nuevo-password" minlength="8" placeholder="mínimo 8 caracteres"></div>
-        <div class="campo"><label>Correo (para alertas de stock bajo)</label><input type="email" id="nuevo-email" placeholder="opcional, solo Administrador/Encargado reciben alertas"></div>
+        <div class="campo"><label>Correo</label><input type="email" id="nuevo-email" placeholder="opcional"></div>
         <div class="campo">
           <label>Sectores que puede elegir (opcional)</label>
           <div id="nuevo-sectores-checks" style="display:flex; flex-wrap:wrap; gap:4px 14px; padding-top:6px"></div>
           <p style="color:var(--grey); font-size:.78rem; margin:4px 0 0">
-            Si una persona puede rotar (un día cocina, otro café), marca los dos — cada vez que
-            entre, Dilana OS le pedirá elegir cuál le toca hoy. Ninguno marcado = no se le pide
-            elegir sector.
+            Perfil, sede y sector son cosas diferentes. Los sectores indican responsabilidades que esa persona puede asumir durante un turno.
           </p>
         </div>
       </div>
+      <p style="color:var(--grey); font-size:.82rem; margin:8px 0 14px">
+        Caja y Cocina podrán consultar inventario de otras sedes para detectar necesidades de traslado, pero la sede seleccionada seguirá definiendo dónde pueden registrar operación.
+      </p>
       <button class="btn dorado" id="btn-crear">Crear usuario</button>
     </div>
 
     <div class="card">
       <h2>Equipo actual</h2>
       <table>
-        <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Sede</th><th>Correo</th><th>Sectores</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Usuario</th><th>Perfil</th><th>Sede</th><th>Correo</th><th>Sectores</th><th>Estado</th><th></th></tr></thead>
         <tbody id="tabla-usuarios"><tr><td colspan="8" class="vacio">Cargando…</td></tr></tbody>
       </table>
     </div>
@@ -73,10 +75,9 @@ Sesion.requerir();
 requerirRol_(['Administrador']);
 montarBarraUsuario();
 
-// Casillas de sectores (SECTORES_DISPONIBLES en assets/config.js) — pedido real: "que se dejen
-// seleccionar con selección múltiple nada de escribir y comas porque eso hace que si me equivoco
-// escribiendo no se organice bien". `idPrefix` da ids únicos por si hay varios grupos de casillas
-// a la vez en la página (el del formulario "Crear usuario" y uno por fila al editar).
+const PERFILES_USUARIO = ['Administrador', 'Caja', 'Cocina', 'Gerencia'];
+const SEDES_USUARIO = ['Ambas', 'San Antonio', 'Capri', 'Centro de Producción'];
+
 function sectoresChecksHtml_(idPrefix, seleccionados) {
   const actuales = String(seleccionados || '').split(',').map(s => s.trim()).filter(Boolean);
   return SECTORES_DISPONIBLES.map(s => `
@@ -88,7 +89,21 @@ function sectoresChecksHtml_(idPrefix, seleccionados) {
 function sectoresMarcados_(idPrefix) {
   return Array.from(document.querySelectorAll(`.chk-sector-${idPrefix}:checked`)).map(c => c.value).join(', ');
 }
+function opcionesSelect_(valores, actual) {
+  return valores.map(v => `<option value="${escapeHtml(v)}" ${v === actual ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
+}
+
 document.getElementById('nuevo-sectores-checks').innerHTML = sectoresChecksHtml_('nuevo', '');
+
+const nuevoRol = document.getElementById('nuevo-rol');
+const nuevaSede = document.getElementById('nuevo-sede');
+function ajustarSedeNuevoAdmin_() {
+  const esAdmin = nuevoRol.value === 'Administrador';
+  if (esAdmin) nuevaSede.value = 'Ambas';
+  nuevaSede.disabled = esAdmin;
+}
+nuevoRol.addEventListener('change', ajustarSedeNuevoAdmin_);
+ajustarSedeNuevoAdmin_();
 
 async function cargar() {
   const data = await llamar('usuarios_listar');
@@ -103,6 +118,7 @@ async function cargar() {
       <td>
         <button class="btn fantasma btn-toggle" data-id="${escapeHtml(u.id)}" data-activo="${u.activo}" data-nombre="${escapeHtml(u.nombre)}">${u.activo ? 'Desactivar' : 'Activar'}</button>
         <button class="btn fantasma btn-resetear" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}">Restablecer contraseña</button>
+        <button class="btn fantasma btn-perfil" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}" data-rol="${escapeHtml(u.rol)}" data-sede="${escapeHtml(u.sede)}">Editar perfil y sede</button>
         <button class="btn fantasma btn-sectores" data-id="${escapeHtml(u.id)}" data-nombre="${escapeHtml(u.nombre)}" data-sectores="${escapeHtml(u.sectores_permitidos || '')}">Editar sectores</button>
       </td>
     </tr>`).join('');
@@ -114,9 +130,7 @@ async function cargar() {
       if (data.ok) {
         avisarGuardado(activar ? `${btn.dataset.nombre || 'Usuario'} activado.` : `${btn.dataset.nombre || 'Usuario'} desactivado.`);
         cargar();
-      } else {
-        alert(data.error);
-      }
+      } else alert(data.error);
     }));
   });
 
@@ -125,22 +139,60 @@ async function cargar() {
       const nueva = prompt(`Nueva contraseña para ${btn.dataset.nombre} (mínimo 8 caracteres). No hace falta la contraseña anterior.`);
       if (!nueva) return;
       const data = await llamar('usuario_resetear_password', { id: btn.dataset.id, password_nueva: nueva });
-      if (data.ok) {
-        avisarGuardado(`Contraseña de ${btn.dataset.nombre} restablecida.`);
-      } else {
-        alert(data.error);
-      }
+      if (data.ok) avisarGuardado(`Contraseña de ${btn.dataset.nombre} restablecida.`);
+      else alert(data.error);
     }));
   });
 
-  // Marcar casillas en vez de escribir texto libre — abre/cierra una fila con las casillas justo
-  // debajo de la persona, para no navegar a otra pantalla ni depender de un prompt() de solo texto.
+  document.querySelectorAll('.btn-perfil').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fila = btn.closest('tr');
+      const siguiente = fila.nextElementSibling;
+      const yaAbierta = siguiente && siguiente.classList.contains('fila-editar-perfil');
+      document.querySelectorAll('.fila-editar-perfil,.fila-editar-sectores').forEach(f => f.remove());
+      if (yaAbierta) return;
+
+      const tr = document.createElement('tr');
+      tr.className = 'fila-editar-perfil';
+      tr.innerHTML = `<td colspan="8" style="background:var(--cream); padding:14px">
+        <strong>Perfil y sede de ${escapeHtml(btn.dataset.nombre)}:</strong>
+        <div class="grid grid-2" style="margin-top:10px">
+          <div class="campo"><label>Perfil</label><select class="editar-rol">${opcionesSelect_(PERFILES_USUARIO, btn.dataset.rol)}</select></div>
+          <div class="campo"><label>Sede autorizada para registrar</label><select class="editar-sede">${opcionesSelect_(SEDES_USUARIO, btn.dataset.sede)}</select></div>
+        </div>
+        <p style="color:var(--grey);font-size:.8rem;margin:6px 0 10px">Caja y Cocina pueden consultar inventario de otras sedes; esta sede define dónde pueden registrar. Administrador siempre queda en Ambas.</p>
+        <button class="btn dorado btn-guardar-perfil" type="button">Guardar perfil y sede</button>
+        <button class="btn fantasma btn-cancelar-perfil" type="button">Cancelar</button>
+      </td>`;
+      fila.after(tr);
+
+      const selRol = tr.querySelector('.editar-rol');
+      const selSede = tr.querySelector('.editar-sede');
+      const ajustarAdmin = () => {
+        const esAdmin = selRol.value === 'Administrador';
+        if (esAdmin) selSede.value = 'Ambas';
+        selSede.disabled = esAdmin;
+      };
+      selRol.addEventListener('change', ajustarAdmin);
+      ajustarAdmin();
+      tr.querySelector('.btn-cancelar-perfil').addEventListener('click', () => tr.remove());
+      const guardar = tr.querySelector('.btn-guardar-perfil');
+      guardar.addEventListener('click', conBotonProtegido(guardar, async () => {
+        const data = await llamar('usuarios_guardar', { item: { id: btn.dataset.id, rol: selRol.value, sede: selSede.value } });
+        if (data.ok) {
+          avisarGuardado(`Perfil y sede de ${btn.dataset.nombre} actualizados.`);
+          cargar();
+        } else alert(data.error);
+      }));
+    });
+  });
+
   document.querySelectorAll('.btn-sectores').forEach(btn => {
     btn.addEventListener('click', () => {
       const fila = btn.closest('tr');
       const siguiente = fila.nextElementSibling;
       const yaAbierta = siguiente && siguiente.classList.contains('fila-editar-sectores');
-      document.querySelectorAll('.fila-editar-sectores').forEach(f => f.remove());
+      document.querySelectorAll('.fila-editar-perfil,.fila-editar-sectores').forEach(f => f.remove());
       if (yaAbierta) return;
 
       const id = btn.dataset.id;
@@ -162,9 +214,7 @@ async function cargar() {
         if (data.ok) {
           avisarGuardado(`Sectores de ${btnGuardar.dataset.nombre} actualizados.`);
           cargar();
-        } else {
-          alert(data.error);
-        }
+        } else alert(data.error);
       }));
     });
   });
@@ -180,16 +230,20 @@ document.getElementById('btn-crear').addEventListener('click', conBotonProtegido
     email: document.getElementById('nuevo-email').value.trim(),
     sectores_permitidos: sectoresMarcados_('nuevo')
   };
-  if (!item.nombre || !item.usuario || item.password.length < 8) { alert('Nombre, usuario y una contraseña de mínimo 8 caracteres son obligatorios.'); return; }
+  if (!item.nombre || !item.usuario || !item.rol || item.password.length < 8) {
+    alert('Nombre, usuario, perfil y una contraseña de mínimo 8 caracteres son obligatorios.');
+    return;
+  }
   const data = await llamar('usuarios_guardar', { item });
   if (data.ok) {
     avisarGuardado('Usuario creado.');
     ['nuevo-nombre','nuevo-usuario','nuevo-password','nuevo-email'].forEach(id => document.getElementById(id).value = '');
+    nuevoRol.value = '';
+    nuevaSede.disabled = false;
+    nuevaSede.value = 'Ambas';
     document.querySelectorAll('.chk-sector-nuevo').forEach(c => { c.checked = false; });
     cargar();
-  } else {
-    alert(data.error);
-  }
+  } else alert(data.error);
 }));
 
 cargar();
