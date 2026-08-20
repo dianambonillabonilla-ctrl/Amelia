@@ -14,11 +14,11 @@ function cajaGuardarEstadoFudoPersistente_(fecha, sede, estado) {
     sincronizado_en:(estado && estado.sincronizado_en) || new Date()
   });
   PropertiesService.getScriptProperties().setProperty(cajaFudoEstadoPropKey_(fecha,sede), JSON.stringify(limpio));
-  CacheService.getScriptCache().put(cajaFudoCacheKey_(formatearFecha_(fecha),sede), JSON.stringify(limpio), CAJA_FUDO_CACHE_SEGUNDOS_);
+  CacheService.getScriptCache().put(cajaFudoCacheKey_(formatearFecha_(fecha),sede), JSON.stringify(limpio), 3600);
   return limpio;
 }
 
-function cajaLeerEstadoFudo_(fecha, sede) {
+cajaLeerEstadoFudo_ = function(fecha, sede) {
   const f = formatearFecha_(fecha);
   const persistido = PropertiesService.getScriptProperties().getProperty(cajaFudoEstadoPropKey_(f,sede));
   if (persistido) {
@@ -29,9 +29,9 @@ function cajaLeerEstadoFudo_(fecha, sede) {
     try { return JSON.parse(guardado); } catch (e) {}
   }
   return { ok:false, pendiente:true, aplica:true, fecha:f, sede:sede, error:'FUDO todavía no tiene una sincronización registrada para esta fecha y sede.' };
-}
+};
 
-function cajaSincronizarFudo_(fecha,sede,usuario,forzar) {
+cajaSincronizarFudo_ = function(fecha,sede,usuario,forzar) {
   const f=formatearFecha_(fecha);
   if(!cajaFudoCredencialesConfiguradas_()) {
     return cajaGuardarEstadoFudoPersistente_(f,sede,{ok:true,aplica:false,fecha:f,sede:sede,sincronizado_en:'',ventas:null,pagos:null,gastos:null,error:''});
@@ -43,7 +43,7 @@ function cajaSincronizarFudo_(fecha,sede,usuario,forzar) {
   try{res.gastos=fudoApiSincronizarGastosArqueo_(f,f,usuario);if(!res.gastos||res.gastos.ok===false)errores.push('Gastos: '+((res.gastos&&res.gastos.error)||'falló'));}catch(e){errores.push('Gastos: '+(e.message||e));}
   res.ok=errores.length===0;res.error=errores.join(' | ');res.sincronizado_en=new Date();
   return cajaGuardarEstadoFudoPersistente_(f,sede,res);
-}
+};
 
 function cajaReferenciaInicialSincronizar_(fecha,sede,usuario) {
   const fechaFmt=formatearFecha_(fecha), fechaRef=cajaDiaAnteriorReactivacion_(fechaFmt);
@@ -54,7 +54,7 @@ function cajaReferenciaInicialSincronizar_(fecha,sede,usuario) {
   return ref;
 }
 
-function cajaAbrir_(item,usuario) {
+cajaAbrir_ = function(item,usuario) {
   cajaAsegurarEstructura_(); cajaAsegurarColumnasCustodia_(); cajaAsegurarColumnasInicioOperacion_();
   if (!item || !item.fecha || !item.sede) return {ok:false,error:'Falta la fecha o la sede'};
   if (CAJA_SEDES_VALIDAS_.indexOf(item.sede)===-1) return {ok:false,error:'Caja solo existe en San Antonio y Capri.'};
@@ -76,7 +76,6 @@ function cajaAbrir_(item,usuario) {
     referenciaInicial=cajaReferenciaInicialSincronizar_(fecha,item.sede,usuario);
     syncFudo=referenciaInicial.sincronizacion;
     difTotal=Number((totalFisico-referenciaInicial.referencia_total).toFixed(2));
-    // FUDO solo aporta un TOTAL; no inventamos una distribución entre caja y caja fuerte.
     difApertura=difTotal; difFuerte=0;
   } else {
     syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,false);
@@ -112,9 +111,9 @@ function cajaAbrir_(item,usuario) {
     auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fecha+'|'+item.sede,null,fila,item.sede,item.observacion_apertura||'');
   } finally { lock.releaseLock(); }
   return {ok:true,item:fila,fudo_sync:syncFudo,referencia_inicial:referenciaInicial};
-}
+};
 
-function cajaConciliacionApertura_(fecha,sede) {
+cajaConciliacionApertura_ = function(fecha,sede) {
   const fechaFmt=formatearFecha_(fecha), ultimo=cajaUltimoCierreAntes_(fechaFmt,sede);
   if(!ultimo && cajaUsaReferenciaFudoInicial_(fechaFmt,sede)){
     const ref=cajaReferenciaFudoDiaAnterior_(fechaFmt,sede);
@@ -162,9 +161,9 @@ function cajaConciliacionApertura_(fecha,sede) {
     custodia_esperada_hoy:{caja_operativa:cust.caja_operativa,caja_fuerte:cust.caja_fuerte,total:cust.total},
     fudo_cambio_desde_cierre:cambio,diferencia_fudo_dilana:cambio,diferencia_custodia_cierre:diferenciaCustodia,
     cuadra_fudo_dilana:fudoConfirmado?Math.abs(cambio)<0.01:null,cuadra_fisico_cierre_anterior:fudoConfirmado?Math.abs(diferenciaCustodia)<0.01:null};
-}
+};
 
-function cajaSincronizarAhora_(fecha,sede,usuario) {
+cajaSincronizarAhora_ = function(fecha,sede,usuario) {
   if(!fecha||!sede)return {ok:false,error:'Falta la fecha o la sede'};
   const f=formatearFecha_(fecha),actual=cajaSincronizarFudo_(f,sede,usuario,true),turno=cajaTurnoFila_(f,sede);let anterior=null,conc=null;
   if(!turno){
@@ -174,9 +173,9 @@ function cajaSincronizarAhora_(fecha,sede,usuario) {
   }
   return {ok:!!actual.ok&&(!anterior||!!anterior.ok),fecha:f,sede:sede,sincronizacion_actual:actual,sincronizacion_anterior:anterior,conciliacion_apertura:conc,
     error:!actual.ok?(actual.error||'No se pudo sincronizar FUDO actual.'):(anterior&&!anterior.ok?(anterior.error||'No se pudo sincronizar FUDO anterior.'):'')};
-}
+};
 
-function fudoSincronizacionCajaAutomatica_() {
+fudoSincronizacionCajaAutomatica_ = function() {
   const p=PropertiesService.getScriptProperties();
   if(!p.getProperty('FUDO_API_KEY')||!p.getProperty('FUDO_API_SECRET'))return {ok:true,omitida:'sin_credenciales'};
   const hoy=new Date(),ayer=new Date(hoy.getTime());ayer.setDate(ayer.getDate()-1);const desde=formatearFecha_(ayer),hasta=formatearFecha_(hoy);
@@ -193,4 +192,4 @@ function fudoSincronizacionCajaAutomatica_() {
   res.error=errores.join(' | ');res.sincronizado_en=new Date();
   [desde,hasta].forEach(function(fecha){CAJA_SEDES_VALIDAS_.forEach(function(sede){cajaGuardarEstadoFudoPersistente_(fecha,sede,res);});});
   return res;
-}
+};
