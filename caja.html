@@ -197,6 +197,20 @@
 
         <section id="cerrada" class="card oculto" style="border-left:4px solid var(--green)">
           <h2>✓ Caja cerrada</h2><div id="resumen-cierre"></div>
+          <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+            <h3 style="margin-top:0">Registrar entrega después del cierre</h3>
+            <p style="color:var(--grey);font-size:.82rem;margin-top:0">
+              Si sale dinero de la custodia después de cerrar (ej. el Administrador lo retira más
+              tarde), regístralo aquí. Queda igual que un movimiento normal, marcado "fuera de
+              turno", y descuenta del dinero bajo custodia que se compara al abrir el día siguiente.
+            </p>
+            <div class="campo"><label>Tipo</label><select id="post-mov-tipo"><option>Entrega administrador desde caja</option><option>Entrega administrador desde caja fuerte</option></select></div>
+            <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="post-mov-valor"></div>
+            <div class="campo"><label>Quién entrega</label><input id="post-mov-entrega"></div>
+            <div class="campo"><label>Quién recibe</label><input id="post-mov-recibe"></div>
+            <div class="campo"><label>Motivo u observación</label><input id="post-mov-motivo"></div>
+            <button class="btn" id="post-guardar-movimiento">Guardar entrega</button>
+          </div>
           <div id="bloque-correccion" class="oculto" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
             <p style="margin:0"><a href="#" id="link-mostrar-correccion" style="font-size:.85rem">Corregir este cierre</a></p>
             <div id="form-correccion" class="oculto" style="margin-top:12px">
@@ -395,10 +409,20 @@ function pintarFudoSync(){
     el.innerHTML=`<span style="color:var(--red)">⚠ Cuadre no confiable: ${sync.error||'no fue posible actualizar FUDO'}.</span>${avisoSinIdentificar}`;
   }
 }
+// true cuando la apertura probablemente usa la referencia inicial de FUDO (primer día, sin cierre
+// DILANA todavía) — cargar() la actualiza cada vez que trae datos frescos. Con esta referencia, la
+// comparación real es el TOTAL (caja + caja fuerte) contra el total de FUDO del día anterior, no la
+// caja operativa sola contra $0 (que es lo único que cajaEstado_ sabe mostrar sin abrir todavía).
+let referenciaInicialActiva_=false;
 function diferenciaApertura(){
   if(!estadoActual||estadoActual.apertura)return;
-  const dif=Number(document.getElementById('base-contada').value||0)-Number(estadoActual.base_esperada||0);
   const el=document.getElementById('diferencia-apertura');
+  if(referenciaInicialActiva_){
+    el.textContent='Primer día de Caja: no hay cierre anterior para comparar la caja operativa sola contra $0. Toca "Ver conciliación" para comparar el total físico contra la referencia de FUDO del día anterior.';
+    el.style.color='var(--grey)';
+    return;
+  }
+  const dif=Number(document.getElementById('base-contada').value||0)-Number(estadoActual.base_esperada||0);
   el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
   el.style.color=dif===0?'var(--green)':'var(--red)';
 }
@@ -610,6 +634,7 @@ async function cargar(opciones){
     // la referencia real que cajaAbrir_ va a usar (el total de FUDO del día anterior). El aviso solo
     // se muestra en ese caso probable (fecha ya en la era nueva + esperado en $0), no siempre.
     const posibleReferenciaInicial=fechaEl.value>='2026-08-20'&&Number(data.base_esperada)===0&&Number(data.caja_fuerte_esperada||0)===0;
+    referenciaInicialActiva_=posibleReferenciaInicial;
     document.getElementById('aviso-referencia-inicial').classList.toggle('oculto',!posibleReferenciaInicial);
     // La conciliación ya no se pide sola al cargar (auditoría, ago 2026): sincroniza en vivo contra
     // FUDO, así que se deja bajo demanda con el botón "Ver conciliación" en vez de gastar cuota cada
@@ -632,6 +657,7 @@ async function cargar(opciones){
       resumenHtml+=`<br><br><span style="color:var(--amber)">⚠ FUDO actualizó esta información después del cierre: ahora dice ${dinero(c.esperado_actual)} en vez de ${dinero(c.esperado_guardado)} guardado (${c.diferencia>0?'+':''}${dinero(c.diferencia)}). Coméntalo con el Administrador.</span>`;
     }
     document.getElementById('resumen-cierre').innerHTML=resumenHtml;
+    document.getElementById('post-mov-entrega').value=usuario.nombre||'';
     document.getElementById('bloque-correccion').classList.toggle('oculto',usuario.rol!=='Administrador');
     document.getElementById('form-correccion').classList.add('oculto');
     document.getElementById('correccion-efectivo').value=a.efectivo_contado;
@@ -699,7 +725,11 @@ document.getElementById('abrir-de-todas-formas').addEventListener('click',(e)=>{
 });
 document.getElementById('abrir').addEventListener('click',conBotonProtegido(document.getElementById('abrir'),async()=>{
   const item={...parametros(),base_inicial:document.getElementById('base-contada').value,caja_fuerte_inicial:document.getElementById('fuerte-contada-apertura').value,observacion_apertura:document.getElementById('observacion-apertura').value.trim()};
-  if(Number(item.base_inicial)!==Number(estadoActual.base_esperada||0)&&!item.observacion_apertura){alert('La base no coincide. Escribe una observación.');return;}
+  // El backend (cajaAbrir_) ya valida la diferencia real: compara el TOTAL (caja + caja fuerte)
+  // contra la referencia que corresponda (cierre DILANA anterior, o el primer día contra el total de
+  // FUDO del día anterior) y devuelve un mensaje ya adaptado a cuál caso es. Un precheck aquí que
+  // solo comparaba base_inicial contra base_esperada bloqueaba con una alerta falsa el primer día
+  // (base_esperada siempre es $0 antes de que exista cualquier cierre, aunque el total sí cuadre).
   const r=await llamar('caja_abrir',{item});if(!r.ok){alert(r.error);return;}avisarGuardado('Caja abierta. Ahora confirma Rappi.');cargar();
 }));
 document.getElementById('rappi').addEventListener('click',conBotonProtegido(document.getElementById('rappi'),async()=>{const r=await llamar('caja_rappi_marcar',parametros());if(!r.ok){alert(r.error);return;}avisarGuardado('Rappi marcado como encendido.');cargar();}));
@@ -713,6 +743,18 @@ document.getElementById('guardar-movimiento').addEventListener('click',conBotonP
   const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}
   movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
   ['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');document.getElementById('mov-es-gasto-fudo').checked=false;avisarGuardado('Movimiento registrado.');cargar();
+}));
+// Entrega después del cierre (auditoría externa, ago 2026): cajaMovimientoRegistrar_ ya acepta
+// entregas con la caja cerrada (quedan fuera_de_turno:true), pero no existía ningún formulario en
+// la pantalla para pedirlo — la sección "abierta" con "Registrar movimiento" desaparece justo cuando
+// ya se cerró. Misma clave de idempotencia por intento, aparte de la del formulario de arriba.
+let postMovimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
+document.getElementById('post-guardar-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('post-guardar-movimiento'),async()=>{
+  const item={...parametros(),tipo:document.getElementById('post-mov-tipo').value,valor:document.getElementById('post-mov-valor').value,persona_entrega:document.getElementById('post-mov-entrega').value.trim(),persona_recibe:document.getElementById('post-mov-recibe').value.trim(),motivo:document.getElementById('post-mov-motivo').value.trim(),idempotency_key:postMovimientoIdempotencyKey_};
+  const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}
+  postMovimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
+  ['post-mov-valor','post-mov-recibe','post-mov-motivo'].forEach(id=>document.getElementById(id).value='');
+  avisarGuardado('Entrega registrada.');cargar();
 }));
 document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;

@@ -26,12 +26,32 @@ function cajaFechaEsAnteriorInicioOficial_(valor) {
   return !!fecha && fecha < CAJA_FECHA_INICIO_OFICIAL_;
 }
 
+/**
+ * La marca que deja cajaInicializarOperacionDesde20Agosto2026() al ejecutarse. Antes solo se
+ * escribía y nunca se volvía a leer (auditoría externa, ago 2026): sin correrla, el corte de fecha
+ * igual dejaba operar Caja desde el 20/08 con el histórico anterior todavía mezclado en las hojas
+ * activas — el corte de fecha por sí solo no bastaba como garantía de que la migración ya pasó.
+ */
+function cajaMigracionHistoricaEjecutada_() {
+  if (typeof PropertiesService === 'undefined') return false;
+  return PropertiesService.getScriptProperties().getProperty('CAJA_MIGRACION_HISTORICA_HECHA') === 'true';
+}
+
 function cajaFechaOperacionPermitida_(valor) {
   const fecha = formatearFecha_(valor);
   // Las pruebas históricas del repositorio siguen pudiendo ejercitar escenarios previos al corte.
   // En producción esta variable no existe y el corte del 20/08/2026 es obligatorio.
   if (typeof DILANA_TEST_DESACTIVAR_REACTIVACION !== 'undefined' && DILANA_TEST_DESACTIVAR_REACTIVACION === true) return true;
-  return !!fecha && fecha >= CAJA_FECHA_INICIO_OFICIAL_;
+  if (!fecha || fecha < CAJA_FECHA_INICIO_OFICIAL_) return false;
+  return cajaMigracionHistoricaEjecutada_();
+}
+
+function cajaMensajeFechaNoPermitida_(valor) {
+  const fecha = formatearFecha_(valor);
+  if (!fecha || fecha < CAJA_FECHA_INICIO_OFICIAL_) {
+    return 'La operación oficial de Caja inicia el 20/08/2026. Las fechas anteriores quedaron archivadas.';
+  }
+  return 'Todavía no se ejecutó la inicialización de Caja del 20/08/2026 (cajaInicializarOperacionDesde20Agosto2026). Un Administrador debe correrla antes de operar Caja.';
 }
 
 function cajaAsegurarColumnasInicioOperacion_() {

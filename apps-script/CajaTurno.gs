@@ -84,11 +84,27 @@ function cajaFudoCacheKey_(fecha, sede) {
   return 'CAJA_FUDO_SYNC|' + fecha + '|' + sede;
 }
 
+/**
+ * cajaGuardarEstadoFudoPersistente_ (CajaInicioOperacion20260820.gs) escribe el mismo estado en
+ * PropertiesService además del caché, precisamente para sobrevivir a que el caché expire entre
+ * sincronizaciones automáticas (cada 15 min, TTL de caché más corto) — pero hasta ahora nada volvía
+ * a leer ese respaldo (auditoría externa, ago 2026): si el caché vencía, esto igual mostraba
+ * "pendiente" aunque sí hubiera un intento reciente guardado.
+ */
 function cajaLeerEstadoFudo_(fecha, sede) {
   const guardado = CacheService.getScriptCache().get(cajaFudoCacheKey_(fecha, sede));
-  if (!guardado) return { ok:false, pendiente:true, error:'FUDO aún no se ha actualizado desde Caja.' };
-  try { return JSON.parse(guardado); }
-  catch (e) { return { ok:false, pendiente:true, error:'No se pudo leer el último estado de FUDO.' }; }
+  if (guardado) {
+    try { return JSON.parse(guardado); }
+    catch (e) { /* cae al respaldo en Propiedades */ }
+  }
+  if (typeof PropertiesService !== 'undefined' && typeof cajaFudoEstadoPropKey_ === 'function') {
+    const persistente = PropertiesService.getScriptProperties().getProperty(cajaFudoEstadoPropKey_(fecha, sede));
+    if (persistente) {
+      try { return JSON.parse(persistente); }
+      catch (e) { /* sigue al pendiente de abajo */ }
+    }
+  }
+  return { ok:false, pendiente:true, error:'FUDO aún no se ha actualizado desde Caja.' };
 }
 
 /**
