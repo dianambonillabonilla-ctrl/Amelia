@@ -21,8 +21,6 @@ function accionPermitidaEnReactivacion_(action) {
 }
 
 function requiereRol_(usuario, rolesPermitidos) {
-  // En reactivación solo se conserva el alias necesario Caja -> Encargado. Gerencia/Lectura no
-  // obtiene acceso indirecto a movimientos de Caja aunque el router histórico todavía enumere Lectura.
   const rolEfectivo = usuario.rol === 'Caja' ? 'Encargado' : usuario.rol;
   const esRutaCajaLecturaHistorica = reactivacionBackendActiva_() &&
     rolesPermitidos.indexOf('Administrador') !== -1 && rolesPermitidos.indexOf('Encargado') !== -1 &&
@@ -93,11 +91,6 @@ function cajaMovimientosResumen_(movimientos) {
   return r;
 }
 
-/**
- * Una entrega marcada "corresponde a gasto FUDO" siempre descuenta físicamente desde el momento
- * de la entrega. Cuando FUDO sincroniza ese mismo gasto, se compensa hasta ese monto para impedir
- * que el mismo efectivo salga dos veces del esperado.
- */
 function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
   const movimientosTurno = cajaMovimientosVentanaTurno_(apertura, movimientos);
   const r = cajaMovimientosResumen_(movimientosTurno);
@@ -153,12 +146,6 @@ function cajaCustodiaEsperadaTrasCierre_(ultimoCierre, fechaActual, sede) {
     total:Number((operativa+cajaFuerte).toFixed(2)), movimientos:movimientos, resumen:r };
 }
 
-/**
- * Al corregir un cierre solo se revalidan los movimientos que realmente dependen de ese cierre:
- * los vinculados por turno_id (incluye entregas pre-apertura del día siguiente) y los movimientos
- * del mismo día hechos después de cerrar. Así una migración histórica posterior y no relacionada
- * no puede volver inválida una corrección legítima de otro periodo.
- */
 function cajaCustodiaTrasCorreccion_(turno, contado, fuerteContada) {
   const fechaCierre = formatearFecha_(turno.fecha);
   const tsCierre = cajaFechaMs_(turno.timestamp_cierre || turno.hora_cierre);
@@ -213,28 +200,61 @@ function cajaAsegurarColumnasCustodia_() {
 }
 
 function cajaAbrir_(item,usuario) {
-  cajaAsegurarEstructura_(); cajaAsegurarColumnasCustodia_();
+  cajaAsegurarEstructura_(); cajaAsegurarColumnasCustodia_(); cajaAsegurarColumnasInicioOperacion_();
   if (!item || !item.fecha || !item.sede) return {ok:false,error:'Falta la fecha o la sede'};
   if (CAJA_SEDES_VALIDAS_.indexOf(item.sede)===-1) return {ok:false,error:'Caja solo existe en San Antonio y Capri.'};
   if (!sedeEscrituraPermitida_(usuario,item.sede)) return {ok:false,error:'No puedes abrir la caja de otra sede'};
   const fecha=formatearFecha_(item.fecha);
+  if (!cajaFechaOperacionPermitida_(fecha)) return {ok:false,error:'La operación oficial de Caja inicia el 20/08/2026. Las fechas anteriores quedaron archivadas.'};
   if (fecha>formatearFecha_(new Date())) return {ok:false,error:'No puedes abrir la caja de una fecha futura.'};
   if (cajaExisteTurnoPosteriorA_(fecha,item.sede)) return {ok:false,error:'No puedes abrir una caja retroactiva porque ya existe un turno posterior de esta sede. Usa la corrección administrativa si necesitas ajustar historia.'};
   const existente=cajaTurnoFila_(fecha,item.sede);
   if (existente) return existente.estado==='Cerrado'?{ok:false,error:'La caja ya se cerró'}:{ok:true,ya_abierta:true,item:existente};
+
   const baseValida=cajaValorContadoValido_(item.base_inicial); if(!baseValida.ok)return {ok:false,error:'Efectivo contado al abrir: '+baseValida.error};
   const fuerteValida=cajaValorContadoValido_(item.caja_fuerte_inicial); if(!fuerteValida.ok)return {ok:false,error:'Caja fuerte contada al abrir: '+fuerteValida.error};
-  const syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,false);
-  const baseEsperada=cajaBaseEsperada_(fecha,item.sede), fuerteEsperada=cajaSaldoFuerteAntes_(fecha,item.sede);
   const baseInicial=baseValida.valor, fuerteInicial=fuerteValida.valor;
-  const difApertura=Number((baseInicial-baseEsperada).toFixed(2)), difFuerte=Number((fuerteInicial-fuerteEsperada).toFixed(2));
-  if ((difApertura!==0 || difFuerte!==0) && !String(item.observacion_apertura||'').trim()) {
-    return {ok:false,error:'Hay una diferencia al abrir la caja. Escribe una observación explicando qué pasó.',diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerte};
+  const totalFisico=Number((baseInicial+fuerteInicial).toFixed(2));
+  const usaReferenciaInicial=cajaUsaReferenciaFudoInicial_(fecha,item.sede);
+
+  let referenciaInicial=null, syncFudo=null, baseEsperada=0, fuerteEsperada=0;
+  let difApertura=0, difFuerte=0, difTotal=0;
+  if(usaReferenciaInicial){
+    referenciaInicial=cajaReferenciaInicialSincronizar_(fecha,item.sede,usuario);
+    syncFudo=referenciaInicial.sincronizacion;
+    difTotal=Number((totalFisico-referenciaInicial.referencia_total).toFixed(2));
+    // En el primer día FUDO aporta un total, no una distribución física entre cajón y caja fuerte.
+    difApertura=difTotal;
+    difFuerte=0;
+  } else {
+    syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,false);
+    baseEsperada=cajaBaseEsperada_(fecha,item.sede);
+    fuerteEsperada=cajaSaldoFuerteAntes_(fecha,item.sede);
+    difApertura=Number((baseInicial-baseEsperada).toFixed(2));
+    difFuerte=Number((fuerteInicial-fuerteEsperada).toFixed(2));
+    difTotal=Number((difApertura+difFuerte).toFixed(2));
   }
+
+  if (Math.abs(difTotal)>0.01 && !String(item.observacion_apertura||'').trim()) {
+    return {ok:false,error:usaReferenciaInicial?
+      'El total físico contado no coincide con la referencia de efectivo de FUDO del día anterior. Escribe una observación para dejar registrada la diferencia inicial.':
+      'Hay una diferencia al abrir la caja. Escribe una observación explicando qué pasó.',
+      diferencia_apertura:difApertura,diferencia_caja_fuerte_apertura:difFuerte,diferencia_total_apertura:difTotal,
+      referencia_total_apertura:referenciaInicial?referenciaInicial.referencia_total:Number((baseEsperada+fuerteEsperada).toFixed(2))};
+  }
+
   const fila={id:Utilities.getUuid(),fecha:fecha,sede:item.sede,estado:'Abierto',base_esperada:baseEsperada,base_inicial:baseInicial,
     diferencia_apertura:difApertura,observacion_apertura:item.observacion_apertura||'',caja_fuerte_esperada_apertura:fuerteEsperada,
     caja_fuerte_inicial:fuerteInicial,diferencia_caja_fuerte_apertura:difFuerte,hora_apertura:new Date(),usuario_apertura_id:usuario.id,
-    usuario_apertura:usuario.nombre,efectivo_fudo_al_abrir:cajaEfectivoFudoDia_(fecha,item.sede),rappi_encendido:false};
+    usuario_apertura:usuario.nombre,efectivo_fudo_al_abrir:cajaEfectivoFudoDia_(fecha,item.sede),rappi_encendido:false,
+    tipo_referencia_apertura:usaReferenciaInicial?'FUDO_DIA_ANTERIOR':'CIERRE_DILANA',
+    fecha_referencia_apertura:referenciaInicial?referenciaInicial.fecha_referencia:'',
+    referencia_total_apertura:referenciaInicial?referenciaInicial.referencia_total:Number((baseEsperada+fuerteEsperada).toFixed(2)),
+    efectivo_fudo_referencia_apertura:referenciaInicial?referenciaInicial.efectivo_fudo:'',
+    gastos_fudo_referencia_apertura:referenciaInicial?referenciaInicial.gastos_fudo_efectivo:'',
+    referencia_fudo_confirmada_apertura:referenciaInicial?referenciaInicial.confirmado:'',
+    diferencia_total_apertura:difTotal};
+
   const lock=LockService.getScriptLock(); if(!lock.tryLock(10000))return {ok:false,error:'Otra apertura de caja está en curso ahora mismo.'};
   try {
     const ahora=cajaTurnoFila_(fecha,item.sede); if(ahora)return ahora.estado==='Cerrado'?{ok:false,error:'La caja ya se cerró'}:{ok:true,ya_abierta:true,item:ahora};
@@ -242,7 +262,7 @@ function cajaAbrir_(item,usuario) {
     appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,fila);
     auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fecha+'|'+item.sede,null,fila,item.sede,item.observacion_apertura||'');
   } finally { lock.releaseLock(); }
-  return {ok:true,item:fila,fudo_sync:syncFudo};
+  return {ok:true,item:fila,fudo_sync:syncFudo,referencia_inicial:referenciaInicial};
 }
 
 function cajaMovimientoRegistrar_(item,usuario) {
@@ -250,6 +270,7 @@ function cajaMovimientoRegistrar_(item,usuario) {
   if(!item||!item.fecha||!item.sede)return {ok:false,error:'Falta fecha o sede'};
   if(!sedeEscrituraPermitida_(usuario,item.sede))return {ok:false,error:'No puedes registrar movimientos de otra sede'};
   const fecha=formatearFecha_(item.fecha);
+  if(!cajaFechaOperacionPermitida_(fecha))return {ok:false,error:'Caja inicia oficialmente el 20/08/2026; los movimientos anteriores quedaron archivados.'};
   if(fecha>formatearFecha_(new Date()))return {ok:false,error:'No puedes registrar movimientos de una fecha futura.'};
   if(cajaExisteTurnoPosteriorA_(fecha,item.sede))return {ok:false,error:'No puedes insertar movimientos retroactivos porque ya existe un turno posterior de esta sede.'};
   if(CAJA_TIPOS_MOVIMIENTO_.indexOf(item.tipo)===-1)return {ok:false,error:'Tipo de movimiento inválido'};
@@ -302,7 +323,6 @@ function cajaCerrar_(item,usuario) {
   const contado=contadoV.valor,fuerteContada=fuerteV.valor;
   const baseSiguiente=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente):contado;
   if(!isFinite(baseSiguiente)||baseSiguiente<0)return {ok:false,error:'La base para el siguiente turno es inválida.'};
-  // No existe salida implícita al cerrar. Todo lo que sale debe registrarse antes como entrega.
   if(Math.abs(baseSiguiente-contado)>0.01)return {ok:false,error:'La base siguiente debe ser exactamente el efectivo contado que queda en caja. Si vas a retirar dinero, registra primero la entrega a la persona (o muévelo a caja fuerte) y después vuelve a contar/cerrar.'};
   const lock=LockService.getScriptLock(); if(!lock.tryLock(10000))return {ok:false,error:'Otro cierre de caja está en curso ahora mismo.'};
   try {
@@ -323,11 +343,6 @@ function cajaCerrar_(item,usuario) {
   } finally { lock.releaseLock(); }
 }
 
-/**
- * Corrección administrativa del cierre. La corrección puede cambiar el conteo histórico, pero no
- * puede inventar una salida de custodia: la base siguiente queda siempre igual al efectivo contado
- * corregido. Si realmente salió dinero, debe existir un movimiento de entrega con receptor y motivo.
- */
 function cajaCorregir_(item,usuario) {
   cajaAsegurarEstructura_();
   if(!usuario||usuario.rol!=='Administrador')return {ok:false,error:'Solo un Administrador puede corregir un cierre ya hecho.'};
@@ -369,6 +384,20 @@ function cajaCorregir_(item,usuario) {
 
 function cajaConciliacionApertura_(fecha,sede) {
   const fechaFmt=formatearFecha_(fecha), ultimo=cajaUltimoCierreAntes_(fechaFmt,sede);
+  if(!ultimo && cajaUsaReferenciaFudoInicial_(fechaFmt,sede)){
+    const ref=cajaReferenciaFudoDiaAnterior_(fechaFmt,sede);
+    return {
+      disponible:true,tiene_cierre_dilana:false,modo_referencia_inicial_fudo:true,
+      fecha_referencia:ref.fecha_referencia,fudo_confirmado:ref.confirmado,
+      estado_conciliacion:ref.confirmado?'REFERENCIA_INICIAL_FUDO':'NO_CONFIRMADA_FUDO',
+      mensaje:ref.confirmado?'Inicio oficial de Caja: FUDO del día anterior es la referencia total. El conteo físico de hoy fija la primera distribución real entre caja y caja fuerte.':'No se pudo confirmar FUDO del día anterior; el conteo físico puede registrarse, pero la referencia inicial queda pendiente.',
+      fudo:{ventas_total:ref.ventas_total,pagos_total:ref.pagos_total,efectivo:ref.efectivo_fudo,gastos_efectivo:ref.gastos_fudo_efectivo,referencia_neta:ref.referencia_total},
+      dilana:null,custodia_esperada_hoy:{caja_operativa:null,caja_fuerte:null,total:ref.referencia_total},
+      movimientos_posteriores:{cantidad:0,entregado_personas:0,enviado_caja_fuerte:0,retirado_caja_fuerte:0,otros_ingresos:0},
+      cuadra_fudo_dilana:null,diferencia_fudo_dilana:null
+    };
+  }
+
   const fechaRef=ultimo?formatearFecha_(ultimo.fecha):cajaDiaAnteriorReactivacion_(fechaFmt);
   const syncRef=cajaLeerEstadoFudo_(fechaRef,sede);
   const fudoConfirmado=!!(syncRef&&syncRef.ok&&syncRef.aplica!==false);
@@ -415,13 +444,17 @@ function cajaFudoCambioTrasCierre_(turno) {
 
 function cajaSincronizarFudo_(fecha,sede,usuario,forzar) {
   const f=formatearFecha_(fecha);
-  if(!cajaFudoCredencialesConfiguradas_())return {ok:true,aplica:false,fecha:f,sede:sede,sincronizado_en:'',ventas:null,pagos:null,gastos:null,error:''};
-  const cache=CacheService.getScriptCache(),key=cajaFudoCacheKey_(f,sede);if(!forzar)return cajaLeerEstadoFudo_(f,sede);
+  if(!cajaFudoCredencialesConfiguradas_()){
+    const sinApi={ok:true,aplica:false,fecha:f,sede:sede,sincronizado_en:'',ventas:null,pagos:null,gastos:null,error:''};
+    return cajaGuardarEstadoFudoPersistente_(f,sede,sinApi);
+  }
+  if(!forzar)return cajaLeerEstadoFudo_(f,sede);
   const res={ok:false,aplica:true,fecha:f,sede:sede,sincronizado_en:new Date(),ventas:null,pagos:null,gastos:null,error:''},errores=[];
   try{res.ventas=fudoApiSincronizarVentas_(f,f,usuario,{sede:'Automática'});if(!res.ventas||res.ventas.ok===false)errores.push('Ventas: '+((res.ventas&&res.ventas.error)||'falló'));}catch(e){errores.push('Ventas: '+(e.message||e));}
   try{res.pagos=fudoApiSincronizarPagos_(f,f,usuario,{sede:'Automática'});if(!res.pagos||res.pagos.ok===false)errores.push('Pagos: '+((res.pagos&&res.pagos.error)||'falló'));}catch(e){errores.push('Pagos: '+(e.message||e));}
   try{res.gastos=fudoApiSincronizarGastosArqueo_(f,f,usuario);if(!res.gastos||res.gastos.ok===false)errores.push('Gastos: '+((res.gastos&&res.gastos.error)||'falló'));}catch(e){errores.push('Gastos: '+(e.message||e));}
-  res.ok=errores.length===0;res.error=errores.join(' | ');res.sincronizado_en=new Date();cache.put(key,JSON.stringify(res),CAJA_FUDO_CACHE_SEGUNDOS_);return res;
+  res.ok=errores.length===0;res.error=errores.join(' | ');res.sincronizado_en=new Date();
+  return cajaGuardarEstadoFudoPersistente_(f,sede,res);
 }
 
 function cajaSincronizarAhora_(fecha,sede,usuario) {
@@ -436,16 +469,18 @@ function fudoSincronizacionCajaAutomatica_() {
   const p=PropertiesService.getScriptProperties();
   if(!p.getProperty('FUDO_API_KEY')||!p.getProperty('FUDO_API_SECRET'))return {ok:true,omitida:'sin_credenciales'};
   const hoy=new Date(),ayer=new Date(hoy.getTime());ayer.setDate(ayer.getDate()-1);const desde=formatearFecha_(ayer),hasta=formatearFecha_(hoy);
-  const u={id:'sistema-fudo',nombre:'Sincronización automática FUDO',rol:'Administrador',sede:'Ambas'},res={ok:true,fecha_desde:desde,fecha_hasta:hasta,ventas:null,pagos:null,gastos:null};
+  const u={id:'sistema-fudo',nombre:'Sincronización automática FUDO',rol:'Administrador',sede:'Ambas'},res={ok:true,fecha_desde:desde,fecha_hasta:hasta,ventas:null,pagos:null,gastos:null},errores=[];
   function fallo(tipo,error) {
     const mensaje=error&&error.message?error.message:String(error||'Falló la sincronización automática.');
-    res.ok=false;
+    res.ok=false;errores.push(tipo+': '+mensaje);
     if(typeof fudoApiSyncRegistrar_==='function')fudoApiSyncRegistrar_(tipo,{ok:false,error:mensaje,fecha_desde:desde,fecha_hasta:hasta,origen:'caja_automatica'});
     return mensaje;
   }
   try{res.ventas=fudoApiSincronizarVentas_(desde,hasta,u,{});if(!res.ventas||res.ventas.ok===false)res.error_ventas=fallo('ventas',(res.ventas&&res.ventas.error)||'Falló la sincronización automática de ventas.');}catch(e){res.error_ventas=fallo('ventas',e);}
   try{res.pagos=fudoApiSincronizarPagos_(desde,hasta,u,{});if(!res.pagos||res.pagos.ok===false)res.error_pagos=fallo('pagos',(res.pagos&&res.pagos.error)||'Falló la sincronización automática de pagos.');}catch(e){res.error_pagos=fallo('pagos',e);}
   try{res.gastos=fudoApiSincronizarGastosArqueo_(desde,hasta,u);if(!res.gastos||res.gastos.ok===false)res.error_gastos=fallo('gastos_arqueo',(res.gastos&&res.gastos.error)||'Falló la sincronización automática de gastos de arqueo.');}catch(e){res.error_gastos=fallo('gastos_arqueo',e);}
+  res.error=errores.join(' | ');res.sincronizado_en=new Date();
+  [desde,hasta].forEach(function(fechaEstado){CAJA_SEDES_VALIDAS_.forEach(function(sede){cajaGuardarEstadoFudoPersistente_(fechaEstado,sede,res);});});
   return res;
 }
 
