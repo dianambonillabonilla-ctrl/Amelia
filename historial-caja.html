@@ -38,7 +38,7 @@
 
     <section class="card">
       <h2>Histórico</h2>
-      <p class="nota">Consulta cierres anteriores. Solo el Administrador puede corregir un cierre, y únicamente si no existe un cierre posterior que dependa de él.</p>
+      <p class="nota">Consulta cierres anteriores. Solo el Administrador puede corregir un cierre, y únicamente si no existe un cierre posterior que dependa de él. En una corrección, la base siguiente queda automáticamente igual al efectivo contado corregido; cualquier salida real de dinero debe existir como movimiento de custodia con receptor y motivo.</p>
       <div class="grid grid-4" style="margin-bottom:14px">
         <div class="campo"><label>Desde</label><input type="date" id="filtro-desde"></div>
         <div class="campo"><label>Hasta</label><input type="date" id="filtro-hasta"></div>
@@ -101,11 +101,10 @@ function pintarHistorial(filas){
 async function corregirCierre(f,btn){
   const efectivo=prompt('Efectivo contado corregido para '+f.fecha+' · '+f.sede+':',String(Number(f.efectivo_contado||0)));if(efectivo===null)return;
   const fuerte=prompt('Caja fuerte contada corregida:',String(Number(f.caja_fuerte_contada||0)));if(fuerte===null)return;
-  const base=prompt('Base que queda para el siguiente turno:',String(Number(efectivo)));if(base===null)return;
   const motivo=prompt('Motivo obligatorio de la corrección:','');if(motivo===null||!motivo.trim())return alert('Debes escribir el motivo de la corrección.');
   const observacion=prompt('Observación de cierre (opcional):',f.observacion_cierre||'');if(observacion===null)return;
-  if(!confirm('Vas a corregir un cierre ya realizado. El cambio quedará registrado en auditoría. ¿Continuar?'))return;
-  btn.disabled=true;try{const r=await llamar('caja_corregir',{item:{fecha:f.fecha,sede:f.sede,efectivo_contado:efectivo,caja_fuerte_contada:fuerte,base_siguiente:base,observacion_cierre:observacion,motivo_correccion:motivo.trim()}});if(!r.ok)return alert(r.error||'No se pudo corregir el cierre');avisarGuardado('Cierre corregido y auditado');await Promise.all([cargarHistorial(),cargarResumen(),cargarNovedades()]);}finally{btn.disabled=false;}
+  if(!confirm('Vas a corregir un cierre ya realizado. La base siguiente quedará igual al efectivo contado corregido. Si hubo una salida real de dinero, debe estar registrada como movimiento con receptor y motivo. El cambio quedará en auditoría. ¿Continuar?'))return;
+  btn.disabled=true;try{const r=await llamar('caja_corregir',{item:{fecha:f.fecha,sede:f.sede,efectivo_contado:efectivo,caja_fuerte_contada:fuerte,observacion_cierre:observacion,motivo_correccion:motivo.trim()}});if(!r.ok)return alert(r.error||'No se pudo corregir el cierre');avisarGuardado('Cierre corregido y auditado');await Promise.all([cargarHistorial(),cargarResumen(),cargarNovedades()]);}finally{btn.disabled=false;}
 }
 </script>
 </body>
