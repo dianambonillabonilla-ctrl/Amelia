@@ -291,6 +291,46 @@ function cajaCerrar_(item,usuario) {
   } finally { lock.releaseLock(); }
 }
 
+/**
+ * Corrección administrativa del cierre. La corrección puede cambiar el conteo histórico, pero no
+ * puede inventar una salida de custodia: la base siguiente queda siempre igual al efectivo contado
+ * corregido. Si realmente salió dinero, debe existir un movimiento de entrega con receptor y motivo.
+ */
+function cajaCorregir_(item,usuario) {
+  cajaAsegurarEstructura_();
+  if(!usuario||usuario.rol!=='Administrador')return {ok:false,error:'Solo un Administrador puede corregir un cierre ya hecho.'};
+  if(!item||!item.fecha||!item.sede)return {ok:false,error:'Falta fecha o sede'};
+  const fecha=formatearFecha_(item.fecha),turno=cajaTurnoFila_(fecha,item.sede);
+  if(!turno)return {ok:false,error:'No existe esa caja'};
+  if(turno.estado!=='Cerrado')return {ok:false,error:'Esta caja no está cerrada — no hay nada que corregir'};
+  if(cajaExisteCierrePosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un cierre más reciente de '+item.sede+'. Corrige primero ese día (o los días entre medio) antes de corregir este.'};
+  if(!String(item.motivo_correccion||'').trim())return {ok:false,error:'Escribe el motivo de la corrección.'};
+  const contadoV=cajaValorContadoValido_(item.efectivo_contado);if(!contadoV.ok)return {ok:false,error:'Efectivo contado: '+contadoV.error};
+  const fuerteV=cajaValorContadoValido_(item.caja_fuerte_contada);if(!fuerteV.ok)return {ok:false,error:'Caja fuerte contada: '+fuerteV.error};
+  const contado=contadoV.valor,fuerteContada=fuerteV.valor;
+  const baseSolicitada=item.base_siguiente!==''&&item.base_siguiente!=null?Number(item.base_siguiente):contado;
+  if(!isFinite(baseSolicitada)||baseSolicitada<0)return {ok:false,error:'La base para el siguiente turno es inválida.'};
+  if(Math.abs(baseSolicitada-contado)>0.01)return {ok:false,error:'La base siguiente corregida debe ser exactamente el efectivo contado corregido. Una salida real de dinero debe registrarse como movimiento de custodia con receptor y motivo.'};
+  const lock=LockService.getScriptLock();if(!lock.tryLock(10000))return {ok:false,error:'Otra corrección está en curso ahora mismo.'};
+  try{
+    const turnoAhora=cajaTurnoFila_(fecha,item.sede);
+    if(!turnoAhora||turnoAhora.estado!=='Cerrado')return {ok:false,error:'Esta caja no está cerrada — no hay nada que corregir'};
+    if(cajaExisteCierrePosteriorA_(fecha,item.sede))return {ok:false,error:'Ya existe un cierre más reciente de '+item.sede+'. Corrige primero ese día.'};
+    const esperado=Number(turnoAhora.efectivo_esperado)||0,fuerteEsperada=Number(turnoAhora.caja_fuerte_esperada)||0;
+    const dif=Number((contado-esperado).toFixed(2)),difF=Number((fuerteContada-fuerteEsperada).toFixed(2));
+    const anterior={efectivo_contado:turnoAhora.efectivo_contado,diferencia:turnoAhora.diferencia,caja_fuerte_contada:turnoAhora.caja_fuerte_contada,
+      diferencia_caja_fuerte:turnoAhora.diferencia_caja_fuerte,base_siguiente:turnoAhora.base_siguiente,caja_fuerte_siguiente:turnoAhora.caja_fuerte_siguiente,
+      entrega_cierre:turnoAhora.entrega_cierre,observacion_cierre:turnoAhora.observacion_cierre};
+    const nuevo={efectivo_contado:contado,efectivo_esperado:esperado,diferencia:dif,caja_fuerte_contada:fuerteContada,caja_fuerte_esperada:fuerteEsperada,
+      diferencia_caja_fuerte:difF,entrega_cierre:0,persona_recibe_cierre:'',persona_verifica_cierre:'',base_siguiente:contado,caja_fuerte_siguiente:fuerteContada,
+      observacion_cierre:item.observacion_cierre!==undefined?item.observacion_cierre:turnoAhora.observacion_cierre,corregido_por:usuario.nombre,corregido_en:new Date(),
+      motivo_correccion:item.motivo_correccion};
+    cajaTurnoActualizarFila_(fecha,item.sede,nuevo);
+    auditoriaRegistrar_(usuario,'caja_corregir','CajaTurno',fecha+'|'+item.sede,anterior,nuevo,item.sede,item.motivo_correccion);
+    return {ok:true,efectivo_contado:contado,diferencia:dif,caja_fuerte_contada:fuerteContada,diferencia_caja_fuerte:difF,base_siguiente:contado};
+  }finally{lock.releaseLock();}
+}
+
 function cajaConciliacionApertura_(fecha,sede) {
   const fechaFmt=formatearFecha_(fecha), ultimo=cajaUltimoCierreAntes_(fechaFmt,sede);
   const fechaRef=ultimo?formatearFecha_(ultimo.fecha):cajaDiaAnteriorReactivacion_(fechaFmt);
