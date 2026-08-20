@@ -14,6 +14,7 @@
 const CAJA_FECHA_INICIO_OFICIAL_ = '2026-08-20';
 const CAJA_ARCHIVO_TURNOS_PRE_INICIO_ = 'Caja_Turno_Archivo_Pre20260820';
 const CAJA_ARCHIVO_MOVIMIENTOS_PRE_INICIO_ = 'Caja_Movimientos_Archivo_Pre20260820';
+const CAJA_ESTADO_FUDO_TTL_SEGUNDOS_ = 3600;
 const CAJA_COLUMNAS_INICIO_OPERACION_ = [
   'tipo_referencia_apertura','fecha_referencia_apertura','referencia_total_apertura',
   'efectivo_fudo_referencia_apertura','gastos_fudo_referencia_apertura','referencia_fudo_confirmada_apertura',
@@ -35,6 +36,25 @@ function cajaFechaOperacionPermitida_(valor) {
 
 function cajaAsegurarColumnasInicioOperacion_() {
   asegurarColumnas_(sheet_(SHEET_NAMES.CAJA_TURNO), CAJA_COLUMNAS_INICIO_OPERACION_);
+}
+
+function cajaFudoEstadoPropKey_(fecha, sede) {
+  return 'CAJA_FUDO_ESTADO|' + formatearFecha_(fecha) + '|' + sede;
+}
+
+/**
+ * Guarda el estado de FUDO más allá del caché corto histórico de Caja y, además, refresca
+ * el mismo cache key que ya consume cajaEstado_. El trigger corre cada 15 minutos y este valor
+ * vive una hora, por lo que la pantalla deja de mostrar falsos "pendiente" entre ejecuciones.
+ */
+function cajaGuardarEstadoFudoPersistente_(fecha, sede, estado) {
+  const f = formatearFecha_(fecha);
+  const limpio = Object.assign({}, estado || {}, { fecha:f, sede:sede });
+  if (limpio.sincronizado_en instanceof Date) limpio.sincronizado_en = limpio.sincronizado_en.toISOString();
+  else if (!limpio.sincronizado_en) limpio.sincronizado_en = new Date().toISOString();
+  PropertiesService.getScriptProperties().setProperty(cajaFudoEstadoPropKey_(f,sede), JSON.stringify(limpio));
+  CacheService.getScriptCache().put(cajaFudoCacheKey_(f,sede), JSON.stringify(limpio), CAJA_ESTADO_FUDO_TTL_SEGUNDOS_);
+  return limpio;
 }
 
 function cajaSepararFilasPorInicioOficial_(encabezados, filas) {
@@ -88,7 +108,6 @@ function cajaArchivarFilasAnterioresInicio_(nombreHojaActiva, nombreHojaArchivo)
     archivo.getRange(archivo.getLastRow()+1,1,nuevas.length,encabezados.length).setValues(nuevas);
   }
 
-  // Se eliminan desde abajo para conservar los números de fila durante el recorrido.
   const idxFecha = encabezados.indexOf('fecha');
   let retiradas = 0;
   for (let i = valores.length - 1; i >= 1; i--) {
@@ -132,6 +151,15 @@ function cajaReferenciaFudoDiaAnterior_(fecha, sede) {
   };
 }
 
+function cajaReferenciaInicialSincronizar_(fecha,sede,usuario) {
+  const fechaFmt=formatearFecha_(fecha), fechaRef=cajaDiaAnteriorReactivacion_(fechaFmt);
+  const sync=cajaSincronizarFudo_(fechaRef,sede,usuario,true);
+  const ref=cajaReferenciaFudoDiaAnterior_(fechaFmt,sede);
+  ref.sincronizacion=sync;
+  ref.confirmado=!!(sync&&sync.ok&&sync.aplica!==false);
+  return ref;
+}
+
 /** Devuelve true mientras la sede todavía no tenga un cierre DILANA desde el corte oficial. */
 function cajaUsaReferenciaFudoInicial_(fecha, sede) {
   const fechaFmt = formatearFecha_(fecha);
@@ -163,7 +191,6 @@ function cajaInicializarOperacionDesde20Agosto2026() {
     lock.releaseLock();
   }
 
-  // La API se consulta fuera del candado: los importadores FUDO pueden usar sus propios locks.
   const usuarioSistema = { id:'sistema-caja-inicio', nombre:'Inicialización Caja 20/08/2026', rol:'Administrador', sede:'Ambas' };
   const referencias = {};
   ['San Antonio','Capri'].forEach(function (sede) {
