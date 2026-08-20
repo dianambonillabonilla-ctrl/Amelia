@@ -92,6 +92,12 @@
             <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
             <button class="btn dorado" id="abrir">Abrir caja</button>
           </div>
+          <!-- Conciliación FUDO vs. el cierre anterior (cajaConciliacionApertura_, ZZ_ReactivacionCajaFinal.gs)
+               — antes de contar, saber si FUDO confirma el cierre de ayer o si algo cambió después. -->
+          <div id="conciliacion-apertura" class="card oculto" style="border-left:4px solid var(--gold)">
+            <h3 style="margin-top:0">Conciliación con el cierre anterior</h3>
+            <div id="conciliacion-apertura-cuerpo" style="font-size:.86rem"></div>
+          </div>
         </section>
 
         <section id="abierta" class="oculto">
@@ -125,6 +131,10 @@
               <div class="linea"><span class="etq">🔒 Enviado a caja fuerte</span><strong id="d-envio-fuerte">$0</strong></div>
               <div class="linea"><span class="etq">🤝 Entregado al administrador</span><strong id="d-entregas">$0</strong></div>
               <div class="linea"><span class="etq">💸 Gastos y salidas</span><strong id="d-gastos">$0</strong></div>
+              <!-- Gastos que FUDO ya marcó "Usar en arqueo" (ZZ_FudoGastosArqueo.gs) — se restan del
+                   esperado, compensando lo que ya se haya entregado marcado como ese mismo gasto para
+                   no descontarlo dos veces. Solo aparece cuando hay alguno ese turno. -->
+              <div class="linea oculto" id="linea-gastos-fudo"><span class="etq">🧾 Gastos FUDO (arqueo)</span><strong id="d-gastos-fudo">$0</strong></div>
             </div>
           </div>
 
@@ -137,15 +147,27 @@
                 <div class="campo"><label>Quién entrega</label><input id="mov-entrega"></div>
                 <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
               </div>
+              <!-- Solo aplica a "Entrega administrador desde caja" (ZZ_ReactivacionCajaFinal.gs
+                   rechaza la bandera en cualquier otro tipo): si esta plata en realidad es un gasto
+                   que también vas a ver reflejado en FUDO, márcalo — así cuando FUDO sincronice ese
+                   mismo gasto no se resta dos veces del efectivo esperado. -->
+              <div class="campo oculto" id="campo-gasto-fudo">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="checkbox" id="mov-es-gasto-fudo" style="width:auto">
+                  Esta entrega corresponde a un gasto que también vas a registrar en FUDO
+                </label>
+              </div>
               <div class="campo"><label>Motivo u observación</label><input id="mov-motivo"></div>
               <button class="btn" id="guardar-movimiento">Guardar movimiento</button>
             </div>
 
             <div class="card">
               <h2>Cerrar caja</h2>
-              <div class="advertencia">Cuenta por separado el efectivo operativo y el dinero guardado en caja fuerte.</div>
+              <div class="advertencia">Cuenta por separado el efectivo operativo y el dinero guardado en caja fuerte.
+                No existe una salida implícita al cerrar: lo que cuentes queda completo como base del
+                siguiente turno. Si vas a sacar dinero, regístralo antes como un movimiento de "Envío a
+                caja fuerte" o "Entrega administrador".</div>
               <div class="campo"><label>Efectivo contado en caja operativa</label><input type="number" min="0" step="1" id="cierre-contado"></div>
-              <div class="campo"><label>Efectivo que queda para abrir el siguiente turno</label><input type="number" min="0" step="1" id="cierre-base"></div>
               <div class="campo"><label>Dinero contado en caja fuerte</label><input type="number" min="0" step="1" id="cierre-fuerte"></div>
               <div class="campo"><label>Observación cuando haya diferencia</label><input id="cierre-observacion"></div>
               <div id="calculo-cierre" style="font-size:.86rem;margin-bottom:12px"></div>
@@ -164,12 +186,12 @@
               <p style="color:var(--grey);font-size:.82rem;margin-top:0">
                 Solo para cuando el número original quedó mal (ej. un error al contar). Queda
                 registrado quién corrigió y por qué; lo esperado original no cambia, solo lo contado
-                y la diferencia resultante.
+                y la diferencia resultante. Tampoco aquí existe una salida implícita: la base siguiente queda automáticamente igual al efectivo contado corregido — si de verdad salió dinero,
+                debe existir su propio movimiento de entrega.
               </p>
               <div class="dinero-grid">
                 <div class="dinero"><span>Efectivo contado (corregido)</span><input type="number" min="0" step="1" id="correccion-efectivo" style="margin-top:8px"></div>
                 <div class="dinero"><span>Caja fuerte contada (corregida)</span><input type="number" min="0" step="1" id="correccion-fuerte" style="margin-top:8px"></div>
-                <div class="dinero"><span>Base para el siguiente turno</span><input type="number" min="0" step="1" id="correccion-base-siguiente" style="margin-top:8px"></div>
               </div>
               <div class="campo"><label>Observación del cierre (opcional, reemplaza la actual)</label><input id="correccion-observacion"></div>
               <div class="campo"><label>Motivo de la corrección</label><input id="correccion-motivo" placeholder="ej. se contó mal el efectivo original, el real era..."></div>
@@ -241,18 +263,24 @@
 <script src="assets/config.js"></script>
 <script>
 Sesion.requerir();
-// Diana (ago 2026): "Resumen del día" (antes historial-cierres-turno.html) sí dejaba entrar a
-// Lectura; para no quitarle algo que ya podía ver al fusionar las 3 páginas en una, la pantalla
-// completa se abre para Lectura también, pero las acciones que mueven dinero (abrir/cerrar caja,
-// registrar movimiento, corregir un cierre) siguen ocultas para cualquiera que no sea
-// Administrador o Encargado — eso no cambia.
-requerirRol_(['Administrador','Encargado','Lectura']);
+// Durante la reactivación (ZZ_ReactivacionCajaFinal.gs, requiereRol_ en el backend) Lectura/Gerencia
+// NO tienen acceso al módulo Caja — mensaje explícito del propio backend: "El perfil Gerencia/
+// Lectura no tiene acceso al módulo Caja durante la reactivación." La decisión de dejar entrar a
+// Lectura (para no quitarle lo que veía en el antiguo historial-cierres-turno.html) queda revertida
+// mientras dure Fase 0 — el rol 'Caja' es el pensado para quien opera la caja en esta etapa.
+requerirRol_(['Administrador','Caja']);
 montarBarraUsuario();
 const usuario=Sesion.usuario();
-const puedeOperarCaja_=usuario.rol==='Administrador'||usuario.rol==='Encargado';
+// 'Caja' es el rol pensado para operar el módulo en esta etapa; 'Encargado' se conserva porque el
+// backend (cajaPuedeCerrar_ en ZZ_ReactivacionCajaFinal.gs) todavía lo acepta para cerrar turno.
+const puedeOperarCaja_=usuario.rol==='Administrador'||usuario.rol==='Encargado'||usuario.rol==='Caja';
 
 /* ===================== Pestañas ===================== */
-const parametrosUrl_=new URLSearchParams(location.search);
+// window.location.search (no location.search a secas) — Historial (y los redirects de las páginas
+// viejas) enlazan aquí con ?fecha=&sede=&tab= para abrir directo el día/pestaña correctos.
+const parametrosUrl_=new URLSearchParams(window.location.search);
+const fechaSolicitada=parametrosUrl_.get('fecha');
+const sedeSolicitada=parametrosUrl_.get('sede');
 function activarTab_(nombre){
   document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.classList.toggle('activo',b.dataset.tab===nombre));
   ['dia','historial','cierres'].forEach(t=>{
@@ -266,16 +294,16 @@ document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.addEventListener('
 /* ===================== PESTAÑA: Caja del día ===================== */
 const fechaEl=document.getElementById('fecha');
 const sedeEl=document.getElementById('sede');
-fechaEl.value=parametrosUrl_.get('fecha')||fechaLocalHoy_();
+fechaEl.value=fechaSolicitada||fechaLocalHoy_();
 restringirSelectorSede_(sedeEl);
 // Caja solo existe en sedes de venta; Centro de Producción no debe aparecer aquí.
 Array.from(sedeEl.options).forEach(o=>{if(o.value==='Centro de Producción')o.remove();});
-if(parametrosUrl_.get('sede')&&Array.from(sedeEl.options).some(o=>o.value===parametrosUrl_.get('sede')))sedeEl.value=parametrosUrl_.get('sede');
+if(sedeSolicitada&&Array.from(sedeEl.options).some(o=>o.value===sedeSolicitada))sedeEl.value=sedeSolicitada;
 if(!sedeEl.value && sedeEl.options.length)sedeEl.value=sedeEl.options[0].value;
 document.getElementById('responsable').textContent=usuario.nombre||usuario.usuario;
 document.getElementById('perfil').textContent=`${usuario.rol} · ${usuario.sede}`;
-// Lectura ve la pantalla pero no puede abrir/cerrar/registrar nada — se oculta el botón de acción,
-// el resto (números, historial) sigue visible igual que ya podía ver en Resumen del día.
+// requerirRol_ ya bloquea la entrada de cualquiera que no sea Administrador/Caja — esto queda como
+// defensa adicional si algún día ese gate se relaja para dejar entrar a un rol de solo lectura.
 if(!puedeOperarCaja_){
   ['abrir','rappi','guardar-movimiento','cerrar','btn-corregir-cierre','abrir-de-todas-formas','btn-sincronizar-fudo'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.classList.add('oculto');
@@ -331,21 +359,46 @@ function diferenciaApertura(){
   el.textContent=dif===0?'✓ La base coincide.':`Diferencia al abrir: ${dif>0?'+':''}${dinero(dif)}`;
   el.style.color=dif===0?'var(--green)':'var(--red)';
 }
+// Conciliación FUDO vs. el cierre anterior (cajaConciliacionApertura_, viaja dentro de la respuesta
+// de caja_sincronizar_ahora) — antes de contar, saber si FUDO confirma el cierre de ayer, si cambió
+// algo después de cerrar, o si no hay con qué comparar todavía.
+const ESTADO_CONCILIACION_INFO_={
+  CUADRA:{icono:'🟢',texto:'FUDO confirma el cierre anterior — cuadra.'},
+  NO_CONFIRMADA_FUDO:{icono:'🔴',texto:'No se pudo confirmar FUDO (NO_CONFIRMADA_FUDO) para la fecha de referencia — la conciliación no se declara todavía.'},
+  FUDO_CAMBIO_DESDE_CIERRE:{icono:'🟡',texto:'Cambio desde el cierre: FUDO actualizó ventas después de que se cerró ese turno.'},
+  DIFERENCIA_CUSTODIA:{icono:'🟡',texto:'Diferencia de custodia: los movimientos posteriores al cierre no cuadran con lo que debería haber ahora.'},
+  SIN_CIERRE_DILANA:{icono:'⚪',texto:'No existe un cierre anterior en Caja para comparar contra FUDO.'}
+};
+async function cargarConciliacionApertura_(){
+  const card=document.getElementById('conciliacion-apertura');
+  const r=await llamar('caja_sincronizar_ahora',parametros());
+  if(!r.ok||!r.conciliacion_apertura){card.classList.add('oculto');return;}
+  const c=r.conciliacion_apertura;
+  const info=ESTADO_CONCILIACION_INFO_[c.estado_conciliacion]||{icono:'⚪',texto:c.estado_conciliacion||''};
+  let html=`<p style="margin:0">${info.icono} <strong>${escapeHtml(c.estado_conciliacion||'')}</strong> — ${escapeHtml(info.texto)}</p>`;
+  if(c.tiene_cierre_dilana){
+    html+=`<p style="margin:8px 0 0;color:var(--grey)">Cierre de referencia (${escapeHtml(c.fecha_referencia)}): esperado guardado ${dinero(c.dilana.esperado_cierre_guardado)}`;
+    if(c.fudo_cambio_desde_cierre)html+=`, ahora con FUDO actual ${dinero(c.dilana.esperado_cierre_con_fudo_actual)} (${c.fudo_cambio_desde_cierre>0?'+':''}${dinero(c.fudo_cambio_desde_cierre)})`;
+    html+='.</p>';
+  }
+  card.classList.remove('oculto');
+  document.getElementById('conciliacion-apertura-cuerpo').innerHTML=html;
+}
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
-  const base=Number(document.getElementById('cierre-base').value||0);
   const fuerteContada=Number(document.getElementById('cierre-fuerte').value||0);
   const esperado=Number(estadoActual.efectivo_esperado||0);
   const fuerteEsperada=Number(estadoActual.caja_fuerte_esperada||0);
   const dif=contado-esperado;
   const difFuerte=fuerteContada-fuerteEsperada;
-  const entrega=contado-base;
   const fudoNoConfiable=estadoActual.cuadre_confiable===false;
   const hayDiferenciaDinero=dif!==0||difFuerte!==0;
-  let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong><br>`;
-  if(difFuerte!==0)html+=`Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong><br>`;
-  html+=`Dinero que se entrega: <strong>${dinero(entrega)}</strong>`;
+  // No existe una salida implícita al cerrar (ZZ_ReactivacionCajaFinal.gs, ago 2026): lo contado
+  // queda completo como base del turno siguiente — ya no hay un campo aparte para "lo que se
+  // entrega", eso se registra antes como su propio movimiento.
+  let html=`Esperado: <strong>${dinero(esperado)}</strong><br>Diferencia: <strong style="color:${dif===0?'var(--green)':'var(--red)'}">${dif>0?'+':''}${dinero(dif)}</strong>`;
+  if(difFuerte!==0)html+=`<br>Diferencia en caja fuerte: <strong style="color:var(--red)">${difFuerte>0?'+':''}${dinero(difFuerte)}</strong>`;
   // Diana (ago 2026): ni una diferencia de dinero ni que FUDO no haya sincronizado bloquean el
   // cierre — la caja se cierra siempre. Una diferencia sí exige dejar por escrito qué pasó; que
   // FUDO no sincronizara no (el sistema ya lo sabe y se lo avisa al Administrador aparte).
@@ -494,12 +547,15 @@ async function cargar(opciones){
     document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
     document.getElementById('base-contada').value='';
     document.getElementById('fuerte-contada-apertura').value='';
-    mostrar('sin-abrir');diferenciaApertura();return;
+    mostrar('sin-abrir');diferenciaApertura();cargarConciliacionApertura_();return;
   }
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
     const a=data.apertura;const dif=Number(a.diferencia||0);
-    let resumenHtml=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Entregado por ${escapeHtml(a.usuario_cierre||'responsable')}: <strong>${dinero(a.entrega_cierre)}</strong><br>Base siguiente: <strong>${dinero(a.base_siguiente)}</strong>`;
+    // No existe una salida implícita al cerrar (ago 2026): base_siguiente siempre queda igual a lo
+    // contado, así que ya no hace falta mostrarla aparte — cualquier dinero que salió de verdad
+    // aparece como su propio movimiento en "Movimientos registrados".
+    let resumenHtml=`Esperado: <strong>${dinero(a.efectivo_esperado)}</strong><br>Contado: <strong>${dinero(a.efectivo_contado)}</strong><br>Diferencia: <strong>${dinero(dif)}</strong><br>Cerrado por ${escapeHtml(a.usuario_cierre||'responsable')}`;
     // Diana (ago 2026): FUDO sigue sincronizando "ayer" cada 15 minutos — si algo cambió después de
     // cerrar, que se vea aquí mismo (Encargado o Administrador, quien sea que mire este día), no
     // solo en el panel de novedades del Administrador.
@@ -512,7 +568,6 @@ async function cargar(opciones){
     document.getElementById('form-correccion').classList.add('oculto');
     document.getElementById('correccion-efectivo').value=a.efectivo_contado;
     document.getElementById('correccion-fuerte').value=a.caja_fuerte_contada;
-    document.getElementById('correccion-base-siguiente').value=a.base_siguiente;
     document.getElementById('correccion-observacion').value=a.observacion_cierre||'';
     document.getElementById('correccion-motivo').value='';
     mostrar('cerrada');return;
@@ -524,6 +579,9 @@ async function cargar(opciones){
   document.getElementById('d-envio-fuerte').textContent='−'+dinero(data.movimientos_resumen.envios_caja_fuerte||0);
   document.getElementById('d-entregas').textContent='−'+dinero(data.movimientos_resumen.entregas_administrador||0);
   document.getElementById('d-gastos').textContent='−'+dinero(data.movimientos_resumen.gastos);
+  const gastosFudoNeto=Number(data.movimientos_resumen.gastos_fudo_neto)||0;
+  document.getElementById('linea-gastos-fudo').classList.toggle('oculto',gastosFudoNeto<=0);
+  document.getElementById('d-gastos-fudo').textContent='−'+dinero(gastosFudoNeto);
   document.getElementById('d-esperado').textContent=dinero(data.efectivo_esperado);
   document.getElementById('d-fuerte').textContent=dinero(data.caja_fuerte_esperada||0);
   document.getElementById('d-total').textContent=dinero(data.total_bajo_custodia||0);
@@ -533,19 +591,26 @@ async function cargar(opciones){
   document.getElementById('rappi-pendiente').classList.toggle('oculto',rappi||!puedeOperarCaja_);document.getElementById('rappi-ok').classList.toggle('oculto',!rappi);
   document.getElementById('mov-entrega').value=usuario.nombre||'';
   // Igual que al abrir: los campos de conteo del cierre quedan vacíos, no precargados con lo
-  // esperado — "cierre-base" (lo que se decide dejar para el siguiente turno) no es un conteo
-  // contra algo, así que ese sí puede sugerir la base con la que se abrió hoy.
+  // esperado. Ya no hay un campo "base para el siguiente turno" que precargar — no existe una
+  // salida implícita al cerrar, lo contado queda completo como base del turno siguiente.
   document.getElementById('cierre-contado').value='';
-  document.getElementById('cierre-base').value=data.apertura.base_inicial||0;
   document.getElementById('cierre-fuerte').value='';
   const mov=await llamar('caja_movimientos_listar',p);pintarMovimientos(mov.ok?mov.data:[]);
   mostrar('abierta');calculoCierre();
 }
 document.getElementById('base-contada').addEventListener('input',diferenciaApertura);
 document.getElementById('cierre-contado').addEventListener('input',calculoCierre);
-document.getElementById('cierre-base').addEventListener('input',calculoCierre);
 document.getElementById('cierre-fuerte').addEventListener('input',calculoCierre);
-document.getElementById('mov-tipo').addEventListener('change',()=>{const t=document.getElementById('mov-tipo').value;document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';});
+document.getElementById('mov-tipo').addEventListener('change',()=>{
+  const t=document.getElementById('mov-tipo').value;
+  document.getElementById('datos-entrega').style.display=t.indexOf('Entrega administrador')===0?'block':'none';
+  // Solo "Entrega administrador desde caja" puede marcarse como gasto FUDO (cajaMovimientoRegistrar_
+  // rechaza la bandera en cualquier otro tipo) — se oculta y se desmarca en cualquier otro caso para
+  // no enviarla por error.
+  const esEntregaDesdeCaja=t==='Entrega administrador desde caja';
+  document.getElementById('campo-gasto-fudo').classList.toggle('oculto',!esEntregaDesdeCaja);
+  if(!esEntregaDesdeCaja)document.getElementById('mov-es-gasto-fudo').checked=false;
+});
 fechaEl.addEventListener('change',cargar);sedeEl.addEventListener('change',cargar);document.getElementById('actualizar').addEventListener('click',cargar);
 document.getElementById('reintentar').addEventListener('click',()=>cargar());
 // Botón manual: a diferencia del disparo automático en segundo plano (que solo corre si la caja
@@ -576,10 +641,10 @@ document.getElementById('rappi').addEventListener('click',conBotonProtegido(docu
 // SÍ tuvo éxito, para que el siguiente movimiento (uno de verdad distinto) tenga su propia clave.
 let movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
 document.getElementById('guardar-movimiento').addEventListener('click',conBotonProtegido(document.getElementById('guardar-movimiento'),async()=>{
-  const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim(),idempotency_key:movimientoIdempotencyKey_};
+  const item={...parametros(),tipo:document.getElementById('mov-tipo').value,valor:document.getElementById('mov-valor').value,persona_entrega:document.getElementById('mov-entrega').value.trim(),persona_recibe:document.getElementById('mov-recibe').value.trim(),motivo:document.getElementById('mov-motivo').value.trim(),es_gasto_fudo:document.getElementById('mov-es-gasto-fudo').checked,idempotency_key:movimientoIdempotencyKey_};
   const r=await llamar('caja_movimiento_registrar',{item});if(!r.ok){alert(r.error);return;}
   movimientoIdempotencyKey_=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
-  ['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');avisarGuardado('Movimiento registrado.');cargar();
+  ['mov-valor','mov-recibe','mov-motivo'].forEach(id=>document.getElementById(id).value='');document.getElementById('mov-es-gasto-fudo').checked=false;avisarGuardado('Movimiento registrado.');cargar();
 }));
 document.getElementById('cerrar').addEventListener('click',conBotonProtegido(document.getElementById('cerrar'),async()=>{
   if(!confirm('¿Confirmas que ya contaste todo el efectivo y deseas cerrar la caja?'))return;
@@ -588,9 +653,11 @@ document.getElementById('cerrar').addEventListener('click',conBotonProtegido(doc
   // rechaza el cierre en vez de aceptar un conteo que nunca se hizo.
   const contadoRaw=document.getElementById('cierre-contado').value;
   const fuerteRaw=document.getElementById('cierre-fuerte').value;
-  const contado=Number(contadoRaw||0);const base=Number(document.getElementById('cierre-base').value||0);
-  if(base>contado){alert('La base siguiente no puede ser mayor que el efectivo contado.');return;}
-  const item={...parametros(),efectivo_contado:contadoRaw,caja_fuerte_contada:fuerteRaw,base_siguiente:base,observacion:document.getElementById('cierre-observacion').value.trim()};
+  const contado=Number(contadoRaw||0);
+  // No existe una salida implícita al cerrar (ago 2026): ya no se pide una base distinta para el
+  // turno siguiente — el backend la deja igual a lo contado. Si de verdad sale dinero, se registra
+  // antes como su propio movimiento (Envío a caja fuerte / Entrega administrador).
+  const item={...parametros(),efectivo_contado:contadoRaw,caja_fuerte_contada:fuerteRaw,observacion:document.getElementById('cierre-observacion').value.trim()};
   const fuerteContada_=Number(fuerteRaw||0);
   const hayDiferenciaDinero_=contado!==Number(estadoActual.efectivo_esperado||0)||fuerteContada_!==Number(estadoActual.caja_fuerte_esperada||0);
   if(hayDiferenciaDinero_&&!item.observacion){alert('Hay una diferencia. Escribe una observación antes de cerrar.');return;}
@@ -606,11 +673,12 @@ document.getElementById('btn-corregir-cierre').addEventListener('click',conBoton
   if(!motivo){alert('Escribe el motivo de la corrección.');return;}
   const efectivoRaw=document.getElementById('correccion-efectivo').value;
   const fuerteRaw=document.getElementById('correccion-fuerte').value;
-  const baseSiguiente=Number(document.getElementById('correccion-base-siguiente').value||0);
   if(!confirm('¿Confirmas la corrección de este cierre? Quedará registrado quién y por qué.'))return;
+  // Tampoco aquí hay base_siguiente que enviar — cajaCorregir_ la deja igual al efectivo contado
+  // corregido siempre (ver advertencia del formulario).
   const item={
     ...parametros(),
-    efectivo_contado:efectivoRaw,caja_fuerte_contada:fuerteRaw,base_siguiente:baseSiguiente,
+    efectivo_contado:efectivoRaw,caja_fuerte_contada:fuerteRaw,
     observacion_cierre:document.getElementById('correccion-observacion').value.trim(),
     motivo_correccion:motivo
   };
