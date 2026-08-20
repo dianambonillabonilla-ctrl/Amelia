@@ -619,6 +619,18 @@ document.getElementById('btn-corregir-cierre').addEventListener('click',conBoton
   cargar();
 }));
 cargar();
+// Diana (ago 2026, auditoría del módulo: "se debe actualizar con FUDO frecuentemente"): FUDO ya se
+// sincroniza solo cada 15 min en el servidor (fudoSincronizacionAutomatica_), pero antes de esto la
+// pantalla solo volvía a pedir caja_estado si alguien tocaba algo — si se dejaba abierta sin
+// interactuar (el caso típico: la caja queda abierta en un computador todo el turno), el efectivo
+// esperado se quedaba congelado en lo que decía al cargar, aunque el servidor ya tuviera ventas más
+// recientes. Solo aplica con la caja realmente ABIERTA hoy (mostrar('abierta')) — sin abrir o ya
+// cerrada no cambian solas, no hay nada que refrescar. document.hidden evita gastar cuota de la API
+// en una pestaña de fondo que nadie está mirando.
+setInterval(()=>{
+  if(document.hidden)return;
+  if(!document.getElementById('abierta').classList.contains('oculto'))cargar({silencioso:true});
+},3*60*1000);
 
 /* ===================== PESTAÑA: Historial (antes historial-caja.html) ===================== */
 let historialCargado_=false;

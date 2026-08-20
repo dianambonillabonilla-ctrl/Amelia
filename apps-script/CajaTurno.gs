@@ -673,6 +673,14 @@ function cajaTurnoMotivosNovedad_(turno, cambioFudoPrecalculado) {
   if ((Number(turno.diferencia_apertura) || 0) !== 0 || (Number(turno.diferencia_caja_fuerte_apertura) || 0) !== 0) {
     motivos.push('Diferencia al abrir');
   }
+  // Un turno de un día anterior que se quedó en 'Abierto' (nadie cerró caja ese día) antes no
+  // generaba NINGUNA novedad — quedaba invisible hasta que alguien lo notara por su cuenta, y de
+  // paso dejaba base_esperada/caja_fuerte_esperada de los días siguientes calculados contra un
+  // cierre real mucho más viejo (cajaBaseEsperada_/cajaSaldoFuerteAntes_ solo miran el ÚLTIMO
+  // CERRADO). Encontrado en la auditoría de ago 2026, justo al retomar el uso real de Caja.
+  if (turno.estado === 'Abierto' && formatearFecha_(turno.fecha) < formatearFecha_(new Date())) {
+    motivos.push('Caja quedó abierta sin cerrar');
+  }
   if (turno.estado === 'Cerrado') {
     if ((Number(turno.diferencia) || 0) !== 0 || (Number(turno.diferencia_caja_fuerte) || 0) !== 0) {
       motivos.push('Diferencia al cerrar');
