@@ -82,6 +82,15 @@
           <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
             <h2>Abrir mi caja</h2>
             <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
+            <!-- Caja inicia oficialmente el 20/08/2026 (CajaInicioOperacion20260820.gs): mientras
+                 esta sede no tenga todavía un cierre DILANA desde esa fecha, "esperado" de aquí abajo
+                 se calcula contra el historial viejo y da $0 — no es la referencia real. La real es el
+                 total de FUDO del día anterior, y solo se ve en "Ver conciliación" más abajo. -->
+            <div id="aviso-referencia-inicial" class="advertencia oculto" style="margin-bottom:14px">
+              ⚠ Primera apertura de esta sede desde el inicio oficial de Caja (20/08/2026): "$0" de aquí
+              abajo NO es la referencia real. Toca <strong>"Ver conciliación"</strong> más abajo para
+              ver el total de FUDO del día anterior antes de contar.
+            </div>
             <div class="dinero-grid">
               <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
               <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
@@ -93,10 +102,18 @@
             <button class="btn dorado" id="abrir">Abrir caja</button>
           </div>
           <!-- Conciliación FUDO vs. el cierre anterior (cajaConciliacionApertura_, ZZ_ReactivacionCajaFinal.gs)
-               — antes de contar, saber si FUDO confirma el cierre de ayer o si algo cambió después. -->
-          <div id="conciliacion-apertura" class="card oculto" style="border-left:4px solid var(--gold)">
-            <h3 style="margin-top:0">Conciliación con el cierre anterior</h3>
-            <div id="conciliacion-apertura-cuerpo" style="font-size:.86rem"></div>
+               — antes de contar, saber si FUDO confirma el cierre de ayer o si algo cambió después.
+               Bajo demanda, no automático: fuerza hasta 6 sincronizaciones reales contra la API de
+               FUDO (ventas+pagos+gastos, por 2 fechas) — pedirlo solo/cada carga de pantalla sería el
+               mismo problema de lentitud que cajaAbrir_ ya había resuelto (ver comentario ahí). -->
+          <div id="conciliacion-apertura" class="card" style="border-left:4px solid var(--gold)">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+              <h3 style="margin:0">Conciliación con el cierre anterior</h3>
+              <button class="btn fantasma" id="btn-ver-conciliacion" style="white-space:nowrap">Ver conciliación</button>
+            </div>
+            <div id="conciliacion-apertura-cuerpo" style="font-size:.86rem;margin-top:10px">
+              <p class="vacio" style="margin:0">Toca "Ver conciliación" para comparar contra FUDO — sincroniza en vivo, así que solo se pide cuando de verdad hace falta.</p>
+            </div>
           </div>
         </section>
 
@@ -230,6 +247,19 @@
 
       <!-- ===================== PESTAÑA: RESUMEN DEL DÍA (antes historial-cierres-turno.html) ===================== -->
       <div class="tab-panel" id="tab-cierres" hidden>
+        <!-- Esta pestaña depende de cierres_turno_listar, una acción que toca ventas/traslados/
+             producción/inventario — módulos que Fase 0 mantiene inactivos a propósito mientras se
+             reactiva por etapas. Antes la pestaña quedaba clicable pero siempre fallaba con
+             "módulo inactivo"; ahora se avisa aquí mismo en vez de dejar que falle. -->
+        <div id="cier-inactivo" class="card oculto" style="border-left:4px solid var(--amber)">
+          <h3 style="margin-top:0">⚠ Resumen del día no disponible todavía</h3>
+          <p style="color:var(--grey);font-size:.85rem;margin:0">
+            Esta vista depende de ventas, traslados, producción e inventario — módulos que siguen
+            inactivos mientras dura la reactivación por etapas de la aplicación. Vuelve a aparecer
+            sola cuando esos módulos se reactiven.
+          </p>
+        </div>
+        <div id="cier-contenido">
         <div class="card">
           <p style="color:var(--grey); font-size:.85rem; margin-top:0">
             Snapshot guardado al momento de cerrar cada turno — ventas y pagos Fudo, caja, traslados
@@ -255,6 +285,7 @@
           <p id="cier-contador" class="vacio" style="display:none"></p>
         </div>
         <div id="cier-lista"></div>
+        </div>
       </div>
 
     </div>
@@ -281,13 +312,25 @@ const puedeOperarCaja_=usuario.rol==='Administrador'||usuario.rol==='Encargado'|
 const parametrosUrl_=new URLSearchParams(window.location.search);
 const fechaSolicitada=parametrosUrl_.get('fecha');
 const sedeSolicitada=parametrosUrl_.get('sede');
+// Fase 0 (auditoría, ago 2026): "Resumen del día" depende de cierres_turno_listar, que toca ventas/
+// traslados/producción/inventario — módulos que siguen inactivos durante la reactivación por etapas.
+// Antes la pestaña quedaba clicable pero SIEMPRE fallaba con "módulo inactivo" al pedir los datos;
+// ahora se detecta de una vez (mirando la misma lista que ya usa llamar() para bloquear la acción) y
+// se avisa en la pestaña en vez de intentar y fallar cada vez.
+const RESUMEN_DIA_DISPONIBLE_=!(typeof MODO_REACTIVACION!=='undefined'&&MODO_REACTIVACION&&typeof ACCIONES_PERMITIDAS_REACTIVACION!=='undefined'&&!ACCIONES_PERMITIDAS_REACTIVACION.includes('cierres_turno_listar'));
+document.getElementById('cier-inactivo').classList.toggle('oculto',RESUMEN_DIA_DISPONIBLE_);
+document.getElementById('cier-contenido').classList.toggle('oculto',!RESUMEN_DIA_DISPONIBLE_);
+if(!RESUMEN_DIA_DISPONIBLE_){
+  const btnCierres=document.querySelector('#tabs-caja [data-tab="cierres"]');
+  if(btnCierres)btnCierres.title='No disponible todavía — depende de módulos inactivos durante la reactivación por etapas.';
+}
 function activarTab_(nombre){
   document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.classList.toggle('activo',b.dataset.tab===nombre));
   ['dia','historial','cierres'].forEach(t=>{
     document.getElementById('tab-'+t).hidden=(t!==nombre);
   });
   if(nombre==='historial'&&!historialCargado_){historialCargado_=true;cargarHistorial_();}
-  if(nombre==='cierres'&&!cierresCargado_){cierresCargado_=true;cargarCierres_();}
+  if(nombre==='cierres'&&RESUMEN_DIA_DISPONIBLE_&&!cierresCargado_){cierresCargado_=true;cargarCierres_();}
 }
 document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.addEventListener('click',()=>activarTab_(b.dataset.tab)));
 
@@ -367,12 +410,22 @@ const ESTADO_CONCILIACION_INFO_={
   NO_CONFIRMADA_FUDO:{icono:'🔴',texto:'No se pudo confirmar FUDO (NO_CONFIRMADA_FUDO) para la fecha de referencia — la conciliación no se declara todavía.'},
   FUDO_CAMBIO_DESDE_CIERRE:{icono:'🟡',texto:'Cambio desde el cierre: FUDO actualizó ventas después de que se cerró ese turno.'},
   DIFERENCIA_CUSTODIA:{icono:'🟡',texto:'Diferencia de custodia: los movimientos posteriores al cierre no cuadran con lo que debería haber ahora.'},
-  SIN_CIERRE_DILANA:{icono:'⚪',texto:'No existe un cierre anterior en Caja para comparar contra FUDO.'}
+  SIN_CIERRE_DILANA:{icono:'⚪',texto:'No existe un cierre anterior en Caja para comparar contra FUDO.'},
+  // Primera apertura de la sede desde el inicio oficial de Caja (20/08/2026, ver
+  // CajaInicioOperacion20260820.gs): todavía no hay cierre DILANA, así que FUDO del día anterior
+  // (menos gastos de arqueo en efectivo) es la referencia TOTAL — no distingue caja operativa de
+  // caja fuerte, eso lo fija el primer conteo físico real de hoy.
+  REFERENCIA_INICIAL_FUDO:{icono:'🟡',texto:'Inicio oficial de Caja: FUDO del día anterior es la referencia TOTAL (no reparte entre caja operativa y caja fuerte). El primer conteo físico de hoy fija esa distribución real.'}
 };
 async function cargarConciliacionApertura_(){
-  const card=document.getElementById('conciliacion-apertura');
+  const cuerpo=document.getElementById('conciliacion-apertura-cuerpo');
+  const boton=document.getElementById('btn-ver-conciliacion');
+  cuerpo.innerHTML='<p class="vacio" style="margin:0">Sincronizando con FUDO…</p>';
   const r=await llamar('caja_sincronizar_ahora',parametros());
-  if(!r.ok||!r.conciliacion_apertura){card.classList.add('oculto');return;}
+  if(!r.ok||!r.conciliacion_apertura){
+    cuerpo.innerHTML=`<p style="margin:0;color:var(--red)">No se pudo cargar la conciliación: ${escapeHtml(r.error||'error desconocido')}.</p>`;
+    return;
+  }
   const c=r.conciliacion_apertura;
   const info=ESTADO_CONCILIACION_INFO_[c.estado_conciliacion]||{icono:'⚪',texto:c.estado_conciliacion||''};
   let html=`<p style="margin:0">${info.icono} <strong>${escapeHtml(c.estado_conciliacion||'')}</strong> — ${escapeHtml(info.texto)}</p>`;
@@ -380,10 +433,15 @@ async function cargarConciliacionApertura_(){
     html+=`<p style="margin:8px 0 0;color:var(--grey)">Cierre de referencia (${escapeHtml(c.fecha_referencia)}): esperado guardado ${dinero(c.dilana.esperado_cierre_guardado)}`;
     if(c.fudo_cambio_desde_cierre)html+=`, ahora con FUDO actual ${dinero(c.dilana.esperado_cierre_con_fudo_actual)} (${c.fudo_cambio_desde_cierre>0?'+':''}${dinero(c.fudo_cambio_desde_cierre)})`;
     html+='.</p>';
+  }else if(c.modo_referencia_inicial_fudo){
+    // Sin cierre DILANA todavía: la referencia real para contrastar contra lo que se va a contar es
+    // este total (FUDO del día de referencia menos gastos de arqueo en efectivo), no el "$0" que
+    // muestra el formulario de apertura de arriba.
+    html+=`<p style="margin:8px 0 0;color:var(--grey)">FUDO ${escapeHtml(c.fecha_referencia)}: efectivo ${dinero(c.fudo.efectivo)} − gastos de arqueo ${dinero(c.fudo.gastos_efectivo)} = <strong style="color:var(--navy)">referencia total ${dinero(c.custodia_esperada_hoy.total)}</strong> (caja operativa + caja fuerte juntas).</p>`;
   }
-  card.classList.remove('oculto');
-  document.getElementById('conciliacion-apertura-cuerpo').innerHTML=html;
+  cuerpo.innerHTML=html;
 }
+document.getElementById('btn-ver-conciliacion').addEventListener('click',conBotonProtegido(document.getElementById('btn-ver-conciliacion'),cargarConciliacionApertura_));
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
@@ -547,7 +605,17 @@ async function cargar(opciones){
     document.getElementById('fuerte-esperada').textContent=dinero(data.caja_fuerte_esperada||0);
     document.getElementById('base-contada').value='';
     document.getElementById('fuerte-contada-apertura').value='';
-    mostrar('sin-abrir');diferenciaApertura();cargarConciliacionApertura_();return;
+    // Caja inicia oficialmente el 20/08/2026 — antes de ese cierre DILANA, base_esperada/
+    // caja_fuerte_esperada de arriba dan $0 porque no hay nada que comparar todavía, pero eso NO es
+    // la referencia real que cajaAbrir_ va a usar (el total de FUDO del día anterior). El aviso solo
+    // se muestra en ese caso probable (fecha ya en la era nueva + esperado en $0), no siempre.
+    const posibleReferenciaInicial=fechaEl.value>='2026-08-20'&&Number(data.base_esperada)===0&&Number(data.caja_fuerte_esperada||0)===0;
+    document.getElementById('aviso-referencia-inicial').classList.toggle('oculto',!posibleReferenciaInicial);
+    // La conciliación ya no se pide sola al cargar (auditoría, ago 2026): sincroniza en vivo contra
+    // FUDO, así que se deja bajo demanda con el botón "Ver conciliación" en vez de gastar cuota cada
+    // vez que se abre o refresca esta pantalla.
+    document.getElementById('conciliacion-apertura-cuerpo').innerHTML='<p class="vacio" style="margin:0">Toca "Ver conciliación" para comparar contra FUDO — sincroniza en vivo, así que solo se pide cuando de verdad hace falta.</p>';
+    mostrar('sin-abrir');diferenciaApertura();return;
   }
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
