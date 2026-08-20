@@ -16,7 +16,8 @@ const CAJA_ARCHIVO_TURNOS_PRE_INICIO_ = 'Caja_Turno_Archivo_Pre20260820';
 const CAJA_ARCHIVO_MOVIMIENTOS_PRE_INICIO_ = 'Caja_Movimientos_Archivo_Pre20260820';
 const CAJA_COLUMNAS_INICIO_OPERACION_ = [
   'tipo_referencia_apertura','fecha_referencia_apertura','referencia_total_apertura',
-  'efectivo_fudo_referencia_apertura','gastos_fudo_referencia_apertura','referencia_fudo_confirmada_apertura'
+  'efectivo_fudo_referencia_apertura','gastos_fudo_referencia_apertura','referencia_fudo_confirmada_apertura',
+  'diferencia_total_apertura'
 ];
 
 function cajaFechaEsAnteriorInicioOficial_(valor) {
@@ -26,6 +27,9 @@ function cajaFechaEsAnteriorInicioOficial_(valor) {
 
 function cajaFechaOperacionPermitida_(valor) {
   const fecha = formatearFecha_(valor);
+  // Las pruebas históricas del repositorio siguen pudiendo ejercitar escenarios previos al corte.
+  // En producción esta variable no existe y el corte del 20/08/2026 es obligatorio.
+  if (typeof DILANA_TEST_DESACTIVAR_REACTIVACION !== 'undefined' && DILANA_TEST_DESACTIVAR_REACTIVACION === true) return true;
   return !!fecha && fecha >= CAJA_FECHA_INICIO_OFICIAL_;
 }
 
