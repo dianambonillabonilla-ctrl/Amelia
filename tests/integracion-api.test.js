@@ -37,7 +37,7 @@ const ACCIONES_OMITIDAS = new Set([
   'evidencia_subir', 'evidencia_obtener', 'produccion_registrar',
   'produccion_con_obligatorios_registrar', 'usuarios_guardar', 'usuario_resetear_password',
   'traslado_crear', 'traslado_confirmar', 'traslado_observar', 'traslado_resolver',
-  'migrar_recetas_julio_2026', 'base_caja_guardar',
+  'migrar_recetas_julio_2026',
   'caja_abrir', 'caja_rappi_marcar', 'caja_movimiento_registrar', 'caja_cerrar', 'caja_novedad_conciliar',
   'caja_corregir'
 ]);
@@ -54,7 +54,6 @@ function parametrosPorAccion() {
     turno_cierre_estado: { fecha: HOY, sede: SEDE },
     turno_resumen_cierre: { fecha: HOY, sede: SEDE },
     cierres_turno_listar: { filtros: {} },
-    base_caja_dia: { fecha: HOY, sede: SEDE },
     caja_estado: { fecha: HOY, sede: SEDE },
     caja_resumen_admin: { fecha: HOY },
     caja_sincronizar_ahora: { fecha: HOY, sede: SEDE },
@@ -86,8 +85,7 @@ function parametrosPorAccion() {
     fudo_pagos_listar: { filtros: {} },
     fudo_descuentos_listar: { filtros: {} },
     fudo_propinas_listar: { filtros: {} },
-    fudo_subitems_listar: { filtros: {} },
-    base_caja_dia: { fecha: HOY, sede: SEDE }
+    fudo_subitems_listar: { filtros: {} }
   };
 }
 

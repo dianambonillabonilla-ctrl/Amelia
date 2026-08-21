@@ -712,10 +712,52 @@ function cajaTurnoMotivosNovedad_(turno, cambioFudoPrecalculado) {
   return motivos;
 }
 
+/**
+ * Google Sheets no siempre devuelve un booleano de verdad para una celda que se escribió como
+ * `true`/`false` — dependiendo de cómo se creó o editó la fila, puede volver como el TEXTO "true"/
+ * "false" (mismo problema real que ya obligó a leer rappi_encendido con
+ * String(...).toLowerCase()==='true' en caja.html, y a cajaMovimientoEsGastoFudo_ a aceptar texto
+ * además de booleano). cajaValorEsVerdadero_/cajaValorEsFalso_ normalizan eso una sola vez para
+ * todo Caja: `undefined`/`''`/`null` (una fila vieja sin esta columna) no cuentan como ninguno de
+ * los dos — solo un valor EXPLÍCITO (booleano o texto) cuenta.
+ */
+function cajaValorEsVerdadero_(v) {
+  return v === true || String(v).toLowerCase() === 'true';
+}
+function cajaValorEsFalso_(v) {
+  return v === false || String(v).toLowerCase() === 'false';
+}
+
+/**
+ * Movimientos "huérfanos" (auditoría externa, ago 2026): cajaMovimientoRegistrar_
+ * (ZZ_ReactivacionCajaFinal.gs) marca saldo_validado:false en una entrega fuera de turno SOLO
+ * cuando no hay ningún turno (abierto, cerrado, ni de un día anterior) contra qué comparar — por
+ * construcción, eso implica que para esa fecha+sede exacta no existe ninguna fila en Caja_Turno.
+ * cajaTurnoMotivosNovedad_ recorre turnos, así que este caso queda SIEMPRE fuera de su alcance —
+ * no es una fila con una diferencia rara, es una fila que directamente no existe. Se detectan aparte
+ * y se muestran como su propia novedad, sin fecha de turno real que las respalde.
+ */
+function cajaMovimientosSinValidarHuerfanos_(turnos, movimientos) {
+  const clavesConTurno = {};
+  turnos.forEach(function (t) { clavesConTurno[formatearFecha_(t.fecha) + '|' + t.sede] = true; });
+  const porClave = {};
+  movimientos.forEach(function (m) {
+    if (!cajaValorEsFalso_(m.saldo_validado)) return;
+    const fecha = formatearFecha_(m.fecha);
+    const clave = fecha + '|' + m.sede;
+    if (clavesConTurno[clave]) return;
+    if (!porClave[clave]) porClave[clave] = { fecha: fecha, sede: m.sede, cantidad: 0, valor_total: 0 };
+    porClave[clave].cantidad++;
+    porClave[clave].valor_total += Number(m.valor) || 0;
+  });
+  return Object.keys(porClave).map(function (clave) { return porClave[clave]; });
+}
+
 function cajaNovedadesAdministrador_(filtros) {
   filtros = filtros || {};
   const soloPendientes = filtros.solo_pendientes !== false;
-  const novedades = leerTabla_(SHEET_NAMES.CAJA_TURNO)
+  const turnos = leerTabla_(SHEET_NAMES.CAJA_TURNO);
+  const novedades = turnos
     .map(function (t) {
       const cambioFudo = cajaFudoCambioTrasCierre_(t);
       const motivos = cajaTurnoMotivosNovedad_(t, cambioFudo);
@@ -729,11 +771,30 @@ function cajaNovedadesAdministrador_(filtros) {
         diferencia: Number(t.diferencia) || 0, diferencia_caja_fuerte: Number(t.diferencia_caja_fuerte) || 0,
         fudo_cambio_tras_cierre: cambioFudo,
         observacion_apertura: t.observacion_apertura || '', observacion_cierre: t.observacion_cierre || '',
-        estado_conciliacion: t.estado_conciliacion || '', nota_conciliacion: t.nota_conciliacion || ''
+        estado_conciliacion: t.estado_conciliacion || '', nota_conciliacion: t.nota_conciliacion || '',
+        // resoluble:true — tiene una fila real en Caja_Turno donde cajaNovedadConciliar_ SÍ puede
+        // guardar estado_conciliacion:'Resuelta'.
+        resoluble: true
       };
     })
-    .filter(function (n) { return n; })
-    .sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+    .filter(function (n) { return n; });
+  // Los huérfanos no tienen fila en Caja_Turno, así que no hay "estado_conciliacion" que marcar como
+  // Resuelta todavía — se muestran siempre, sin importar soloPendientes, hasta que alguien los
+  // revise por fuera del sistema; ocultarlos sin ninguna forma real de resolverlos sería peor que
+  // dejar que se repitan en la lista. resoluble:false para que caja.html no ofrezca un botón
+  // "Marcar como resuelta" que solo puede fallar (auditoría externa, ago 2026: antes lo ofrecía
+  // igual y cajaNovedadConciliar_ fallaba con "No existe esa caja", un mensaje que no explicaba nada).
+  cajaMovimientosSinValidarHuerfanos_(turnos, leerTabla_(SHEET_NAMES.CAJA_MOVIMIENTOS)).forEach(function (h) {
+    const total = '$' + Math.round(h.valor_total).toLocaleString('es-CO');
+    novedades.push({
+      fecha: h.fecha, sede: h.sede, estado: 'Sin abrir',
+      motivos: ['Movimiento sin validar contra ningún saldo (' + h.cantidad + ' por ' + total + ' — sin ningún turno de referencia)'],
+      diferencia_apertura: 0, diferencia_caja_fuerte_apertura: 0, diferencia: 0, diferencia_caja_fuerte: 0,
+      fudo_cambio_tras_cierre: null, observacion_apertura: '', observacion_cierre: '',
+      estado_conciliacion: '', nota_conciliacion: '', resoluble: false
+    });
+  });
+  novedades.sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
   return { ok: true, novedades: novedades };
 }
 
