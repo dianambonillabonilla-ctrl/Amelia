@@ -342,3 +342,23 @@ function restringirSelectorSede_(select) {
   if (!permitidas.includes(select.value)) select.value = u.sede;
   select.disabled = permitidas.length <= 1;
 }
+
+// Caja / Conciliación bancaria: cuarta pestaña administrativa, cargada de forma aislada para no
+// tocar la lógica ya estabilizada de arqueo, apertura y cierre. No se monta para el rol Caja.
+(function montarConciliacionBancariaCaja_(){
+  if(window.location.pathname.split('/').pop()!=='caja.html')return;
+  document.addEventListener('DOMContentLoaded',async()=>{
+    const u=Sesion.usuario();if(!u||u.rol!=='Administrador')return;
+    const tabs=document.getElementById('tabs-caja'),wrap=document.querySelector('.caja-wrap');
+    if(!tabs||!wrap||document.getElementById('tab-banco'))return;
+    const boton=document.createElement('button');boton.className='tab-btn';boton.id='tab-btn-conciliacion-bancaria';boton.dataset.tab='banco';boton.textContent='Conciliación bancaria';tabs.appendChild(boton);
+    const host=document.createElement('div');host.className='tab-panel';host.id='tab-banco';host.hidden=true;wrap.appendChild(host);
+    try{
+      const resp=await fetch('caja-conciliacion-bancaria.html',{cache:'no-store'});if(!resp.ok)throw new Error('No se pudo cargar la vista');host.innerHTML=await resp.text();
+      const script=document.createElement('script');script.src='assets/caja-conciliacion-bancaria.js';script.async=false;document.body.appendChild(script);
+    }catch(e){host.innerHTML='<div class="card"><p class="vacio">No se pudo cargar Conciliación bancaria. Recarga la página.</p></div>';}
+    Array.from(tabs.querySelectorAll('.tab-btn')).filter(b=>b!==boton).forEach(b=>b.addEventListener('click',()=>{host.hidden=true;}));
+    boton.addEventListener('click',()=>{if(typeof activarTab_==='function')activarTab_('banco');host.hidden=false;});
+    const p=new URLSearchParams(window.location.search);if(p.get('tab')==='banco')boton.click();
+  });
+})();
