@@ -255,21 +255,11 @@
         <div id="hist-lista"></div>
       </div>
 
-      <!-- ===================== PESTAÑA: RESUMEN DEL DÍA (antes historial-cierres-turno.html) ===================== -->
+      <!-- ===================== PESTAÑA: RESUMEN DEL DÍA (antes historial-cierres-turno.html) =====================
+           Depende de cierres_turno_listar (ventas/traslados/producción/inventario), inactiva
+           mientras dure Fase 0 — la pestaña ni se muestra en ese caso (ver RESUMEN_DIA_DISPONIBLE_
+           más abajo en el script), así que este panel solo se ve cuando de verdad hay datos. -->
       <div class="tab-panel" id="tab-cierres" hidden>
-        <!-- Esta pestaña depende de cierres_turno_listar, una acción que toca ventas/traslados/
-             producción/inventario — módulos que Fase 0 mantiene inactivos a propósito mientras se
-             reactiva por etapas. Antes la pestaña quedaba clicable pero siempre fallaba con
-             "módulo inactivo"; ahora se avisa aquí mismo en vez de dejar que falle. -->
-        <div id="cier-inactivo" class="card oculto" style="border-left:4px solid var(--amber)">
-          <h3 style="margin-top:0">⚠ Resumen del día no disponible todavía</h3>
-          <p style="color:var(--grey);font-size:.85rem;margin:0">
-            Esta vista depende de ventas, traslados, producción e inventario — módulos que siguen
-            inactivos mientras dura la reactivación por etapas de la aplicación. Vuelve a aparecer
-            sola cuando esos módulos se reactiven.
-          </p>
-        </div>
-        <div id="cier-contenido">
         <div class="card">
           <p style="color:var(--grey); font-size:.85rem; margin-top:0">
             Snapshot guardado al momento de cerrar cada turno — ventas y pagos Fudo, caja, traslados
@@ -295,7 +285,6 @@
           <p id="cier-contador" class="vacio" style="display:none"></p>
         </div>
         <div id="cier-lista"></div>
-        </div>
       </div>
 
     </div>
@@ -331,12 +320,11 @@ const sedeSolicitada=parametrosUrl_.get('sede');
 // ahora se detecta de una vez (mirando la misma lista que ya usa llamar() para bloquear la acción) y
 // se avisa en la pestaña en vez de intentar y fallar cada vez.
 const RESUMEN_DIA_DISPONIBLE_=!(typeof MODO_REACTIVACION!=='undefined'&&MODO_REACTIVACION&&typeof ACCIONES_PERMITIDAS_REACTIVACION!=='undefined'&&!ACCIONES_PERMITIDAS_REACTIVACION.includes('cierres_turno_listar'));
-document.getElementById('cier-inactivo').classList.toggle('oculto',RESUMEN_DIA_DISPONIBLE_);
-document.getElementById('cier-contenido').classList.toggle('oculto',!RESUMEN_DIA_DISPONIBLE_);
-if(!RESUMEN_DIA_DISPONIBLE_){
-  const btnCierres=document.querySelector('#tabs-caja [data-tab="cierres"]');
-  if(btnCierres)btnCierres.title='No disponible todavía — depende de módulos inactivos durante la reactivación por etapas.';
-}
+// Diana (ago 2026): "cada vez haces más y más pestañas" — mientras Resumen del día dependa de
+// módulos todavía apagados (ventas/traslados/producción/inventario), la pestaña ni se muestra, en
+// vez de aparecer deshabilitada con un aviso. Reaparece sola, sin tocar nada aquí, el día que esos
+// módulos se reactiven (ACCIONES_PERMITIDAS_REACTIVACION vuelve a incluir cierres_turno_listar).
+document.querySelector('#tabs-caja [data-tab="cierres"]').classList.toggle('oculto',!RESUMEN_DIA_DISPONIBLE_);
 function activarTab_(nombre){
   document.querySelectorAll('#tabs-caja .tab-btn').forEach(b=>b.classList.toggle('activo',b.dataset.tab===nombre));
   ['dia','historial','cierres'].forEach(t=>{
