@@ -1,9 +1,10 @@
 # Auditoría del módulo Caja — agosto 2026
 
-Auditoría de solo lectura (no se modificó ningún archivo de `apps-script/`, `caja.html`,
-`base-caja.html` ni `historial-caja.html`). Objetivo: revisar la lógica de negocio, permisos y
-cobertura de pruebas del módulo Caja tal como opera hoy en producción, y dejar evidencia
-verificable de cada hallazgo.
+Auditoría del módulo Caja: revisar la lógica de negocio, permisos y cobertura de pruebas tal como
+opera hoy en producción, con evidencia verificable de cada hallazgo. La primera pasada (lo que
+sigue hasta "Resumen para decidir") fue de solo lectura. Diana pidió después que se aplicaran los 3
+arreglos — la sección **"Qué se corrigió"**, al final, documenta exactamente qué cambió, con qué
+pruebas y con qué matices se descubrieron al implementarlos.
 
 ## Alcance y método
 
@@ -200,11 +201,82 @@ comprueba que ese dato llegue a mostrarse en pantalla — porque no llega.
 
 ## Resumen para decidir
 
-| # | Hallazgo | ¿Explotable hoy? | Tipo |
-|---|---|---|---|
-| 1 | Sin prueba end-to-end de que Cocina no puede operar Caja | No (el rol sí se rechaza hoy) | Brecha de cobertura de pruebas |
-| 2 | `base_caja_*` sigue permitiendo Cocina en `Code.gs` | No (bloqueado por Fase 0) | Deuda técnica / trampa a futuro |
-| 3 | `saldo_validado`/`fuera_de_turno` no se muestran en pantalla | Sí — el dato existe pero es invisible | Brecha de UI, no de backend |
+| # | Hallazgo | ¿Explotable hoy? | Tipo | Estado |
+|---|---|---|---|---|
+| 1 | Sin prueba end-to-end de que Cocina no puede operar Caja | No (el rol sí se rechaza hoy) | Brecha de cobertura de pruebas | ✅ Corregido |
+| 2 | `base_caja_*` sigue permitiendo Cocina en `Code.gs` | No (bloqueado por Fase 0) | Deuda técnica / trampa a futuro | ✅ Corregido (se eliminó el módulo) |
+| 3 | `saldo_validado`/`fuera_de_turno` no se muestran en pantalla | Sí — el dato existe pero es invisible | Brecha de UI, no de backend | ✅ Corregido (con un matiz, ver abajo) |
 
-Ningún hallazgo requirió ni recibió un cambio de código — quedan documentados para que Diana decida
-si y cuándo priorizarlos.
+## Qué se corrigió (segunda pasada, a pedido de Diana)
+
+### 1. Prueba de que Cocina no puede operar Caja
+
+Se creó `tests/caja-permisos-rol.test.js`: crea un usuario `rol:'Cocina'` de verdad, hace login, y
+confirma por `env.post` (el router completo, no una llamada directa a la función) que
+`caja_abrir`, `caja_estado`, `caja_rappi_marcar`, `caja_movimiento_registrar`, `caja_cerrar`,
+`caja_sincronizar_ahora` y `caja_historial_listar` lo rechazan, y que `caja_resumen_admin`,
+`caja_novedades_listar`, `caja_novedad_conciliar` y `caja_corregir` rechazan tanto a Cocina como a
+un Encargado (son exclusivas de Administrador). Incluye también un caso de control: confirma que un
+Encargado real SÍ puede abrir caja, para que la prueba misma falle si algún día el bloqueo se pasa
+de rosca y afecta también a quien sí debe tener acceso. Se agregó a `package.json`.
+
+### 2. `base_caja_*` — se eliminó el módulo completo, no solo el permiso
+
+Diana pidió la opción de fondo en vez del parche rápido: como `base-caja.html` ya era un simple
+redirect y nada en el código vivo lo usaba, se borró:
+
+- `apps-script/BaseCaja.gs` (las funciones `baseCajaGuardar_`/`baseCajaDia_`/`baseCajaListar_`).
+- `apps-script/MigracionBaseCajaJulio2026.gs` — dependía directamente de `baseCajaGuardar_`, así que
+  quedaba roto de todas formas; era una migración de un solo uso que ya corrió en producción (su
+  propio comentario lo dice: "Corre UNA sola vez... ya se comparó fila por fila contra el Excel
+  original").
+- `base-caja.html` y `tests/base-caja.test.js`.
+- Las 3 líneas `case 'base_caja_...'` en `Code.gs`.
+- Las referencias muertas a `base_caja_dia`/`base_caja_guardar` en `tests/integracion-api.test.js`
+  (aparecían en la lista de acciones a probar / a omitir).
+
+**Lo que NO se tocó a propósito**: `SHEET_NAMES.BASE_CAJA` (`Code.gs:77`) se dejó — con un
+comentario explicando por qué — para que `configurarHojas()` no borre la hoja `Base_Caja` y el
+histórico de julio 2026 (los 42 días migrados) siga existiendo y siendo legible a mano en el Google
+Sheet, aunque ya no haya ninguna acción del router que la use. Solo se borró la *función*, no el
+*dato*.
+
+### 3. Aviso de `saldo_validado:false` — con un matiz descubierto al implementarlo
+
+Al construir el arreglo apareció algo que la primera pasada de la auditoría no había notado:
+**`saldo_validado:false` solo ocurre, por construcción, cuando NO existe ninguna fila de turno para
+esa fecha+sede exacta** (`cajaCierreReferenciaCustodia_` devuelve `null` únicamente en ese caso).
+Es decir, el caso que más importa mostrar es siempre uno donde no hay ningún turno "dueño" del día
+al que colgarle el aviso — ligarlo a un turno (como se había planeado al principio) no iba a
+funcionar nunca en la práctica.
+
+Se implementaron dos cosas, no una:
+
+- **`caja.html` (`pintarMovimientos`)**: cada movimiento con `saldo_validado===false` ahora muestra
+  `⚠ Sin validar contra ningún saldo` en rojo, y uno con `fuera_de_turno:true` (pero sí validado)
+  muestra `Registrada con la caja cerrada` en ámbar. Esto se ve mientras la caja de esa fecha+sede
+  está actualmente ABIERTA — que es cuando `caja.html` pinta la lista de movimientos.
+- **`cajaNovedadesAdministrador_` (`CajaTurno.gs`, función nueva `cajaMovimientosSinValidarHuerfanos_`)**:
+  agrupa por fecha+sede los movimientos `saldo_validado:false` que no tienen ninguna fila de turno
+  correspondiente, y los agrega al panel de Novedades como su propia entrada — "Movimiento sin
+  validar contra ningún saldo (1 por $999.999 — sin ningún turno de referencia)" —, **sin importar
+  si `solo_pendientes` está activo**, porque no hay fila de turno donde guardar
+  `estado_conciliacion:'Resuelta'`: quedan visibles hasta que un Administrador los revise por fuera
+  del sistema. Esta es la vía que de verdad cubre el caso — Novedades es un panel del Administrador,
+  no depende de qué fecha/sede esté mirando alguien en ese momento en la pantalla de Caja del día.
+
+**Lo que queda como límite conocido, no arreglado**: `caja.html` solo pinta la lista de movimientos
+del día cuando esa fecha+sede tiene una caja actualmente `Abierta` — mirando una fecha+sede `Sin
+abrir` (exactamente el estado en el que vive un movimiento huérfano) o ya `Cerrada`, la pantalla de
+"Caja del día" nunca llega a pedir `caja_movimientos_listar`, así que ahí el badge no se ve. Se
+decidió no restructurar la pantalla para esto (habría significado mostrar la lista de movimientos en
+los 3 estados, un cambio de HTML más grande que "mostrar un aviso") porque el panel de Novedades ya
+cierra el hueco real sin ese riesgo. Si en algún momento se quiere ver el detalle del movimiento
+mismo (no solo el resumen agregado) sin pasar por Novedades, ahí sí haría falta ese cambio de
+pantalla más grande — quedaría para pedirlo aparte si hace falta.
+
+Prueba nueva: `tests/caja-v2.test.js` (bloque "movimientos huérfanos sin validar") — cubre el caso
+básico, que un movimiento validado o sin el campo no genere el aviso, y que un turno real de OTRA
+sede en la misma fecha no tape el huérfano de la sede que sí lo tiene.
+
+`npm test` completo (44 archivos) en verde después de los 3 cambios.

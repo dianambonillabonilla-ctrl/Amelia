@@ -712,10 +712,36 @@ function cajaTurnoMotivosNovedad_(turno, cambioFudoPrecalculado) {
   return motivos;
 }
 
+/**
+ * Movimientos "huérfanos" (auditoría externa, ago 2026): cajaMovimientoRegistrar_
+ * (ZZ_ReactivacionCajaFinal.gs) marca saldo_validado:false en una entrega fuera de turno SOLO
+ * cuando no hay ningún turno (abierto, cerrado, ni de un día anterior) contra qué comparar — por
+ * construcción, eso implica que para esa fecha+sede exacta no existe ninguna fila en Caja_Turno.
+ * cajaTurnoMotivosNovedad_ recorre turnos, así que este caso queda SIEMPRE fuera de su alcance —
+ * no es una fila con una diferencia rara, es una fila que directamente no existe. Se detectan aparte
+ * y se muestran como su propia novedad, sin fecha de turno real que las respalde.
+ */
+function cajaMovimientosSinValidarHuerfanos_(turnos, movimientos) {
+  const clavesConTurno = {};
+  turnos.forEach(function (t) { clavesConTurno[formatearFecha_(t.fecha) + '|' + t.sede] = true; });
+  const porClave = {};
+  movimientos.forEach(function (m) {
+    if (m.saldo_validado !== false) return;
+    const fecha = formatearFecha_(m.fecha);
+    const clave = fecha + '|' + m.sede;
+    if (clavesConTurno[clave]) return;
+    if (!porClave[clave]) porClave[clave] = { fecha: fecha, sede: m.sede, cantidad: 0, valor_total: 0 };
+    porClave[clave].cantidad++;
+    porClave[clave].valor_total += Number(m.valor) || 0;
+  });
+  return Object.keys(porClave).map(function (clave) { return porClave[clave]; });
+}
+
 function cajaNovedadesAdministrador_(filtros) {
   filtros = filtros || {};
   const soloPendientes = filtros.solo_pendientes !== false;
-  const novedades = leerTabla_(SHEET_NAMES.CAJA_TURNO)
+  const turnos = leerTabla_(SHEET_NAMES.CAJA_TURNO);
+  const novedades = turnos
     .map(function (t) {
       const cambioFudo = cajaFudoCambioTrasCierre_(t);
       const motivos = cajaTurnoMotivosNovedad_(t, cambioFudo);
@@ -732,8 +758,22 @@ function cajaNovedadesAdministrador_(filtros) {
         estado_conciliacion: t.estado_conciliacion || '', nota_conciliacion: t.nota_conciliacion || ''
       };
     })
-    .filter(function (n) { return n; })
-    .sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+    .filter(function (n) { return n; });
+  // Los huérfanos no tienen fila en Caja_Turno, así que no hay "estado_conciliacion" que marcar como
+  // Resuelta todavía — se muestran siempre, sin importar soloPendientes, hasta que alguien los
+  // revise por fuera del sistema; ocultarlos sin ninguna forma real de resolverlos sería peor que
+  // dejar que se repitan en la lista.
+  cajaMovimientosSinValidarHuerfanos_(turnos, leerTabla_(SHEET_NAMES.CAJA_MOVIMIENTOS)).forEach(function (h) {
+    const total = '$' + Math.round(h.valor_total).toLocaleString('es-CO');
+    novedades.push({
+      fecha: h.fecha, sede: h.sede, estado: 'Sin abrir',
+      motivos: ['Movimiento sin validar contra ningún saldo (' + h.cantidad + ' por ' + total + ' — sin ningún turno de referencia)'],
+      diferencia_apertura: 0, diferencia_caja_fuerte_apertura: 0, diferencia: 0, diferencia_caja_fuerte: 0,
+      fudo_cambio_tras_cierre: null, observacion_apertura: '', observacion_cierre: '',
+      estado_conciliacion: '', nota_conciliacion: ''
+    });
+  });
+  novedades.sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
   return { ok: true, novedades: novedades };
 }
 

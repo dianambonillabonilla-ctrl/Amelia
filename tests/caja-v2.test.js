@@ -650,4 +650,44 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(ctx.cajaFudoCambioTrasCierre_(turno), null, 'un cierre de hace más de 3 días no debe revisarse');
 }
 
+// --- cajaNovedadesAdministrador_: movimientos "huérfanos" sin validar (auditoría externa, ago 2026)
+// cajaMovimientoRegistrar_ (ZZ_ReactivacionCajaFinal.gs) marca saldo_validado:false en una entrega
+// fuera de turno cuando no hay NINGÚN turno (ni abierto, ni cerrado, de ningún día anterior) contra
+// qué comparar — por construcción eso implica que no existe ninguna fila en Caja_Turno para esa
+// fecha+sede exacta, así que cajaTurnoMotivosNovedad_ (que solo recorre turnos) nunca lo detecta.
+// Antes de esta prueba, ese caso —el más grave, dinero entregado sin poder confirmar que existía—
+// quedaba completamente invisible en Novedades y en el histórico. ------------------------------------
+{
+  const { ctx, movimientos } = construirEntorno_();
+  movimientos.length = 0; // fuera las 3 migraciones históricas fijas, no son parte de esta prueba
+  movimientos.push({
+    id: 'huerfano-1', fecha: '2026-08-21', sede: 'Capri', tipo: 'Entrega administrador desde caja',
+    valor: 999999, persona_entrega: 'Nadie', persona_recibe: 'Diana', motivo: 'sin turno de referencia',
+    saldo_validado: false
+  });
+  const r = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(r.novedades.length, 1, 'un movimiento sin validar y sin ningún turno debe verse como su propia novedad');
+  assert.equal(r.novedades[0].fecha, '2026-08-21');
+  assert.equal(r.novedades[0].sede, 'Capri');
+  assert.match(r.novedades[0].motivos[0], /sin validar contra ningún saldo/);
+  assert.match(r.novedades[0].motivos[0], /\$999\.999/);
+
+  // Un movimiento normal (saldo_validado true, o el campo ni siquiera presente en registros viejos)
+  // no debe generar esta novedad.
+  movimientos.length = 0;
+  movimientos.push({ id: 'normal-1', fecha: '2026-08-21', sede: 'Capri', tipo: 'Otro ingreso', valor: 5000, motivo: 'x', saldo_validado: true });
+  movimientos.push({ id: 'viejo-1', fecha: '2026-08-20', sede: 'San Antonio', tipo: 'Otro ingreso', valor: 5000, motivo: 'x' });
+  assert.equal(ctx.cajaNovedadesAdministrador_({}).novedades.length, 0);
+
+  // Si otra sede tiene un turno real en esa misma fecha, el huérfano de Capri sigue contando —
+  // "sin turno de referencia" se decide por fecha+sede exacta, no solo por fecha.
+  const entorno2 = construirEntorno_();
+  entorno2.movimientos.length = 0;
+  entorno2.movimientos.push({ id: 'huerfano-2', fecha: '2026-08-22', sede: 'Capri', tipo: 'Entrega administrador desde caja', valor: 1000, motivo: 'x', saldo_validado: false });
+  abrirTurno_(entorno2.ctx, entorno2.turnos, { id: 'otro-turno', fecha: '2026-08-22', sede: 'San Antonio', base_inicial: 0, caja_fuerte_inicial: 0 });
+  const r2 = entorno2.ctx.cajaNovedadesAdministrador_({});
+  assert.equal(r2.novedades.length, 1, 'un turno de OTRA sede en la misma fecha no debe anular el huérfano de Capri');
+  assert.equal(r2.novedades[0].sede, 'Capri');
+}
+
 console.log('caja-v2: OK');

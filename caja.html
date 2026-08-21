@@ -20,7 +20,7 @@
       <!-- Diana (ago 2026): "todo lo de caja debe funcionar en un solo link que se llama caja" —
            antes había 3 páginas separadas (caja.html, historial-caja.html, historial-cierres-
            turno.html). Ahora son 3 pestañas de la misma pantalla; las dos páginas viejas quedaron
-           como redirect hacia acá (ver base-caja.html/gestiones.html para el mismo patrón). -->
+           como redirect hacia acá (ver gestiones.html para el mismo patrón). -->
       <div class="tabs" id="tabs-caja">
         <button class="tab-btn activo" data-tab="dia">Caja del día</button>
         <button class="tab-btn" data-tab="historial">Historial</button>
@@ -502,10 +502,17 @@ function pintarMovimientos(lista){
   el.innerHTML='<div class="timeline">'+lista.map(m=>{
     const resta=m.tipo!=='Otro ingreso' && m.tipo!=='Retiro de caja fuerte';
     const icono=ICONO_MOV_[m.tipo]||'💼';
+    // saldo_validado:false (auditoría externa, ago 2026): cajaMovimientoRegistrar_ lo marca así
+    // cuando no había ningún cierre anterior contra qué comparar (ej. la primera entrega de una
+    // sede antes de su primer cierre real) — quedaba guardado pero invisible en pantalla, así que
+    // una entrega nunca confirmada contra ningún saldo pasaba desapercibida para siempre.
+    const sinValidar=m.saldo_validado===false;
+    const avisoSinValidar=sinValidar?`<div class="detalle" style="color:var(--red)" title="No había ningún cierre anterior con qué comparar esta entrega — DILANA no pudo confirmar que hubiera fondos suficientes.">⚠ Sin validar contra ningún saldo</div>`:'';
+    const avisoFueraDeTurno=(!sinValidar&&m.fuera_de_turno)?`<div class="detalle" style="color:var(--amber)">Registrada con la caja cerrada</div>`:'';
     return `<div class="tl-item ${resta?'negativo':'positivo'}">
       <span class="punto">${icono}</span>
       <div class="cuerpo-tl">
-        <div><div class="tipo">${escapeHtml(m.tipo)}</div><div class="detalle">${escapeHtml(m.motivo||'')}${m.motivo&&(m.persona_recibe||m.usuario)?' · ':''}${escapeHtml(m.persona_recibe||m.usuario||'')}</div></div>
+        <div><div class="tipo">${escapeHtml(m.tipo)}</div><div class="detalle">${escapeHtml(m.motivo||'')}${m.motivo&&(m.persona_recibe||m.usuario)?' · ':''}${escapeHtml(m.persona_recibe||m.usuario||'')}</div>${avisoSinValidar}${avisoFueraDeTurno}</div>
         <div class="valor-tl">${resta?'−':'+'}${dinero(m.valor)}</div>
       </div>
     </div>`;

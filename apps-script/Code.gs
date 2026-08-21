@@ -74,6 +74,9 @@ const SHEET_NAMES = {
   FUDO_MAPEO_SEDES: 'Fudo_Mapeo_Sedes',
   MOVIMIENTOS_INVENTARIO: 'Movimientos_Inventario',
   PAGOS_FUDO: 'Pagos_FUDO',
+  // BaseCaja.gs (el módulo "Base de Caja") se eliminó en agosto 2026 al quedar reemplazado por
+  // Caja — se deja el nombre de la hoja aquí a propósito, sin ninguna acción del router que la
+  // toque, para que configurarHojas() no la borre y el histórico de julio 2026 siga legible a mano.
   BASE_CAJA: 'Base_Caja',
   CAJA_TURNO: 'Caja_Turno',
   CAJA_MOVIMIENTOS: 'Caja_Movimientos'
@@ -442,15 +445,6 @@ function handleRequest_(e, method) {
       case 'gestion_actualizar_estado':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
         return jsonOut_(gestionActualizarEstado_(params.id, params.estado, params.nota, sesion.usuario));
-      case 'base_caja_guardar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(baseCajaGuardar_(params.item, sesion.usuario));
-      case 'base_caja_dia':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina']);
-        return jsonOut_(baseCajaDia_(params.fecha, sedeConsultaPermitida_(sesion.usuario, params.sede)));
-      case 'base_caja_listar':
-        requiereRol_(sesion.usuario, ['Administrador', 'Encargado', 'Cocina', 'Lectura']);
-        return jsonOut_({ ok: true, data: baseCajaListar_(params.filtros, sesion.usuario) });
       case 'caja_abrir':
         requiereRol_(sesion.usuario, ['Administrador', 'Encargado']);
         return jsonOut_(cajaAbrir_(params.item, sesion.usuario));
