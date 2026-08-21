@@ -39,12 +39,13 @@ assert.match(caja,/\.sort\(function\(a,b\)\{return cajaFechaMs_\(a\.timestamp\|\
 assert.match(caja,/if\(!custodiaPosterior\.valida/);
 
 // Prueba dinámica del clasificador por momento: un pago anterior a abrir NO se vuelve a sumar;
-// uno posterior sí. Se usa la tabla normalizada Fudo_Pagos que consume Caja cuando está disponible.
+// uno posterior sí. La tabla se referencia por su nombre real porque las constantes globales del
+// proyecto no se exponen como env.ctx.SHEET_NAMES en este arnés de Apps Script.
 (function(){
   const env = crearEntorno({ reactivacionReal:true });
   env.ctx.configurarHojas();
   env.fijarReloj('2026-08-20T18:00:00-05:00');
-  const shName = env.ctx.SHEET_NAMES.FUDO_PAGOS;
+  const shName = 'Fudo_Pagos';
   env.ctx.appendRowFromObj_(shName,{
     id_pago:'p-antes',id_venta:'v-1',fecha:'2026-08-20',creacion:new Date('2026-08-20T16:50:00-05:00'),
     monto:30000,cancelado:false,metodo_pago:'Efectivo',metodo_tipo:'cash',sede:'San Antonio',es_efectivo:true
