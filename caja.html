@@ -520,14 +520,30 @@ async function cargarPanelAdmin(){
   panel.classList.remove('oculto');
   document.getElementById('panel-admin-filas').innerHTML=r.sedes.map(s=>{
     const confianza=confianzaBadge_(s.nivel_confianza);
-    const estadoTexto=!s.apertura?'Sin abrir':(s.apertura.estado==='Cerrado'?'Cerrada':'Abierta');
+    const sinAbrir=!s.apertura;
+    const estadoTexto=sinAbrir?'Sin abrir':(s.apertura.estado==='Cerrado'?'Cerrada':'Abierta');
     const responsable=(s.apertura&&(s.apertura.usuario_apertura))||'—';
+    // Diana (ago 2026): una sede "Sin abrir" no tiene efectivo_esperado (ese campo solo existe una
+    // vez que la caja se abrió) — antes esto leía el campo equivocado y mostraba "$0" siempre,
+    // incluso cuando sí había un cierre anterior real. Para el primer día de una sede (sin ningún
+    // cierre DILANA todavía) tampoco hay base_esperada real — ahí la referencia es lo que dice FUDO
+    // del día anterior (conciliacion_apertura, agregado en cajaResumenAdministrador_).
+    const c=s.conciliacion_apertura;
+    let efectivoCelda, fuerteCelda;
+    if(!sinAbrir){
+      efectivoCelda=dinero(s.efectivo_esperado||0); fuerteCelda=dinero(s.caja_fuerte_esperada||0);
+    }else if(c&&c.modo_referencia_inicial_fudo){
+      efectivoCelda=`<span title="Referencia de FUDO del ${escapeHtml(c.fecha_referencia)} (día anterior) — todavía no hay ningún cierre de Caja">${dinero(c.custodia_esperada_hoy.total)} <small style="color:var(--grey)">(FUDO)</small></span>`;
+      fuerteCelda='<span class="nota-simple">—</span>';
+    }else{
+      efectivoCelda=dinero(s.base_esperada||0); fuerteCelda=dinero(s.caja_fuerte_esperada||0);
+    }
     return `<tr data-sede="${escapeHtml(s.sede)}" style="cursor:pointer" title="Ver ${escapeHtml(s.sede)}">
       <td><strong>${escapeHtml(s.sede)}</strong></td>
       <td>${estadoTexto}</td>
       <td>${escapeHtml(responsable)}</td>
-      <td>${dinero(s.efectivo_esperado||0)}</td>
-      <td>${dinero(s.caja_fuerte_esperada||0)}</td>
+      <td>${efectivoCelda}</td>
+      <td>${fuerteCelda}</td>
       <td>${s.efectivo_sin_identificar>0?`<span style="color:var(--amber)">${dinero(s.efectivo_sin_identificar)}</span>`:dinero(0)}</td>
       <td title="${confianza.texto}">${confianza.icono}</td>
     </tr>`;

@@ -424,13 +424,27 @@ function cajaSincronizarAhora_(fecha,sede,usuario) {
  * Panel de Administrador: las dos sedes lado a lado para una misma fecha, en una sola llamada — la
  * "torre de control" en vez de tener que entrar sede por sede. Reutiliza cajaEstado_ tal cual (misma
  * lógica, mismos campos, incluyendo nivel_confianza) para cada sede; no duplica ningún cálculo.
+ *
+ * Diana (ago 2026): "lo primero que debe ser es que aparezca cuánto dice FUDO que debo tener" —
+ * para una sede que todavía no abrió, cajaEstado_ solo sabe calcular contra el último cierre DILANA
+ * (que en la primerísima apertura de una sede no existe, y da $0 sin que eso sea la referencia
+ * real). Se agrega conciliacion_apertura (cajaConciliacionApertura_) para esos casos — es de solo
+ * lectura sobre lo que ya está guardado (no llama a la API de FUDO en vivo), así que no vuelve a
+ * introducir el problema viejo de bloquear el panel esperando una sincronización real.
  */
 function cajaResumenAdministrador_(fecha, sedes, usuario) {
   if (!fecha) return { ok: false, error: 'Falta la fecha' };
   const fechaFmt = formatearFecha_(fecha);
   const listaSedes = Array.isArray(sedes) && sedes.length ? sedes : ['San Antonio', 'Capri'];
   const resumen = listaSedes.map(function (sede) {
-    return Object.assign({ sede: sede }, cajaEstado_(fechaFmt, sede, usuario));
+    const estado = cajaEstado_(fechaFmt, sede, usuario);
+    // Sin "apertura" en la respuesta = la caja de esa sede todavía no se abrió hoy (ver
+    // cajaEstado_ más arriba) — es el único caso donde hace falta la referencia de FUDO; una caja
+    // ya abierta o cerrada hoy tiene su propio efectivo_esperado real, no necesita esto.
+    if (!estado.apertura && typeof cajaConciliacionApertura_ === 'function') {
+      estado.conciliacion_apertura = cajaConciliacionApertura_(fechaFmt, sede);
+    }
+    return Object.assign({ sede: sede }, estado);
   });
   return { ok: true, fecha: fechaFmt, sedes: resumen };
 }
