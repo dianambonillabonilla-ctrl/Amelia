@@ -9,7 +9,7 @@ const caja = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'ZZ_React
 assert.match(inicio, /CAJA_FECHA_INICIO_OFICIAL_\s*=\s*'2026-08-20'/);
 assert.match(inicio, /Caja_Turno_Archivo_Pre20260820/);
 assert.match(inicio, /Caja_Movimientos_Archivo_Pre20260820/);
-assert.match(inicio, /CAJA_MIGRACION_HISTORICA_HECHA/);
+assert.match(inicio, /CAJA_INICIO_OPERACION_20260820_HECHA/);
 assert.match(inicio, /cajaInicializarOperacionDesde20Agosto2026/);
 assert.match(inicio, /cajaReferenciaFudoDiaAnterior_/);
 assert.match(inicio, /CAJA_FUDO_ESTADO\|/);
@@ -45,6 +45,37 @@ assert.match(caja, /cajaGuardarEstadoFudoPersistente_/);
   }});
   assert.strictEqual(r.ok, false, JSON.stringify(r));
   assert.match(String(r.error), /20\/08\/2026|archivad/i);
+})();
+
+// No se puede operar Caja desde el 20/08 en adelante sin haber corrido
+// cajaInicializarOperacionDesde20Agosto2026() primero (auditoría, ago 2026 — segunda ronda). Antes
+// de este test, la bandera de esa función reutilizaba por accidente el mismo nombre de propiedad
+// que cajaMigrarHistorico_ (CajaTurno.gs, una migración vieja sin relación) ya marcaba 'true' en la
+// primera acción de Caja — el candado quedaba puesto en el código pero nunca bloqueaba nada de
+// verdad porque la propiedad ya estaba en 'true' antes de que cajaAbrir_ llegara a revisarla.
+(function () {
+  const env = crearEntorno({ reactivacionReal:true });
+  env.ctx.configurarHojas();
+  env.ctx.crearAdministradorInicial_('Diana', 'diana', 'contrasegura1', 'diana@example.com');
+  const login = env.post({ action:'login', usuario:'diana', password:'contrasegura1' });
+  assert.ok(login.ok, JSON.stringify(login));
+  env.fijarReloj('2026-08-20T16:00:00-05:00');
+  const sinMigrar = env.post({ token:login.token, action:'caja_abrir', item:{
+    fecha:'2026-08-20', sede:'San Antonio', base_inicial:0, caja_fuerte_inicial:0, observacion_apertura:''
+  }});
+  assert.strictEqual(sinMigrar.ok, false, JSON.stringify(sinMigrar));
+  assert.match(String(sinMigrar.error), /cajaInicializarOperacionDesde20Agosto2026/);
+  assert.strictEqual(
+    env.ctx.PropertiesService.getScriptProperties().getProperty('CAJA_INICIO_OPERACION_20260820_HECHA'),
+    null,
+    'cajaAsegurarEstructura_ (llamada al abrir) no debe dejar esta bandera puesta por sí sola'
+  );
+
+  env.ctx.cajaInicializarOperacionDesde20Agosto2026();
+  const conMigracion = env.post({ token:login.token, action:'caja_abrir', item:{
+    fecha:'2026-08-20', sede:'San Antonio', base_inicial:0, caja_fuerte_inicial:0, observacion_apertura:''
+  }});
+  assert.strictEqual(conMigracion.ok, true, JSON.stringify(conMigracion));
 })();
 
 console.log('caja-inicio-20260820: OK');
