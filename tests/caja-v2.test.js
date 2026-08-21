@@ -690,4 +690,54 @@ const cocina = { nombre: 'Luis', rol: 'Cocina' };
   assert.equal(r2.novedades[0].sede, 'Capri');
 }
 
+// --- resoluble: una novedad huérfana no puede marcarse "Resuelta" (no hay fila de Caja_Turno donde
+// guardar ese estado) — antes se ofrecía el botón igual y cajaNovedadConciliar_ fallaba con "No
+// existe esa caja", un error que no explicaba nada (auditoría externa, ago 2026, segunda ronda). ---
+{
+  const { ctx, turnos, movimientos } = construirEntorno_();
+  movimientos.length = 0;
+  movimientos.push({ id: 'huerfano-3', fecha: '2026-08-21', sede: 'Capri', tipo: 'Entrega administrador desde caja', valor: 1000, motivo: 'x', saldo_validado: false });
+  abrirTurno_(ctx, turnos, { fecha: '2026-08-21', sede: 'San Antonio', base_inicial: 50000, caja_fuerte_inicial: 0, diferencia_apertura: 50000, observacion_apertura: 'sobra' });
+
+  const r = ctx.cajaNovedadesAdministrador_({});
+  assert.equal(r.novedades.length, 2);
+  const huerfana = r.novedades.find((n) => n.sede === 'Capri');
+  const conTurno = r.novedades.find((n) => n.sede === 'San Antonio');
+  assert.equal(huerfana.resoluble, false, 'una novedad sin fila de turno no debe ofrecerse como resoluble');
+  assert.equal(conTurno.resoluble, true, 'una novedad ligada a un turno real sí debe poder marcarse resuelta');
+
+  // Confirma además que intentar conciliar la huérfana falla (documentado, no un error nuevo) — el
+  // frontend ahora se guía por resoluble:false para no ofrecer el botón, no por adivinar el error.
+  const intento = ctx.cajaNovedadConciliar_(huerfana.fecha, huerfana.sede, 'nota', administrador);
+  assert.equal(intento.ok, false);
+}
+
+// --- cajaValorEsFalso_/cajaValorEsVerdadero_: robustos ante que Sheets devuelva texto en vez de un
+// booleano real (mismo problema real ya conocido de rappi_encendido) — auditoría externa, ago 2026,
+// segunda ronda. Sin esto, un saldo_validado guardado como el TEXTO "false" (no el booleano) hacía
+// que cajaMovimientosSinValidarHuerfanos_ no detectara NADA — la entrega volvía a quedar invisible,
+// justo lo que el arreglo anterior quería evitar. -----------------------------------------------------
+{
+  const { ctx } = construirEntorno_();
+  assert.equal(ctx.cajaValorEsFalso_(false), true);
+  assert.equal(ctx.cajaValorEsFalso_('false'), true);
+  assert.equal(ctx.cajaValorEsFalso_('FALSE'), true);
+  assert.equal(ctx.cajaValorEsFalso_(true), false);
+  assert.equal(ctx.cajaValorEsFalso_('true'), false);
+  assert.equal(ctx.cajaValorEsFalso_(''), false, 'una fila vieja sin esta columna no debe leerse como saldo_validado:false');
+  assert.equal(ctx.cajaValorEsFalso_(undefined), false);
+  assert.equal(ctx.cajaValorEsVerdadero_(true), true);
+  assert.equal(ctx.cajaValorEsVerdadero_('true'), true);
+  assert.equal(ctx.cajaValorEsVerdadero_('TRUE'), true);
+  assert.equal(ctx.cajaValorEsVerdadero_(false), false);
+  assert.equal(ctx.cajaValorEsVerdadero_(''), false);
+
+  const { turnos, movimientos } = { turnos: [], movimientos: [
+    { id: 'texto-1', fecha: '2026-08-21', sede: 'Capri', tipo: 'Entrega administrador desde caja', valor: 500000, motivo: 'x', saldo_validado: 'false' }
+  ] };
+  const huerfanos = ctx.cajaMovimientosSinValidarHuerfanos_(turnos, movimientos);
+  assert.equal(huerfanos.length, 1, 'saldo_validado guardado como texto "false" también debe detectarse como huérfano sin validar');
+  assert.equal(huerfanos[0].valor_total, 500000);
+}
+
 console.log('caja-v2: OK');

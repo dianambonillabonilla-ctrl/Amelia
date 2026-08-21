@@ -491,6 +491,12 @@ function calculoCierre(){
 // Ícono por tipo de movimiento para la línea de tiempo — mismos 5 tipos que ofrece el selector de
 // "Registrar movimiento"; cualquier otro valor (ej. movimientos migrados de un histórico viejo) usa
 // un ícono genérico en vez de romper o dejar el punto vacío.
+// Google Sheets no siempre devuelve un booleano de verdad para saldo_validado/fuera_de_turno —
+// puede volver como el TEXTO "true"/"false" (mismo motivo por el que rappi_encendido, más abajo,
+// ya se lee con String(...).toLowerCase()==='true' en vez de comparar directo). Sin esto, un valor
+// que llegara como texto quedaba sin mostrar ningún aviso — auditoría externa, ago 2026.
+const esVerdaderoSheets_=v=>v===true||String(v).toLowerCase()==='true';
+const esFalsoSheets_=v=>v===false||String(v).toLowerCase()==='false';
 const ICONO_MOV_={
   'Envío a caja fuerte':'🔒','Retiro de caja fuerte':'🔓',
   'Entrega administrador desde caja':'🤝','Entrega administrador desde caja fuerte':'🤝',
@@ -506,9 +512,9 @@ function pintarMovimientos(lista){
     // cuando no había ningún cierre anterior contra qué comparar (ej. la primera entrega de una
     // sede antes de su primer cierre real) — quedaba guardado pero invisible en pantalla, así que
     // una entrega nunca confirmada contra ningún saldo pasaba desapercibida para siempre.
-    const sinValidar=m.saldo_validado===false;
+    const sinValidar=esFalsoSheets_(m.saldo_validado);
     const avisoSinValidar=sinValidar?`<div class="detalle" style="color:var(--red)" title="No había ningún cierre anterior con qué comparar esta entrega — DILANA no pudo confirmar que hubiera fondos suficientes.">⚠ Sin validar contra ningún saldo</div>`:'';
-    const avisoFueraDeTurno=(!sinValidar&&m.fuera_de_turno)?`<div class="detalle" style="color:var(--amber)">Registrada con la caja cerrada</div>`:'';
+    const avisoFueraDeTurno=(!sinValidar&&esVerdaderoSheets_(m.fuera_de_turno))?`<div class="detalle" style="color:var(--amber)">Registrada con la caja cerrada</div>`:'';
     return `<div class="tl-item ${resta?'negativo':'positivo'}">
       <span class="punto">${icono}</span>
       <div class="cuerpo-tl">
@@ -558,12 +564,18 @@ async function cargarNovedades(){
     if(n.diferencia)detalle.push(`Cierre: ${dinero(n.diferencia)}`);
     if(n.diferencia_caja_fuerte)detalle.push(`Caja fuerte cierre: ${dinero(n.diferencia_caja_fuerte)}`);
     if(n.fudo_cambio_tras_cierre)detalle.push(`FUDO ahora dice ${dinero(n.fudo_cambio_tras_cierre.esperado_actual)} (guardado: ${dinero(n.fudo_cambio_tras_cierre.esperado_guardado)})`);
+    // resoluble:false (auditoría externa, ago 2026): un movimiento sin validar y sin ningún turno al
+    // que pertenecer no tiene dónde guardar "Resuelta" — antes se ofrecía el botón igual y fallaba
+    // con un error que no explicaba nada ("No existe esa caja").
+    const accion=n.resoluble===false
+      ?'<span class="nota-simple" title="No hay una caja abierta ni cerrada a la que ligar este movimiento — revísalo directamente en Caja del día con esa fecha y sede.">No se puede resolver aquí</span>'
+      :`<button class="btn fantasma btn-conciliar" data-fecha="${escapeHtml(n.fecha)}" data-sede="${escapeHtml(n.sede)}">Marcar como resuelta</button>`;
     return `<tr>
       <td>${escapeHtml(n.fecha)}</td>
       <td>${escapeHtml(n.sede)}</td>
       <td>${escapeHtml(n.motivos.join(', '))}</td>
       <td>${escapeHtml(detalle.join(' · ')||'—')}</td>
-      <td><button class="btn fantasma btn-conciliar" data-fecha="${escapeHtml(n.fecha)}" data-sede="${escapeHtml(n.sede)}">Marcar como resuelta</button></td>
+      <td>${accion}</td>
     </tr>`;
   }).join('');
   Array.from(document.querySelectorAll('.btn-conciliar')).forEach(boton=>{

@@ -280,3 +280,64 @@ básico, que un movimiento validado o sin el campo no genere el aviso, y que un 
 sede en la misma fecha no tape el huérfano de la sede que sí lo tiene.
 
 `npm test` completo (44 archivos) en verde después de los 3 cambios.
+
+## Segunda auditoría (mismo día, a pedido de Diana: "realiza una nueva auditoria a caja")
+
+Revisión completa de nuevo, con foco especial en autoevaluar lo que se acababa de corregir arriba
+(no dar por buenos los propios cambios sin probarlos). Se encontraron 2 bugs reales, los dos
+introducidos por el arreglo del Hallazgo 3, ambos confirmados ejecutando el código (no solo
+leyéndolo) y ambos corregidos en el mismo commit.
+
+### Bug A — "Marcar como resuelta" fallaba en las novedades de movimientos huérfanos
+
+Una novedad huérfana (movimiento sin validar y sin ningún turno al que pertenecer) no tiene fila en
+`Caja_Turno` — `cajaNovedadConciliar_` necesita esa fila para guardar `estado_conciliacion:'Resuelta'`.
+El botón "Marcar como resuelta" se ofrecía igual y fallaba con `"No existe esa caja"`, confirmado en
+vivo:
+
+```
+resultado: {"ok":false,"error":"No existe esa caja"}
+```
+
+Un Administrador viendo ese mensaje no tiene forma de saber que es "no se puede resolver esto
+todavía" en vez de un error real del sistema.
+
+**Arreglo**: `cajaNovedadesAdministrador_` (`CajaTurno.gs`) ahora marca cada novedad con
+`resoluble:true`/`false` — `true` para las que sí tienen fila de turno real, `false` para las
+huérfanas. `caja.html` usa ese campo para no ofrecer el botón en las huérfanas; en su lugar muestra
+"No se puede resolver aquí" con una explicación en el `title` (revisar directamente en Caja del día
+con esa fecha/sede).
+
+### Bug B — la detección de "sin validar" no resistía que Sheets devolviera texto en vez de booleano
+
+`caja.html` ya tenía, en otro punto (`rappi_encendido`), código defensivo para el caso real de que
+Google Sheets devuelva un booleano como el TEXTO `"true"`/`"false"` en vez de un booleano de verdad.
+El detector de huérfanos nuevo (`cajaMovimientosSinValidarHuerfanos_`) y el aviso nuevo en pantalla
+no tenían esa misma protección — comparaban con `=== false` / verdad directa. Confirmado en vivo,
+simulando ese caso real:
+
+```js
+saldo_validado: 'false' // texto, no booleano — exactamente lo que Sheets puede devolver
+```
+```
+huérfanos detectados: []
+```
+
+Cero — la entrega sin validar volvía a quedar completamente invisible, justo el problema que el
+Hallazgo 3 quería resolver.
+
+**Arreglo**: dos helpers nuevos y compartidos, `cajaValorEsVerdadero_`/`cajaValorEsFalso_`
+(`CajaTurno.gs`) y sus equivalentes en JS `esVerdaderoSheets_`/`esFalsoSheets_` (`caja.html`) —
+aceptan booleano real o texto (`"true"`/`"false"`, sin importar mayúsculas), y tratan
+`undefined`/`''`/`null` (una fila vieja sin la columna) como "ninguno de los dos", no como falso.
+Se usan ahora en `cajaMovimientosSinValidarHuerfanos_` y en el aviso de `pintarMovimientos`
+(`saldo_validado` y `fuera_de_turno`).
+
+### Resto del módulo
+
+Se revisó de nuevo el resto de Caja (candados, idempotencia, permisos por rol y sede, el caso de
+cierre después de medianoche, `cajaCorregir_`, `cajaConciliacionApertura_`) sin encontrar hallazgos
+nuevos — sigue consistente con lo ya documentado arriba. `npm test` completo (44 archivos) en verde
+después de estos 2 arreglos, con pruebas nuevas para ambos en `tests/caja-v2.test.js`:
+`resoluble:true/false` según haya o no una fila de turno real, y que `saldo_validado` guardado como
+texto `"false"` también se detecte como huérfano.
