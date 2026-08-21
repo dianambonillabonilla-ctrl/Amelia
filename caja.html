@@ -64,6 +64,12 @@
         <p style="font-size:.82rem;margin:-8px 0 14px">
           <span id="fudo-sync-info"></span>
           <button class="btn fantasma" id="btn-sincronizar-fudo" style="margin-left:8px;padding:2px 10px;font-size:.78rem">Sincronizar FUDO</button>
+          <!-- Diana (ago 2026): "en el módulo caja iba a quedar todo" — Sincronización FUDO (fudo.html)
+               no se fusiona aquí porque también la usan Conciliación y Disponible Hoy, no es exclusiva
+               de Caja; este es el acceso directo para no tener que buscarla aparte en el menú. Solo
+               Administrador ve fudo.html (requerirRol_(['Administrador']) ahí), así que el enlace
+               también se oculta para todos los demás roles. -->
+          <a href="fudo.html" id="link-sincronizacion-fudo" class="oculto" style="margin-left:8px;font-size:.78rem">Ver Sincronización FUDO completa →</a>
         </p>
 
         <section id="cargando" class="card">
@@ -72,48 +78,38 @@
         </section>
 
         <section id="sin-abrir" class="oculto">
+          <!-- Diana (ago 2026): "lo primero que debe ser es que esté sincronizado y me aparezca
+               cuánto dice FUDO que debo tener" — esta tarjeta va PRIMERO de todo, antes de cualquier
+               otra cosa, y se carga sola (cargarFudoApertura_, más abajo) sin esperar un clic. La
+               llamada real a FUDO (hasta 6 sincronizaciones) sigue disparándose en segundo plano, sin
+               bloquear el primer dibujo de la pantalla — mismo principio que ya evitaba el problema
+               viejo de "Consultando…" pegado (ver cajaEstado_ en CajaTurno.gs). -->
+          <div id="fudo-apertura" class="card" style="border-left:4px solid var(--gold)">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <h3 style="margin:0">FUDO</h3>
+              <span id="fudo-apertura-badge" class="nota-simple">Consultando…</span>
+            </div>
+            <div class="caja-resumen" id="fudo-apertura-cifras"></div>
+          </div>
+
           <!-- La apertura la hace quien está físicamente en la sede (Encargado), no la
                Administradora — a ella solo le interesa saber si ya está abierta o no. -->
           <div id="apertura-solo-lectura" class="card oculto">
             <h2>Caja sin abrir</h2>
-            <p>Todavía nadie ha abierto la caja de hoy en esta sede. La apertura la hace quien esté en la sede.</p>
-            <p style="margin-top:10px"><a href="#" id="abrir-de-todas-formas" style="font-size:.85rem">Abrir esta caja de todas formas</a></p>
+            <p style="margin-top:10px"><a href="#" id="abrir-de-todas-formas" style="font-size:.85rem">Abrir de todas formas</a></p>
           </div>
+
           <div id="apertura-form" class="card" style="border:2px solid var(--gold)">
             <h2>Abrir mi caja</h2>
-            <p>Cuenta físicamente el dinero que recibes antes de empezar a cobrar.</p>
-            <!-- Caja inicia oficialmente el 20/08/2026 (CajaInicioOperacion20260820.gs): mientras
-                 esta sede no tenga todavía un cierre DILANA desde esa fecha, "esperado" de aquí abajo
-                 se calcula contra el historial viejo y da $0 — no es la referencia real. La real es el
-                 total de FUDO del día anterior, y solo se ve en "Ver conciliación" más abajo. -->
-            <div id="aviso-referencia-inicial" class="advertencia oculto" style="margin-bottom:14px">
-              ⚠ Primera apertura de esta sede desde el inicio oficial de Caja (20/08/2026): "$0" de aquí
-              abajo NO es la referencia real. Toca <strong>"Ver conciliación"</strong> más abajo para
-              ver el total de FUDO del día anterior antes de contar.
-            </div>
             <div class="dinero-grid">
-              <div class="dinero"><span>Efectivo esperado del cierre anterior</span><strong id="base-esperada">$0</strong></div>
-              <div class="dinero"><span>Efectivo contado al abrir</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
+              <div class="dinero"><span>Esperado</span><strong id="base-esperada">$0</strong></div>
+              <div class="dinero"><span>Contado</span><input type="number" min="0" step="1" id="base-contada" style="margin-top:8px"></div>
               <div class="dinero"><span>Caja fuerte esperada</span><strong id="fuerte-esperada">$0</strong></div>
-              <div class="dinero"><span>Caja fuerte contada al abrir</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" style="margin-top:8px"></div>
+              <div class="dinero"><span>Caja fuerte contada</span><input type="number" min="0" step="1" id="fuerte-contada-apertura" style="margin-top:8px"></div>
             </div>
             <p class="diferencia" id="diferencia-apertura"></p>
-            <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000 de la base recibida"></div>
+            <div class="campo"><label>Observación cuando no coincida</label><input id="observacion-apertura" placeholder="Ej. faltan $10.000"></div>
             <button class="btn dorado" id="abrir">Abrir caja</button>
-          </div>
-          <!-- Conciliación FUDO vs. el cierre anterior (cajaConciliacionApertura_, ZZ_ReactivacionCajaFinal.gs)
-               — antes de contar, saber si FUDO confirma el cierre de ayer o si algo cambió después.
-               Bajo demanda, no automático: fuerza hasta 6 sincronizaciones reales contra la API de
-               FUDO (ventas+pagos+gastos, por 2 fechas) — pedirlo solo/cada carga de pantalla sería el
-               mismo problema de lentitud que cajaAbrir_ ya había resuelto (ver comentario ahí). -->
-          <div id="conciliacion-apertura" class="card" style="border-left:4px solid var(--gold)">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-              <h3 style="margin:0">Conciliación con el cierre anterior</h3>
-              <button class="btn fantasma" id="btn-ver-conciliacion" style="white-space:nowrap">Ver conciliación</button>
-            </div>
-            <div id="conciliacion-apertura-cuerpo" style="font-size:.86rem;margin-top:10px">
-              <p class="vacio" style="margin:0">Toca "Ver conciliación" para comparar contra FUDO — sincroniza en vivo, así que solo se pide cuando de verdad hace falta.</p>
-            </div>
           </div>
         </section>
 
@@ -319,6 +315,9 @@ const usuario=Sesion.usuario();
 // 'Caja' es el rol pensado para operar el módulo en esta etapa; 'Encargado' se conserva porque el
 // backend (cajaPuedeCerrar_ en ZZ_ReactivacionCajaFinal.gs) todavía lo acepta para cerrar turno.
 const puedeOperarCaja_=usuario.rol==='Administrador'||usuario.rol==='Encargado'||usuario.rol==='Caja';
+// fudo.html exige rol Administrador (requerirRol_(['Administrador']) ahí) — el enlace solo se
+// muestra a quien de verdad puede entrar, para no ofrecer un link que va a rebotar.
+document.getElementById('link-sincronizacion-fudo').classList.toggle('oculto',usuario.rol!=='Administrador');
 
 /* ===================== Pestañas ===================== */
 // window.location.search (no location.search a secas) — Historial (y los redirects de las páginas
@@ -418,7 +417,7 @@ function diferenciaApertura(){
   if(!estadoActual||estadoActual.apertura)return;
   const el=document.getElementById('diferencia-apertura');
   if(referenciaInicialActiva_){
-    el.textContent='Primer día de Caja: no hay cierre anterior para comparar la caja operativa sola contra $0. Toca "Ver conciliación" para comparar el total físico contra la referencia de FUDO del día anterior.';
+    el.textContent='Comparar el total contado (caja + fuerte) contra "Deberías tener hoy" en la tarjeta FUDO de arriba.';
     el.style.color='var(--grey)';
     return;
   }
@@ -429,43 +428,44 @@ function diferenciaApertura(){
 // Conciliación FUDO vs. el cierre anterior (cajaConciliacionApertura_, viaja dentro de la respuesta
 // de caja_sincronizar_ahora) — antes de contar, saber si FUDO confirma el cierre de ayer, si cambió
 // algo después de cerrar, o si no hay con qué comparar todavía.
+// Diana (ago 2026): "no debe tener tantas letras explicando cosas" — solo ícono + una etiqueta
+// corta para el estado; el detalle (fechas, por qué) queda en el title (tooltip), no en el texto.
 const ESTADO_CONCILIACION_INFO_={
-  CUADRA:{icono:'🟢',texto:'FUDO confirma el cierre anterior — cuadra.'},
-  NO_CONFIRMADA_FUDO:{icono:'🔴',texto:'No se pudo confirmar FUDO (NO_CONFIRMADA_FUDO) para la fecha de referencia — la conciliación no se declara todavía.'},
-  FUDO_CAMBIO_DESDE_CIERRE:{icono:'🟡',texto:'Cambio desde el cierre: FUDO actualizó ventas después de que se cerró ese turno.'},
-  DIFERENCIA_CUSTODIA:{icono:'🟡',texto:'Diferencia de custodia: los movimientos posteriores al cierre no cuadran con lo que debería haber ahora.'},
-  SIN_CIERRE_DILANA:{icono:'⚪',texto:'No existe un cierre anterior en Caja para comparar contra FUDO.'},
-  // Primera apertura de la sede desde el inicio oficial de Caja (20/08/2026, ver
-  // CajaInicioOperacion20260820.gs): todavía no hay cierre DILANA, así que FUDO del día anterior
-  // (menos gastos de arqueo en efectivo) es la referencia TOTAL — no distingue caja operativa de
-  // caja fuerte, eso lo fija el primer conteo físico real de hoy.
-  REFERENCIA_INICIAL_FUDO:{icono:'🟡',texto:'Inicio oficial de Caja: FUDO del día anterior es la referencia TOTAL (no reparte entre caja operativa y caja fuerte). El primer conteo físico de hoy fija esa distribución real.'}
+  CUADRA:{icono:'🟢',texto:'Cuadra con FUDO',detalle:'FUDO confirma el cierre anterior.'},
+  NO_CONFIRMADA_FUDO:{icono:'🔴',texto:'FUDO sin confirmar',detalle:'No se pudo confirmar FUDO para la fecha de referencia.'},
+  FUDO_CAMBIO_DESDE_CIERRE:{icono:'🟡',texto:'FUDO cambió',detalle:'FUDO actualizó ventas después de que se cerró ese turno.'},
+  DIFERENCIA_CUSTODIA:{icono:'🟡',texto:'Diferencia de custodia',detalle:'Los movimientos posteriores al cierre no cuadran con lo que debería haber ahora.'},
+  SIN_CIERRE_DILANA:{icono:'⚪',texto:'Sin cierre anterior',detalle:'No existe un cierre anterior en Caja para comparar contra FUDO.'},
+  REFERENCIA_INICIAL_FUDO:{icono:'🟡',texto:'Referencia inicial',detalle:'Inicio oficial de Caja: FUDO del día anterior es la referencia total.'}
 };
-async function cargarConciliacionApertura_(){
-  const cuerpo=document.getElementById('conciliacion-apertura-cuerpo');
-  const boton=document.getElementById('btn-ver-conciliacion');
-  cuerpo.innerHTML='<p class="vacio" style="margin:0">Sincronizando con FUDO…</p>';
+// Se carga sola al entrar a "Caja sin abrir" (ver cargar() más abajo) — ya no espera un clic.
+async function cargarFudoApertura_(){
+  const badge=document.getElementById('fudo-apertura-badge');
+  const cifras=document.getElementById('fudo-apertura-cifras');
+  badge.textContent='Consultando…';
   const r=await llamar('caja_sincronizar_ahora',parametros());
   if(!r.ok||!r.conciliacion_apertura){
-    cuerpo.innerHTML=`<p style="margin:0;color:var(--red)">No se pudo cargar la conciliación: ${escapeHtml(r.error||'error desconocido')}.</p>`;
+    badge.innerHTML=`<span style="color:var(--red)">⚠ ${escapeHtml(r.error||'No se pudo consultar FUDO')}</span>`;
+    cifras.innerHTML='';
     return;
   }
   const c=r.conciliacion_apertura;
-  const info=ESTADO_CONCILIACION_INFO_[c.estado_conciliacion]||{icono:'⚪',texto:c.estado_conciliacion||''};
-  let html=`<p style="margin:0">${info.icono} <strong>${escapeHtml(c.estado_conciliacion||'')}</strong> — ${escapeHtml(info.texto)}</p>`;
+  const info=ESTADO_CONCILIACION_INFO_[c.estado_conciliacion]||{icono:'⚪',texto:c.estado_conciliacion||'',detalle:''};
+  badge.innerHTML=`<span title="${escapeHtml(info.detalle)}">${info.icono} ${escapeHtml(info.texto)}</span>`;
+  const tile=(etiqueta,valor,principal)=>`<div class="caja-kpi${principal?' principal':''}"><span>${escapeHtml(etiqueta)}</span><strong>${dinero(valor)}</strong></div>`;
+  let html='';
   if(c.tiene_cierre_dilana){
-    html+=`<p style="margin:8px 0 0;color:var(--grey)">Cierre de referencia (${escapeHtml(c.fecha_referencia)}): esperado guardado ${dinero(c.dilana.esperado_cierre_guardado)}`;
-    if(c.fudo_cambio_desde_cierre)html+=`, ahora con FUDO actual ${dinero(c.dilana.esperado_cierre_con_fudo_actual)} (${c.fudo_cambio_desde_cierre>0?'+':''}${dinero(c.fudo_cambio_desde_cierre)})`;
-    html+='.</p>';
+    html+=tile('FUDO efectivo',c.fudo.efectivo);
+    html+=tile('Cierre anterior',c.dilana.esperado_cierre_guardado);
+    if(c.fudo_cambio_desde_cierre)html+=tile('FUDO ahora',c.dilana.esperado_cierre_con_fudo_actual);
+    html+=tile('Deberías tener hoy',c.custodia_esperada_hoy.total,true);
   }else if(c.modo_referencia_inicial_fudo){
-    // Sin cierre DILANA todavía: la referencia real para contrastar contra lo que se va a contar es
-    // este total (FUDO del día de referencia menos gastos de arqueo en efectivo), no el "$0" que
-    // muestra el formulario de apertura de arriba.
-    html+=`<p style="margin:8px 0 0;color:var(--grey)">FUDO ${escapeHtml(c.fecha_referencia)}: efectivo ${dinero(c.fudo.efectivo)} − gastos de arqueo ${dinero(c.fudo.gastos_efectivo)} = <strong style="color:var(--navy)">referencia total ${dinero(c.custodia_esperada_hoy.total)}</strong> (caja operativa + caja fuerte juntas).</p>`;
+    html+=tile('FUDO día anterior',c.fudo.efectivo);
+    html+=tile('Gastos de arqueo',c.fudo.gastos_efectivo);
+    html+=tile('Referencia total',c.custodia_esperada_hoy.total,true);
   }
-  cuerpo.innerHTML=html;
+  cifras.innerHTML=html||'<p class="vacio" style="margin:0">Sin referencia todavía.</p>';
 }
-document.getElementById('btn-ver-conciliacion').addEventListener('click',conBotonProtegido(document.getElementById('btn-ver-conciliacion'),cargarConciliacionApertura_));
 function calculoCierre(){
   if(!estadoActual||!estadoActual.apertura||estadoActual.apertura.estado!=='Abierto')return;
   const contado=Number(document.getElementById('cierre-contado').value||0);
@@ -652,14 +652,12 @@ async function cargar(opciones){
     // caja_fuerte_esperada de arriba dan $0 porque no hay nada que comparar todavía, pero eso NO es
     // la referencia real que cajaAbrir_ va a usar (el total de FUDO del día anterior). El aviso solo
     // se muestra en ese caso probable (fecha ya en la era nueva + esperado en $0), no siempre.
-    const posibleReferenciaInicial=fechaEl.value>='2026-08-20'&&Number(data.base_esperada)===0&&Number(data.caja_fuerte_esperada||0)===0;
-    referenciaInicialActiva_=posibleReferenciaInicial;
-    document.getElementById('aviso-referencia-inicial').classList.toggle('oculto',!posibleReferenciaInicial);
-    // La conciliación ya no se pide sola al cargar (auditoría, ago 2026): sincroniza en vivo contra
-    // FUDO, así que se deja bajo demanda con el botón "Ver conciliación" en vez de gastar cuota cada
-    // vez que se abre o refresca esta pantalla.
-    document.getElementById('conciliacion-apertura-cuerpo').innerHTML='<p class="vacio" style="margin:0">Toca "Ver conciliación" para comparar contra FUDO — sincroniza en vivo, así que solo se pide cuando de verdad hace falta.</p>';
-    mostrar('sin-abrir');diferenciaApertura();return;
+    referenciaInicialActiva_=fechaEl.value>='2026-08-20'&&Number(data.base_esperada)===0&&Number(data.caja_fuerte_esperada||0)===0;
+    mostrar('sin-abrir');diferenciaApertura();
+    // Diana (ago 2026): esto debe verse solo, sin clic — se dispara DESPUÉS de mostrar la pantalla
+    // (no bloquea el primer dibujo) y hace la llamada real a FUDO en segundo plano.
+    cargarFudoApertura_();
+    return;
   }
   if(data.apertura.estado==='Cerrado'){
     document.getElementById('estado').textContent=`${confianza.icono} Caja cerrada`;document.getElementById('estado').title=confianza.texto;document.getElementById('estado').classList.add('cerrada');
