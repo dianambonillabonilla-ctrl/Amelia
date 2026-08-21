@@ -1,9 +1,6 @@
 /**
  * REACTIVACIÓN FINAL — Usuarios + FUDO financiero + Caja.
- *
- * ÚNICA capa de compatibilidad sobre CajaTurno.gs mientras MODO_REACTIVACION_BACKEND=true.
- * Reúne aquí todas las reglas de Caja reactivada para no depender de varios archivos ZZ que
- * redefinan las mismas funciones entre sí.
+ * ÚNICA capa de compatibilidad activa sobre CajaTurno.gs mientras MODO_REACTIVACION_BACKEND=true.
  */
 const ACCIONES_FUDO_PERMITIDAS_REACTIVACION_ = [
   'fudo_panel_estado','fudo_api_probar_conexion','fudo_api_sincronizar_ventas','fudo_api_sincronizar_pagos'
@@ -12,6 +9,7 @@ const ACCIONES_CAJA_PERMITIDAS_REACTIVACION_ = [
   'caja_estado','caja_abrir','caja_movimiento_registrar','caja_movimientos_listar','caja_cerrar','caja_sincronizar_ahora',
   'caja_resumen_admin','caja_novedades_listar','caja_novedad_conciliar','caja_historial_listar','caja_corregir'
 ];
+const CAJA_FUDO_ESTADO_MAX_EDAD_MS_ = 30 * 60 * 1000;
 
 function accionPermitidaEnReactivacion_(action) {
   return !reactivacionBackendActiva_() ||
@@ -44,17 +42,43 @@ function cajaDiaAnteriorReactivacion_(fechaStr) {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
+/**
+ * Estado FUDO durable con control de frescura. Para fechas históricas un éxito no caduca; para HOY,
+ * un éxito de más de 30 minutos deja de ser confiable y se devuelve como pendiente/desactualizado.
+ */
+function cajaLeerEstadoFudo_(fecha, sede) {
+  const f = formatearFecha_(fecha);
+  let estado = null;
+  const guardado = CacheService.getScriptCache().get(cajaFudoCacheKey_(f, sede));
+  if (guardado) {
+    try { estado = JSON.parse(guardado); } catch (e) { estado = null; }
+  }
+  if (!estado && typeof PropertiesService !== 'undefined' && typeof cajaFudoEstadoPropKey_ === 'function') {
+    const persistente = PropertiesService.getScriptProperties().getProperty(cajaFudoEstadoPropKey_(f, sede));
+    if (persistente) {
+      try { estado = JSON.parse(persistente); } catch (e) { estado = null; }
+    }
+  }
+  if (!estado) return { ok:false, pendiente:true, error:'FUDO aún no se ha actualizado desde Caja.', fecha:f, sede:sede };
+  if (estado.aplica === false) return estado;
+  if (f === formatearFecha_(new Date()) && estado.ok) {
+    const ts = cajaFechaMs_(estado.sincronizado_en);
+    if (!ts || Date.now() - ts > CAJA_FUDO_ESTADO_MAX_EDAD_MS_) {
+      return Object.assign({}, estado, {
+        ok:false, pendiente:true, desactualizado:true,
+        error:'FUDO está desactualizado. La última sincronización correcta tiene más de 30 minutos.'
+      });
+    }
+  }
+  return estado;
+}
+
 function cajaExisteTurnoPosteriorA_(fecha, sede) {
   return leerTabla_(SHEET_NAMES.CAJA_TURNO).some(function (r) {
     return r.sede === sede && formatearFecha_(r.fecha) > fecha;
   });
 }
 
-/**
- * Una sede solo puede tener un turno abierto a la vez (auditoría externa, ago 2026): sin este
- * candado se podía abrir el día 21 sin haber cerrado el 20 — cajaExisteTurnoPosteriorA_ solo bloquea
- * retroactividad hacia atrás, nunca revisó si quedaba algo abierto hacia adelante.
- */
 function cajaExisteTurnoAbiertoAnteriorA_(fecha, sede) {
   return leerTabla_(SHEET_NAMES.CAJA_TURNO).some(function (r) {
     return r.sede === sede && r.estado === 'Abierto' && formatearFecha_(r.fecha) < fecha;
@@ -102,11 +126,46 @@ function cajaMovimientosResumen_(movimientos) {
   return r;
 }
 
+/**
+ * Pagos en efectivo pertenecientes realmente al turno por paidAt/createdAt. Esta es la fuente
+ * preferida para evitar el doble conteo que podía producir "total FUDO actual - snapshot al abrir"
+ * cuando una venta ya estaba físicamente en el cajón pero todavía no había sido sincronizada.
+ */
+function cajaPagosEfectivoTurnoPorMomento_(apertura, fecha, sede) {
+  const desde = cajaFechaMs_(apertura && apertura.hora_apertura);
+  if (!desde) return { disponible:false, total:0, cantidad:0, sin_momento:0 };
+  const hasta = apertura && apertura.estado === 'Cerrado'
+    ? cajaFechaMs_(apertura.timestamp_cierre || apertura.hora_cierre) : 0;
+  const nombreHoja = SHEET_NAMES.FUDO_PAGOS || SHEET_NAMES.PAGOS_FUDO;
+  let filas = [];
+  try { filas = leerTabla_(nombreHoja); } catch (e) { filas = []; }
+  if (!filas.length && nombreHoja !== SHEET_NAMES.PAGOS_FUDO) {
+    try { filas = leerTabla_(SHEET_NAMES.PAGOS_FUDO); } catch (e) { filas = []; }
+  }
+  let total=0,cantidad=0,sinMomento=0,efectivosDia=0;
+  filas.forEach(function(p){
+    if(formatearFecha_(p.fecha||p.creacion)!==fecha||p.sede!==sede)return;
+    if(p.cancelado===true||normalizar_(p.cancelado)==='si'||normalizar_(p.cancelado)==='true')return;
+    const esEfectivo = p.es_efectivo===true || (typeof pagosFudoEsEfectivo_==='function' && pagosFudoEsEfectivo_(p));
+    if(!esEfectivo)return;
+    efectivosDia++;
+    const momento=cajaFechaMs_(p.creacion||p.paid_at||p.paidAt);
+    if(!momento){sinMomento++;return;}
+    if(momento<desde)return;
+    if(hasta&&momento>hasta)return;
+    total+=Number(p.monto)||0;cantidad++;
+  });
+  return {disponible:efectivosDia>0&&sinMomento===0,total:Number(total.toFixed(2)),cantidad:cantidad,sin_momento:sinMomento};
+}
+
 function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
   const movimientosTurno = cajaMovimientosVentanaTurno_(apertura, movimientos);
   const r = cajaMovimientosResumen_(movimientosTurno);
   const efectivoFudoActual = cajaEfectivoFudoDia_(fecha, sede);
-  const efectivoFudoTurno = Math.max(0, efectivoFudoActual - (Number(apertura.efectivo_fudo_al_abrir) || 0));
+  const porMomento = cajaPagosEfectivoTurnoPorMomento_(apertura,fecha,sede);
+  const efectivoFudoTurno = porMomento.disponible
+    ? porMomento.total
+    : Math.max(0, efectivoFudoActual - (Number(apertura.efectivo_fudo_al_abrir) || 0));
   const gastosFudo = typeof fudoGastosArqueoTotalTurno_ === 'function'
     ? fudoGastosArqueoTotalTurno_(fecha,sede,apertura) : { total:0,cantidad:0 };
   const gastoFudoBruto = Number(gastosFudo.total) || 0;
@@ -122,6 +181,8 @@ function cajaEfectivoEsperado_(apertura, movimientos, fecha, sede) {
   r.gastos_fudo_compensados_por_entrega = Number(compensadoPorEntrega.toFixed(2));
   r.gastos_fudo_neto = Number(gastoFudoNeto.toFixed(2));
   r.gastos_fudo_arqueo_cantidad = Number(gastosFudo.cantidad) || 0;
+  r.fudo_por_momento = porMomento.disponible;
+  r.fudo_pagos_sin_momento = porMomento.sin_momento;
   return {
     esperado:Number(esperado.toFixed(2)), caja_fuerte_esperada:Number(fuerte.toFixed(2)),
     pagos_efectivo_esperado:Number(efectivoFudoTurno.toFixed(2)), pagos_efectivo_dia:Number(efectivoFudoActual.toFixed(2)),
@@ -157,6 +218,7 @@ function cajaCustodiaEsperadaTrasCierre_(ultimoCierre, fechaActual, sede) {
     total:Number((operativa+cajaFuerte).toFixed(2)), movimientos:movimientos, resumen:r };
 }
 
+/** Reproduce cronológicamente cada movimiento posterior al cierre corregido. */
 function cajaCustodiaTrasCorreccion_(turno, contado, fuerteContada) {
   const fechaCierre = formatearFecha_(turno.fecha);
   const tsCierre = cajaFechaMs_(turno.timestamp_cierre || turno.hora_cierre);
@@ -167,17 +229,24 @@ function cajaCustodiaTrasCorreccion_(turno, contado, fuerteContada) {
     if (tsCierre && ts && ts <= tsCierre) return false;
     if (turnoId && String(m.turno_id || '') === turnoId) return true;
     return formatearFecha_(m.fecha) === fechaCierre && !!ts && ts > tsCierre;
+  }).sort(function(a,b){return cajaFechaMs_(a.timestamp||a.hora)-cajaFechaMs_(b.timestamp||b.hora);});
+
+  let operativa=Number(contado), fuerte=Number(fuerteContada), invalida=null;
+  movimientos.forEach(function(m){
+    if(invalida)return;
+    const v=Number(m.valor)||0,t=cajaTipoReal_(m);
+    if(t==='Otro ingreso')operativa+=v;
+    else if(t==='Retiro de caja fuerte'){fuerte-=v;operativa+=v;}
+    else if(t==='Envío a caja fuerte'){operativa-=v;fuerte+=v;}
+    else if(t==='Entrega administrador desde caja'||t==='Gasto')operativa-=v;
+    else if(t==='Entrega administrador desde caja fuerte')fuerte-=v;
+    if(operativa < -0.01 || fuerte < -0.01){
+      invalida={movimiento:m,caja_operativa:Number(operativa.toFixed(2)),caja_fuerte:Number(fuerte.toFixed(2))};
+    }
   });
-  const r = cajaMovimientosResumen_(movimientos);
-  const operativa = Number(contado) + r.otros_ingresos + r.retiros_caja_fuerte -
-    r.envios_caja_fuerte - r.entregas_admin_caja - r.gastos;
-  const fuerte = Number(fuerteContada) + r.envios_caja_fuerte -
-    r.retiros_caja_fuerte - r.entregas_admin_caja_fuerte;
   return {
-    caja_operativa:Number(operativa.toFixed(2)),
-    caja_fuerte:Number(fuerte.toFixed(2)),
-    movimientos:movimientos,
-    resumen:r
+    caja_operativa:Number(operativa.toFixed(2)),caja_fuerte:Number(fuerte.toFixed(2)),
+    movimientos:movimientos,resumen:cajaMovimientosResumen_(movimientos),valida:!invalida,invalida:invalida
   };
 }
 
@@ -235,9 +304,7 @@ function cajaAbrir_(item,usuario) {
     referenciaInicial=cajaReferenciaInicialSincronizar_(fecha,item.sede,usuario);
     syncFudo=referenciaInicial.sincronizacion;
     difTotal=Number((totalFisico-referenciaInicial.referencia_total).toFixed(2));
-    // En el primer día FUDO aporta un total, no una distribución física entre cajón y caja fuerte.
-    difApertura=difTotal;
-    difFuerte=0;
+    difApertura=difTotal; difFuerte=0;
   } else {
     syncFudo=cajaSincronizarFudo_(fecha,item.sede,usuario,false);
     baseEsperada=cajaBaseEsperada_(fecha,item.sede);
@@ -379,8 +446,8 @@ function cajaCorregir_(item,usuario) {
     const esperado=Number(turnoAhora.efectivo_esperado)||0,fuerteEsperada=Number(turnoAhora.caja_fuerte_esperada)||0;
     const dif=Number((contado-esperado).toFixed(2)),difF=Number((fuerteContada-fuerteEsperada).toFixed(2));
     const custodiaPosterior=cajaCustodiaTrasCorreccion_(turnoAhora,contado,fuerteContada);
-    if(custodiaPosterior.caja_operativa < -0.01 || custodiaPosterior.caja_fuerte < -0.01){
-      return {ok:false,error:'No se puede aplicar esta corrección porque contradice movimientos de custodia ya registrados después del cierre y dejaría un saldo negativo.'};
+    if(!custodiaPosterior.valida || custodiaPosterior.caja_operativa < -0.01 || custodiaPosterior.caja_fuerte < -0.01){
+      return {ok:false,error:'No se puede aplicar esta corrección porque contradice cronológicamente movimientos de custodia ya registrados después del cierre y dejaría un saldo negativo en algún punto.'};
     }
     const anterior={efectivo_contado:turnoAhora.efectivo_contado,diferencia:turnoAhora.diferencia,caja_fuerte_contada:turnoAhora.caja_fuerte_contada,
       diferencia_caja_fuerte:turnoAhora.diferencia_caja_fuerte,base_siguiente:turnoAhora.base_siguiente,caja_fuerte_siguiente:turnoAhora.caja_fuerte_siguiente,
@@ -455,6 +522,27 @@ function cajaFudoCambioTrasCierre_(turno) {
   return dif===0?null:{esperado_guardado:guardado,esperado_actual:recalculo.esperado,diferencia:dif};
 }
 
+/**
+ * Sincroniza pagos incluyendo cancelados. Así un pago que era válido y luego se cancela vuelve a
+ * llegar por su mismo id y el UPSERT local cambia cancelado=true, retirándolo del arqueo.
+ */
+function cajaSincronizarPagosFudoIncluyendoCancelados_(fechaDesde, fechaHasta, usuario) {
+  const sedePorVenta = pagosFudoIndiceSedePorVenta_();
+  const resultado = fudoApiObtenerTodoCompleto_('payments', {
+    filtros:{ createdAt:'and(gte.'+fechaDesde+'T00:00:00,lte.'+fechaHasta+'T23:59:59)' },
+    include:FUDO_API_PAYMENTS_INCLUDE_
+  });
+  const filas = resultado.registros.map(function(payment){
+    return fudoApiFilaPagoDesdePayment_(payment,resultado.incluidos,sedePorVenta);
+  });
+  const importado = pagosFudoImportar_(filas,usuario,Object.assign({archivo:'API FUDO pagos completos '+fechaDesde+' a '+fechaHasta},{}));
+  if(typeof fudoApiSyncRegistrar_==='function'){
+    fudoApiSyncRegistrar_('pagos',{ok:importado.ok!==false,fecha_desde:fechaDesde,fecha_hasta:fechaHasta,usuario:usuario&&usuario.nombre,
+      importados:importado.importados||0,actualizados:importado.actualizados||0,omitidos:importado.omitidos||0,pagos_encontrados:filas.length,error:importado.error||''});
+  }
+  return Object.assign({},importado,{pagos_encontrados:filas.length,incluye_cancelados:true});
+}
+
 function cajaSincronizarFudo_(fecha,sede,usuario,forzar) {
   const f=formatearFecha_(fecha);
   if(!cajaFudoCredencialesConfiguradas_()){
@@ -464,7 +552,7 @@ function cajaSincronizarFudo_(fecha,sede,usuario,forzar) {
   if(!forzar)return cajaLeerEstadoFudo_(f,sede);
   const res={ok:false,aplica:true,fecha:f,sede:sede,sincronizado_en:new Date(),ventas:null,pagos:null,gastos:null,error:''},errores=[];
   try{res.ventas=fudoApiSincronizarVentas_(f,f,usuario,{sede:'Automática'});if(!res.ventas||res.ventas.ok===false)errores.push('Ventas: '+((res.ventas&&res.ventas.error)||'falló'));}catch(e){errores.push('Ventas: '+(e.message||e));}
-  try{res.pagos=fudoApiSincronizarPagos_(f,f,usuario,{sede:'Automática'});if(!res.pagos||res.pagos.ok===false)errores.push('Pagos: '+((res.pagos&&res.pagos.error)||'falló'));}catch(e){errores.push('Pagos: '+(e.message||e));}
+  try{res.pagos=cajaSincronizarPagosFudoIncluyendoCancelados_(f,f,usuario);if(!res.pagos||res.pagos.ok===false)errores.push('Pagos: '+((res.pagos&&res.pagos.error)||'falló'));}catch(e){errores.push('Pagos: '+(e.message||e));}
   try{res.gastos=fudoApiSincronizarGastosArqueo_(f,f,usuario);if(!res.gastos||res.gastos.ok===false)errores.push('Gastos: '+((res.gastos&&res.gastos.error)||'falló'));}catch(e){errores.push('Gastos: '+(e.message||e));}
   res.ok=errores.length===0;res.error=errores.join(' | ');res.sincronizado_en=new Date();
   return cajaGuardarEstadoFudoPersistente_(f,sede,res);
@@ -490,7 +578,7 @@ function fudoSincronizacionCajaAutomatica_() {
     return mensaje;
   }
   try{res.ventas=fudoApiSincronizarVentas_(desde,hasta,u,{});if(!res.ventas||res.ventas.ok===false)res.error_ventas=fallo('ventas',(res.ventas&&res.ventas.error)||'Falló la sincronización automática de ventas.');}catch(e){res.error_ventas=fallo('ventas',e);}
-  try{res.pagos=fudoApiSincronizarPagos_(desde,hasta,u,{});if(!res.pagos||res.pagos.ok===false)res.error_pagos=fallo('pagos',(res.pagos&&res.pagos.error)||'Falló la sincronización automática de pagos.');}catch(e){res.error_pagos=fallo('pagos',e);}
+  try{res.pagos=cajaSincronizarPagosFudoIncluyendoCancelados_(desde,hasta,u);if(!res.pagos||res.pagos.ok===false)res.error_pagos=fallo('pagos',(res.pagos&&res.pagos.error)||'Falló la sincronización automática de pagos.');}catch(e){res.error_pagos=fallo('pagos',e);}
   try{res.gastos=fudoApiSincronizarGastosArqueo_(desde,hasta,u);if(!res.gastos||res.gastos.ok===false)res.error_gastos=fallo('gastos_arqueo',(res.gastos&&res.gastos.error)||'Falló la sincronización automática de gastos de arqueo.');}catch(e){res.error_gastos=fallo('gastos_arqueo',e);}
   res.error=errores.join(' | ');res.sincronizado_en=new Date();
   [desde,hasta].forEach(function(fechaEstado){CAJA_SEDES_VALIDAS_.forEach(function(sede){cajaGuardarEstadoFudoPersistente_(fechaEstado,sede,res);});});
