@@ -15,6 +15,7 @@ const CAJA_FECHA_INICIO_OFICIAL_ = '2026-08-20';
 const CAJA_ARCHIVO_TURNOS_PRE_INICIO_ = 'Caja_Turno_Archivo_Pre20260820';
 const CAJA_ARCHIVO_MOVIMIENTOS_PRE_INICIO_ = 'Caja_Movimientos_Archivo_Pre20260820';
 const CAJA_ESTADO_FUDO_TTL_SEGUNDOS_ = 3600;
+const CAJA_INICIO_OPERACION_PROP_ = 'CAJA_INICIO_OPERACION_20260820_HECHA';
 const CAJA_COLUMNAS_INICIO_OPERACION_ = [
   'tipo_referencia_apertura','fecha_referencia_apertura','referencia_total_apertura',
   'efectivo_fudo_referencia_apertura','gastos_fudo_referencia_apertura','referencia_fudo_confirmada_apertura',
@@ -26,25 +27,14 @@ function cajaFechaEsAnteriorInicioOficial_(valor) {
   return !!fecha && fecha < CAJA_FECHA_INICIO_OFICIAL_;
 }
 
-/**
- * Propiedad separada de CAJA_MIGRACION_HISTORICA_HECHA (auditoría, ago 2026 — segunda ronda): ese
- * nombre ya lo usa cajaMigrarHistorico_ (CajaTurno.gs) para una migración vieja y NO relacionada (3
- * movimientos puntuales de agosto), y cajaAsegurarEstructura_ la marca 'true' automáticamente en la
- * PRIMERA acción de Caja que corra — antes incluso de que cajaAbrir_ llegara a revisar esta
- * bandera. Con el mismo nombre, el candado de abajo quedaba puesto pero nunca podía bloquear nada:
- * la propiedad ya estaba en 'true' por la otra migración desde la primera llamada. Se detectó
- * escribiendo una prueba que abre el 20/08 sin correr cajaInicializarOperacionDesde20Agosto2026()
- * primero — con el nombre viejo esa apertura pasaba igual.
- */
+/** La marca exclusiva del corte oficial; nunca se comparte con migraciones históricas antiguas. */
 function cajaMigracionHistoricaEjecutada_() {
   if (typeof PropertiesService === 'undefined') return false;
-  return PropertiesService.getScriptProperties().getProperty('CAJA_INICIO_OPERACION_20260820_HECHA') === 'true';
+  return PropertiesService.getScriptProperties().getProperty(CAJA_INICIO_OPERACION_PROP_) === 'true';
 }
 
 function cajaFechaOperacionPermitida_(valor) {
   const fecha = formatearFecha_(valor);
-  // Las pruebas históricas del repositorio siguen pudiendo ejercitar escenarios previos al corte.
-  // En producción esta variable no existe y el corte del 20/08/2026 es obligatorio.
   if (typeof DILANA_TEST_DESACTIVAR_REACTIVACION !== 'undefined' && DILANA_TEST_DESACTIVAR_REACTIVACION === true) return true;
   if (!fecha || fecha < CAJA_FECHA_INICIO_OFICIAL_) return false;
   return cajaMigracionHistoricaEjecutada_();
@@ -55,7 +45,7 @@ function cajaMensajeFechaNoPermitida_(valor) {
   if (!fecha || fecha < CAJA_FECHA_INICIO_OFICIAL_) {
     return 'La operación oficial de Caja inicia el 20/08/2026. Las fechas anteriores quedaron archivadas.';
   }
-  return 'Todavía no se ejecutó la inicialización de Caja del 20/08/2026 (cajaInicializarOperacionDesde20Agosto2026). Un Administrador debe correrla antes de operar Caja.';
+  return 'Todavía no se ejecutó completamente la inicialización de Caja del 20/08/2026 (cajaInicializarOperacionDesde20Agosto2026). Un Administrador debe correrla antes de operar Caja.';
 }
 
 function cajaAsegurarColumnasInicioOperacion_() {
@@ -66,11 +56,6 @@ function cajaFudoEstadoPropKey_(fecha, sede) {
   return 'CAJA_FUDO_ESTADO|' + formatearFecha_(fecha) + '|' + sede;
 }
 
-/**
- * Guarda el estado de FUDO más allá del caché corto histórico de Caja y, además, refresca
- * el mismo cache key que ya consume cajaEstado_. El trigger corre cada 15 minutos y este valor
- * vive una hora, por lo que la pantalla deja de mostrar falsos "pendiente" entre ejecuciones.
- */
 function cajaGuardarEstadoFudoPersistente_(fecha, sede, estado) {
   const f = formatearFecha_(fecha);
   const limpio = Object.assign({}, estado || {}, { fecha:f, sede:sede });
@@ -144,11 +129,6 @@ function cajaArchivarFilasAnterioresInicio_(nombreHojaActiva, nombreHojaArchivo)
   return { archivadas:nuevas.length, retiradas:retiradas };
 }
 
-/**
- * Referencia económica de arranque cuando todavía no existe cierre DILANA previo:
- * efectivo cobrado en FUDO del día anterior menos gastos FUDO en efectivo que impactan arqueo.
- * No asigna esa cifra a caja operativa ni a caja fuerte; es referencia TOTAL.
- */
 function cajaReferenciaFudoDiaAnterior_(fecha, sede) {
   const fechaFmt = formatearFecha_(fecha);
   const fechaRef = cajaDiaAnteriorReactivacion_(fechaFmt);
@@ -184,7 +164,6 @@ function cajaReferenciaInicialSincronizar_(fecha,sede,usuario) {
   return ref;
 }
 
-/** Devuelve true mientras la sede todavía no tenga un cierre DILANA desde el corte oficial. */
 function cajaUsaReferenciaFudoInicial_(fecha, sede) {
   const fechaFmt = formatearFecha_(fecha);
   if (fechaFmt < CAJA_FECHA_INICIO_OFICIAL_) return false;
@@ -192,25 +171,30 @@ function cajaUsaReferenciaFudoInicial_(fecha, sede) {
 }
 
 /**
- * Ejecutar UNA sola vez después de desplegar esta versión.
- *
- * 1. Archiva y retira de Caja_Turno/Caja_Movimientos lo anterior al 20/08/2026.
- * 2. Desactiva las migraciones históricas antiguas de Caja.
- * 3. Sincroniza FUDO del 19/08/2026 para ambas sedes y deja lista la referencia inicial.
- *
- * Es idempotente: ejecutar de nuevo no duplica el archivo histórico.
+ * Ejecutar una vez después del despliegue.
+ * La marca de éxito se escribe SOLO después de completar el corte local. Si algo falla durante el
+ * archivado, la marca queda borrada y Caja continúa bloqueada. Además se marca como terminada la
+ * migración histórica antigua para impedir que vuelva a insertar filas del 02–03/08 tras el corte.
+ * La sincronización FUDO se hace después: una caída de red no revierte un corte local ya completo.
  */
 function cajaInicializarOperacionDesde20Agosto2026() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Otra inicialización de Caja está en curso.');
   let turnos, movimientos;
+  const props = PropertiesService.getScriptProperties();
   try {
-    const props = PropertiesService.getScriptProperties();
-    props.setProperty('CAJA_INICIO_OPERACION_20260820_HECHA', 'true');
-    props.setProperty('CAJA_FECHA_INICIO_OPERACION', CAJA_FECHA_INICIO_OFICIAL_);
+    props.deleteProperty(CAJA_INICIO_OPERACION_PROP_);
     cajaAsegurarColumnasInicioOperacion_();
     turnos = cajaArchivarFilasAnterioresInicio_(SHEET_NAMES.CAJA_TURNO, CAJA_ARCHIVO_TURNOS_PRE_INICIO_);
     movimientos = cajaArchivarFilasAnterioresInicio_(SHEET_NAMES.CAJA_MOVIMIENTOS, CAJA_ARCHIVO_MOVIMIENTOS_PRE_INICIO_);
+
+    // La migración vieja no puede volver a poblar filas anteriores al inicio oficial.
+    props.setProperty('CAJA_MIGRACION_HISTORICA_HECHA', 'true');
+    props.setProperty('CAJA_FECHA_INICIO_OPERACION', CAJA_FECHA_INICIO_OFICIAL_);
+    props.setProperty(CAJA_INICIO_OPERACION_PROP_, 'true');
+  } catch (error) {
+    props.deleteProperty(CAJA_INICIO_OPERACION_PROP_);
+    throw error;
   } finally {
     lock.releaseLock();
   }
