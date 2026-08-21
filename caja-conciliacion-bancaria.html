@@ -1,0 +1,139 @@
+<!--
+  DILANA OS — Caja / Conciliación bancaria
+  Vista parcial para integrarse como pestaña dentro de caja.html.
+
+  Alcance V1 acordado (ago 2026):
+  - Cargar archivo bancario .xls/.xlsx/.csv descargado del banco.
+  - Conciliar únicamente Bre-B / QR / transferencias contra FUDO.
+  - NO incluir datáfono/tarjetas todavía.
+  - No mezclar esta conciliación con el arqueo físico de efectivo.
+  - No asumir que todos los créditos del extracto son ventas: reversos, impuestos,
+    comisiones y otros movimientos deben clasificarse antes del cruce.
+-->
+<section id="tab-conciliacion-bancaria" class="tab-panel" aria-labelledby="tab-btn-conciliacion-bancaria">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap">
+      <div>
+        <h2 style="margin:0 0 6px">Conciliación bancaria</h2>
+        <p class="nota-simple" style="margin:0;max-width:760px">
+          Cruza los pagos electrónicos registrados en FUDO con los movimientos que realmente ingresaron al banco.
+          En esta primera versión se revisan Bre-B, QR y transferencias. Tarjetas/datáfono quedan fuera del alcance.
+        </p>
+      </div>
+      <span class="estado" id="conciliacion-banco-estado">Sin archivo cargado</span>
+    </div>
+  </div>
+
+  <div class="card" style="border:2px solid var(--gold)">
+    <h3 style="margin-top:0">1. Cargar archivo del banco</h3>
+    <div class="grid grid-3">
+      <div class="campo">
+        <label>Fecha a conciliar</label>
+        <input type="date" id="conciliacion-banco-fecha">
+      </div>
+      <div class="campo">
+        <label>Sede</label>
+        <select id="conciliacion-banco-sede">
+          <option value="San Antonio">San Antonio</option>
+          <option value="Capri">Capri</option>
+          <option value="Todas">Todas las sedes</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label>Archivo bancario</label>
+        <input type="file" id="conciliacion-banco-archivo" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
+      </div>
+    </div>
+    <p class="nota-simple" style="margin:4px 0 0">
+      Formatos admitidos: .xls, .xlsx y .csv. El sistema debe conservar el nombre del archivo y la fecha de carga como evidencia de auditoría.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn dorado" id="conciliacion-banco-procesar" type="button">Procesar archivo</button>
+      <button class="btn fantasma" id="conciliacion-banco-limpiar" type="button">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="caja-resumen" id="conciliacion-banco-resumen">
+    <div class="caja-kpi principal"><span>Esperado según FUDO</span><strong id="conciliacion-fudo-total">$0</strong></div>
+    <div class="caja-kpi"><span>Encontrado en banco</span><strong id="conciliacion-banco-total">$0</strong></div>
+    <div class="caja-kpi"><span>Conciliado</span><strong id="conciliacion-coincide-total">$0</strong></div>
+    <div class="caja-kpi"><span>Diferencia pendiente</span><strong id="conciliacion-diferencia-total">$0</strong></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. Clasificación del extracto</h3>
+    <p class="nota-simple">
+      Antes de comparar con FUDO, los movimientos del banco deben separarse. Solo los ingresos que correspondan a Bre-B, QR o transferencias de clientes participan en la conciliación de ventas.
+    </p>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Descripción banco</th>
+            <th>Débito</th>
+            <th>Crédito</th>
+            <th>Clasificación</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="conciliacion-banco-movimientos">
+          <tr><td colspan="6" class="vacio">Carga un archivo para ver los movimientos bancarios.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. Cruce FUDO ↔ Banco</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha / hora</th>
+            <th>Sede</th>
+            <th>Medio FUDO</th>
+            <th>Valor FUDO</th>
+            <th>Movimiento banco</th>
+            <th>Valor banco</th>
+            <th>Resultado</th>
+          </tr>
+        </thead>
+        <tbody id="conciliacion-banco-cruce">
+          <tr><td colspan="7" class="vacio">Todavía no hay una conciliación procesada.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">4. Pendientes por revisar</h3>
+    <p class="nota-simple">
+      Aquí deben quedar únicamente los casos que requieren intervención: pago en FUDO sin ingreso bancario, ingreso bancario sin correspondencia en FUDO, diferencia de valor, reverso o movimiento no identificable.
+    </p>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Fecha</th>
+            <th>Referencia</th>
+            <th>Valor</th>
+            <th>Detalle</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="conciliacion-banco-pendientes">
+          <tr><td colspan="6" class="vacio">Sin pendientes cargados.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--gold)">
+    <strong>Regla de seguridad de la conciliación</strong>
+    <p class="nota-simple" style="margin-bottom:0">
+      Este módulo no modifica el efectivo esperado, la caja fuerte, las aperturas ni los cierres de Caja. Su función es verificar ingresos bancarios y dejar trazabilidad de diferencias; cualquier ajuste financiero debe hacerse por el flujo correspondiente y nunca alterando silenciosamente un cierre ya guardado.
+    </p>
+  </div>
+</section>
