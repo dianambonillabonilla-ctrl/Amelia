@@ -27,14 +27,18 @@ function cajaFechaEsAnteriorInicioOficial_(valor) {
 }
 
 /**
- * La marca que deja cajaInicializarOperacionDesde20Agosto2026() al ejecutarse. Antes solo se
- * escribía y nunca se volvía a leer (auditoría externa, ago 2026): sin correrla, el corte de fecha
- * igual dejaba operar Caja desde el 20/08 con el histórico anterior todavía mezclado en las hojas
- * activas — el corte de fecha por sí solo no bastaba como garantía de que la migración ya pasó.
+ * Propiedad separada de CAJA_MIGRACION_HISTORICA_HECHA (auditoría, ago 2026 — segunda ronda): ese
+ * nombre ya lo usa cajaMigrarHistorico_ (CajaTurno.gs) para una migración vieja y NO relacionada (3
+ * movimientos puntuales de agosto), y cajaAsegurarEstructura_ la marca 'true' automáticamente en la
+ * PRIMERA acción de Caja que corra — antes incluso de que cajaAbrir_ llegara a revisar esta
+ * bandera. Con el mismo nombre, el candado de abajo quedaba puesto pero nunca podía bloquear nada:
+ * la propiedad ya estaba en 'true' por la otra migración desde la primera llamada. Se detectó
+ * escribiendo una prueba que abre el 20/08 sin correr cajaInicializarOperacionDesde20Agosto2026()
+ * primero — con el nombre viejo esa apertura pasaba igual.
  */
 function cajaMigracionHistoricaEjecutada_() {
   if (typeof PropertiesService === 'undefined') return false;
-  return PropertiesService.getScriptProperties().getProperty('CAJA_MIGRACION_HISTORICA_HECHA') === 'true';
+  return PropertiesService.getScriptProperties().getProperty('CAJA_INICIO_OPERACION_20260820_HECHA') === 'true';
 }
 
 function cajaFechaOperacionPermitida_(valor) {
@@ -202,7 +206,7 @@ function cajaInicializarOperacionDesde20Agosto2026() {
   let turnos, movimientos;
   try {
     const props = PropertiesService.getScriptProperties();
-    props.setProperty('CAJA_MIGRACION_HISTORICA_HECHA', 'true');
+    props.setProperty('CAJA_INICIO_OPERACION_20260820_HECHA', 'true');
     props.setProperty('CAJA_FECHA_INICIO_OPERACION', CAJA_FECHA_INICIO_OFICIAL_);
     cajaAsegurarColumnasInicioOperacion_();
     turnos = cajaArchivarFilasAnterioresInicio_(SHEET_NAMES.CAJA_TURNO, CAJA_ARCHIVO_TURNOS_PRE_INICIO_);
