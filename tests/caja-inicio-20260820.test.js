@@ -78,4 +78,32 @@ assert.match(caja, /cajaGuardarEstadoFudoPersistente_/);
   assert.strictEqual(conMigracion.ok, true, JSON.stringify(conMigracion));
 })();
 
+// El Panel de Caja (caja_resumen_admin) debe traer la referencia de FUDO para una sede que
+// TODAVÍA no abrió y no tiene ningún cierre DILANA anterior — Diana (ago 2026): "lo primero que
+// debe ser es que aparezca cuánto dice FUDO que debo tener... el cierre del 19 en cada sede".
+// Antes de este cambio, cajaResumenAdministrador_ solo traía cajaEstado_ tal cual, que en este
+// caso da $0 sin ninguna referencia real adjunta.
+(function () {
+  const env = crearEntorno({ reactivacionReal: true });
+  env.ctx.configurarHojas();
+  env.ctx.crearAdministradorInicial_('Diana', 'diana', 'contrasegura1', 'diana@example.com');
+  const login = env.post({ action: 'login', usuario: 'diana', password: 'contrasegura1' });
+  assert.ok(login.ok, JSON.stringify(login));
+  env.fijarReloj('2026-08-20T09:00:00-05:00');
+  env.ctx.cajaInicializarOperacionDesde20Agosto2026();
+  env.ctx.cajaGuardarEstadoFudoPersistente_('2026-08-19', 'San Antonio', { ok: true, aplica: true, sincronizado_en: new Date() });
+  env.ctx.turnoResumenCierre_ = () => ({ pagos_efectivo_esperado: 820000, pagos_fudo_total: 900000, ventas_fudo_total: 950000 });
+  env.ctx.fudoGastosArqueoTotalDia_ = () => ({ total: 120000, cantidad: 2 });
+
+  const r = env.post({ token: login.token, action: 'caja_resumen_admin', fecha: '2026-08-20' });
+  assert.ok(r.ok, JSON.stringify(r));
+  const sa = r.sedes.find((s) => s.sede === 'San Antonio');
+  assert.ok(sa, 'debe traer la fila de San Antonio');
+  assert.strictEqual(sa.abierta, false);
+  assert.ok(sa.conciliacion_apertura, 'una sede sin abrir y sin cierre DILANA debe traer conciliacion_apertura');
+  assert.strictEqual(sa.conciliacion_apertura.modo_referencia_inicial_fudo, true);
+  assert.strictEqual(sa.conciliacion_apertura.fecha_referencia, '2026-08-19');
+  assert.strictEqual(sa.conciliacion_apertura.custodia_esperada_hoy.total, 700000, 'referencia total = efectivo FUDO del 19 menos gastos de arqueo (820.000 - 120.000)');
+})();
+
 console.log('caja-inicio-20260820: OK');
