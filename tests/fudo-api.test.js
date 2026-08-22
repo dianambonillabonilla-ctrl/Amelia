@@ -565,6 +565,20 @@ function ctxAutenticadoConDatos_(paginas) {
   assert.equal(fila.metodo_pago, 'Efectivo');
   assert.equal(fila.metodo_tipo, 'CASH');
   assert.equal(fila.sede, 'Capri');
+
+  const filaConCaja = ctx.fudoApiFilaPagoDesdePayment_(
+    pagoEfectivo,
+    incluidos,
+    sedePorVenta,
+    { '500': 'San Antonio' }
+  );
+
+  assert.equal(
+    filaConCaja.sede,
+    'San Antonio',
+    'la sede obtenida desde caja registradora debe ganar para Pagos_FUDO'
+  );
+
   assert.equal(fila.fecha, '2026-07-20');
 
   const pagoSinVenta = ctx.fudoApiFilaPagoDesdePayment_({
@@ -619,6 +633,132 @@ function ctxAutenticadoConDatos_(paginas) {
   assert.ok(url.includes('filter[canceled]=' + encodeURIComponent('neq.true')));
   assert.ok(url.includes('filter[sales][saleState]=' + encodeURIComponent('in.(CLOSED)')));
   console.log('fudoApiSincronizarPagos_ arma filtros y delega en pagosFudoImportar_: OK');
+})();
+
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123';
+  props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente';
+  props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  props.FUDO_MAPEO_SEDES_CAJA_SEMBRADA = 'true';
+  llamadas = [];
+
+  fetchImpl = (url) => {
+    if (url.indexOf('/payments?') !== -1) {
+      return respuesta_(200, {
+        data: [{
+          id: '177',
+          type: 'Payment',
+          attributes: {
+            amount: 125200,
+            canceled: false,
+            createdAt: '2026-08-22T18:00:00Z',
+            paidAt: '2026-08-22T18:00:00Z'
+          },
+          relationships: {
+            sale: { data: { type: 'Sale', id: '900' } },
+            paymentMethod: { data: { type: 'PaymentMethod', id: '1' } }
+          }
+        }],
+        included: [{
+          type: 'PaymentMethod',
+          id: '1',
+          attributes: { name: 'Efectivo', kind: 'CASH' }
+        }]
+      });
+    }
+
+    if (url.indexOf('/sales?') !== -1) {
+      return respuesta_(200, {
+        data: [{
+          id: '900',
+          type: 'Sale',
+          attributes: {
+            createdAt: '2026-08-22T17:30:00Z',
+            saleState: 'CLOSED'
+          },
+          relationships: {
+            cashRegister: {
+              data: { type: 'CashRegister', id: '1' }
+            }
+          }
+        }],
+        included: [{
+          type: 'CashRegister',
+          id: '1',
+          attributes: { name: 'San Antonio' }
+        }]
+      });
+    }
+
+    return respuesta_(200, { data: [], included: [] });
+  };
+
+  const mapeos = [
+    {
+      tipo_referencia: 'Caja',
+      id_fudo: '1',
+      nombre: 'San Antonio',
+      sede: 'San Antonio'
+    },
+    {
+      tipo_referencia: 'Caja',
+      id_fudo: '2',
+      nombre: 'Capri',
+      sede: 'Capri'
+    }
+  ];
+
+  let llamadaImportar = null;
+
+  const ctx = cargarFudoApi_({
+    leerTabla_: (h) => {
+      if (h === 'mapeo') return mapeos;
+      if (h === 'ventas') return [{ id_venta: '900', sede: 'Capri' }];
+      return [];
+    }
+  });
+
+  ctx.pagosFudoImportar_ = (filas) => {
+    llamadaImportar = { filas };
+    return {
+      ok: true,
+      importados: filas.length,
+      actualizados: 0,
+      omitidos: 0,
+      tipo: 'pagos'
+    };
+  };
+
+  ctx.fudoApiSincronizarPagos_(
+    '2026-08-22',
+    '2026-08-22',
+    { nombre: 'Admin' },
+    {}
+  );
+
+  assert.ok(llamadaImportar);
+  assert.equal(llamadaImportar.filas.length, 1);
+
+  assert.equal(
+    llamadaImportar.filas[0].sede,
+    'San Antonio',
+    'cashRegister debe ganar sobre la sede operativa de Ventas_FUDO'
+  );
+
+  assert.ok(
+    llamadas.some((l) =>
+      l.url.indexOf('/sales?') !== -1 &&
+      l.url.indexOf('include=cashRegister') !== -1
+    ),
+    'debe consultar cashRegister de /sales'
+  );
+
+  console.log(
+    'fudoApiSincronizarPagos_ prioriza caja registradora sobre sede de venta: OK'
+  );
 })();
 
 // --- Margen de un día en el filtro de fecha (ago 2026) --------------------------------------------

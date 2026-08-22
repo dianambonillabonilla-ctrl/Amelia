@@ -519,7 +519,7 @@ const FUDO_API_PAYMENTS_INCLUDE_ = 'paymentMethod';
  * Un pago de FUDO (con paymentMethod incluido) → fila para Pagos_FUDO. La sede se toma del índice
  * id_venta → sede armado desde Ventas_FUDO (sincronizar ventas antes en el mismo rango ayuda).
  */
-function fudoApiFilaPagoDesdePayment_(payment, incluidos, sedePorVenta) {
+function fudoApiFilaPagoDesdePayment_(payment, incluidos, sedePorVenta, sedePagoPorVenta) {
   const attrs = payment.attributes || {};
   const salePtr = payment.relationships && payment.relationships.sale && payment.relationships.sale.data;
   const idVenta = salePtr ? String(salePtr.id) : '';
@@ -535,8 +535,44 @@ function fudoApiFilaPagoDesdePayment_(payment, incluidos, sedePorVenta) {
     cancelado: !!attrs.canceled,
     metodo_pago: fudoApiNombreIncluido_(pm),
     metodo_tipo: pm && pm.attributes && pm.attributes.kind ? pm.attributes.kind : '',
-    sede: (idVenta && sedePorVenta[idVenta]) || FUDO_SEDE_SIN_IDENTIFICAR_
+    sede: (idVenta && sedePagoPorVenta && sedePagoPorVenta[idVenta]) ||
+      (idVenta && sedePorVenta[idVenta]) || FUDO_SEDE_SIN_IDENTIFICAR_
   };
+}
+
+/**
+ * Para caja/arqueo, la sede del dinero se determina primero por la caja registradora
+ * de FUDO. Esto es deliberadamente distinto de la sede operativa de la venta, donde
+ * Sala sigue teniendo prioridad sobre Caja.
+ */
+function fudoApiIndiceSedePagoPorVentaDesdeSales_(ventas, incluidos, indiceMapeoOpcional) {
+  const indice = {};
+
+  (ventas || []).forEach(function (sale) {
+    const rel = sale.relationships || {};
+    const cashRegister = fudoApiIncluidoPorPtr_(
+      rel.cashRegister && rel.cashRegister.data,
+      incluidos || {}
+    );
+    const caja = fudoApiNombreIncluido_(cashRegister);
+
+    if (!caja) return;
+
+    const resuelta = fudoResolverSedeVenta_(
+      { sala: '', caja: caja, identificador: '', usuario: '' },
+      indiceMapeoOpcional
+    );
+
+    if (
+      resuelta &&
+      resuelta.sede &&
+      resuelta.sede !== FUDO_SEDE_SIN_IDENTIFICAR_
+    ) {
+      indice[String(sale.id)] = resuelta.sede;
+    }
+  });
+
+  return indice;
 }
 
 /**
@@ -565,8 +601,53 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
     include: FUDO_API_PAYMENTS_INCLUDE_
   });
 
+  let sedePagoPorVenta = {};
+
+  // /payments no expone cashRegister. Para caja/arqueo consultamos /sales
+  // una sola vez en el mismo rango y construimos id_venta -> sede usando Caja.
+  // Si no se puede resolver, se conserva como respaldo la sede de Ventas_FUDO.
+  if (resultado.registros.length) {
+    try {
+      if (typeof fudoMapeoSedeMigrarCajaRegistradora_ === 'function') {
+        fudoMapeoSedeMigrarCajaRegistradora_();
+      }
+
+      const indiceMapeoPago = typeof fudoMapeoSedeIndice_ === 'function'
+        ? fudoMapeoSedeIndice_()
+        : {};
+
+      const ventasParaCaja = fudoApiObtenerTodoCompleto_('sales', {
+        filtros: {
+          createdAt: 'and(gte.' + desdeAmpliado + 'T00:00:00,lte.' + hastaAmpliado + 'T23:59:59)',
+          saleState: 'in.(CLOSED)'
+        },
+        include: 'cashRegister',
+        campos: { cashRegister: 'name' },
+        orden: 'createdAt'
+      });
+
+      sedePagoPorVenta = fudoApiIndiceSedePagoPorVentaDesdeSales_(
+        ventasParaCaja.registros,
+        ventasParaCaja.incluidos,
+        indiceMapeoPago
+      );
+    } catch (err) {
+      if (typeof Logger !== 'undefined' && Logger.log) {
+        Logger.log(
+          'No se pudo resolver caja registradora para Pagos_FUDO; ' +
+          'se usa sede de venta como respaldo: ' + err.message
+        );
+      }
+    }
+  }
+
   const filas = resultado.registros.map(function (payment) {
-    return fudoApiFilaPagoDesdePayment_(payment, resultado.incluidos, sedePorVenta);
+    return fudoApiFilaPagoDesdePayment_(
+      payment,
+      resultado.incluidos,
+      sedePorVenta,
+      sedePagoPorVenta
+    );
   });
 
   if (!filas.length) {
