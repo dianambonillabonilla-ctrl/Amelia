@@ -355,9 +355,17 @@ function fudoApiSincronizarVentas_(fechaDesde, fechaHasta, usuario, opciones) {
 
   if (typeof fudoMapeoSedeMigrarCajaRegistradora_ === 'function') fudoMapeoSedeMigrarCajaRegistradora_();
   const indiceMapeo = fudoMapeoSedeIndice_();
+  // Un día de margen a cada lado del filtro (no del resultado): la especificación de FUDO no confirma
+  // en qué zona horaria interpreta un timestamp sin offset como 'T00:00:00' — de tomarlo como UTC, el
+  // filtro quedaría corrido hasta 5h respecto al día real en Bogotá y perdería ventas cerca de la
+  // medianoche. El día real de cada venta lo decide igual el reagrupado local más abajo (createdAt de
+  // cada ítem, con formatearFecha_ ya en huso horario de Bogotá) — ampliar el filtro solo evita perder
+  // registros, nunca los mezcla con el día equivocado.
+  const desdeAmpliado = typeof diaAnterior_ === 'function' ? diaAnterior_(fechaDesde) : fechaDesde;
+  const hastaAmpliado = typeof diaSiguiente_ === 'function' ? diaSiguiente_(fechaHasta) : fechaHasta;
   const resultado = fudoApiObtenerTodoCompleto_('sales', {
     filtros: {
-      createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
+      createdAt: 'and(gte.' + desdeAmpliado + 'T00:00:00,lte.' + hastaAmpliado + 'T23:59:59)',
       // saleState no acepta eq. — su patrón real (según la documentación) solo permite in.(...).
       saleState: 'in.(CLOSED)'
     },
@@ -540,9 +548,17 @@ function fudoApiSincronizarPagos_(fechaDesde, fechaHasta, usuario, opciones) {
   if (!fechaDesde || !fechaHasta) return { ok: false, error: 'Faltan fecha_desde/fecha_hasta' };
 
   const sedePorVenta = pagosFudoIndiceSedePorVenta_();
+  // Mismo margen de un día a cada lado que en ventas (ver fudoApiSincronizarVentas_) — y aquí hay una
+  // razón extra: el filtro busca por createdAt, pero fudoApiFilaPagoDesdePayment_ agrupa cada pago por
+  // paidAt cuando existe (attrs.paidAt || attrs.createdAt). Si un pago se creó un día y se pagó otro,
+  // filtrar solo por createdAt del día pedido lo perdía por completo — nunca llegaba a traerse, así
+  // que el reagrupado por paidAt no alcanzaba a corregirlo. Ampliar el filtro y dejar que el reagrupado
+  // local (ya correcto) decida el día real evita esa pérdida.
+  const desdeAmpliado = typeof diaAnterior_ === 'function' ? diaAnterior_(fechaDesde) : fechaDesde;
+  const hastaAmpliado = typeof diaSiguiente_ === 'function' ? diaSiguiente_(fechaHasta) : fechaHasta;
   const resultado = fudoApiObtenerTodoCompleto_('payments', {
     filtros: {
-      createdAt: 'and(gte.' + fechaDesde + 'T00:00:00,lte.' + fechaHasta + 'T23:59:59)',
+      createdAt: 'and(gte.' + desdeAmpliado + 'T00:00:00,lte.' + hastaAmpliado + 'T23:59:59)',
       canceled: 'neq.true',
       sales: { saleState: 'in.(CLOSED)' }
     },

@@ -621,6 +621,76 @@ function ctxAutenticadoConDatos_(paginas) {
   console.log('fudoApiSincronizarPagos_ arma filtros y delega en pagosFudoImportar_: OK');
 })();
 
+// --- Margen de un día en el filtro de fecha (ago 2026) --------------------------------------------
+// fudoApiSincronizarVentas_/Pagos_ solo tenían disponibles diaAnterior_/diaSiguiente_ (Turnos.gs) en
+// la app real (todos los .gs comparten un mismo scope) — aquí se inyectan como extras para probar la
+// ampliación sin cargar Turnos.gs completo.
+function diaAnteriorPrueba_(f) {
+  const p = f.split('-').map(Number);
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  d.setDate(d.getDate() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function diaSiguientePrueba_(f) {
+  const p = f.split('-').map(Number);
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123'; props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente'; props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, { data: [], included: [] });
+  const ctx = cargarFudoApi_({
+    diaAnterior_: diaAnteriorPrueba_, diaSiguiente_: diaSiguientePrueba_,
+    importarFudo_: () => ({ ok: true, importados: 0, omitidos_duplicados: 0 })
+  });
+
+  ctx.fudoApiSincronizarVentas_('2026-07-20', '2026-07-20', { nombre: 'Admin' }, {});
+  const url = llamadas[llamadas.length - 1].url;
+  assert.ok(
+    url.includes('filter[createdAt]=' + encodeURIComponent('and(gte.2026-07-19T00:00:00,lte.2026-07-21T23:59:59)')),
+    'con diaAnterior_/diaSiguiente_ disponibles (como en la app real), el filtro debe ampliarse un día a cada lado'
+  );
+
+  console.log('fudoApiSincronizarVentas_ amplía el filtro de fecha un día a cada lado: OK');
+})();
+
+// El caso real que motivó el margen: un pago cuyo createdAt cae el día 19 pero su paidAt (el que de
+// verdad decide a qué día pertenece, ver fudoApiFilaPagoDesdePayment_) cae el 20 — sin ampliar el
+// filtro por createdAt, este pago nunca se traía al sincronizar el 20, y el reagrupado por paidAt no
+// alcanzaba a corregirlo porque el pago ni siquiera llegaba desde la API.
+(function () {
+  reiniciarProps_();
+  props.FUDO_API_KEY = 'key123'; props.FUDO_API_SECRET = 'secret456';
+  props.FUDO_API_TOKEN = 'tok-vigente'; props.FUDO_API_TOKEN_EXP = String(Math.floor(Date.now() / 1000) + 3600);
+  llamadas = [];
+  fetchImpl = () => respuesta_(200, {
+    data: [{
+      id: '99', type: 'Payment',
+      attributes: { amount: 16400, canceled: false, createdAt: '2026-07-19T23:50:00Z', paidAt: '2026-07-20T00:05:00Z' },
+      relationships: { sale: { data: { type: 'Sale', id: '501' } }, paymentMethod: { data: { type: 'PaymentMethod', id: '1' } } }
+    }],
+    included: [{ type: 'PaymentMethod', id: '1', attributes: { name: 'Efectivo', kind: 'CASH' } }]
+  });
+  let llamadaImportar = null;
+  const ctx = cargarFudoApi_({
+    diaAnterior_: diaAnteriorPrueba_, diaSiguiente_: diaSiguientePrueba_,
+    leerTabla_: (h) => h === 'ventas' ? [{ id_venta: '501', sede: 'San Antonio' }] : []
+  });
+  ctx.pagosFudoImportar_ = (filas) => { llamadaImportar = { filas }; return { ok: true, importados: filas.length, actualizados: 0, omitidos: 0 }; };
+
+  ctx.fudoApiSincronizarPagos_('2026-07-20', '2026-07-20', { nombre: 'Admin' }, {});
+  assert.ok(llamadaImportar, 'debe haber importado el pago aunque su createdAt sea del día anterior');
+  assert.equal(llamadaImportar.filas.length, 1);
+  assert.equal(llamadaImportar.filas[0].fecha, '2026-07-20', 'la fila debe quedar bajo el 20 (paidAt), que es lo que de verdad decide el día');
+
+  console.log('fudoApiSincronizarPagos_ no pierde un pago cuyo createdAt cae un día antes que su paidAt: OK');
+})();
+
 // --- fudoSincronizacionAutomatica_ / fudoSincronizacionStockDiaria_ (trigger automático) ----------
 // Estas dos son el handler que quita la dependencia de que un Administrador entre a importar.html y
 // sincronice a mano — ver configurarTriggers_ (Code.gs). A diferencia de llamar

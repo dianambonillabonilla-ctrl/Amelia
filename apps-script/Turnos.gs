@@ -102,6 +102,14 @@ function diaAnterior_(fechaStr) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/** Igual que diaAnterior_ pero sumando un día — mismo criterio (año/mes/día locales). */
+function diaSiguiente_(fechaStr) {
+  const partes = String(fechaStr).slice(0, 10).split('-').map(Number);
+  const d = new Date(partes[0], partes[1] - 1, partes[2]);
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 /**
  * Si hoy hace falta un conteo de INICIO de turno en `sede` antes del de cierre — pedido real:
  * "cuando no se registre conteo de cierre para el turno[,] del próximo día debe de pedir conteo
