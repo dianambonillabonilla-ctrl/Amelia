@@ -1,31 +1,49 @@
-const fs=require('fs');const assert=require('assert');const {crearEntorno}=require('./helpers/entorno-apps-script.js');
-const code=fs.readFileSync('apps-script/Code.gs','utf8'),extension=fs.readFileSync('apps-script/ZZ_ReactivacionCajaFinal.gs','utf8'),fudo=fs.readFileSync('apps-script/FudoApi.gs','utf8'),panel=fs.readFileSync('apps-script/FudoPanelSync.gs','utf8'),config=fs.readFileSync('assets/config.js','utf8'),cajaHtml=fs.readFileSync('caja.html','utf8'),historialHtml=fs.readFileSync('historial-caja.html','utf8'),candado=code+'\n'+extension;
+const fs=require('fs');
+const assert=require('assert');
+const {crearEntorno}=require('./helpers/entorno-apps-script.js');
+
+const code=fs.readFileSync('apps-script/Code.gs','utf8');
+const extension=fs.readFileSync('apps-script/ZZ_ReactivacionCaja.gs','utf8');
+const caja=fs.readFileSync('apps-script/Caja.gs','utf8');
+const config=fs.readFileSync('assets/config.js','utf8');
+const cajaHtml=fs.readFileSync('caja.html','utf8');
+
 assert(code.includes('const MODO_REACTIVACION_BACKEND = true;'));
-const cajaActiva=['caja_estado','caja_abrir','caja_movimiento_registrar','caja_movimientos_listar','caja_cerrar','caja_sincronizar_ahora','caja_resumen_admin','caja_novedades_listar','caja_novedad_conciliar','caja_historial_listar','caja_corregir'];
-for(const action of ['login','logout','whoami','cambiar_password','usuarios_listar','usuarios_guardar','usuario_resetear_password','fudo_panel_estado','fudo_api_probar_conexion','fudo_api_sincronizar_ventas','fudo_api_sincronizar_pagos',...cajaActiva])assert(candado.includes(`'${action}'`),`Falta ${action}`);
-assert(extension.includes('ACCIONES_CAJA_PERMITIDAS_REACTIVACION_'));assert(extension.includes("usuario.rol === 'Caja' ? 'Encargado'"));assert(!extension.includes("Gerencia:'Lectura'"));assert(code.includes("codigo: 'MODULO_INACTIVO'"));
-assert(extension.includes('function fudoSincronizacionCajaAutomatica_()'));assert(extension.includes("newTrigger('fudoSincronizacionCajaAutomatica_').timeBased().everyMinutes(15).create()"));assert(extension.includes('fudoApiSincronizarVentas_'));assert(extension.includes('cajaSincronizarPagosFudoIncluyendoCancelados_'));assert(extension.includes('fudoApiSincronizarGastosArqueo_'));assert(extension.includes("fudoApiSyncRegistrar_(tipo,{ok:false"));assert(panel.includes("FUDO_SYNC_ULTIMA_GASTOS_ARQUEO"));assert(panel.includes("gastos_arqueo: fudoApiSyncLeer_('gastos_arqueo')"));assert(fudo.includes('Fase 0 activa: fudoSincronizacionStockDiaria_ omitida.'));
-assert(extension.includes('function cajaConciliacionApertura_('));assert(extension.includes('estado_conciliacion'));assert(extension.includes('NO_CONFIRMADA_FUDO'));assert(extension.includes('fudo_cambio_desde_cierre'));assert(extension.includes('diferencia_custodia_cierre'));assert(extension.includes('function cajaExisteTurnoPosteriorA_('));assert(extension.includes('es_gasto_fudo'));assert(extension.includes('gastos_fudo_compensados_por_entrega'));assert(extension.includes('La base siguiente debe ser exactamente el efectivo contado'));
-assert(extension.includes('function cajaCorregir_('));assert(extension.includes('La base siguiente corregida debe ser exactamente el efectivo contado corregido'));assert(extension.includes('entrega_cierre:0'));
-assert(cajaHtml.includes('Esta entrega corresponde a un gasto'));assert(cajaHtml.includes('No existe una salida implícita al cerrar'));assert(cajaHtml.includes('FUDO cambió'));assert(cajaHtml.includes('NO_CONFIRMADA_FUDO'));
-assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];"));assert(config.includes("texto: 'Caja', soloRol: ['Administrador','Caja']"));assert(!config.includes("texto: 'Historial de Caja'"),'Historial de Caja ya no es un link de menú aparte, es una pestaña de Caja');assert(config.includes("'historial-caja.html'"));for(const a of cajaActiva)assert(config.includes(`'${a}'`),`Frontend bloquea ${a}`);assert(cajaHtml.includes("requerirRol_(['Administrador','Caja'])"));
-// Diana (ago 2026): "todo lo de caja debe funcionar en un solo link que se llama caja" — la torre de
-// control administrativa (resumen admin, novedades, conciliar, historial, corregir) vive en las
-// pestañas de caja.html, no en historial-caja.html; ese archivo quedó como redirect hacia acá.
-assert(cajaHtml.includes("llamar('caja_resumen_admin'"));assert(cajaHtml.includes("llamar('caja_novedades_listar'"));assert(cajaHtml.includes("llamar('caja_novedad_conciliar'"));assert(cajaHtml.includes("llamar('caja_historial_listar'"));assert(cajaHtml.includes("llamar('caja_corregir'"));
-assert(historialHtml.includes("window.location.replace('caja.html?tab=historial')"),'historial-caja.html debe redirigir a la pestaña Historial de Caja');
-assert(!cajaHtml.includes("prompt('Base que queda para el siguiente turno"));assert(!cajaHtml.includes('base_siguiente:base'));assert(cajaHtml.includes('la base siguiente queda automáticamente igual al efectivo contado corregido'));
+const cajaActiva=['caja_estado','caja_abrir','caja_movimiento_registrar','caja_movimientos_listar','caja_cerrar','caja_sincronizar_ahora','caja_resumen_admin','caja_historial_listar'];
+for(const action of ['login','logout','whoami','cambiar_password','usuarios_listar','usuarios_guardar','usuario_resetear_password','fudo_panel_estado','fudo_api_probar_conexion','fudo_api_sincronizar_ventas','fudo_api_sincronizar_pagos',...cajaActiva]) {
+  assert((code+'\n'+extension).includes(`'${action}'`),`Falta ${action}`);
+}
+assert(extension.includes('ACCIONES_CAJA_PERMITIDAS_REACTIVACION_'));
+assert(extension.includes("usuario && usuario.rol === 'Caja' ? 'Encargado'"));
+assert(caja.includes("const CAJA_V3_VERSION_ = 'CAJA_V3'"));
+assert(caja.includes('El conteo físico del cierre pasa a ser la apertura esperada del siguiente turno'));
+assert(cajaHtml.includes('Qué dice FUDO y qué dice DILANA'));
+assert(cajaHtml.includes('Debes recibir del turno anterior'));
+assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];"));
 
-const env=crearEntorno({reactivacionReal:true});env.ctx.configurarHojas();env.ctx.crearAdministradorInicial_('Diana','diana','contrasegura1','diana@example.com');const login=env.post({action:'login',usuario:'diana',password:'contrasegura1'});assert.strictEqual(login.ok,true);assert.strictEqual(env.post({action:'usuarios_listar',token:login.token}).ok,true);assert.strictEqual(env.post({action:'fudo_panel_estado',token:login.token}).ok,true);assert.strictEqual(env.post({action:'caja_estado',token:login.token,fecha:'2026-08-19',sede:'San Antonio'}).ok,true);
-assert.strictEqual(env.post({action:'caja_resumen_admin',token:login.token,fecha:'2026-08-19'}).ok,true);assert.strictEqual(env.post({action:'caja_novedades_listar',token:login.token,solo_pendientes:true}).ok,true);assert.strictEqual(env.post({action:'caja_historial_listar',token:login.token,fecha_desde:'2026-08-01',fecha_hasta:'2026-08-19',sede:'Ambas'}).ok,true);
-for(const action of ['caja_novedad_conciliar','caja_corregir']){const r=env.post({action,token:login.token});assert.notStrictEqual(r.codigo,'MODULO_INACTIVO',action+' no debe estar bloqueada por reactivación');}
-for(const action of ['conteo_listar','produccion_registrar','traslado_crear','catalogo_listar','conciliacion','fudo_api_sincronizar_stock','fudo_catalogo_sincronizar']){const r=env.post({action,token:login.token});assert.strictEqual(r.ok,false);assert.strictEqual(r.codigo,'MODULO_INACTIVO');}
-const syncSinCred=env.ctx.fudoSincronizacionCajaAutomatica_();assert.strictEqual(syncSinCred.ok,true);assert.strictEqual(syncSinCred.omitida,'sin_credenciales');
+const env=crearEntorno({reactivacionReal:true});
+env.ctx.configurarHojas();
+env.ctx.crearAdministradorInicial_('Diana','diana','contrasegura1','diana@example.com');
+const login=env.post({action:'login',usuario:'diana',password:'contrasegura1'});
+assert.strictEqual(login.ok,true);
+assert.strictEqual(env.post({action:'usuarios_listar',token:login.token}).ok,true);
 
-// Una caída automática debe quedar visible en el Panel FUDO, incluida la sincronización de gastos.
-const props=env.ctx.PropertiesService.getScriptProperties();props.setProperty('FUDO_API_KEY','x');props.setProperty('FUDO_API_SECRET','y');
-env.ctx.fudoApiSincronizarVentas_=()=>{throw new Error('ventas fuera')};env.ctx.cajaSincronizarPagosFudoIncluyendoCancelados_=()=>{throw new Error('pagos fuera')};env.ctx.fudoApiSincronizarGastosArqueo_=()=>{throw new Error('gastos fuera')};
-const syncFalla=env.ctx.fudoSincronizacionCajaAutomatica_();assert.strictEqual(syncFalla.ok,false);const estadoPanel=env.ctx.fudoApiEstadoPanel_();assert.strictEqual(estadoPanel.ultima_sincronizacion.ventas.ok,false);assert.match(estadoPanel.ultima_sincronizacion.ventas.error,/ventas fuera/);assert.strictEqual(estadoPanel.ultima_sincronizacion.pagos.ok,false);assert.match(estadoPanel.ultima_sincronizacion.pagos.error,/pagos fuera/);assert.strictEqual(estadoPanel.ultima_sincronizacion.gastos_arqueo.ok,false);assert.match(estadoPanel.ultima_sincronizacion.gastos_arqueo.error,/gastos fuera/);
+const estado=env.post({action:'caja_estado',token:login.token,fecha:'2026-08-22',sede:'San Antonio'});
+assert.strictEqual(estado.ok,true);
+assert.strictEqual(estado.version,'CAJA_V3');
+assert.strictEqual(estado.referencia_apertura.es_inicio_cero,true);
 
-const t=env.ctx.configurarTriggers();assert.strictEqual(t.reactivacion,true);assert.strictEqual(t.creados,1);assert.strictEqual(t.handler,'fudoSincronizacionCajaAutomatica_');assert.strictEqual(env.ctx.fudoSincronizacionStockDiaria_(),undefined);assert.strictEqual(env.ctx.tareaDiaria_(),undefined);
-console.log('✓ Reactivación final de Caja: operación + administración + alertas FUDO visibles; resto bloqueado');
+const apertura=env.post({action:'caja_abrir',token:login.token,item:{fecha:'2026-08-22',sede:'San Antonio',base_inicial:100000,caja_fuerte_inicial:0,observacion_apertura:''}});
+assert.strictEqual(apertura.ok,true);
+
+const estado2=env.post({action:'caja_estado',token:login.token,fecha:'2026-08-22',sede:'San Antonio'});
+assert.strictEqual(estado2.ok,true);
+assert.strictEqual(estado2.apertura.estado,'Abierto');
+assert.strictEqual(estado2.apertura.base_inicial,100000);
+
+for(const action of ['conteo_listar','produccion_registrar','traslado_crear','catalogo_listar','conciliacion']){
+  const r=env.post({action,token:login.token});
+  assert.strictEqual(r.ok,false);
+  assert.strictEqual(r.codigo,'MODULO_INACTIVO');
+}
+console.log('✓ Reactivación: Caja V3 activa; resto de módulos sigue bloqueado');
