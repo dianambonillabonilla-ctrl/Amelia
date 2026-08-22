@@ -120,7 +120,13 @@ async function cargarAdmin(){
   if(!admin)return; mostrar('admin-panel',true);
   const r=await llamar('caja_resumen_admin',{fecha:fechaActual(),sedes:['San Antonio','Capri']});
   if(!r.ok){$('admin-filas').innerHTML='<tr><td colspan="8">'+escapeHtml(r.error||'No disponible')+'</td></tr>';return}
-  $('admin-filas').innerHTML=(r.sedes||[]).map(x=>{const f=x.fudo||{},fis=x.contado_caja===null?'—':moneda(Number(x.contado_caja||0)+Number(x.contado_fuerte||0)),dif=x.diferencia_caja===null?'—':moneda(Number(x.diferencia_caja||0)+Number(x.diferencia_fuerte||0));return `<tr data-sede="${escapeHtml(x.sede)}" style="cursor:pointer"><td><strong>${escapeHtml(x.sede)}</strong></td><td>${escapeHtml(x.estado)}</td><td>${moneda(f.efectivo)}</td><td>${moneda(f.gastos_efectivo)}</td><td>${moneda(f.neto)}</td><td>${moneda(x.dilana_esperado_total)}</td><td>${fis}</td><td>${dif}</td></tr>`}).join('');
+  $('admin-filas').innerHTML=(r.sedes||[]).map(x=>{
+    const f=x.fudo||{};
+    const fis=x.contado_caja===null?'—':moneda(Number(x.contado_caja||0)+Number(x.contado_fuerte||0));
+    const dif=x.diferencia_caja===null?'—':moneda(Number(x.diferencia_caja||0)+Number(x.diferencia_fuerte||0));
+    const nota=x.fudo_de_cierre_anterior?` <small style="color:var(--grey)" title="FUDO del ${escapeHtml(x.referencia_apertura&&x.referencia_apertura.fecha_anterior||'cierre anterior')}, no de hoy — todavía no hay caja abierta hoy para comparar">(cierre ant.)</small>`:'';
+    return `<tr data-sede="${escapeHtml(x.sede)}" style="cursor:pointer"><td><strong>${escapeHtml(x.sede)}</strong></td><td>${escapeHtml(x.estado)}</td><td>${moneda(f.efectivo)}${nota}</td><td>${moneda(f.gastos_efectivo)}</td><td>${moneda(f.neto)}</td><td>${moneda(x.dilana_esperado_total)}</td><td>${fis}</td><td>${dif}</td></tr>`;
+  }).join('');
   $('admin-filas').querySelectorAll('tr[data-sede]').forEach(tr=>tr.onclick=()=>{$('sede').value=tr.dataset.sede;cargar()});
 }
 

@@ -112,7 +112,21 @@ function abrir(env, token, fecha, base, fuerte, observacion) {
   assert.strictEqual(estado.referencia_apertura.es_inicio_cero, false);
   assert.strictEqual(estado.referencia_apertura.fudo_neto_cierre_anterior, cierre.calculo.fudo.neto, 'debe traer el mismo FUDO neto que quedó guardado en el cierre del 20, para comparar contra lo que quedó físico');
 
-  console.log('caja-v3-endurecida: la referencia de apertura expone el FUDO del cierre anterior: OK');
+  // Ya con ventas de HOY (21/08) en FUDO, sin que San Antonio haya abierto todavía: el panel de
+  // Administrador debe seguir mostrando el FUDO del cierre del 20, no las ventas de hoy — antes
+  // mezclaba las dos cosas y parecía (sin serlo) una comparación real contra "DILANA esperado".
+  env.agregar('Fudo_Pagos', [{
+    id_pago: 'ph1', id_venta: 'v1', fecha: '2026-08-21', creacion: new env.ctx.Date('2026-08-21T08:00:00-05:00'),
+    monto: 999000, cancelado: false, metodo_pago: 'Efectivo', metodo_tipo: 'cash', sede: SEDE,
+    es_efectivo: true, archivo_origen: '', importado_por: 'test', importado_en: new env.ctx.Date()
+  }]);
+  const admin = env.post({ action: 'caja_resumen_admin', token, fecha: '2026-08-21' });
+  assert.ok(admin.ok, JSON.stringify(admin));
+  const sa = admin.sedes.find(s => s.sede === SEDE);
+  assert.strictEqual(sa.fudo_de_cierre_anterior, true);
+  assert.strictEqual(sa.fudo.neto, cierre.calculo.fudo.neto, 'debe seguir mostrando el FUDO del cierre del 20, no los $999.000 de ventas de hoy que todavía no tienen ninguna caja abierta con qué compararse');
+
+  console.log('caja-v3-endurecida: la referencia de apertura y el panel Administrador exponen el FUDO del cierre anterior, no el de hoy: OK');
 })();
 
 // --- cajaV3SincronizarFudo_ sin credenciales FUDO configuradas no rompe (unificada, ya sin ZZ_CajaV3Compat.gs) ---

@@ -131,7 +131,7 @@ function cajaV3ReferenciaApertura_(fecha, sede) {
   if (!anterior) {
     return {
       es_inicio_cero:true, turno_anterior:null, fecha_anterior:'', caja_operativa:0, caja_fuerte:0, total:0,
-      fudo_efectivo_cierre_anterior:null, fudo_neto_cierre_anterior:null
+      fudo_efectivo_cierre_anterior:null, fudo_gastos_cierre_anterior:null, fudo_neto_cierre_anterior:null
     };
   }
   const caja = cajaV3Numero_(anterior.base_siguiente);
@@ -140,10 +140,7 @@ function cajaV3ReferenciaApertura_(fecha, sede) {
   // fudo_neto_cierre) — se reexpone aquí para que el Administrador pueda comparar, al abrir hoy,
   // "qué dijo FUDO" contra "qué quedó físico en DILANA" del cierre de ayer, sin mezclarlo con el
   // efectivo de FUDO de HOY (que es un dato distinto y no relacionado con la apertura).
-  const fudoEfectivoAnterior = anterior.fudo_efectivo_cierre === '' || anterior.fudo_efectivo_cierre == null
-    ? null : cajaV3Numero_(anterior.fudo_efectivo_cierre);
-  const fudoNetoAnterior = anterior.fudo_neto_cierre === '' || anterior.fudo_neto_cierre == null
-    ? null : cajaV3Numero_(anterior.fudo_neto_cierre);
+  function numOn_(v) { return v === '' || v == null ? null : cajaV3Numero_(v); }
   return {
     es_inicio_cero:false,
     turno_anterior:anterior.id,
@@ -151,8 +148,9 @@ function cajaV3ReferenciaApertura_(fecha, sede) {
     caja_operativa:caja,
     caja_fuerte:fuerte,
     total:Number((caja+fuerte).toFixed(2)),
-    fudo_efectivo_cierre_anterior:fudoEfectivoAnterior,
-    fudo_neto_cierre_anterior:fudoNetoAnterior
+    fudo_efectivo_cierre_anterior:numOn_(anterior.fudo_efectivo_cierre),
+    fudo_gastos_cierre_anterior:numOn_(anterior.fudo_gastos_cierre),
+    fudo_neto_cierre_anterior:numOn_(anterior.fudo_neto_cierre)
   };
 }
 
@@ -505,14 +503,23 @@ function cajaResumenAdministrador_(fecha, sedes, usuario) {
     const estado = cajaEstado_(f,sede,usuario);
     const t = estado.apertura;
     const calc = estado.calculo;
+    const ref = estado.referencia_apertura;
+    // Sin abrir todavía: el FUDO que se muestra es el del ÚLTIMO CIERRE (para comparar contra lo que
+    // quedó físico ese mismo día), no el de hoy — mostrar "hoy hasta ahora" junto a "DILANA esperado"
+    // parecía una comparación real y no lo era: son dos días distintos y sin relación entre sí.
+    const fudoMostrado = calc ? calc.fudo : {
+      efectivo: ref.fudo_efectivo_cierre_anterior, gastos_efectivo: ref.fudo_gastos_cierre_anterior,
+      neto: ref.fudo_neto_cierre_anterior
+    };
     return {
       sede:sede,
       estado:t ? t.estado : 'Sin abrir',
-      referencia_apertura:estado.referencia_apertura,
-      fudo:estado.fudo,
-      dilana_esperado_caja:calc ? calc.caja_operativa : estado.referencia_apertura.caja_operativa,
-      dilana_esperado_fuerte:calc ? calc.caja_fuerte : estado.referencia_apertura.caja_fuerte,
-      dilana_esperado_total:calc ? calc.total : estado.referencia_apertura.total,
+      referencia_apertura:ref,
+      fudo:fudoMostrado,
+      fudo_de_cierre_anterior: !t,
+      dilana_esperado_caja:calc ? calc.caja_operativa : ref.caja_operativa,
+      dilana_esperado_fuerte:calc ? calc.caja_fuerte : ref.caja_fuerte,
+      dilana_esperado_total:calc ? calc.total : ref.total,
       contado_caja:t && t.estado==='Cerrado' ? cajaV3Numero_(t.efectivo_contado) : null,
       contado_fuerte:t && t.estado==='Cerrado' ? cajaV3Numero_(t.caja_fuerte_contada) : null,
       diferencia_caja:t && t.estado==='Cerrado' ? cajaV3Numero_(t.diferencia) : null,
