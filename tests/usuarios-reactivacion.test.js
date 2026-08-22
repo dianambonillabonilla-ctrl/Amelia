@@ -33,6 +33,16 @@ assert.match(login,/data\.usuario\.rol === 'Caja' && MODULOS_ACTIVOS\.includes\(
 assert.match(login,/window\.location\.href = 'caja\.html';/);
 assert.match(fudoPanel,/requerirRol_\(\['Administrador'\]\)/);
 
+// Sincronización FUDO (ago 2026, pedido de Diana): ya no es un link aparte en el menú — Caja tiene
+// su propio botón de sincronizar y es el destino por defecto del Administrador. fudo.html se
+// conserva alcanzable por URL directa (sincronizar un rango, probar conexión) pero no se promociona
+// en la navegación ni en los redirects de "sin permiso"/"módulo bloqueado"/login.
+assert.doesNotMatch(config,/texto: 'Sincronización FUDO'/,'Sincronización FUDO ya no debe ser un link del menú');
+assert.doesNotMatch(config,/'fudo\.html'\)/,'ningún redirect de config.js debe seguir mandando al Administrador a fudo.html');
+assert.doesNotMatch(login,/'fudo\.html'/,'el login del Administrador ya no debe aterrizar en fudo.html');
+
+console.log('usuarios-reactivacion: fudo.html ya no es destino de menú/redirects, solo Caja: OK');
+
 assert.match(fudo,/function cantidadFudoConfiableParaProducto_/);
 assert.match(fudo,/sector === 'bebidas'/);
 assert.match(fudo,/obj\.cantidad = '';/);

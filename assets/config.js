@@ -61,7 +61,7 @@ const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.ht
   const pagina = window.location.pathname.split('/').pop();
   if (PAGINAS_PERMITIDAS_REACTIVACION.includes(pagina)) return;
   const u = Sesion.usuario();
-  if (u && u.rol === 'Administrador') return window.location.replace('fudo.html');
+  if (u && u.rol === 'Administrador') return window.location.replace('caja.html');
   if (u && u.rol === 'Caja') return window.location.replace('caja.html');
   window.location.replace('index.html');
 })();
@@ -283,7 +283,6 @@ const MENU_PRINCIPAL = MODO_REACTIVACION
       // Historial de Caja (antes su propio link) ahora es la pestaña "Historial" dentro de Caja —
       // Diana, ago 2026: "todo lo de caja debe funcionar en un solo link que se llama caja".
       { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Caja'], modulo: 'caja' },
-      { href: 'fudo.html', texto: 'Sincronización FUDO', soloRol: ['Administrador'], modulo: 'sincronizacion' },
       { href: 'usuarios.html', texto: 'Usuarios', soloRol: ['Administrador'], modulo: 'usuarios' }
     ]
   : MENU_PRINCIPAL_COMPLETO;
@@ -326,7 +325,7 @@ function requerirRol_(rolesPermitidos) {
   if (!u || !rolesPermitidos.includes(u.rol)) {
     alert('No tienes permiso para entrar aquí.');
     if (MODO_REACTIVACION) {
-      if (u && u.rol === 'Administrador') return void (window.location.href = 'fudo.html');
+      if (u && u.rol === 'Administrador') return void (window.location.href = 'caja.html');
       if (u && u.rol === 'Caja') return void (window.location.href = 'caja.html');
       window.location.href = 'index.html';
       return;

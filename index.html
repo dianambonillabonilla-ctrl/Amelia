@@ -46,7 +46,7 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
 
   if (MODO_REACTIVACION) {
     if (data.usuario.rol === 'Administrador') {
-      window.location.href = MODULOS_ACTIVOS.includes('sincronizacion') ? 'fudo.html' : 'caja.html';
+      window.location.href = 'caja.html';
       return;
     }
     if (data.usuario.rol === 'Caja' && MODULOS_ACTIVOS.includes('caja')) {
