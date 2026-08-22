@@ -96,6 +96,14 @@ function cajaV3ValidarSede_(sede) {
   if (CAJA_V3_SEDES_.indexOf(sede) === -1) throw new Error('Caja solo existe en San Antonio y Capri.');
 }
 
+/** Fecha/hora → milisegundos, tolerante a texto vacío o inválido (0 = "sin momento conocido"). */
+function cajaFechaMs_(v) {
+  if (!v) return 0;
+  const d = v instanceof Date ? v : new Date(v);
+  const t = d.getTime();
+  return isFinite(t) ? t : 0;
+}
+
 function cajaV3Turnos_() {
   cajaV3AsegurarInicio_();
   return leerTabla_(SHEET_NAMES.CAJA_TURNO).filter(function(r){ return r.version === CAJA_V3_VERSION_; });
@@ -121,17 +129,30 @@ function cajaV3UltimoCierreAntes_(fecha, sede) {
 function cajaV3ReferenciaApertura_(fecha, sede) {
   const anterior = cajaV3UltimoCierreAntes_(fecha, sede);
   if (!anterior) {
-    return { es_inicio_cero:true, turno_anterior:null, fecha_anterior:'', caja_operativa:0, caja_fuerte:0, total:0 };
+    return {
+      es_inicio_cero:true, turno_anterior:null, fecha_anterior:'', caja_operativa:0, caja_fuerte:0, total:0,
+      fudo_efectivo_cierre_anterior:null, fudo_neto_cierre_anterior:null
+    };
   }
   const caja = cajaV3Numero_(anterior.base_siguiente);
   const fuerte = cajaV3Numero_(anterior.caja_fuerte_siguiente);
+  // Lo que FUDO decía al momento de ese cierre ya queda guardado en el turno (fudo_efectivo_cierre/
+  // fudo_neto_cierre) — se reexpone aquí para que el Administrador pueda comparar, al abrir hoy,
+  // "qué dijo FUDO" contra "qué quedó físico en DILANA" del cierre de ayer, sin mezclarlo con el
+  // efectivo de FUDO de HOY (que es un dato distinto y no relacionado con la apertura).
+  const fudoEfectivoAnterior = anterior.fudo_efectivo_cierre === '' || anterior.fudo_efectivo_cierre == null
+    ? null : cajaV3Numero_(anterior.fudo_efectivo_cierre);
+  const fudoNetoAnterior = anterior.fudo_neto_cierre === '' || anterior.fudo_neto_cierre == null
+    ? null : cajaV3Numero_(anterior.fudo_neto_cierre);
   return {
     es_inicio_cero:false,
     turno_anterior:anterior.id,
     fecha_anterior:cajaV3Fecha_(anterior.fecha),
     caja_operativa:caja,
     caja_fuerte:fuerte,
-    total:Number((caja+fuerte).toFixed(2))
+    total:Number((caja+fuerte).toFixed(2)),
+    fudo_efectivo_cierre_anterior:fudoEfectivoAnterior,
+    fudo_neto_cierre_anterior:fudoNetoAnterior
   };
 }
 
@@ -160,9 +181,81 @@ function cajaV3FudoResumen_(fecha, sede) {
   };
 }
 
+/**
+ * Ventana de pagos en efectivo por MOMENTO real (no por día de calendario) — evita que un turno que
+ * cruza la medianoche pierda o le atribuya mal ventas en efectivo cercanas a las 00:00. `Fudo_Pagos`
+ * (con caída a `Pagos_FUDO`) trae `creacion` como marca de tiempo real de cada pago.
+ */
+function cajaV3PagosEfectivoVentana_(sede, desdeMs, hastaMs) {
+  let filas = [];
+  try { filas = leerTabla_(SHEET_NAMES.FUDO_PAGOS); } catch (e) { filas = []; }
+  if (!filas.length) { try { filas = leerTabla_(SHEET_NAMES.PAGOS_FUDO); } catch (e) { filas = []; } }
+  let total = 0, cantidad = 0, sinMomento = 0, efectivos = 0;
+  filas.forEach(function (p) {
+    if (p.sede !== sede) return;
+    if (p.cancelado === true || normalizar_(p.cancelado) === 'si') return;
+    const esEfectivo = typeof pagosFudoEsEfectivo_ === 'function' ? pagosFudoEsEfectivo_(p) : p.es_efectivo === true;
+    if (!esEfectivo) return;
+    efectivos++;
+    const momento = cajaFechaMs_(p.creacion || p.fecha);
+    if (!momento) { sinMomento++; return; }
+    if (momento < desdeMs) return;
+    if (hastaMs && momento > hastaMs) return;
+    total += Number(p.monto) || 0;
+    cantidad++;
+  });
+  return { disponible: efectivos > 0 && sinMomento === 0, total: Number(total.toFixed(2)), cantidad: cantidad };
+}
+
+/**
+ * Igual que `cajaV3FudoResumen_` pero acotado a la ventana real del turno (hora_apertura → hora de
+ * cierre, o "ahora" si sigue abierto) en vez de todo el día de calendario. Sin esto, un turno que
+ * cierra después de medianoche pierde las ventas en efectivo hechas ya entrada la madrugada (quedan
+ * fuera del día en que abrió, y ningún turno del día siguiente las reclama porque ese día no tiene
+ * turno abierto todavía a esa hora).
+ */
+function cajaV3FudoResumenTurno_(turno, fecha, sede) {
+  const desde = cajaFechaMs_(turno && turno.hora_apertura);
+  if (!desde) return cajaV3FudoResumen_(fecha, sede);
+  const hasta = turno && turno.estado === 'Cerrado' ? cajaFechaMs_(turno.timestamp_cierre || turno.hora_cierre) : 0;
+  const pagos = cajaV3PagosEfectivoVentana_(sede, desde, hasta);
+  const gastos = typeof fudoGastosArqueoTotalTurno_ === 'function'
+    ? (fudoGastosArqueoTotalTurno_(fecha, sede, turno) || { total:0, cantidad:0 })
+    : { total:0, cantidad:0 };
+  // Si no hay momento confiable en los pagos (datos antiguos sin `creacion`), no se puede acotar por
+  // ventana — se usa el resumen por día de calendario, igual que antes de este cambio.
+  const diario = pagos.disponible ? null : cajaV3FudoResumen_(fecha, sede);
+  const efectivo = pagos.disponible ? pagos.total : diario.efectivo;
+  const gastosEfectivo = cajaV3Numero_(gastos.total);
+  return {
+    fecha: cajaV3Fecha_(fecha), sede: sede,
+    pagos_total: Number(efectivo.toFixed(2)),
+    efectivo: Number(efectivo.toFixed(2)),
+    gastos_efectivo: Number(gastosEfectivo.toFixed(2)),
+    neto: Number((efectivo - gastosEfectivo).toFixed(2)),
+    cantidad_pagos: pagos.disponible ? Number(pagos.cantidad) || 0 : Number(diario.cantidad_pagos) || 0,
+    cantidad_gastos: Number(gastos.cantidad) || 0,
+    por_ventana: pagos.disponible
+  };
+}
+
+function cajaV3CredencialesFudoConfiguradas_() {
+  if (typeof PropertiesService === 'undefined') return false;
+  const p = PropertiesService.getScriptProperties();
+  return !!(p.getProperty('FUDO_API_KEY') && p.getProperty('FUDO_API_SECRET'));
+}
+
+/**
+ * En una instalación sin credenciales, sincronizar no es un error: FUDO simplemente no aplica.
+ * (Antes vivía duplicada en ZZ_CajaV3Compat.gs, redefiniendo esta misma función por orden de carga
+ * de archivos — se unificó aquí para no repetir el problema que ya tuvo CajaV2.gs con CajaTurno.gs.)
+ */
 function cajaV3SincronizarFudo_(fecha, sede, usuario) {
   const f = cajaV3Fecha_(fecha);
-  const res = { ok:true, fecha:f, sede:sede, ventas:null, pagos:null, gastos:null, errores:[] };
+  if (!cajaV3CredencialesFudoConfiguradas_()) {
+    return { ok:true, aplica:false, fecha:f, sede:sede, ventas:null, pagos:null, gastos:null, errores:[], resumen:cajaV3FudoResumen_(f,sede) };
+  }
+  const res = { ok:true, aplica:true, fecha:f, sede:sede, ventas:null, pagos:null, gastos:null, errores:[] };
   try {
     if (typeof fudoApiSincronizarVentas_ === 'function') res.ventas = fudoApiSincronizarVentas_(f,f,usuario,{sede:'Automática'});
   } catch(e) { res.ok=false; res.errores.push('Ventas: '+(e.message||e)); }
@@ -173,6 +266,7 @@ function cajaV3SincronizarFudo_(fecha, sede, usuario) {
     if (typeof fudoApiSincronizarGastosArqueo_ === 'function') res.gastos = fudoApiSincronizarGastosArqueo_(f,f,usuario);
   } catch(e) { res.ok=false; res.errores.push('Gastos: '+(e.message||e)); }
   res.resumen = cajaV3FudoResumen_(f,sede);
+  res.error = res.ok ? '' : res.errores.join(' | ');
   return res;
 }
 
@@ -201,7 +295,7 @@ function cajaV3ResumenMovimientos_(movs) {
 }
 
 function cajaV3Calculo_(turno, fecha, sede) {
-  const fudo = cajaV3FudoResumen_(fecha,sede);
+  const fudo = cajaV3FudoResumenTurno_(turno,fecha,sede);
   const movs = cajaV3MovimientosTurno_(turno.id);
   const r = cajaV3ResumenMovimientos_(movs);
   const caja = cajaV3Numero_(turno.base_inicial) + fudo.neto + r.otros_ingresos + r.retiros_fuerte -
@@ -221,8 +315,11 @@ function cajaEstado_(fecha, sede, usuario) {
   const f = cajaV3Fecha_(fecha);
   const turno = cajaTurnoFila_(f,sede);
   const referencia = cajaV3ReferenciaApertura_(f,sede);
-  const fudo = cajaV3FudoResumen_(f,sede);
   const calculo = turno ? cajaV3Calculo_(turno,f,sede) : null;
+  // Cuando hay turno, el FUDO que se muestra es el MISMO que usa calculo.caja_operativa (acotado a la
+  // ventana del turno) — antes se mostraban dos fuentes distintas (esta por día de calendario,
+  // calculo.fudo por turno) y podían no coincidir sin que nadie lo notara.
+  const fudo = calculo ? calculo.fudo : cajaV3FudoResumen_(f,sede);
   return {
     ok:true,
     version:CAJA_V3_VERSION_,
@@ -250,29 +347,44 @@ function cajaAbrir_(item, usuario) {
   if (!sedeEscrituraPermitida_(usuario,item.sede)) return {ok:false,error:'No puedes abrir la caja de otra sede.'};
   const fecha = cajaV3Fecha_(item.fecha);
   if (fecha > cajaV3Fecha_(new Date())) return {ok:false,error:'No puedes abrir una fecha futura.'};
-  const existente = cajaTurnoFila_(fecha,item.sede);
-  if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'Esta caja ya fue cerrada.'} : {ok:true,ya_abierta:true,item:existente};
 
   const c = cajaV3ValorContado_(item.base_inicial,'el efectivo contado al abrir'); if(!c.ok)return c;
   const s = cajaV3ValorContado_(item.caja_fuerte_inicial,'la caja fuerte contada al abrir'); if(!s.ok)return s;
-  const ref = cajaV3ReferenciaApertura_(fecha,item.sede);
-  const difCaja = ref.es_inicio_cero ? 0 : Number((c.valor-ref.caja_operativa).toFixed(2));
-  const difFuerte = ref.es_inicio_cero ? 0 : Number((s.valor-ref.caja_fuerte).toFixed(2));
-  if ((difCaja !== 0 || difFuerte !== 0) && !String(item.observacion_apertura||'').trim()) {
-    return {ok:false,error:'Lo contado no coincide con lo recibido del turno anterior. Escribe una observación.',diferencia_apertura:difCaja,diferencia_caja_fuerte_apertura:difFuerte};
-  }
 
-  const fila = {
-    id:Utilities.getUuid(),version:CAJA_V3_VERSION_,fecha:fecha,sede:item.sede,estado:'Abierto',
-    es_inicio_cero:ref.es_inicio_cero,turno_anterior_id:ref.turno_anterior||'',fecha_turno_anterior:ref.fecha_anterior||'',
-    base_esperada:ref.caja_operativa,base_inicial:c.valor,diferencia_apertura:difCaja,
-    caja_fuerte_esperada_apertura:ref.caja_fuerte,caja_fuerte_inicial:s.valor,diferencia_caja_fuerte_apertura:difFuerte,
-    observacion_apertura:item.observacion_apertura||'',hora_apertura:new Date(),
-    usuario_apertura_id:usuario.id,usuario_apertura:usuario.nombre
-  };
-  appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,neutralizarObjetoFormulas_(fila));
-  if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fila.id,null,fila,item.sede,item.observacion_apertura||'');
-  return {ok:true,item:fila,referencia_apertura:ref};
+  // Bloqueo: entre leer "¿ya existe turno?" y escribir la fila nueva no puede colarse una segunda
+  // apertura para la misma fecha+sede (dos dispositivos, o un reintento de red) — sin esto podían
+  // quedar dos filas "Abierto" para el mismo día y no había forma de saber cuál es la real.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return {ok:false,error:'Otra apertura de caja está en curso ahora mismo.'};
+  try {
+    const existente = cajaTurnoFila_(fecha,item.sede);
+    if (existente) return existente.estado === 'Cerrado' ? {ok:false,error:'Esta caja ya fue cerrada.'} : {ok:true,ya_abierta:true,item:existente};
+
+    const ref = cajaV3ReferenciaApertura_(fecha,item.sede);
+    const difCaja = ref.es_inicio_cero ? 0 : Number((c.valor-ref.caja_operativa).toFixed(2));
+    const difFuerte = ref.es_inicio_cero ? 0 : Number((s.valor-ref.caja_fuerte).toFixed(2));
+    if ((difCaja !== 0 || difFuerte !== 0) && !String(item.observacion_apertura||'').trim()) {
+      return {ok:false,error:'Lo contado no coincide con lo recibido del turno anterior. Escribe una observación.',diferencia_apertura:difCaja,diferencia_caja_fuerte_apertura:difFuerte};
+    }
+
+    const fila = {
+      id:Utilities.getUuid(),version:CAJA_V3_VERSION_,fecha:fecha,sede:item.sede,estado:'Abierto',
+      es_inicio_cero:ref.es_inicio_cero,turno_anterior_id:ref.turno_anterior||'',fecha_turno_anterior:ref.fecha_anterior||'',
+      base_esperada:ref.caja_operativa,base_inicial:c.valor,diferencia_apertura:difCaja,
+      caja_fuerte_esperada_apertura:ref.caja_fuerte,caja_fuerte_inicial:s.valor,diferencia_caja_fuerte_apertura:difFuerte,
+      observacion_apertura:item.observacion_apertura||'',hora_apertura:new Date(),
+      usuario_apertura_id:usuario.id,usuario_apertura:usuario.nombre
+    };
+    appendRowFromObj_(SHEET_NAMES.CAJA_TURNO,neutralizarObjetoFormulas_(fila));
+    if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_abrir','CajaTurno',fila.id,null,fila,item.sede,item.observacion_apertura||'');
+    return {ok:true,item:fila,referencia_apertura:ref};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function cajaV3EsEntrega_(tipo) {
+  return String(tipo || '').indexOf('Entrega administración') === 0;
 }
 
 function cajaMovimientoRegistrar_(item, usuario) {
@@ -284,24 +396,39 @@ function cajaMovimientoRegistrar_(item, usuario) {
   const valor = Number(item.valor);
   if (!isFinite(valor) || valor <= 0) return {ok:false,error:'El valor debe ser mayor a cero.'};
   if (!String(item.motivo||'').trim()) return {ok:false,error:'Escribe el motivo.'};
-  const turno = cajaTurnoFila_(item.fecha,item.sede);
-  if (!turno || turno.estado !== 'Abierto') return {ok:false,error:'Primero debes abrir la caja.'};
-
-  const existentes = cajaV3MovimientosTurno_(turno.id);
-  if (item.idempotency_key) {
-    const repetido = existentes.find(function(m){ return m.idempotency_key === item.idempotency_key; });
-    if (repetido) return {ok:true,item:repetido,ya_existia:true};
+  const persEntrega = item.persona_entrega || usuario.nombre;
+  // Una entrega a administración necesita quién entrega y quién recibe registrados explícitamente —
+  // se había perdido esta exigencia en la reconstrucción de Caja (el sistema anterior sí la tenía).
+  if (cajaV3EsEntrega_(item.tipo) && (!String(persEntrega||'').trim() || !String(item.persona_recibe||'').trim())) {
+    return {ok:false,error:'La entrega necesita quién entrega y quién recibe.'};
   }
 
-  const fila = {
-    id:Utilities.getUuid(),version:CAJA_V3_VERSION_,turno_id:turno.id,fecha:cajaV3Fecha_(item.fecha),sede:item.sede,
-    tipo:item.tipo,valor:valor,persona_entrega:item.persona_entrega||usuario.nombre,persona_recibe:item.persona_recibe||'',
-    motivo:String(item.motivo).trim(),hora:new Date(),usuario_id:usuario.id,usuario:usuario.nombre,timestamp:new Date(),
-    idempotency_key:item.idempotency_key||''
-  };
-  appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS,neutralizarObjetoFormulas_(fila));
-  if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_movimiento_registrar','CajaMovimientos',fila.id,null,fila,item.sede,fila.motivo);
-  return {ok:true,item:fila};
+  // Bloqueo: entre revisar que la caja sigue abierta / la clave de idempotencia y escribir la fila
+  // nueva no puede colarse un cierre o un registro duplicado desde otro dispositivo.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return {ok:false,error:'Otro movimiento se está guardando ahora mismo.'};
+  try {
+    const turno = cajaTurnoFila_(item.fecha,item.sede);
+    if (!turno || turno.estado !== 'Abierto') return {ok:false,error:'Primero debes abrir la caja.'};
+
+    const existentes = cajaV3MovimientosTurno_(turno.id);
+    if (item.idempotency_key) {
+      const repetido = existentes.find(function(m){ return m.idempotency_key === item.idempotency_key; });
+      if (repetido) return {ok:true,item:repetido,ya_existia:true};
+    }
+
+    const fila = {
+      id:Utilities.getUuid(),version:CAJA_V3_VERSION_,turno_id:turno.id,fecha:cajaV3Fecha_(item.fecha),sede:item.sede,
+      tipo:item.tipo,valor:valor,persona_entrega:persEntrega,persona_recibe:item.persona_recibe||'',
+      motivo:String(item.motivo).trim(),hora:new Date(),usuario_id:usuario.id,usuario:usuario.nombre,timestamp:new Date(),
+      idempotency_key:item.idempotency_key||''
+    };
+    appendRowFromObj_(SHEET_NAMES.CAJA_MOVIMIENTOS,neutralizarObjetoFormulas_(fila));
+    if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_movimiento_registrar','CajaMovimientos',fila.id,null,fila,item.sede,fila.motivo);
+    return {ok:true,item:fila};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function cajaMovimientosListar_(fecha, sede) {
@@ -315,35 +442,45 @@ function cajaCerrar_(item, usuario) {
   cajaV3ValidarSede_(item.sede);
   if (!sedeEscrituraPermitida_(usuario,item.sede)) return {ok:false,error:'No puedes cerrar la caja de otra sede.'};
   const fecha = cajaV3Fecha_(item.fecha);
-  const turno = cajaTurnoFila_(fecha,item.sede);
-  if (!turno) return {ok:false,error:'La caja no está abierta.'};
-  if (turno.estado === 'Cerrado') return {ok:true,ya_cerrado:true,item:turno};
 
   const contado = cajaV3ValorContado_(item.efectivo_contado,'el efectivo contado al cerrar'); if(!contado.ok)return contado;
   const fuerte = cajaV3ValorContado_(item.caja_fuerte_contada,'la caja fuerte contada al cerrar'); if(!fuerte.ok)return fuerte;
 
+  // La sincronización con FUDO es una llamada de red — se hace ANTES de tomar el bloqueo para no
+  // dejar a las demás operaciones de Caja esperando mientras dura esa llamada.
   const sync = cajaV3SincronizarFudo_(fecha,item.sede,usuario);
-  const calculo = cajaV3Calculo_(turno,fecha,item.sede);
-  const dif = Number((contado.valor-calculo.caja_operativa).toFixed(2));
-  const difFuerte = Number((fuerte.valor-calculo.caja_fuerte).toFixed(2));
-  if ((dif !== 0 || difFuerte !== 0) && !String(item.observacion||'').trim()) {
-    return {ok:false,error:'Hay una diferencia en el cierre. Escribe una observación antes de cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte,calculo:calculo};
-  }
 
-  const cambios = {
-    estado:'Cerrado',
-    fudo_efectivo_cierre:calculo.fudo.efectivo,fudo_gastos_cierre:calculo.fudo.gastos_efectivo,
-    fudo_neto_cierre:calculo.fudo.neto,fudo_confiable_cierre:sync.ok,
-    efectivo_esperado:calculo.caja_operativa,efectivo_contado:contado.valor,diferencia:dif,
-    caja_fuerte_esperada:calculo.caja_fuerte,caja_fuerte_contada:fuerte.valor,diferencia_caja_fuerte:difFuerte,
-    // Regla central nueva: el dinero FÍSICO que quedó es exactamente lo que debe recibir el turno siguiente.
-    base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor,
-    observacion_cierre:item.observacion||'',usuario_cierre:usuario.nombre,hora_cierre:new Date(),timestamp_cierre:new Date(),
-    estado_conciliacion:(dif===0&&difFuerte===0?'CUADRA':'REVISAR')
-  };
-  cajaV3ActualizarTurno_(turno.id,cambios);
-  if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',turno.id,null,cambios,item.sede,item.observacion||'');
-  return {ok:true,calculo:calculo,efectivo_contado:contado.valor,caja_fuerte_contada:fuerte.valor,diferencia:dif,diferencia_caja_fuerte:difFuerte,fudo_sync:sync,base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor};
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return {ok:false,error:'Otro cierre de caja está en curso ahora mismo.'};
+  try {
+    const turno = cajaTurnoFila_(fecha,item.sede);
+    if (!turno) return {ok:false,error:'La caja no está abierta.'};
+    if (turno.estado === 'Cerrado') return {ok:true,ya_cerrado:true,item:turno};
+
+    const calculo = cajaV3Calculo_(turno,fecha,item.sede);
+    const dif = Number((contado.valor-calculo.caja_operativa).toFixed(2));
+    const difFuerte = Number((fuerte.valor-calculo.caja_fuerte).toFixed(2));
+    if ((dif !== 0 || difFuerte !== 0) && !String(item.observacion||'').trim()) {
+      return {ok:false,error:'Hay una diferencia en el cierre. Escribe una observación antes de cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte,calculo:calculo};
+    }
+
+    const cambios = {
+      estado:'Cerrado',
+      fudo_efectivo_cierre:calculo.fudo.efectivo,fudo_gastos_cierre:calculo.fudo.gastos_efectivo,
+      fudo_neto_cierre:calculo.fudo.neto,fudo_confiable_cierre:sync.ok,
+      efectivo_esperado:calculo.caja_operativa,efectivo_contado:contado.valor,diferencia:dif,
+      caja_fuerte_esperada:calculo.caja_fuerte,caja_fuerte_contada:fuerte.valor,diferencia_caja_fuerte:difFuerte,
+      // Regla central: el dinero FÍSICO que quedó es exactamente lo que debe recibir el turno siguiente.
+      base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor,
+      observacion_cierre:item.observacion||'',usuario_cierre:usuario.nombre,hora_cierre:new Date(),timestamp_cierre:new Date(),
+      estado_conciliacion:(dif===0&&difFuerte===0?'CUADRA':'REVISAR')
+    };
+    cajaV3ActualizarTurno_(turno.id,cambios);
+    if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',turno.id,null,cambios,item.sede,item.observacion||'');
+    return {ok:true,calculo:calculo,efectivo_contado:contado.valor,caja_fuerte_contada:fuerte.valor,diferencia:dif,diferencia_caja_fuerte:difFuerte,fudo_sync:sync,base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function cajaV3ActualizarTurno_(id, cambios) {

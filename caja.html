@@ -49,6 +49,10 @@
           <div class="campo"><label>Observación si no coincide con el turno anterior</label><input id="ap-observacion" placeholder="Ej. faltan $10.000 / se recibió dinero adicional"></div>
           <button class="btn dorado" id="abrir">Abrir caja</button>
         </div>
+        <div id="ap-fudo-anterior" class="card admin oculto">
+          <h3 style="margin:0 0 6px">FUDO vs DILANA del cierre anterior</h3>
+          <p style="margin:0">FUDO neto ese día: <strong id="ap-fudo-neto-anterior">—</strong> · DILANA físico registrado: <strong id="ap-dilana-anterior">—</strong></p>
+        </div>
       </section>
 
       <section id="abierta" class="oculto">
@@ -72,7 +76,11 @@
             <h2>Movimiento físico</h2>
             <div class="campo"><label>Tipo</label><select id="mov-tipo"><option>Envío a caja fuerte</option><option>Retiro de caja fuerte</option><option>Entrega administración desde caja</option><option>Entrega administración desde caja fuerte</option><option>Otro ingreso</option></select></div>
             <div class="campo"><label>Valor</label><input type="number" min="1" step="1" id="mov-valor"></div>
-            <div class="campo"><label>Quién recibe</label><input id="mov-recibe"></div>
+            <div class="campo oculto" id="mov-recibe-campo">
+              <label>Quién recibe</label>
+              <select id="mov-recibe-select"><option value="Diana">Diana</option><option value="Otros">Otros</option></select>
+              <input id="mov-recibe-otro" placeholder="Nombre" class="oculto" style="margin-top:6px">
+            </div>
             <div class="campo"><label>Motivo</label><input id="mov-motivo"></div>
             <button class="btn" id="guardar-mov">Guardar movimiento</button>
           </div>
@@ -126,6 +134,11 @@ async function cargar(){
   $('responsable').textContent=t?('Abierta por '+(t.usuario_apertura||'—')):(ref.es_inicio_cero?'Primer turno de la nueva Caja':'Debe recibir el cierre de '+(ref.fecha_anterior||'turno anterior'));
   if(!t){
     $('ap-esperado').textContent=moneda(ref.caja_operativa);$('ap-fuerte-esperada').textContent=moneda(ref.caja_fuerte);$('ap-total').textContent=moneda(ref.total);mostrar('mensaje-inicio',!!ref.es_inicio_cero);
+    if(admin&&ref.fecha_anterior){
+      mostrar('ap-fudo-anterior',true);
+      $('ap-fudo-neto-anterior').textContent=ref.fudo_neto_cierre_anterior==null?'No disponible':moneda(ref.fudo_neto_cierre_anterior);
+      $('ap-dilana-anterior').textContent=moneda(ref.total);
+    } else mostrar('ap-fudo-anterior',false);
   } else if(t.estado==='Abierto'){
     $('dilana-caja').textContent=moneda(calc.caja_operativa);$('dilana-fuerte').textContent=moneda(calc.caja_fuerte);$('dilana-total').textContent=moneda(calc.total);
     $('mov-filas').innerHTML=(r.movimientos||[]).map(m=>`<tr><td>${hora(m.hora||m.timestamp)}</td><td>${escapeHtml(m.tipo)}</td><td>${moneda(m.valor)}</td><td>${escapeHtml(m.persona_recibe||'—')}</td><td>${escapeHtml(m.motivo||'')}</td></tr>`).join('')||'<tr><td colspan="5">Sin movimientos.</td></tr>';
@@ -136,8 +149,27 @@ async function cargar(){
   await cargarAdmin();
 }
 
+function esTipoEntrega(t){return String(t||'').indexOf('Entrega administración')===0}
+function actualizarCampoRecibe(){
+  mostrar('mov-recibe-campo',esTipoEntrega($('mov-tipo').value));
+  mostrar('mov-recibe-otro',$('mov-recibe-select').value==='Otros');
+}
+function personaRecibeValor(){
+  return $('mov-recibe-select').value==='Otros' ? $('mov-recibe-otro').value.trim() : 'Diana';
+}
+$('mov-tipo').onchange=actualizarCampoRecibe;
+$('mov-recibe-select').onchange=actualizarCampoRecibe;
+actualizarCampoRecibe();
+
 $('abrir').onclick=conBotonProtegido($('abrir'),async()=>{const r=await llamar('caja_abrir',{item:{fecha:fechaActual(),sede:sedeActual(),base_inicial:$('ap-contado').value,caja_fuerte_inicial:$('ap-fuerte').value,observacion_apertura:$('ap-observacion').value}});if(!r.ok)return msg(r.error);msg('Caja abierta.','ok');await cargar()});
-$('guardar-mov').onclick=conBotonProtegido($('guardar-mov'),async()=>{const r=await llamar('caja_movimiento_registrar',{item:{fecha:fechaActual(),sede:sedeActual(),tipo:$('mov-tipo').value,valor:$('mov-valor').value,persona_recibe:$('mov-recibe').value,motivo:$('mov-motivo').value,idempotency_key:crypto.randomUUID?crypto.randomUUID():String(Date.now())}});if(!r.ok)return msg(r.error);$('mov-valor').value='';$('mov-recibe').value='';$('mov-motivo').value='';msg('Movimiento guardado.','ok');await cargar()});
+$('guardar-mov').onclick=conBotonProtegido($('guardar-mov'),async()=>{
+  const tipo=$('mov-tipo').value;
+  if(esTipoEntrega(tipo)&&!personaRecibeValor())return msg('Falta el nombre de quién recibe.');
+  const r=await llamar('caja_movimiento_registrar',{item:{fecha:fechaActual(),sede:sedeActual(),tipo,valor:$('mov-valor').value,persona_recibe:esTipoEntrega(tipo)?personaRecibeValor():'',motivo:$('mov-motivo').value,idempotency_key:crypto.randomUUID?crypto.randomUUID():String(Date.now())}});
+  if(!r.ok)return msg(r.error);
+  $('mov-valor').value='';$('mov-recibe-select').value='Diana';$('mov-recibe-otro').value='';$('mov-motivo').value='';actualizarCampoRecibe();
+  msg('Movimiento guardado.','ok');await cargar()
+});
 $('cerrar').onclick=conBotonProtegido($('cerrar'),async()=>{if(!confirm('¿Confirmas que ya contaste físicamente caja y caja fuerte?'))return;const r=await llamar('caja_cerrar',{item:{fecha:fechaActual(),sede:sedeActual(),efectivo_contado:$('cierre-caja').value,caja_fuerte_contada:$('cierre-fuerte').value,observacion:$('cierre-observacion').value}});if(!r.ok)return msg(r.error);msg('Caja cerrada. El conteo físico quedó como base del siguiente turno.','ok');await cargar()});
 async function sync(){msg('Sincronizando FUDO…','ok');const r=await llamar('caja_sincronizar_ahora',{fecha:fechaActual(),sede:sedeActual()});if(!r.ok)return msg((r.errores||[]).join(' | ')||r.error||'No se pudo sincronizar FUDO');msg('FUDO sincronizado.','ok');await cargar()}
 $('sync-fudo').onclick=conBotonProtegido($('sync-fudo'),sync);$('admin-sync').onclick=conBotonProtegido($('admin-sync'),sync);$('actualizar').onclick=cargar;$('fecha').onchange=cargar;$('sede').onchange=cargar;
