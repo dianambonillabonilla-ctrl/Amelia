@@ -165,9 +165,27 @@ un documento de contexto seguía mostrando la versión vieja).
 
 ## Caja
 
-Backend único: `apps-script/CajaTurno.gs` (consolidado — `CajaV2.gs` existió brevemente y se
-eliminó por declarar las mismas funciones globales y competir con `CajaTurno.gs` según el orden de
-carga; no recrearlo). Frontend: `caja.html`. Solo existe en San Antonio y Capri.
+**Backend único: `apps-script/Caja.gs` ("Caja V3", reconstruida desde cero en ago 2026, PR #194).**
+Todo lo anterior (`CajaTurno.gs`, `ZZ_ReactivacionCajaFinal.gs`, `CajaInicioOperacion20260820.gs`,
+la conciliación bancaria de Caja, el histórico archivado `Caja_Turno_Archivo_Pre20260820`) se borró
+a propósito — autorizado por Diana — y `Caja_Turno`/`Caja_Movimientos` arrancaron de cero. Ya pasó
+una vez que dos archivos declararan las mismas funciones globales y compitieran según el orden de
+carga (`CajaV2.gs` vs `CajaTurno.gs`); volvió a pasar brevemente con `ZZ_CajaV3Compat.gs`
+redefiniendo `cajaV3SincronizarFudo_` por encima de `Caja.gs` — se corrigió fusionando esa función
+en un solo archivo (ago 2026, segunda ronda). **No volver a partir una función de Caja entre dos
+archivos que compitan por orden de carga.** Frontend: `caja.html`. Solo existe en San Antonio y
+Capri.
+
+Modelo: abrir turno (recibe lo que quedó físicamente en el cierre anterior, o parte en cero si es
+la primera vez), registrar movimientos durante el día (Envío/Retiro de caja fuerte, Entrega
+administración desde caja/desde caja fuerte, Otro ingreso), cerrar contando físicamente caja y caja
+fuerte. El conteo físico del cierre es exactamente lo que recibe el turno siguiente (nunca lo
+teórico) — decisión explícita de Diana (ago 2026), confirmada de nuevo al evaluar una propuesta de
+"cierre diario por sede" de otro asistente: se descartó reconstruir de nuevo, se conservó este
+modelo. Las entregas a administración exigen quién entrega y quién recibe (el frontend usa un
+desplegable Diana/Otros, no texto libre). El efectivo de FUDO de un turno se atribuye por el
+momento real del pago (hora de apertura a hora de cierre), no por día de calendario — para que un
+turno que cruza la medianoche no pierda ni duplique ventas.
 
 ### Decisiones ya confirmadas (no volver a preguntar)
 
@@ -194,7 +212,13 @@ carga; no recrearlo). Frontend: `caja.html`. Solo existe en San Antonio y Capri.
 - Un día cerrado ya se puede corregir, pero **solo un Administrador** (Diana, ago 2026: "reapertura o
   corrección de caja ya hecha, solo por administrador") — ver `cajaCorregir_` más abajo.
 
-### Corrección de un cierre ya hecho (solo Administrador)
+### Corrección de un cierre ya hecho (solo Administrador) — DESACTUALIZADO, ver nota
+
+**Nota (ago 2026, tras la reconstrucción de Caja V3):** `cajaCorregir_` hoy es un stub que siempre
+devuelve error ("La corrección histórica fue eliminada al iniciar Caja desde cero") — la lógica
+descrita abajo (`cajaCorregir_` real, con auditoría de antes/después) pertenecía al módulo anterior
+y ya no existe. Si Diana necesita poder corregir un cierre ya hecho en Caja V3, hay que diseñarlo e
+implementarlo de nuevo — no asumir que este texto describe el comportamiento actual.
 
 - Es **corrección con auditoría**, no reapertura del estado de la caja (nunca vuelve a "Abierto"): se
   edita `efectivo_contado`/`caja_fuerte_contada`/`observacion_cierre`/`base_siguiente`/
