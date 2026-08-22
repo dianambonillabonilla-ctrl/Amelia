@@ -67,6 +67,12 @@ const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.ht
 })();
 
 const LLAMAR_TIMEOUT_MS = 45000;
+// Acciones que hacen varias llamadas reales y seguidas a la API de FUDO (ventas, pagos y gastos de
+// arqueo, uno detrás del otro) — 45s alcanza para el resto del backend, pero para estas puede no ser
+// suficiente en un día con mucha actividad. No se sube el límite general porque eso solo haría que
+// cualquier otra acción (que si está realmente caída) tarde más en avisarlo.
+const LLAMAR_TIMEOUT_SYNC_MS = 120000;
+const LLAMAR_ACCIONES_SYNC_LARGA_ = ['caja_sincronizar_ahora', 'caja_cerrar', 'fudo_api_sincronizar_ventas', 'fudo_api_sincronizar_pagos'];
 
 async function llamar(action, params = {}) {
   if (MODO_REACTIVACION && !ACCIONES_PERMITIDAS_REACTIVACION.includes(action)) {
@@ -79,7 +85,8 @@ async function llamar(action, params = {}) {
 
   const body = Object.assign({ action, token: Sesion.token() }, params);
   const controlador = new AbortController();
-  const limite = setTimeout(() => controlador.abort(), LLAMAR_TIMEOUT_MS);
+  const timeoutMs = LLAMAR_ACCIONES_SYNC_LARGA_.includes(action) ? LLAMAR_TIMEOUT_SYNC_MS : LLAMAR_TIMEOUT_MS;
+  const limite = setTimeout(() => controlador.abort(), timeoutMs);
   let res;
   try {
     res = await fetch(API_URL, {
