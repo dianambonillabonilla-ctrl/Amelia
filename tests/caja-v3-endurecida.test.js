@@ -129,6 +129,43 @@ function abrir(env, token, fecha, base, fuerte, observacion) {
   console.log('caja-v3-endurecida: la referencia de apertura y el panel Administrador exponen el FUDO del cierre anterior, no el de hoy: OK');
 })();
 
+// --- Cadena física: el día siguiente hereda el CIERRE real, no la apertura anterior --------------
+(function () {
+  const { env, token } = nuevo();
+  env.fijarReloj('2026-08-20T09:00:00-05:00');
+  const apertura20 = abrir(env, token, '2026-08-20', 100000, 20000);
+  assert.ok(apertura20.ok, JSON.stringify(apertura20));
+
+  // Cerramos con valores DELIBERADAMENTE distintos de la apertura.
+  const cierre20 = env.post({
+    action: 'caja_cerrar', token,
+    item: {
+      fecha: '2026-08-20', sede: SEDE,
+      efectivo_contado: 175000, caja_fuerte_contada: 45000,
+      observacion: 'Conteo físico real de cierre'
+    }
+  });
+  assert.ok(cierre20.ok, JSON.stringify(cierre20));
+  assert.strictEqual(cierre20.base_siguiente, 175000);
+  assert.strictEqual(cierre20.caja_fuerte_siguiente, 45000);
+
+  env.fijarReloj('2026-08-21T09:00:00-05:00');
+  const estado21 = env.post({ action: 'caja_estado', token, fecha: '2026-08-21', sede: SEDE });
+  assert.ok(estado21.ok, JSON.stringify(estado21));
+  assert.strictEqual(estado21.referencia_apertura.caja_operativa, 175000, 'debe heredar el efectivo CONTADO AL CIERRE, no los 100000 con que abrió');
+  assert.strictEqual(estado21.referencia_apertura.caja_fuerte, 45000, 'debe heredar la caja fuerte CONTADA AL CIERRE, no los 20000 con que abrió');
+  assert.strictEqual(estado21.referencia_apertura.total, 220000);
+
+  const apertura21 = abrir(env, token, '2026-08-21', 175000, 45000);
+  assert.ok(apertura21.ok, JSON.stringify(apertura21));
+  assert.strictEqual(apertura21.item.base_esperada, 175000);
+  assert.strictEqual(apertura21.item.base_inicial, 175000);
+  assert.strictEqual(apertura21.item.caja_fuerte_esperada_apertura, 45000);
+  assert.strictEqual(apertura21.item.caja_fuerte_inicial, 45000);
+
+  console.log('caja-v3-endurecida: el día siguiente hereda el cierre físico real y no la apertura anterior: OK');
+})();
+
 // --- cajaV3SincronizarFudo_ sin credenciales FUDO configuradas no rompe (unificada, ya sin ZZ_CajaV3Compat.gs) ---
 (function () {
   const { env, token } = nuevo();
