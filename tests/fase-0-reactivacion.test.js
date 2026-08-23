@@ -18,7 +18,7 @@ assert(extension.includes("usuario && usuario.rol === 'Caja' ? 'Encargado'"));
 assert(caja.includes("const CAJA_V3_VERSION_ = 'CAJA_V3'"));
 assert(caja.includes('El conteo físico del cierre pasa a ser la apertura esperada del siguiente turno'));
 assert(cajaHtml.includes('Qué dice FUDO y qué dice DILANA'));
-assert(cajaHtml.includes('Debes recibir del turno anterior'));
+assert(cajaHtml.includes('Debes recibir del cierre anterior'));
 assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];"));
 
 const env=crearEntorno({reactivacionReal:true});
