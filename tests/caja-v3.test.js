@@ -57,10 +57,13 @@ assert.strictEqual(ref.caja_fuerte, 70000);
 assert.strictEqual(ref.total, 250000);
 assert.strictEqual(ref.fecha_anterior, '2026-08-21');
 
-assert(html.includes('Debes recibir del turno anterior'));
+assert(html.includes('Debes recibir del cierre anterior'));
 assert(html.includes('Qué dice FUDO y qué dice DILANA'));
-assert(html.includes('El cierre físico de hoy será exactamente lo que DILANA espere que reciba el siguiente turno'));
+assert(html.includes('Lo que guardes aquí será la apertura esperada del siguiente turno'));
+assert(html.includes('Historial de caja'));
+assert(html.includes("llamar('caja_historial_listar'"));
+assert(html.includes("$('ap-contado').value=Number(ref.caja_operativa||0)"));
 assert(html.includes("llamar('caja_cerrar'"));
 assert(html.includes("llamar('caja_sincronizar_ahora'"));
 
-console.log('✓ Caja V3: cadena física, FUDO neto y comparación Administrador OK');
+console.log('✓ Caja V3: cadena física, historial visible, FUDO neto y comparación Administrador OK');
