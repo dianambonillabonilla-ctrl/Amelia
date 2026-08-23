@@ -21,7 +21,7 @@ assert.match(config,/href: 'usuarios\.html', texto: 'Usuarios'/);
 assert.match(cajaHtml,/Sesion\.requerir\(\)/);
 assert.match(cajaHtml,/const admin=u\.rol==='Administrador'/);
 assert.match(cajaHtml,/Qué dice FUDO y qué dice DILANA/);
-assert.match(cajaHtml,/Debes recibir del turno anterior/);
+assert.match(cajaHtml,/Debes recibir del cierre anterior/);
 assert.match(cajaBackend,/const CAJA_V3_VERSION_ = 'CAJA_V3'/);
 assert.match(reactivacionCaja,/usuario && usuario\.rol === 'Caja' \? 'Encargado'/);
 
