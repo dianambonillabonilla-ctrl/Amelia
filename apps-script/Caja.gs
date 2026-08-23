@@ -444,9 +444,8 @@ function cajaCerrar_(item, usuario) {
   const contado = cajaV3ValorContado_(item.efectivo_contado,'el efectivo contado al cerrar'); if(!contado.ok)return contado;
   const fuerte = cajaV3ValorContado_(item.caja_fuerte_contada,'la caja fuerte contada al cerrar'); if(!fuerte.ok)return fuerte;
 
-  // La sincronización con FUDO es una llamada de red — se hace ANTES de tomar el bloqueo para no
-  // dejar a las demás operaciones de Caja esperando mientras dura esa llamada.
-  const sync = cajaV3SincronizarFudo_(fecha,item.sede,usuario);
+  // El cierre físico de Caja es independiente de FUDO.
+  // Primero se guarda lo realmente contado; FUDO se concilia después.
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return {ok:false,error:'Otro cierre de caja está en curso ahora mismo.'};
@@ -458,24 +457,23 @@ function cajaCerrar_(item, usuario) {
     const calculo = cajaV3Calculo_(turno,fecha,item.sede);
     const dif = Number((contado.valor-calculo.caja_operativa).toFixed(2));
     const difFuerte = Number((fuerte.valor-calculo.caja_fuerte).toFixed(2));
-    if ((dif !== 0 || difFuerte !== 0) && !String(item.observacion||'').trim()) {
-      return {ok:false,error:'Hay una diferencia en el cierre. Escribe una observación antes de cerrar.',diferencia:dif,diferencia_caja_fuerte:difFuerte,calculo:calculo};
-    }
+    // Una diferencia no puede impedir guardar el cierre físico.
+    // Se conserva para revisión, pero el conteo real manda sobre la continuidad de Caja.
 
     const cambios = {
       estado:'Cerrado',
       fudo_efectivo_cierre:calculo.fudo.efectivo,fudo_gastos_cierre:calculo.fudo.gastos_efectivo,
-      fudo_neto_cierre:calculo.fudo.neto,fudo_confiable_cierre:sync.ok,
+      fudo_neto_cierre:calculo.fudo.neto,fudo_confiable_cierre:false,
       efectivo_esperado:calculo.caja_operativa,efectivo_contado:contado.valor,diferencia:dif,
       caja_fuerte_esperada:calculo.caja_fuerte,caja_fuerte_contada:fuerte.valor,diferencia_caja_fuerte:difFuerte,
       // Regla central: el dinero FÍSICO que quedó es exactamente lo que debe recibir el turno siguiente.
       base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor,
       observacion_cierre:item.observacion||'',usuario_cierre:usuario.nombre,hora_cierre:new Date(),timestamp_cierre:new Date(),
-      estado_conciliacion:(dif===0&&difFuerte===0?'CUADRA':'REVISAR')
+      estado_conciliacion:'PENDIENTE_FUDO'
     };
     cajaV3ActualizarTurno_(turno.id,cambios);
     if (typeof auditoriaRegistrar_ === 'function') auditoriaRegistrar_(usuario,'caja_cerrar','CajaTurno',turno.id,null,cambios,item.sede,item.observacion||'');
-    return {ok:true,calculo:calculo,efectivo_contado:contado.valor,caja_fuerte_contada:fuerte.valor,diferencia:dif,diferencia_caja_fuerte:difFuerte,fudo_sync:sync,base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor};
+    return {ok:true,calculo:calculo,efectivo_contado:contado.valor,caja_fuerte_contada:fuerte.valor,diferencia:dif,diferencia_caja_fuerte:difFuerte,fudo_pendiente:true,base_siguiente:contado.valor,caja_fuerte_siguiente:fuerte.valor};
   } finally {
     lock.releaseLock();
   }
