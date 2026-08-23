@@ -131,7 +131,9 @@ function fechaMenosDias_(fecha,dias){const d=new Date(String(fecha)+'T12:00:00')
 
 async function cargarAdmin(){
   if(!admin)return; mostrar('admin-panel',true);
-  const r=await llamar('caja_resumen_admin',{fecha:fechaActual(),sedes:['San Antonio','Capri']});
+  const fecha=fechaActual();
+  const r=await llamar('caja_resumen_admin',{fecha,sedes:['San Antonio','Capri']});
+  if(fechaActual()!==fecha)return; // la fecha cambió mientras esperábamos esta respuesta — se descarta
   if(!r.ok){$('admin-filas').innerHTML='<tr><td colspan="8">'+escapeHtml(r.error||'No disponible')+'</td></tr>';return}
   $('admin-filas').innerHTML=(r.sedes||[]).map(x=>{
     const f=x.fudo||{};
@@ -147,6 +149,7 @@ async function cargarHistorial(){
   const desde=$('hist-desde').value,hasta=$('hist-hasta').value,sede=sedeActual();
   if(!desde||!hasta||desde>hasta){$('historial-filas').innerHTML='<tr><td colspan="10">Selecciona un rango válido.</td></tr>';return}
   const r=await llamar('caja_historial_listar',{fecha_desde:desde,fecha_hasta:hasta,sede});
+  if($('hist-desde').value!==desde||$('hist-hasta').value!==hasta||sedeActual()!==sede)return; // el filtro cambió mientras esperábamos — se descarta esta respuesta vieja
   if(!r.ok){$('historial-filas').innerHTML='<tr><td colspan="10">'+escapeHtml(r.error||'No se pudo cargar el historial')+'</td></tr>';return}
   const filas=Array.isArray(r.data)?r.data:(r.data&&Array.isArray(r.data.data)?r.data.data:[]);
   $('historial-filas').innerHTML=filas.map(t=>{
@@ -164,6 +167,7 @@ async function cargarHistorial(){
 async function cargar(){
   msg(''); const fecha=fechaActual(),sede=sedeActual(); if(!fecha||!sede)return;
   const r=await llamar('caja_estado',{fecha,sede});
+  if(fechaActual()!==fecha||sedeActual()!==sede)return; // la sede/fecha cambió mientras esperábamos esta respuesta — nunca pintar datos de la sede/fecha que ya no está seleccionada
   if(!r.ok){msg(r.error||'No se pudo consultar Caja');return}
   $('titulo-sede').textContent=sede; const t=r.apertura,ref=r.referencia_apertura||{},calc=r.calculo,f=r.fudo||{};
   mostrar('sin-abrir',!t);mostrar('abierta',!!t&&t.estado==='Abierto');mostrar('cerrada',!!t&&t.estado==='Cerrado');
