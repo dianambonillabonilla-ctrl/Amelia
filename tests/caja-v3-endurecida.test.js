@@ -136,13 +136,16 @@ function abrir(env, token, fecha, base, fuerte, observacion) {
   const apertura20 = abrir(env, token, '2026-08-20', 100000, 20000);
   assert.ok(apertura20.ok, JSON.stringify(apertura20));
 
-  // Cerramos con valores DELIBERADAMENTE distintos de la apertura.
+  // Incluso si FUDO falla, el cierre físico debe guardarse.
+  env.ctx.cajaV3SincronizarFudo_ = () => { throw new Error('FUDO no debe intervenir en caja_cerrar'); };
+
+  // Cerramos con valores DELIBERADAMENTE distintos de la apertura y sin observación.
   const cierre20 = env.post({
     action: 'caja_cerrar', token,
     item: {
       fecha: '2026-08-20', sede: SEDE,
       efectivo_contado: 175000, caja_fuerte_contada: 45000,
-      observacion: 'Conteo físico real de cierre'
+      observacion: ''
     }
   });
   assert.ok(cierre20.ok, JSON.stringify(cierre20));
