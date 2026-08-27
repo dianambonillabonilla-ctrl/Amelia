@@ -39,7 +39,8 @@ const ACCIONES_OMITIDAS = new Set([
   'traslado_crear', 'traslado_confirmar', 'traslado_observar', 'traslado_resolver',
   'migrar_recetas_julio_2026',
   'caja_abrir', 'caja_rappi_marcar', 'caja_movimiento_registrar', 'caja_cerrar', 'caja_novedad_conciliar',
-  'caja_corregir'
+  'caja_corregir',
+  'reserva_crear', 'reserva_actualizar', 'reserva_cambiar_estado', 'reserva_cancelar', 'mesas_guardar'
 ]);
 
 const HOY = '2026-07-26';
@@ -85,7 +86,15 @@ function parametrosPorAccion() {
     fudo_pagos_listar: { filtros: {} },
     fudo_descuentos_listar: { filtros: {} },
     fudo_propinas_listar: { filtros: {} },
-    fudo_subitems_listar: { filtros: {} }
+    fudo_subitems_listar: { filtros: {} },
+    reservas_dashboard: { fecha: HOY, sede: SEDE },
+    reservas_listar: { filtros: {} },
+    reservas_buscar: { query: 'a' },
+    reserva_historial_cliente: { telefono: '3000000000' },
+    reservas_calendario: { sede: SEDE, fecha_desde: '2026-07-01', fecha_hasta: HOY },
+    mesas_listar: { sede: SEDE },
+    mesas_estado: { sede: SEDE, fecha: HOY, hora: '19:00' },
+    mesas_sugeridas: { sede: SEDE, fecha: HOY, hora: '19:00', personas: 2 }
   };
 }
 

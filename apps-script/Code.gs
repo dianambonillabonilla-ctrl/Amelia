@@ -26,7 +26,20 @@ const ACCIONES_PERMITIDAS_REACTIVACION_BACKEND = [
   'cambiar_password',
   'usuarios_listar',
   'usuarios_guardar',
-  'usuario_resetear_password'
+  'usuario_resetear_password',
+  'reservas_dashboard',
+  'reservas_listar',
+  'reserva_crear',
+  'reserva_actualizar',
+  'reserva_cambiar_estado',
+  'reserva_cancelar',
+  'reservas_buscar',
+  'reserva_historial_cliente',
+  'reservas_calendario',
+  'mesas_listar',
+  'mesas_guardar',
+  'mesas_estado',
+  'mesas_sugeridas'
 ];
 
 function reactivacionBackendActiva_() {
@@ -79,7 +92,9 @@ const SHEET_NAMES = {
   // toque, para que configurarHojas() no la borre y el histórico de julio 2026 siga legible a mano.
   BASE_CAJA: 'Base_Caja',
   CAJA_TURNO: 'Caja_Turno',
-  CAJA_MOVIMIENTOS: 'Caja_Movimientos'
+  CAJA_MOVIMIENTOS: 'Caja_Movimientos',
+  RESERVAS: 'Reservas',
+  RESERVAS_MESAS: 'Reservas_Mesas'
 };
 
 function ss_() {
@@ -165,7 +180,15 @@ function configurarHojas() {
       'usuario_apertura', 'rappi_encendido', 'efectivo_contado', 'efectivo_esperado', 'diferencia',
       'entrega_cierre', 'base_siguiente', 'usuario_cierre', 'hora_cierre', 'observacion_cierre', 'timestamp_cierre'],
     Caja_Movimientos: ['id', 'fecha', 'sede', 'tipo', 'valor', 'persona_entrega', 'persona_recibe', 'hora',
-      'motivo', 'evidencia_url', 'usuario_id', 'usuario', 'timestamp']
+      'motivo', 'evidencia_url', 'usuario_id', 'usuario', 'timestamp'],
+    Reservas: ['id', 'codigo', 'sede', 'fecha', 'hora', 'hora_limite', 'personas', 'nombre_cliente', 'telefono',
+      'motivo', 'motivo_otro', 'observaciones',
+      'decoracion', 'decoracion_tipo', 'decoracion_valor', 'decoracion_estado_pago', 'decoracion_medio_pago',
+      'decoracion_fecha_pago', 'decoracion_comprobante', 'decoracion_observaciones',
+      'mesas', 'estado',
+      'creado_por_id', 'creado_por_nombre', 'creado_en', 'actualizado_por_id', 'actualizado_por_nombre', 'actualizado_en',
+      'cancelado_por_id', 'cancelado_por_nombre', 'cancelado_en', 'motivo_cancelacion'],
+    Reservas_Mesas: ['id', 'sede', 'numero', 'capacidad_min', 'capacidad_max', 'ubicacion', 'activa', 'puede_unirse_con', 'observaciones']
   };
   const spreadsheet = ss_();
   Object.keys(spec).forEach(function (name) {
@@ -481,6 +504,45 @@ function handleRequest_(e, method) {
       case 'caja_corregir':
         requiereRol_(sesion.usuario, ['Administrador']);
         return jsonOut_(cajaCorregir_(params.item, sesion.usuario));
+      case 'reservas_dashboard':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_(reservasDashboard_(params.fecha, params.sede, sesion.usuario));
+      case 'reservas_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_({ ok: true, data: reservasListar_(params.filtros, sesion.usuario) });
+      case 'reserva_crear':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja']);
+        return jsonOut_(reservaCrear_(params.item, sesion.usuario));
+      case 'reserva_actualizar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja']);
+        return jsonOut_(reservaActualizar_(params.id, params.cambios, sesion.usuario));
+      case 'reserva_cambiar_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja']);
+        return jsonOut_(reservaCambiarEstado_(params.id, params.estado, sesion.usuario, params.motivo));
+      case 'reserva_cancelar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja']);
+        return jsonOut_(reservaCancelar_(params.id, params.motivo, sesion.usuario));
+      case 'reservas_buscar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_({ ok: true, data: reservasBuscar_(params.query, sesion.usuario) });
+      case 'reserva_historial_cliente':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_(reservaHistorialCliente_(params.telefono, sesion.usuario));
+      case 'reservas_calendario':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_(reservasCalendario_(params.sede, params.fecha_desde, params.fecha_hasta, sesion.usuario));
+      case 'mesas_listar':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_({ ok: true, data: mesasListar_(params.sede) });
+      case 'mesas_guardar':
+        requiereAdmin_(sesion.usuario);
+        return jsonOut_(mesasGuardar_(params.item, sesion.usuario));
+      case 'mesas_estado':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_({ ok: true, data: mesasEstado_(params.sede, params.fecha, params.hora, sesion.usuario) });
+      case 'mesas_sugeridas':
+        requiereRol_(sesion.usuario, ['Administrador', 'Caja', 'Gerencia']);
+        return jsonOut_(mesasSugeridas_(params.sede, params.fecha, params.hora, params.personas, sesion.usuario));
       case 'importar_fudo':
         requiereAdmin_(sesion.usuario);
         return jsonOut_(importarFudo_(params.tipo, params.filas, sesion.usuario, params.opciones));

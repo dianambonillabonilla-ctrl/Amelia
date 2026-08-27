@@ -19,7 +19,7 @@ assert(caja.includes("const CAJA_V3_VERSION_ = 'CAJA_V3'"));
 assert(caja.includes('El conteo físico del cierre pasa a ser la apertura esperada del siguiente turno'));
 assert(cajaHtml.includes('Qué dice FUDO y qué dice DILANA'));
 assert(cajaHtml.includes('Debes recibir del cierre anterior'));
-assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];"));
+assert(config.includes("const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja', 'reservas'];"));
 
 const env=crearEntorno({reactivacionReal:true});
 env.ctx.configurarHojas();

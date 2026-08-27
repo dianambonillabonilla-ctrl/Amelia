@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DILANA OS — Reservas</title>
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+:root{--res-azul:#172761;--res-crema:#F8F6F2;--res-terracota:#C47A5A;--res-dorado:#C5A06B}
+.res-wrap{max-width:1180px;margin:0 auto}
+.res-wrap h1,.res-wrap h2,.res-wrap h3{color:var(--res-azul)}
+.res-wrap .filtros{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+.res-wrap .filtros .campo{margin:0;min-width:150px}
+.res-wrap .filtros .btn.dorado{background:var(--res-dorado);color:var(--res-azul);font-size:1rem;padding:12px 20px}
+.res-wrap .alertas{background:#FBEAEA;border-left:5px solid #B3413B;padding:14px 18px}
+.res-wrap .alertas ul{margin:6px 0 0;padding-left:20px}
+.res-wrap .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+.res-wrap .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.res-wrap .kpi span{display:block;font-size:.74rem;color:var(--grey);text-transform:uppercase;letter-spacing:.03em}
+.res-wrap .kpi strong{font-size:1.5rem;color:var(--res-azul);display:block;margin-top:2px}
+.res-wrap .kpi.aviso strong{color:#B8862E}
+.tabs-res{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 10px}
+.tabs-res .tab-btn{background:#fff;border:1px solid var(--line);border-radius:20px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer;color:var(--ink)}
+.tabs-res .tab-btn.activo{background:var(--res-azul);color:#fff;border-color:var(--res-azul)}
+.leyenda{font-size:.82rem;color:var(--grey);margin:8px 0}
+.tablero-mesas{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:10px}
+.tablero-mesas.mini{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}
+.mesa-tile{border-radius:10px;padding:14px 8px;text-align:center;font-weight:700;font-size:.86rem;border:2px solid transparent;cursor:default;color:#fff}
+.mesa-tile.libre{background:#3F7D5C;cursor:pointer}
+.mesa-tile.ocupada{background:#B3413B}
+.mesa-tile.fuera{background:#4b4b4b}
+.mesa-tile.seleccionada{background:#1d5fb8;border-color:var(--res-dorado);cursor:pointer}
+.agenda-item{border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;cursor:pointer}
+.agenda-item:hover{background:#FBFAF6}
+.agenda-item .hora{font-size:1.15rem;font-weight:700;color:var(--res-azul);min-width:70px}
+.agenda-item .info{flex:1;min-width:180px}
+.agenda-item .info strong{display:block}
+.agenda-item .info small{color:var(--grey)}
+.agenda-item .tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.badge-estado{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;white-space:nowrap}
+.badge-neutral{background:#eee;color:#555}
+.badge-amber{background:#FBF1DC;color:#B8862E}
+.badge-green{background:#E4F0E9;color:#3F7D5C}
+.badge-blue{background:#E1EBFA;color:#1d5fb8}
+.badge-red{background:#FBEAEA;color:#B3413B}
+.calendario-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}
+.calendario-grid .cal-cab{font-size:.72rem;color:var(--grey);text-transform:uppercase;text-align:center}
+.calendario-dia{border:1px solid var(--line);border-radius:8px;min-height:66px;padding:6px;font-size:.82rem;cursor:pointer}
+.calendario-dia:hover{background:#FBFAF6}
+.calendario-dia.vacia{border:none;cursor:default}
+.calendario-dia .num{font-weight:700}
+.calendario-dia .cuenta{margin-top:6px;display:inline-block;background:var(--res-dorado);color:var(--res-azul);border-radius:10px;padding:1px 8px;font-size:.74rem;font-weight:700}
+.calendario-dia.hoy{border-color:var(--res-azul);border-width:2px}
+.modal-fondo{position:fixed;inset:0;background:rgba(23,39,97,.55);display:flex;align-items:flex-start;justify-content:center;z-index:999;overflow:auto;padding:30px 14px}
+.modal-caja{background:#fff;border-radius:14px;padding:26px 28px;max-width:820px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:760px){.grid2{grid-template-columns:1fr}.res-wrap .filtros{flex-direction:column;align-items:stretch}}
+.validacion-ok{background:#E4F0E9;color:#256b35;padding:10px 14px;border-radius:8px;margin:10px 0;font-weight:600}
+.validacion-mal{background:#FBEAEA;color:#8b1f1f;padding:10px 14px;border-radius:8px;margin:10px 0}
+.validacion-mal ul{margin:6px 0 0;padding-left:20px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.oculto{display:none!important}
+.config-fila input,.config-fila select{font-size:.85rem;padding:6px 8px}
+.subtitulo{font-size:.82rem;color:var(--grey)}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar"><div class="marca">Dilana <span>OS</span></div><nav id="menu-nav"></nav></aside>
+  <main class="main">
+    <div class="topbar"><h1>Reservas</h1><div id="barra-usuario"></div></div>
+
+    <div class="res-wrap">
+      <div class="card filtros">
+        <div class="campo"><label>Fecha</label><input type="date" id="fecha"></div>
+        <div class="campo"><label>Sede</label><select id="sede"><option>San Antonio</option><option>Capri</option></select></div>
+        <button class="btn fantasma" id="actualizar" type="button">Actualizar</button>
+        <button class="btn dorado" id="btn-nueva" type="button" data-solo-rol="Administrador,Caja">+ NUEVA RESERVA</button>
+      </div>
+
+      <div id="alertas" class="card alertas oculto"><strong>Alertas de hoy</strong><ul id="alertas-lista"></ul></div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="tabs-res">
+        <button class="tab-btn activo" data-tab="dia" type="button">Reservas del día</button>
+        <button class="tab-btn" data-tab="mesas" type="button">Mesas</button>
+        <button class="tab-btn" data-tab="calendario" type="button">Calendario</button>
+        <button class="tab-btn" data-tab="buscar" type="button">Buscar</button>
+        <button class="tab-btn" data-tab="config" type="button" id="tab-btn-config" data-solo-rol="Administrador">Configuración de mesas</button>
+      </div>
+
+      <section id="tab-dia" class="tab-panel">
+        <div class="card" id="proximas-card">
+          <h2>Próximas reservas</h2>
+          <div id="proximas-lista"><p class="vacio">Cargando…</p></div>
+        </div>
+        <div class="card">
+          <h2>Reservas de <span id="fecha-titulo">hoy</span></h2>
+          <div id="dia-lista"><p class="vacio">Cargando…</p></div>
+        </div>
+      </section>
+
+      <section id="tab-mesas" class="tab-panel oculto">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <h2 style="margin:0">Mapa de mesas <span id="mesas-sede-titulo"></span></h2>
+            <div class="campo" style="margin:0;max-width:140px"><label>Hora</label><input type="time" id="mesas-hora" value="19:00"></div>
+          </div>
+          <div class="leyenda">🟢 Libre &nbsp; 🔴 Reservada &nbsp; 🟡 Pendiente de completar &nbsp; 🔵 Cliente ya llegó &nbsp; ⚫ Fuera de servicio</div>
+          <div class="tablero-mesas" id="tablero-mesas"></div>
+        </div>
+      </section>
+
+      <section id="tab-calendario" class="tab-panel oculto">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <button class="btn fantasma" id="cal-prev" type="button">← Mes anterior</button>
+            <h2 id="cal-titulo" style="margin:0">—</h2>
+            <button class="btn fantasma" id="cal-next" type="button">Mes siguiente →</button>
+          </div>
+          <div class="calendario-grid" id="calendario-grid"></div>
+        </div>
+      </section>
+
+      <section id="tab-buscar" class="tab-panel oculto">
+        <div class="card">
+          <div class="campo"><label>Buscar por nombre, teléfono, código, mesa o fecha (AAAA-MM-DD)</label>
+            <input id="buscar-input" placeholder="Ej. Karol, 3015566878, SA-030926-001..."></div>
+          <div class="scroll"><table><thead><tr><th>Código</th><th>Fecha</th><th>Hora</th><th>Sede</th><th>Cliente</th><th>Personas</th><th>Estado</th></tr></thead>
+            <tbody id="buscar-filas"><tr><td colspan="7" class="vacio">Escribe algo para buscar.</td></tr></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="tab-config" class="tab-panel oculto">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <h2 style="margin:0">Configuración de mesas — <span id="config-sede-nombre"></span></h2>
+            <button class="btn" id="config-nueva-mesa" type="button">+ Agregar mesa</button>
+          </div>
+          <p class="subtitulo">Capacidad, ubicación y con qué otra mesa se puede combinar. Esto es lo que usa el sistema para detectar choques y sugerir mesa.</p>
+          <div class="scroll"><table><thead><tr><th>Número</th><th>Cap. mín</th><th>Cap. máx</th><th>Ubicación</th><th>Activa</th><th>Puede unirse con</th><th>Observaciones</th><th></th></tr></thead>
+            <tbody id="config-mesas-filas"></tbody></table></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="modal-reserva" class="modal-fondo oculto">
+  <div class="modal-caja">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 id="modal-titulo">Nueva reserva</h2>
+      <button class="btn fantasma" id="modal-cerrar" type="button">Cerrar ✕</button>
+    </div>
+    <div id="modal-codigo" class="subtitulo oculto"></div>
+    <div id="modal-validacion"></div>
+    <div class="grid2">
+      <div>
+        <div class="campo"><label>Nombre de la persona</label><input id="f-nombre"></div>
+        <div class="campo"><label>Teléfono / WhatsApp</label><input id="f-telefono"></div>
+        <div class="campo"><label>Sede</label><select id="f-sede"><option>San Antonio</option><option>Capri</option></select></div>
+        <div class="campo"><label>Fecha</label><input type="date" id="f-fecha"></div>
+        <div class="campo"><label>Hora</label><input type="time" id="f-hora"></div>
+        <div class="campo"><label>Número de personas</label><input type="number" min="1" id="f-personas" value="2"></div>
+        <div class="campo"><label>Motivo de la visita</label>
+          <select id="f-motivo"><option>Ninguno</option><option>Cumpleaños</option><option>Aniversario</option><option>Cena</option><option>Reunión</option><option>Evento</option><option>Otro</option></select>
+        </div>
+        <div class="campo oculto" id="f-motivo-otro-campo"><label>¿Cuál motivo?</label><input id="f-motivo-otro"></div>
+        <div class="campo"><label>Observaciones</label><textarea id="f-observaciones" rows="2"></textarea></div>
+      </div>
+      <div>
+        <div class="campo"><label>¿Desea decoración?</label>
+          <select id="f-decoracion"><option value="no">No</option><option value="si">Sí</option></select>
+        </div>
+        <div id="deco-campos" class="oculto">
+          <div class="campo"><label>Tipo de decoración</label><input id="f-deco-tipo" placeholder="Cumpleaños (decoración + porción de torta)"></div>
+          <div class="campo"><label>Valor</label><input type="number" min="0" id="f-deco-valor" value="40000"></div>
+          <div class="campo"><label>Estado del pago</label>
+            <select id="f-deco-estado"><option>Pendiente</option><option>Pagado</option><option>Pago por verificar</option></select>
+          </div>
+          <div class="campo"><label>Medio de pago</label><input id="f-deco-medio" placeholder="Efectivo, transferencia..."></div>
+          <div class="campo"><label>Fecha del pago</label><input type="date" id="f-deco-fecha"></div>
+          <div class="campo"><label>Comprobante recibido</label><select id="f-deco-comprobante"><option value="no">No</option><option value="si">Sí</option></select></div>
+          <div class="campo"><label>Observaciones de decoración</label><input id="f-deco-obs"></div>
+        </div>
+        <div id="mesa-selector-wrap">
+          <label>Mesa (toca una mesa libre para asignarla)</label>
+          <div class="leyenda">🟢 Libre &nbsp; 🔴 Ocupada &nbsp; ⚫ Fuera de servicio &nbsp; 🔷 Seleccionada</div>
+          <div class="tablero-mesas mini" id="modal-mesas"></div>
+          <div class="btns"><button class="btn fantasma" id="btn-sugerir-mesa" type="button">Sugerir mesa según personas</button></div>
+          <div id="mesa-sugerencias" class="subtitulo"></div>
+        </div>
+        <p class="vacio oculto" id="mesa-capri-info">Capri todavía no requiere asignación individual de mesa.</p>
+      </div>
+    </div>
+    <div id="modal-mensaje"></div>
+    <div class="btns">
+      <button class="btn dorado" id="modal-guardar" type="button">Guardar reserva</button>
+      <button class="btn fantasma oculto" id="modal-whatsapp" type="button">📋 Copiar confirmación para WhatsApp</button>
+      <button class="btn fantasma oculto" id="modal-historial" type="button">Ver historial de este cliente</button>
+    </div>
+    <div id="modal-acciones-estado" class="oculto">
+      <hr>
+      <h3>Estado de la reserva</h3>
+      <div class="btns">
+        <button class="btn fantasma" data-estado="Confirmada" type="button">✅ Confirmar</button>
+        <button class="btn fantasma" data-estado="Cliente llegó" type="button">🔵 Cliente llegó</button>
+        <button class="btn fantasma" data-estado="No llegó" type="button">No llegó</button>
+        <button class="btn fantasma" data-estado="Finalizada" type="button">Finalizada</button>
+        <button class="btn fantasma" id="btn-cancelar-reserva" type="button">Cancelar reserva</button>
+      </div>
+    </div>
+    <div id="historial-cliente" class="oculto"></div>
+  </div>
+</div>
+
+<script src="assets/config.js"></script>
+<script>
+Sesion.requerir();
+requerirRol_(['Administrador','Caja','Gerencia']);
+const $=id=>document.getElementById(id);
+const u=Sesion.usuario()||{};
+const puedeEscribir = u.rol==='Administrador' || u.rol==='Caja';
+
+const MOTIVOS_CELEBRACION = ['Cumpleaños','Aniversario','Cena','Reunión','Evento'];
+const ESTADO_CLASE = {
+  'Pendiente de información':'badge-neutral','Pendiente de asignar mesa':'badge-amber',
+  'Pendiente de pago':'badge-amber','Pendiente de verificar pago':'badge-amber',
+  'Confirmada':'badge-green','Cliente llegó':'badge-blue','Finalizada':'badge-neutral',
+  'No llegó':'badge-red','Cancelada':'badge-red'
+};
+
+function fechaLocalHoy(){ return fechaLocalHoy_(); }
+function fechaActual(){ return $('fecha').value; }
+function sedeActual(){ return $('sede').value; }
+function ajustarSedeInicial(){
+  if(u.rol!=='Administrador' && u.sede && (u.sede==='San Antonio' || u.sede==='Capri')){
+    $('sede').value=u.sede; $('sede').disabled=true;
+  }
+}
+
+function horaBonita_(hora){
+  if(!hora) return '—';
+  const p=String(hora).split(':'); let h=Number(p[0])||0; const m=String(Number(p[1])||0).padStart(2,'0');
+  const suf = h<12 ? 'a. m.' : 'p. m.'; let h12=h%12; if(h12===0)h12=12;
+  return h12+':'+m+' '+suf;
+}
+const MESES_ES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function fechaBonita_(fechaYMD){
+  if(!fechaYMD) return '—';
+  const p=String(fechaYMD).split('-'); return Number(p[2])+' de '+(MESES_ES[Number(p[1])-1]||'');
+}
+function mesasArray_(s){ return String(s||'').split(',').map(x=>x.trim()).filter(Boolean); }
+function mesasTexto_(s){ const a=mesasArray_(s); return a.length? 'Mesa '+a.join(' + Mesa ') : 'Sin mesa'; }
+
+function mensajeWhatsapp_(r){
+  const lineas = [
+    '📍 Reserva confirmada – Amelia + La Wafflería',
+    '¡Gracias por compartirnos la información! 💙',
+    'Tu reserva ha quedado confirmada con los siguientes datos:',
+    '',
+    '👤 Nombre: '+r.nombre_cliente,
+    '📅 Fecha: '+fechaBonita_(r.fecha),
+    '🕒 Hora: '+horaBonita_(r.hora),
+    '👥 Personas: '+r.personas,
+    '🏡 Sede: '+r.sede,
+    '📞 Contacto: '+r.telefono
+  ];
+  if(r.sede==='San Antonio' && mesasArray_(r.mesas).length) lineas.push('🪑 Mesa: '+mesasArray_(r.mesas).join(' + '));
+  if(r.motivo && r.motivo!=='Ninguno') lineas.push('🎉 Motivo: '+(r.motivo==='Otro'?(r.motivo_otro||'Otro'):r.motivo));
+  if(r.decoracion) lineas.push('🎂 Decoración: '+(r.decoracion_tipo||'Sí'));
+  lineas.push('');
+  lineas.push('✨ Con mucho gusto tendremos tu mesa reservada durante 15 minutos después de la hora acordada. Si ves que vas a llegar un poco más tarde, escríbenos y haremos lo posible por ayudarte. 💙');
+  lineas.push('');
+  lineas.push('¡Te esperamos en Amelia + La Wafflería – '+r.sede+'!');
+  return lineas.join('\n');
+}
+
+async function copiarTexto_(texto){
+  try{ await navigator.clipboard.writeText(texto); avisarGuardado('Mensaje copiado'); }
+  catch(e){ window.prompt('Copia el mensaje manualmente:', texto); }
+}
+
+// --------------------------------------------------------------------------
+// TABS
+// --------------------------------------------------------------------------
+function activarTabRes_(tab){
+  document.querySelectorAll('.tabs-res .tab-btn').forEach(b=>b.classList.toggle('activo', b.dataset.tab===tab));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('oculto', p.id!=='tab-'+tab));
+  if(tab==='mesas') cargarTableroMesas();
+  if(tab==='calendario') cargarCalendario();
+  if(tab==='config') cargarConfigMesas();
+}
+document.querySelectorAll('.tabs-res .tab-btn').forEach(b=>b.addEventListener('click',()=>activarTabRes_(b.dataset.tab)));
+
+// --------------------------------------------------------------------------
+// DASHBOARD / DÍA
+// --------------------------------------------------------------------------
+function agendaItemHtml_(r){
+  const tags=[];
+  if(r.decoracion) tags.push('<span class="badge-estado badge-amber">🎈 Decoración</span>');
+  if(r.decoracion && r.decoracion_estado_pago==='Pendiente') tags.push('<span class="badge-estado badge-red">💰 Pago pendiente</span>');
+  if(r.decoracion_estado_pago==='Pago por verificar') tags.push('<span class="badge-estado badge-amber">Pago por verificar</span>');
+  tags.push('<span class="badge-estado '+(ESTADO_CLASE[r.estado]||'badge-neutral')+'">'+escapeHtml(r.estado)+'</span>');
+  return `<div class="agenda-item" data-id="${escapeHtml(r.id)}">
+    <div class="hora">${escapeHtml(horaBonita_(r.hora))}</div>
+    <div class="info">
+      <strong>${escapeHtml(r.nombre_cliente)} <small>(${escapeHtml(r.codigo)})</small></strong>
+      <small>${escapeHtml(mesasTexto_(r.mesas))} · ${escapeHtml(String(r.personas))} personas${r.motivo&&r.motivo!=='Ninguno'?' · '+escapeHtml(r.motivo):''} · mesa hasta ${escapeHtml(horaBonita_(r.hora_limite))}</small>
+    </div>
+    <div class="tags">${tags.join(' ')}</div>
+  </div>`;
+}
+
+function kpiHtml_(etiqueta,valor,aviso){ return `<div class="kpi${aviso?' aviso':''}"><span>${escapeHtml(etiqueta)}</span><strong>${escapeHtml(String(valor))}</strong></div>`; }
+
+let dashboardActual=null;
+async function cargarDashboard(){
+  const fecha=fechaActual(), sede=sedeActual();
+  if(!fecha||!sede) return;
+  $('fecha-titulo').textContent = fecha===fechaLocalHoy() ? 'hoy ('+fecha+')' : fecha;
+  const r = await llamar('reservas_dashboard',{fecha,sede});
+  if(fechaActual()!==fecha||sedeActual()!==sede) return;
+  if(!r.ok){ $('dia-lista').innerHTML='<p class="vacio">'+escapeHtml(r.error||'No se pudo cargar')+'</p>'; return; }
+  dashboardActual=r;
+
+  $('kpis').innerHTML = [
+    kpiHtml_('Reservas de hoy', r.resumen.reservas_hoy),
+    kpiHtml_('Personas esperadas', r.resumen.personas_esperadas),
+    kpiHtml_('Pendientes por completar', r.pendientes_completar, r.pendientes_completar>0),
+    kpiHtml_('Pendientes de pago', r.pendientes_pago, r.pendientes_pago>0),
+    kpiHtml_('Pendientes de verificar pago', r.pendientes_verificar_pago, r.pendientes_verificar_pago>0),
+    kpiHtml_('Confirmadas', r.confirmadas),
+    kpiHtml_('Cumpleaños hoy', r.resumen.cumpleanos),
+    kpiHtml_('Cancelaciones', r.resumen.cancelaciones),
+    kpiHtml_('No shows', r.resumen.no_shows)
+  ].join('');
+
+  if(r.alertas && r.alertas.length){
+    $('alertas').classList.remove('oculto');
+    $('alertas-lista').innerHTML = r.alertas.map(a=>'<li>'+escapeHtml(a)+'</li>').join('');
+  } else { $('alertas').classList.add('oculto'); }
+
+  $('dia-lista').innerHTML = r.hoy.length ? r.hoy.map(agendaItemHtml_).join('') : '<p class="vacio">No hay reservas para esta fecha.</p>';
+  $('proximas-lista').innerHTML = r.proximas.length ? r.proximas.map(x=>`<div class="agenda-item" data-id="${escapeHtml(x.id)}"><div class="hora">${escapeHtml(x.fecha)}</div><div class="info"><strong>${escapeHtml(x.nombre_cliente)} <small>(${escapeHtml(x.codigo)})</small></strong><small>${escapeHtml(horaBonita_(x.hora))} · ${escapeHtml(mesasTexto_(x.mesas))} · ${escapeHtml(String(x.personas))} personas</small></div><span class="badge-estado ${ESTADO_CLASE[x.estado]||'badge-neutral'}">${escapeHtml(x.estado)}</span></div>`).join('') : '<p class="vacio">No hay próximas reservas.</p>';
+
+  document.querySelectorAll('#dia-lista .agenda-item, #proximas-lista .agenda-item').forEach(el=>{
+    el.addEventListener('click',()=>abrirModalReserva(el.dataset.id));
+  });
+}
+
+// --------------------------------------------------------------------------
+// TABLERO DE MESAS
+// --------------------------------------------------------------------------
+async function cargarTableroMesas(){
+  const sede=sedeActual(), fecha=fechaActual(), hora=$('mesas-hora').value||'19:00';
+  $('mesas-sede-titulo').textContent = '— '+sede;
+  const r = await llamar('mesas_estado',{sede,fecha,hora});
+  if(!r.ok){ $('tablero-mesas').innerHTML='<p class="vacio">'+escapeHtml(r.error||'No se pudo cargar')+'</p>'; return; }
+  if(!r.data.length){ $('tablero-mesas').innerHTML='<p class="vacio">Esta sede todavía no tiene mesas configuradas. Ve a Configuración de mesas.</p>'; return; }
+  const iconos={libre:'🟢',reservada:'🔴',pendiente:'🟡',llego:'🔵',fuera_servicio:'⚫'};
+  const clases={libre:'libre',reservada:'ocupada',pendiente:'ocupada',llego:'ocupada',fuera_servicio:'fuera'};
+  $('tablero-mesas').innerHTML = r.data.map(m=>{
+    const detalle = m.reserva ? escapeHtml(m.reserva.nombre_cliente+' · '+horaBonita_(m.reserva.hora)) : '';
+    return `<div class="mesa-tile ${clases[m.estado]||''}" title="${detalle}">${iconos[m.estado]||''} Mesa ${escapeHtml(String(m.numero))}${m.reserva?'<br><small>'+escapeHtml(m.reserva.nombre_cliente)+'</small>':''}</div>`;
+  }).join('');
+}
+$('mesas-hora').addEventListener('change',cargarTableroMesas);
+
+// --------------------------------------------------------------------------
+// CALENDARIO
+// --------------------------------------------------------------------------
+let calAnio, calMes;
+function inicializarCalendario_(){ const d=new Date(fechaActual()+'T12:00:00'); calAnio=d.getFullYear(); calMes=d.getMonth(); }
+async function cargarCalendario(){
+  if(calAnio===undefined) inicializarCalendario_();
+  const primero = new Date(calAnio,calMes,1), ultimo=new Date(calAnio,calMes+1,0);
+  const desde = primero.toISOString().slice(0,10), hasta=ultimo.toISOString().slice(0,10);
+  $('cal-titulo').textContent = MESES_ES[calMes][0].toUpperCase()+MESES_ES[calMes].slice(1)+' '+calAnio;
+  const r = await llamar('reservas_calendario',{sede:sedeActual(),fecha_desde:desde,fecha_hasta:hasta});
+  const dias = (r.ok && r.dias) || {};
+  const hoy = fechaLocalHoy();
+  let html = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(d=>`<div class="cal-cab">${d}</div>`).join('');
+  for(let i=0;i<primero.getDay();i++) html += '<div class="calendario-dia vacia"></div>';
+  for(let dia=1; dia<=ultimo.getDate(); dia++){
+    const f = calAnio+'-'+String(calMes+1).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
+    const cuenta = dias[f]||0;
+    html += `<div class="calendario-dia${f===hoy?' hoy':''}" data-fecha="${f}"><div class="num">${dia}</div>${cuenta?'<span class="cuenta">'+cuenta+' reserva'+(cuenta===1?'':'s')+'</span>':''}</div>`;
+  }
+  $('calendario-grid').innerHTML = html;
+  $('calendario-grid').querySelectorAll('.calendario-dia[data-fecha]').forEach(el=>{
+    el.addEventListener('click',()=>{ $('fecha').value=el.dataset.fecha; activarTabRes_('dia'); cargarTodo(); });
+  });
+}
+$('cal-prev').addEventListener('click',()=>{ if(calAnio===undefined) inicializarCalendario_(); calMes--; if(calMes<0){calMes=11;calAnio--;} cargarCalendario(); });
+$('cal-next').addEventListener('click',()=>{ if(calAnio===undefined) inicializarCalendario_(); calMes++; if(calMes>11){calMes=0;calAnio++;} cargarCalendario(); });
+
+// --------------------------------------------------------------------------
+// BUSCAR
+// --------------------------------------------------------------------------
+let buscarTimeout_;
+$('buscar-input').addEventListener('input',()=>{
+  clearTimeout(buscarTimeout_);
+  buscarTimeout_=setTimeout(ejecutarBusqueda,300);
+});
+async function ejecutarBusqueda(){
+  const q=$('buscar-input').value.trim();
+  if(!q){ $('buscar-filas').innerHTML='<tr><td colspan="7" class="vacio">Escribe algo para buscar.</td></tr>'; return; }
+  const r = await llamar('reservas_buscar',{query:q});
+  if($('buscar-input').value.trim()!==q) return;
+  if(!r.ok){ $('buscar-filas').innerHTML='<tr><td colspan="7">'+escapeHtml(r.error||'Error')+'</td></tr>'; return; }
+  const filas = r.data||[];
+  $('buscar-filas').innerHTML = filas.length ? filas.map(x=>`<tr data-id="${escapeHtml(x.id)}" style="cursor:pointer"><td>${escapeHtml(x.codigo)}</td><td>${escapeHtml(x.fecha)}</td><td>${escapeHtml(horaBonita_(x.hora))}</td><td>${escapeHtml(x.sede)}</td><td>${escapeHtml(x.nombre_cliente)}</td><td>${escapeHtml(String(x.personas))}</td><td><span class="badge-estado ${ESTADO_CLASE[x.estado]||'badge-neutral'}">${escapeHtml(x.estado)}</span></td></tr>`).join('') : '<tr><td colspan="7" class="vacio">Sin resultados.</td></tr>';
+  $('buscar-filas').querySelectorAll('tr[data-id]').forEach(tr=>tr.addEventListener('click',()=>abrirModalReserva(tr.dataset.id)));
+}
+
+// --------------------------------------------------------------------------
+// CONFIGURACIÓN DE MESAS (admin)
+// --------------------------------------------------------------------------
+async function cargarConfigMesas(){
+  const sede = sedeActual();
+  $('config-sede-nombre').textContent = sede;
+  const r = await llamar('mesas_listar',{sede});
+  const filas = (r.ok && r.data) || [];
+  $('config-mesas-filas').innerHTML = filas.map(configMesaFilaHtml_).join('') || '<tr><td colspan="8" class="vacio">Sin mesas configuradas todavía.</td></tr>';
+  document.querySelectorAll('.config-fila').forEach(tr=>{
+    tr.querySelector('.guardar-mesa').addEventListener('click',()=>guardarMesaDesdeFila_(tr));
+  });
+}
+function configMesaFilaHtml_(m){
+  return `<tr class="config-fila" data-id="${escapeHtml(m.id)}">
+    <td><input class="c-numero" value="${escapeHtml(String(m.numero))}" style="width:60px"></td>
+    <td><input class="c-min" type="number" min="1" value="${escapeHtml(String(m.capacidad_min))}" style="width:60px"></td>
+    <td><input class="c-max" type="number" min="1" value="${escapeHtml(String(m.capacidad_max))}" style="width:60px"></td>
+    <td><input class="c-ubicacion" value="${escapeHtml(m.ubicacion||'')}"></td>
+    <td><select class="c-activa"><option value="si"${m.activa!==false?' selected':''}>Activa</option><option value="no"${m.activa===false?' selected':''}>Fuera de servicio</option></select></td>
+    <td><input class="c-unir" value="${escapeHtml(m.puede_unirse_con||'')}" placeholder="Ej. 6"></td>
+    <td><input class="c-obs" value="${escapeHtml(m.observaciones||'')}"></td>
+    <td><button class="btn fantasma guardar-mesa" type="button">Guardar</button></td>
+  </tr>`;
+}
+async function guardarMesaDesdeFila_(tr){
+  const item = {
+    id: tr.dataset.id||undefined, sede: sedeActual(),
+    numero: tr.querySelector('.c-numero').value.trim(),
+    capacidad_min: tr.querySelector('.c-min').value,
+    capacidad_max: tr.querySelector('.c-max').value,
+    ubicacion: tr.querySelector('.c-ubicacion').value.trim(),
+    activa: tr.querySelector('.c-activa').value==='si',
+    puede_unirse_con: tr.querySelector('.c-unir').value.trim(),
+    observaciones: tr.querySelector('.c-obs').value.trim()
+  };
+  const r = await llamar('mesas_guardar',{item});
+  if(!r.ok){ alert(r.error||'No se pudo guardar la mesa'); return; }
+  avisarGuardado('Mesa guardada');
+  cargarConfigMesas();
+}
+$('config-nueva-mesa').addEventListener('click',()=>{
+  $('config-mesas-filas').insertAdjacentHTML('beforeend', configMesaFilaHtml_({id:'',numero:'',capacidad_min:2,capacidad_max:4,ubicacion:'',activa:true,puede_unirse_con:'',observaciones:''}));
+  const tr = $('config-mesas-filas').lastElementChild;
+  tr.querySelector('.guardar-mesa').addEventListener('click',()=>guardarMesaDesdeFila_(tr));
+});
+
+// --------------------------------------------------------------------------
+// MODAL NUEVA / EDITAR RESERVA
+// --------------------------------------------------------------------------
+let editandoId=null, reservaActual=null, mesasSeleccionadas=[];
+
+function limpiarModal_(){
+  editandoId=null; reservaActual=null; mesasSeleccionadas=[];
+  $('modal-titulo').textContent='Nueva reserva';
+  $('modal-codigo').classList.add('oculto');
+  $('modal-validacion').innerHTML='';
+  $('modal-mensaje').innerHTML='';
+  $('f-nombre').value=''; $('f-telefono').value='';
+  $('f-sede').value = sedeActual();
+  $('f-fecha').value = fechaActual();
+  $('f-hora').value='19:00';
+  $('f-personas').value=2;
+  $('f-motivo').value='Ninguno'; $('f-motivo-otro').value=''; $('f-motivo-otro-campo').classList.add('oculto');
+  $('f-observaciones').value='';
+  $('f-decoracion').value='no'; $('deco-campos').classList.add('oculto');
+  $('f-deco-tipo').value=''; $('f-deco-valor').value=40000; $('f-deco-estado').value='Pendiente';
+  $('f-deco-medio').value=''; $('f-deco-fecha').value=''; $('f-deco-comprobante').value='no'; $('f-deco-obs').value='';
+  $('modal-whatsapp').classList.add('oculto');
+  $('modal-historial').classList.add('oculto');
+  $('modal-acciones-estado').classList.add('oculto');
+  $('historial-cliente').classList.add('oculto').innerHTML='';
+  actualizarVisibilidadDecoracion_();
+  actualizarVisibilidadMesa_();
+}
+
+function actualizarVisibilidadDecoracion_(){ $('deco-campos').classList.toggle('oculto', $('f-decoracion').value!=='si'); }
+function actualizarVisibilidadMesa_(){
+  const esSA = $('f-sede').value==='San Antonio';
+  $('mesa-selector-wrap').classList.toggle('oculto', !esSA);
+  $('mesa-capri-info').classList.toggle('oculto', esSA);
+  if(esSA) cargarMesasModal_();
+}
+$('f-decoracion').addEventListener('change', actualizarVisibilidadDecoracion_);
+$('f-motivo').addEventListener('change',()=>$('f-motivo-otro-campo').classList.toggle('oculto', $('f-motivo').value!=='Otro'));
+$('f-sede').addEventListener('change',()=>{ mesasSeleccionadas=[]; actualizarVisibilidadMesa_(); });
+$('f-fecha').addEventListener('change', cargarMesasModal_);
+$('f-hora').addEventListener('change', cargarMesasModal_);
+
+async function cargarMesasModal_(){
+  if($('f-sede').value!=='San Antonio') return;
+  const sede=$('f-sede').value, fecha=$('f-fecha').value, hora=$('f-hora').value;
+  if(!fecha||!hora){ $('modal-mesas').innerHTML='<p class="vacio">Selecciona fecha y hora primero.</p>'; return; }
+  const r = await llamar('mesas_estado',{sede,fecha,hora});
+  if(!r.ok){ $('modal-mesas').innerHTML='<p class="vacio">'+escapeHtml(r.error||'No se pudo cargar')+'</p>'; return; }
+  if(!r.data.length){ $('modal-mesas').innerHTML='<p class="vacio">No hay mesas configuradas para esta sede.</p>'; return; }
+  $('modal-mesas').innerHTML = r.data.map(m=>{
+    const num=String(m.numero);
+    const seleccionada = mesasSeleccionadas.indexOf(num)!==-1;
+    let cls, clickable;
+    if(seleccionada){ cls='seleccionada'; clickable=true; }
+    else if(m.estado==='fuera_servicio'){ cls='fuera'; clickable=false; }
+    else if(m.estado==='libre'){ cls='libre'; clickable=true; }
+    else { cls='ocupada'; clickable=false; }
+    return `<div class="mesa-tile ${cls}" data-numero="${escapeHtml(num)}" data-clickable="${clickable?1:0}" title="${m.reserva?escapeHtml(m.reserva.nombre_cliente+' · '+horaBonita_(m.reserva.hora)):''}">Mesa ${escapeHtml(num)}</div>`;
+  }).join('');
+  $('modal-mesas').querySelectorAll('.mesa-tile').forEach(el=>{
+    el.addEventListener('click',()=>{
+      if(el.dataset.clickable!=='1') return;
+      if(!puedeEscribir) return;
+      const n=el.dataset.numero, i=mesasSeleccionadas.indexOf(n);
+      if(i===-1) mesasSeleccionadas.push(n); else mesasSeleccionadas.splice(i,1);
+      cargarMesasModal_();
+    });
+  });
+}
+
+$('btn-sugerir-mesa').addEventListener('click', async ()=>{
+  const sede=$('f-sede').value, fecha=$('f-fecha').value, hora=$('f-hora').value, personas=$('f-personas').value;
+  if(!fecha||!hora||!personas){ $('mesa-sugerencias').textContent='Completa fecha, hora y personas primero.'; return; }
+  const r = await llamar('mesas_sugeridas',{sede,fecha,hora,personas});
+  if(!r.ok || !r.sugerencias || !r.sugerencias.length){ $('mesa-sugerencias').textContent='No hay una mesa libre que alcance para ese número de personas en ese horario.'; return; }
+  $('mesa-sugerencias').innerHTML = 'Sugerencias: ' + r.sugerencias.map(combo=>`<button type="button" class="btn fantasma" style="padding:3px 10px;margin:2px" data-combo="${combo.join(',')}">Mesa ${combo.join(' + ')}</button>`).join(' ');
+  $('mesa-sugerencias').querySelectorAll('button[data-combo]').forEach(b=>{
+    b.addEventListener('click',()=>{ mesasSeleccionadas=b.dataset.combo.split(','); cargarMesasModal_(); });
+  });
+});
+
+function pintarValidacion_(validacion){
+  if(!validacion){ $('modal-validacion').innerHTML=''; return; }
+  if(validacion.completa){
+    $('modal-validacion').innerHTML = '<div class="validacion-ok">✅ INFORMACIÓN COMPLETA</div>';
+  } else {
+    $('modal-validacion').innerHTML = '<div class="validacion-mal"><strong>⚠️ FALTAN DATOS</strong><ul>'+validacion.faltantes.map(f=>'<li>'+escapeHtml(f)+'</li>').join('')+'</ul></div>';
+  }
+}
+
+function poblarModalConReserva_(r){
+  reservaActual=r; editandoId=r.id;
+  $('modal-titulo').textContent='Reserva '+r.codigo;
+  $('modal-codigo').classList.remove('oculto');
+  $('modal-codigo').textContent = 'Código '+r.codigo+' · Mesa reservada hasta '+horaBonita_(r.hora_limite)+' · Creada por '+(r.creado_por_nombre||'—')+(r.actualizado_por_nombre?(' · Última modificación: '+r.actualizado_por_nombre):'');
+  $('f-nombre').value=r.nombre_cliente; $('f-telefono').value=r.telefono;
+  $('f-sede').value=r.sede; $('f-sede').disabled=true;
+  $('f-fecha').value=r.fecha; $('f-hora').value=r.hora; $('f-personas').value=r.personas;
+  $('f-motivo').value=RESERVA_MOTIVOS_TIENE_(r.motivo)?r.motivo:'Otro';
+  $('f-motivo-otro').value=r.motivo_otro||''; $('f-motivo-otro-campo').classList.toggle('oculto', $('f-motivo').value!=='Otro');
+  $('f-observaciones').value=r.observaciones||'';
+  $('f-decoracion').value = r.decoracion ? 'si':'no'; actualizarVisibilidadDecoracion_();
+  $('f-deco-tipo').value=r.decoracion_tipo||''; $('f-deco-valor').value=r.decoracion_valor||40000;
+  $('f-deco-estado').value=(r.decoracion_estado_pago && r.decoracion_estado_pago!=='No aplica')?r.decoracion_estado_pago:'Pendiente';
+  $('f-deco-medio').value=r.decoracion_medio_pago||''; $('f-deco-fecha').value=r.decoracion_fecha_pago||'';
+  $('f-deco-comprobante').value=r.decoracion_comprobante?'si':'no'; $('f-deco-obs').value=r.decoracion_observaciones||'';
+  mesasSeleccionadas = mesasArray_(r.mesas);
+  actualizarVisibilidadMesa_();
+  // Aproximación cliente-side: estos dos estados son los únicos que reservaValidarCompleta_ (backend)
+  // considera "faltan datos" — Pendiente de pago/verificar pago ya tienen todo lo obligatorio, solo
+  // falta resolver el pago. Un guardado o cambio de estado siempre revalida contra el backend.
+  const incompleta = ['Pendiente de información','Pendiente de asignar mesa'].indexOf(r.estado)!==-1;
+  const faltanteGenerico = r.estado==='Pendiente de asignar mesa' ? ['Falta asignar una mesa.'] : ['Revisa el nombre, teléfono, fecha, hora y número de personas.'];
+  pintarValidacion_({completa:!incompleta, faltantes: incompleta?faltanteGenerico:[]});
+  $('modal-whatsapp').classList.toggle('oculto', r.estado==='Cancelada');
+  $('modal-historial').classList.remove('oculto');
+  $('modal-acciones-estado').classList.toggle('oculto', !puedeEscribir);
+}
+function RESERVA_MOTIVOS_TIENE_(m){ return ['Ninguno','Cumpleaños','Aniversario','Cena','Reunión','Evento'].indexOf(m)!==-1; }
+
+async function abrirModalReserva(id){
+  limpiarModal_();
+  $('f-sede').disabled=false;
+  $('modal-reserva').classList.remove('oculto');
+  if(!id) return;
+  // Sin filtro de sede: para Administrador/'Ambas' trae las dos sedes; para el resto, la suya —
+  // exactamente el mismo alcance que ya vieron en el panel o en la búsqueda para llegar hasta aquí.
+  const lista = await llamar('reservas_listar',{filtros:{}});
+  const fila = lista.ok ? (lista.data||[]).find(x=>x.id===id) : null;
+  if(!fila){ $('modal-mensaje').innerHTML='<div class="validacion-mal">No se pudo cargar la reserva.</div>'; return; }
+  poblarModalConReserva_(fila);
+}
+$('btn-nueva').addEventListener('click',()=>abrirModalReserva(null));
+$('modal-cerrar').addEventListener('click',()=>$('modal-reserva').classList.add('oculto'));
+
+$('modal-guardar').addEventListener('click', async ()=>{
+  $('modal-mensaje').innerHTML='';
+  const item = {
+    nombre_cliente:$('f-nombre').value.trim(), telefono:$('f-telefono').value.trim(),
+    sede:$('f-sede').value, fecha:$('f-fecha').value, hora:$('f-hora').value,
+    personas:$('f-personas').value, motivo:$('f-motivo').value, motivo_otro:$('f-motivo-otro').value.trim(),
+    observaciones:$('f-observaciones').value.trim(),
+    decoracion: $('f-decoracion').value==='si',
+    decoracion_tipo:$('f-deco-tipo').value.trim(), decoracion_valor:$('f-deco-valor').value,
+    decoracion_estado_pago:$('f-deco-estado').value, decoracion_medio_pago:$('f-deco-medio').value.trim(),
+    decoracion_fecha_pago:$('f-deco-fecha').value, decoracion_comprobante:$('f-deco-comprobante').value==='si',
+    decoracion_observaciones:$('f-deco-obs').value.trim(),
+    mesas: $('f-sede').value==='San Antonio' ? mesasSeleccionadas : []
+  };
+  const r = editandoId ? await llamar('reserva_actualizar',{id:editandoId,cambios:item}) : await llamar('reserva_crear',{item});
+  if(!r.ok){
+    let extra='';
+    if(r.faltantes) extra = '<ul>'+r.faltantes.map(f=>'<li>'+escapeHtml(f)+'</li>').join('')+'</ul>';
+    if(r.conflicto) extra += '<p>Mesa ocupada por '+escapeHtml(r.conflicto.codigo)+' ('+escapeHtml(r.conflicto.nombre_cliente)+') a las '+escapeHtml(horaBonita_(r.conflicto.hora))+'.</p>';
+    $('modal-mensaje').innerHTML = '<div class="validacion-mal">'+escapeHtml(r.error||'No se pudo guardar')+extra+'</div>';
+    return;
+  }
+  avisarGuardado('Reserva guardada');
+  poblarModalConReserva_(r.item);
+  pintarValidacion_(r.validacion);
+  cargarTodo();
+});
+
+$('modal-whatsapp').addEventListener('click',()=>{ if(reservaActual) copiarTexto_(mensajeWhatsapp_(reservaActual)); });
+
+$('modal-historial').addEventListener('click', async ()=>{
+  const telefono = $('f-telefono').value.trim();
+  if(!telefono) return;
+  const r = await llamar('reserva_historial_cliente',{telefono});
+  if(!r.ok){ $('historial-cliente').innerHTML='<p class="vacio">No se pudo cargar el historial.</p>'; $('historial-cliente').classList.remove('oculto'); return; }
+  const cel = r.celebraciones.map(c=>escapeHtml(c.fecha+': '+c.motivo)).join(', ') || 'Ninguna';
+  const obs = r.observaciones.map(o=>escapeHtml(o.fecha+': '+o.observaciones)).join('<br>') || 'Sin observaciones registradas.';
+  $('historial-cliente').innerHTML = `<hr><h3>Historial de este cliente</h3>
+    <p>Visitas: <strong>${r.total_visitas}</strong> · Cancelaciones: <strong>${r.cancelaciones}</strong> · No shows: <strong>${r.no_shows}</strong></p>
+    <p>Celebraciones anteriores: ${cel}</p>
+    <p>Observaciones: ${obs}</p>`;
+  $('historial-cliente').classList.remove('oculto');
+});
+
+document.querySelectorAll('#modal-acciones-estado [data-estado]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    if(!editandoId) return;
+    const r = await llamar('reserva_cambiar_estado',{id:editandoId,estado:btn.dataset.estado});
+    if(!r.ok){
+      const extra = r.faltantes ? '<ul>'+r.faltantes.map(f=>'<li>'+escapeHtml(f)+'</li>').join('')+'</ul>' : '';
+      $('modal-mensaje').innerHTML = '<div class="validacion-mal">'+escapeHtml(r.error||'No se pudo cambiar el estado')+extra+'</div>';
+      return;
+    }
+    avisarGuardado('Estado actualizado');
+    poblarModalConReserva_(r.item);
+    cargarTodo();
+  });
+});
+$('btn-cancelar-reserva').addEventListener('click', async ()=>{
+  if(!editandoId) return;
+  const motivo = window.prompt('Motivo de la cancelación:');
+  if(motivo===null) return;
+  const r = await llamar('reserva_cancelar',{id:editandoId,motivo});
+  if(!r.ok){ $('modal-mensaje').innerHTML='<div class="validacion-mal">'+escapeHtml(r.error||'No se pudo cancelar')+'</div>'; return; }
+  avisarGuardado('Reserva cancelada');
+  poblarModalConReserva_(r.item);
+  cargarTodo();
+});
+
+// --------------------------------------------------------------------------
+// INICIO
+// --------------------------------------------------------------------------
+function cargarTodo(){
+  cargarDashboard();
+  const tabActiva = document.querySelector('.tabs-res .tab-btn.activo');
+  if(tabActiva && tabActiva.dataset.tab==='mesas') cargarTableroMesas();
+  if(tabActiva && tabActiva.dataset.tab==='calendario'){ calAnio=undefined; cargarCalendario(); }
+  if(tabActiva && tabActiva.dataset.tab==='config') cargarConfigMesas();
+}
+$('actualizar').addEventListener('click',cargarTodo);
+$('fecha').addEventListener('change',cargarTodo);
+$('sede').addEventListener('change',cargarTodo);
+
+(async function iniciar(){
+  montarBarraUsuario();
+  ajustarSedeInicial();
+  $('fecha').value = fechaLocalHoy();
+  if(!puedeEscribir){ $('btn-nueva').style.display='none'; }
+  cargarTodo();
+})();
+</script>
+</body>
+</html>
