@@ -4,7 +4,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxOkVbJtM1QAzAVqPjHHRxH
 // Usuarios, Sincronización FUDO y Caja están habilitados. El resto no se elimina: permanece
 // inactivo hasta que se valide y reactive por etapas.
 const MODO_REACTIVACION = true;
-const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja'];
+const MODULOS_ACTIVOS = ['usuarios', 'sincronizacion', 'caja', 'reservas'];
 const ACCIONES_PERMITIDAS_REACTIVACION = [
   'login',
   'logout',
@@ -27,7 +27,20 @@ const ACCIONES_PERMITIDAS_REACTIVACION = [
   'caja_novedades_listar',
   'caja_novedad_conciliar',
   'caja_historial_listar',
-  'caja_corregir'
+  'caja_corregir',
+  'reservas_dashboard',
+  'reservas_listar',
+  'reserva_crear',
+  'reserva_actualizar',
+  'reserva_cambiar_estado',
+  'reserva_cancelar',
+  'reservas_buscar',
+  'reserva_historial_cliente',
+  'reservas_calendario',
+  'mesas_listar',
+  'mesas_guardar',
+  'mesas_estado',
+  'mesas_sugeridas'
 ];
 
 const Sesion = {
@@ -55,7 +68,7 @@ const Sesion = {
 };
 
 // Bloqueo de navegación directa: una URL vieja no reactiva por accidente un módulo operativo.
-const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'caja.html', 'historial-caja.html', 'cambiar-password.html', ''];
+const PAGINAS_PERMITIDAS_REACTIVACION = ['index.html', 'usuarios.html', 'fudo.html', 'caja.html', 'historial-caja.html', 'cambiar-password.html', 'reservas.html', ''];
 (function bloquearPaginaInactiva_() {
   if (!MODO_REACTIVACION) return;
   const pagina = window.location.pathname.split('/').pop();
@@ -256,6 +269,7 @@ function conBotonProtegido(boton, fn) {
 const MENU_PRINCIPAL_COMPLETO = [
   { grupo: 'HOY' },
   { href: 'inicio.html', texto: 'Inicio de turno' },
+  { href: 'reservas.html', texto: 'Reservas', soloRol: ['Administrador','Caja','Gerencia'] },
   { href: 'abastecimiento.html', texto: 'Inventario y abastecimiento', soloRol: ['Administrador','Encargado','Lectura'] },
   { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Encargado'] },
   { grupo: 'REGISTRAR OPERACIÓN' },
@@ -280,6 +294,7 @@ const MENU_PRINCIPAL_COMPLETO = [
 const MENU_PRINCIPAL = MODO_REACTIVACION
   ? [
       { grupo: 'ACTIVO' },
+      { href: 'reservas.html', texto: 'Reservas', soloRol: ['Administrador','Caja','Gerencia'], modulo: 'reservas' },
       // Historial de Caja (antes su propio link) ahora es la pestaña "Historial" dentro de Caja —
       // Diana, ago 2026: "todo lo de caja debe funcionar en un solo link que se llama caja".
       { href: 'caja.html', texto: 'Caja', soloRol: ['Administrador','Caja'], modulo: 'caja' },

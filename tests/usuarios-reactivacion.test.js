@@ -14,7 +14,7 @@ const fudoVentas = fs.readFileSync('apps-script/FudoVentas.gs', 'utf8');
 assert.match(usuarios,/sectores_permitidos:\s*item\.sectores_permitidos\s*\|\|\s*''/);
 assert.match(usuarios,/item\.id === usuarioSesion\.id && item\.activo === false/);
 assert.match(config,/const MODO_REACTIVACION = true;/);
-assert.match(config,/const MODULOS_ACTIVOS = \['usuarios', 'sincronizacion', 'caja'\];/);
+assert.match(config,/const MODULOS_ACTIVOS = \['usuarios', 'sincronizacion', 'caja', 'reservas'\];/);
 assert.match(config,/href: 'usuarios\.html', texto: 'Usuarios'/);
 
 // La nueva Caja controla acceso por sesión y backend; ya no depende del helper visual requerirRol_.
@@ -29,8 +29,12 @@ assert.match(reactivacionCaja,/usuario && usuario\.rol === 'Caja' \? 'Encargado'
   .forEach(action => assert.ok((config + reactivacionCaja).includes(`'${action}'`), `Falta acción activa ${action}`));
 
 assert.match(login,/data\.usuario\.rol === 'Administrador'/);
-assert.match(login,/data\.usuario\.rol === 'Caja' && MODULOS_ACTIVOS\.includes\('caja'\)/);
+// Reservas (ago 2026, pedido de Diana): quien atiende reservas ("Caja"/"Gerencia") debe caer directo
+// en el panel de Reservas al abrir el sistema, no en Caja — Caja sigue un clic de distancia en el menú.
+assert.match(login,/data\.usuario\.rol === 'Caja' && MODULOS_ACTIVOS\.includes\('reservas'\)/);
+assert.match(login,/data\.usuario\.rol === 'Gerencia' && MODULOS_ACTIVOS\.includes\('reservas'\)/);
 assert.match(login,/window\.location\.href = 'caja\.html';/);
+assert.match(login,/window\.location\.href = 'reservas\.html';/);
 assert.match(fudoPanel,/requerirRol_\(\['Administrador'\]\)/);
 
 // Sincronización FUDO (ago 2026, pedido de Diana): ya no es un link aparte en el menú — Caja tiene

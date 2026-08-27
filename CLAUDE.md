@@ -243,6 +243,55 @@ implementarlo de nuevo — no asumir que este texto describe el comportamiento a
   backend pero la pantalla de "Registrar movimiento" no lo pide.
 - Rappi: se enciende una vez por turno y no se puede apagar/desmarcar desde la pantalla — así sigue.
 
+## Reservas (Amelia + La Wafflería, ago 2026)
+
+Sistema de reservas para uso interno de quien atiende WhatsApp. Backend: `apps-script/Reservas.gs`
+(hojas `Reservas` y `Reservas_Mesas`). Frontend: `reservas.html`. Ya está en `MODULOS_ACTIVOS` (junto
+con Caja) y es el destino de login por defecto para los roles `Caja`/`Gerencia` (`index.html`) —
+`Caja` sigue un clic de distancia en el menú lateral. Roles: "Caja/Reservas" del pedido original =
+rol `Caja` existente (crear/editar/asignar mesa/pagos/confirmar); "Consulta" = rol `Gerencia`
+(solo lectura) — no se crearon roles nuevos.
+
+**HECHO CONFIRMADO** (texto explícito del pedido): San Antonio tiene 11 mesas en la terraza y exige
+mesa para poder llegar a "Confirmada"; Capri no exige mesa por ahora pero usa la misma tabla de
+configuración, lista para cuando quiera agregarlas. La reserva se mantiene 15 minutos después de la
+hora acordada (`RESERVA_TOLERANCIA_MINUTOS_`). Decoración de cumpleaños actual: $40.000 (decoración +
+porción de torta) — es el valor por defecto, editable por reserva porque a futuro puede haber otros
+paquetes.
+
+**DECISIÓN DE DISEÑO** (no venía especificada, se resolvió para poder implementar): el pedido describe
+"pulsa CONFIRMAR RESERVA" como un paso del flujo, pero también dice que el estado y sus colores deben
+cambiar dinámicamente según los datos (sección 7) y que el botón de WhatsApp aparece "una vez la
+reserva esté completa" (sección 9). Se implementó el estado como **automático**: cada vez que se
+crea/edita una reserva o se registra un pago, el backend recalcula el estado
+(`reservaEstadoCalculado_`) a partir de si faltan datos, si falta mesa (solo San Antonio) y del estado
+de pago de la decoración — así "Confirmada" no depende de acordarse de pulsar un botón aparte. Los
+estados operativos (`Cliente llegó`/`No llegó`/`Finalizada`/`Cancelada`) sí son 100% manuales y nunca
+se recalculan solos. Los 7 campos obligatorios de intake (nombre, teléfono, sede, fecha, hora,
+personas, motivo) SÍ bloquean guardar — la mesa y el pago de decoración NO bloquean guardar, quedan
+como "pendiente" con alerta, para cumplir el objetivo explícito de que "ninguna reserva quede
+únicamente en WhatsApp". Si Diana prefiere un botón "Confirmar" manual y separado en vez de este
+cálculo automático, es un cambio a discutir, no algo ya cerrado.
+
+**PROVISIONAL** (sin dato real de Diana, valores puestos para que el sistema funcione desde ya —
+ajustar en `apps-script/Reservas.gs` cuando haya un número real):
+- `RESERVA_DURACION_OCUPACION_MINUTOS_ = 120`: cuánto tiempo se asume que una mesa queda ocupada, para
+  decidir si dos reservas de la misma mesa se chocan en el horario. El pedido solo especifica los 15
+  minutos de cortesía (que es otra cosa: cuánto se espera a alguien que llega tarde), no cuánto dura
+  una mesa ocupada.
+- `RESERVA_GRUPO_GRANDE_MIN_ = 8`: a partir de cuántas personas se dispara la alerta "grupo grande".
+- Capacidades de las 11 mesas de San Antonio se sembraron todas iguales (mín 2, máx 4, ubicación
+  "Terraza") — el pedido solo da un ejemplo real (Mesa 5, capacidad 2, se une con Mesa 6). Hay que
+  cargar los números reales de cada mesa (y qué se une con qué) desde "Configuración de mesas".
+
+**Sigue genuinamente pendiente / vale la pena preguntarle a Diana:**
+- Confirmar los dos valores provisionales de arriba con un número real.
+- Capacidad real y combinaciones ("puede unirse con") de cada una de las 11 mesas de San Antonio.
+- Si el pedido quería un botón "Confirmar reserva" manual y separado en vez del cálculo automático de
+  estado (ver "decisión de diseño" arriba).
+- El historial de cliente por teléfono hoy se limita a la sede del usuario que consulta (excepto
+  Administrador/'Ambas') — no se preguntó explícitamente si debería ser cruzado entre sedes.
+
 ## FUDO — datos de referencia
 
 - Auth: `https://auth.fu.do/api` · API: `https://api.fu.do/v1alpha1` · credenciales en Script

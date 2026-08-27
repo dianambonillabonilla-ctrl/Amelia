@@ -49,8 +49,14 @@ document.getElementById('form-login').addEventListener('submit', async (e) => {
       window.location.href = 'caja.html';
       return;
     }
-    if (data.usuario.rol === 'Caja' && MODULOS_ACTIVOS.includes('caja')) {
-      window.location.href = 'caja.html';
+    // Quien atiende reservas abre el sistema y debe caer directo en el panel de Reservas
+    // (pedido explícito) — Caja sigue a un clic de distancia en el menú lateral.
+    if (data.usuario.rol === 'Caja' && MODULOS_ACTIVOS.includes('reservas')) {
+      window.location.href = 'reservas.html';
+      return;
+    }
+    if (data.usuario.rol === 'Gerencia' && MODULOS_ACTIVOS.includes('reservas')) {
+      window.location.href = 'reservas.html';
       return;
     }
 
